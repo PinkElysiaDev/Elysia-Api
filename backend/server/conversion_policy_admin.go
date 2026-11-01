@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/utils"
@@ -247,6 +248,11 @@ func (s *Server) adminConversionPreview(ctx context.Context, c *app.RequestConte
 		return
 	}
 	policy, route, err := service.ResolvePreviewConversion(input.Context, input.Phase, &input.Policy)
+	if err == nil {
+		var operation protocol.EvaluationContext
+		operation, err = operation.WithOperation(c.GetString("requestID"), time.Now().Unix())
+		route = route.WithOperation(operation)
+	}
 	if err == nil {
 		route, err = policy.PreviewRecovery(input.Phase, input.Input, route)
 	}

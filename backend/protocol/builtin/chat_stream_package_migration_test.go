@@ -91,9 +91,9 @@ func TestChatLegacyAnnotationsCompareRawJSON(t *testing.T) {
 }
 
 func TestChatPackageSourceStreamMigration(t *testing.T) {
-	legacy := shippedProjectionProtocol(t, Chat)
 	candidate := compileBuiltinPackage(t, "openai-chat")
-	samples := legacy.Definition().Samples
+	document, _ := candidate.Package()
+	samples := append([]p.Sample(nil), document.Mapping.Samples...)
 	for _, fixture := range []struct{ name, frames string }{
 		{"late-usage-details", `[
 			{"id":"r","model":"m","created":1,"choices":[{"index":0,"delta":{"role":"assistant","content":"x"},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":2,"total_tokens":22}},
@@ -113,59 +113,110 @@ func TestChatPackageSourceStreamMigration(t *testing.T) {
 			continue
 		}
 		t.Run(sample.ID, func(t *testing.T) {
-			var frames []p.Value
-			if err := sample.Input.Decode(&frames); err != nil {
+			var input []p.Value
+			if err := sample.Input.Decode(&input); err != nil {
 				t.Fatal(err)
 			}
-			oldOptions := p.EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: p.NewEvaluationState()}
-			newOptions := p.EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: p.NewEvaluationState()}
-			defer oldOptions.State.Release()
-			defer newOptions.State.Release()
+			options := p.EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: p.NewEvaluationState()}
+			defer options.State.Release()
 			wire, err := candidate.NewWireInputStreamValidation(sample.Scope)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for index, frame := range frames {
-				if err := wire.Consume(t.Context(), frame); err != nil {
-					t.Fatal("independent source contract", index, err)
-				}
-				before, wantErr := legacy.DecodeFrame(t.Context(), frame, oldOptions)
-				after, gotErr := candidate.DecodeFrame(t.Context(), frame, newOptions)
-				if wantErr != nil || gotErr != nil {
-					t.Fatal("source frame", index, wantErr, gotErr)
-				}
-				expected := streamEventsAtVersion(before.Events, p.ProtocolCoreVersion)
-				if len(expected) != len(after.Events) {
-					t.Fatal("source event count changed", index, expected, after.Events)
-				}
-				for eventIndex, event := range after.Events {
-					if expected[eventIndex].Unmapped == nil {
-						continue
-					}
-					// The approved provenance contract records an actual source
-					// fragment instead of the old synthetic extensions object.
-					// Nested snapshots use the existing ConfigStd compaction;
-					// the transport frame has a separate byte-preserving owner.
-					compact, err := sonic.ConfigStd.Marshal(frame)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if event.Unmapped == nil || event.Unmapped.Source.Path != "" || !bytes.Equal(event.Unmapped.Value.Bytes(), compact) || event.Unmapped.Source.Protocol != candidate.Identity() || event.Unmapped.Source.Direction != p.DecodeEvent || event.Unmapped.Source.Scope != sample.Scope {
-						t.Fatal("extension evidence lost its original frame", event.Unmapped)
-					}
-					expected[eventIndex].Unmapped = event.Unmapped
-				}
-				want, err := p.EncodeValue(expected)
+			target := candidate.Target(p.DecodeEvent, sample.Scope)
+			target.Direction = p.EncodeEvent
+			collector, err := p.NewResponseCollector(target, candidate.ResourceLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var frames []*p.EventFrame
+			parents, closed, children := 0, 0, 0
+			for index, original := range input {
+				frame, err := wire.DecodeFrame(t.Context(), original, options)
 				if err != nil {
-					t.Fatal(err)
+					t.Fatal("source frame", index, err)
 				}
-				got, err := p.EncodeValue(after.Events)
-				if err != nil || !bytes.Equal(want.Bytes(), got.Bytes()) {
-					t.Fatalf("frame %d changed events: %v\nold: %s\nnew: %s", index, err, want.JSONString(), got.JSONString())
+				frames = append(frames, frame)
+				for _, event := range frame.Events {
+					if event.ItemID.IsString("choice:0") {
+						if !event.ParentID.IsZero() || event.Index == nil || *event.Index != 0 {
+							t.Fatal("choice lost its top-level identity", event)
+						}
+						if event.Type == p.ItemStarted {
+							parents++
+							if event.Item == nil || event.Item.Kind != p.MessageNode || !event.Item.Role.IsString("assistant") || event.Item.Source == nil || event.Item.Source.Path != "/choices/0" {
+								t.Fatal("choice message lacks actual wire provenance", event)
+							}
+						}
+						if event.Type == p.ItemFinished {
+							closed++
+						}
+					} else if event.Type == p.ItemStarted || event.Type == p.ItemDelta || event.Type == p.ItemSnapshot || event.Type == p.ItemFinished {
+						if !event.ParentID.IsString("choice:0") || event.Index == nil || *event.Index <= 0 {
+							t.Fatal("choice child lost its parent or position", event)
+						}
+						if event.Type == p.ItemStarted {
+							children++
+						}
+					}
+					if event.Unmapped != nil {
+						compact, err := sonic.ConfigStd.Marshal(original)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if event.Unmapped.Source.Path != "" || !bytes.Equal(event.Unmapped.Value.Bytes(), compact) || event.Unmapped.Source.Protocol != candidate.Identity() || event.Unmapped.Source.Direction != p.DecodeEvent || event.Unmapped.Source.Scope != sample.Scope {
+							t.Fatal("extension evidence lost its original frame", event.Unmapped)
+						}
+					}
+					if _, _, err := collector.Consume(event); err != nil {
+						t.Fatal("source lifecycle", index, err)
+					}
 				}
 			}
 			if err := wire.Finish(); err != nil {
 				t.Fatal(err)
+			}
+			response, err := collector.Finish()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parents != 1 || closed != 1 || len(response.Content) != 1 || response.Content[0].Kind != p.MessageNode || len(response.Content[0].Children) != children || children != 1 || !response.Status.IsString("completed") {
+				t.Fatal("choice lifecycle or content grouping changed", parents, closed, response)
+			}
+			node := response.Content[0].Children[0]
+			switch sample.ID {
+			case "declared-stream-tool-decode", "late-tool-identity":
+				expected := `{"n":9007199254740993}`
+				if sample.ID == "late-tool-identity" {
+					expected = `{"a":1}`
+				}
+				if node.Kind != p.ToolCallNode || !node.Name.IsString("lookup") || !node.CallID.IsString("call") || node.Input == nil || node.Input.Kind != p.JSONInput {
+					t.Fatal("tool history lost its identity", node)
+				}
+				sameJSON(t, node.Input.Value.Bytes(), expected)
+			default:
+				expected, kind := "hi", p.TextNode
+				if sample.ID == "late-usage-details" {
+					expected = "x"
+				}
+				if sample.ID == "declared-stream-reasoning-decode" {
+					kind = p.ReasoningNode
+				}
+				if node.Kind != kind || !node.Payload.IsString(expected) {
+					t.Fatal("generated content changed", node)
+				}
+				if response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != 20 || response.Usage.Output == nil || response.Usage.Output.Count != 2 || response.Usage.CacheRead == nil || response.Usage.CacheRead.Count != 15 {
+					t.Fatal("late usage lost its reported counters", response.Usage)
+				}
+			}
+			replayed := encodePackageStream(t, candidate, frames, sample.Scope, true)
+			if len(replayed) != len(input) {
+				t.Fatal("source frame replay changed frame count", len(replayed), len(input))
+			}
+			for index, original := range input {
+				if replayed[index] != original.JSONString() {
+					t.Fatal("native frame bytes changed", index)
+				}
 			}
 		})
 	}

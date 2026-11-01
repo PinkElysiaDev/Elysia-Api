@@ -38,6 +38,8 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 	if input.Mode == "conversion" {
 		sink := &DiagnosticSink{}
 		conversion, route, err := service.ResolvePreviewConversion(input.ConversionContext, input.ConversionPhase, input.ConversionPolicy)
+		// Authoring uses the same explicit synthetic execution as fixture previews.
+		route = route.WithOperation(EvaluationContext{operation: &verificationOperation})
 		route.ResponseWire = input.Direction == EncodeResponse || input.Direction == EncodeEvent
 		var output Value
 		if err == nil {

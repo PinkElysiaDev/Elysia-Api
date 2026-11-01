@@ -46,6 +46,7 @@ func adminProtocolContext(method, target, body string) (*app.RequestContext, *ht
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	setTestRequest(c, req)
+	c.Set("requestID", usageRequestID(time.Now()))
 	return c, rec
 }
 

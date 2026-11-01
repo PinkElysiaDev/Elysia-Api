@@ -94,6 +94,9 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if err := replay.checkParent(replay.items[parent], event); err != nil {
 			return err
 		}
+		if event.Collection == "" && event.Item != nil && !isMessageStreamChild(*event.Item) {
+			return streamIssue(UnsupportedCapability, "/item", "message stream children require text, refusal, unstructured reasoning or client tool leaves")
+		}
 	}
 	item := replay.items[key]
 	if event.Type == ItemStarted {
@@ -105,9 +108,6 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		}
 		if len(replay.items) >= replay.limits.StateItems {
 			return streamIssue(LimitExceeded, "/item", "too many stream items")
-		}
-		if parent != "" && event.Collection == "" && event.Item.Kind != TextNode && event.Item.Kind != RefusalNode {
-			return streamIssue(UnsupportedCapability, "/item/kind", "message stream children require text or refusal content")
 		}
 		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm, parent: parent, collection: event.Collection}
 		if event.Item.Input != nil {
@@ -162,6 +162,31 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if event.Item != nil && event.Item.ReasoningForm != item.reasoningForm {
 		return streamIssue(InvalidAssociation, "/item/reasoningForm", "reasoning representation changed")
 	}
+	if err := replay.consumeItemContent(key, item, event); err != nil {
+		return err
+	}
+	if event.Type == ItemFinished {
+		item.isFinished = true
+		if parent != "" {
+			replay.items[parent].openChildren--
+		}
+	}
+	return nil
+}
+
+func isMessageStreamChild(node Node) bool {
+	if node.ReasoningForm != "" || len(node.Children) != 0 || node.ReasoningContent != nil {
+		return false
+	}
+	switch node.Kind {
+	case TextNode, RefusalNode, ReasoningNode, ToolCallNode:
+		return true
+	default:
+		return false
+	}
+}
+
+func (replay *EventReplay) consumeItemContent(key string, item *replayItem, event Event) error {
 	if item.kind == ToolCallNode {
 		return replay.consumeTool(key, item, event)
 	}
@@ -192,10 +217,6 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if _, err := replay.state.TrackText(key, text, isSnapshot); err != nil {
 			return err
 		}
-	}
-	item.isFinished = event.Type == ItemFinished
-	if parent != "" && event.Type == ItemFinished {
-		replay.items[parent].openChildren--
 	}
 	return nil
 }
@@ -324,7 +345,6 @@ func (replay *EventReplay) consumeTool(key string, item *replayItem, event Event
 			return err
 		}
 	}
-	item.isFinished = event.Type == ItemFinished
 	return nil
 }
 

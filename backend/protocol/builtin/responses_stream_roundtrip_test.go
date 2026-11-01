@@ -160,7 +160,7 @@ func TestResponsesTargetWaitsForToolIdentityWithoutReorderingOutputs(t *testing.
 	}
 	start := event(p.ResponseStarted, "", nil)
 	start.Response = &p.Response{SchemaVersion: compiled.CoreVersion(), ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("in_progress"), Attributes: p.Object{"created_at": testValue(t, "1")}}
-	tool := event(p.ItemStarted, "tool", &p.Node{Kind: p.ToolCallNode, Input: &p.ToolInput{Kind: p.JSONInput}})
+	tool := event(p.ItemStarted, "tool", &p.Node{Kind: p.ToolCallNode, ID: p.StringValue("fc_tool"), Input: &p.ToolInput{Kind: p.JSONInput}})
 	prefix := event(p.ItemDelta, "tool", nil)
 	prefix.Delta = p.StringValue(`{"n":`)
 	identity := event(p.ItemDelta, "tool", &p.Node{Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("call"), Input: &p.ToolInput{Kind: p.JSONInput}})
@@ -168,7 +168,7 @@ func TestResponsesTargetWaitsForToolIdentityWithoutReorderingOutputs(t *testing.
 	finish := event(p.ItemFinished, "tool", nil)
 	terminal := event(p.ResponseFinished, "", nil)
 	terminal.Response = &p.Response{SchemaVersion: compiled.CoreVersion(), Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": p.StringValue("tool_calls")}}
-	events := []p.Event{start, tool, prefix, event(p.ItemStarted, "text", &p.Node{Kind: p.TextNode, Payload: p.StringValue("ready")}), event(p.ItemFinished, "text", nil), identity, finish, terminal}
+	events := []p.Event{start, tool, prefix, event(p.ItemStarted, "text", &p.Node{Kind: p.TextNode, ID: p.StringValue("msg_ready"), Payload: p.StringValue("ready")}), event(p.ItemFinished, "text", nil), identity, finish, terminal}
 	frames := make([]*p.EventFrame, len(events))
 	for index, event := range events {
 		frames[index] = &p.EventFrame{Events: []p.Event{event}}
@@ -180,10 +180,10 @@ func TestResponsesTargetWaitsForToolIdentityWithoutReorderingOutputs(t *testing.
 		t.Fatal("delayed identity lost an output", response.Content)
 	}
 	call, message := response.Content[0], response.Content[1]
-	if call.Kind != p.ToolCallNode || !call.CallID.IsString("call") || !call.Name.IsString("lookup") || call.Input == nil || call.Input.Value.JSONString() != `{"n":9007199254740993}` {
+	if call.Kind != p.ToolCallNode || !call.ID.IsString("fc_tool") || !call.CallID.IsString("call") || !call.Name.IsString("lookup") || call.Input == nil || call.Input.Value.JSONString() != `{"n":9007199254740993}` {
 		t.Fatal("tool identity or argument bytes changed", call)
 	}
-	if message.Kind != p.MessageNode || len(message.Children) != 1 || !message.Children[0].Payload.IsString("ready") {
+	if message.Kind != p.MessageNode || !message.ID.IsString("msg_ready") || len(message.Children) != 1 || !message.Children[0].Payload.IsString("ready") {
 		t.Fatal("pending message changed", message)
 	}
 	starts := 0

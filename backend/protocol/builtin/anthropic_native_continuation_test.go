@@ -40,7 +40,7 @@ func TestAnthropicPackageNativeToolAndThinkingContinuation(t *testing.T) {
 				return event
 			},
 			check: func(t *testing.T, response *p.Response) {
-				item := response.Content[0]
+				item := messageLeaves(t, response)[0]
 				if item.Kind != p.ToolCallNode || !item.CallID.IsString("call") || !item.Name.IsString("lookup") || item.Input == nil {
 					t.Fatal("tool identity did not survive continuation", item)
 				}
@@ -77,7 +77,7 @@ func TestAnthropicPackageNativeToolAndThinkingContinuation(t *testing.T) {
 				return event
 			},
 			check: func(t *testing.T, response *p.Response) {
-				item := response.Content[0]
+				item := messageLeaves(t, response)[0]
 				if item.Kind != p.ReasoningNode || !item.Payload.IsString("prefixeditednative") || len(item.Resources) != 1 || !item.Resources[0].ID.IsString("sig-editednative!") {
 					t.Fatal("thinking or signature prefix was emitted again", item)
 				}
@@ -120,7 +120,7 @@ func TestAnthropicPackageNativeToolAndThinkingContinuation(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, response := decodePackageStream(t, compiled, rendered, scope)
-			if len(response.Content) != 1 || response.Usage == nil || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
+			if len(messageLeaves(t, response)) != 1 || response.Usage == nil || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
 				t.Fatal("continuation changed item count or accounting", response)
 			}
 			fixture.check(t, response)

@@ -2,6 +2,14 @@ package protocol
 
 import "fmt"
 
+func replaceControlValue(output JSONOutput, target *Value, reader *valueReader) error {
+	if output.IsZero() {
+		*target = Value{}
+		return nil
+	}
+	return assignCoreValue(output, target, reader)
+}
+
 func compileMetadataControlSetter(path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
 	if path == "/value" {
 		return func(document any, output JSONOutput, reader *valueReader) error {

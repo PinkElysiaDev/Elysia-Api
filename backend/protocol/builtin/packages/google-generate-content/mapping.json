@@ -2301,6 +2301,40 @@
       }
     },
     "encode-message": {
+      "op": "let",
+      "name": "message-path",
+      "source": {
+        "op": "pointer_join",
+        "source": {
+          "op": "literal",
+          "value": "/content"
+        },
+        "items": [
+            {
+              "op": "cast",
+              "to": "string",
+              "source": {
+                "op": "index"
+              }
+            }
+          ]
+      },
+      "body": {
+        "op": "let",
+        "name": "checked-message-envelope",
+        "source": {
+          "op": "with_input",
+          "source": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+          "body": {
+            "op": "ref",
+            "ref": "check-output-message-envelope"
+          }
+        },
+        "body": {
       "op": "if",
       "when": {
         "op": "equal",
@@ -2438,6 +2472,8 @@
             ]
           }
         }
+      }
+    }
       }
     },
     "encode-contents": {
@@ -10688,36 +10724,45 @@
     },
     "encode-stream-item": {
       "op": "let",
-      "name": "identity",
+      "name": "message-path",
       "source": {
-        "op": "resolve_item",
-        "source": {
-          "op": "object",
-          "fields": {
-            "itemId": {
-              "op": "read",
-              "from": "input",
-              "path": "/itemId"
-            },
-            "callId": {
-              "op": "read",
-              "from": "input",
-              "path": "/callId"
-            },
-            "index": {
-              "op": "read",
-              "from": "input",
-              "path": "/index"
-            },
-            "parentId": {
-              "op": "read",
-              "from": "input",
-              "path": "/parentId"
-            }
-          }
-        }
+        "op": "literal",
+        "value": "/item"
       },
       "body": {
+        "op": "let",
+        "name": "checked-message-envelope",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      }
+          },
+          "then": {
+            "op": "with_input",
+            "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      },
+            "body": {
+              "op": "ref",
+              "ref": "check-output-message-envelope"
+            }
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "identity",
+          "source": {
+            "op": "ref",
+            "ref": "resolve-target-item"
+          },
+          "body": {
         "op": "let",
         "name": "key",
         "source": {
@@ -12749,6 +12794,8 @@
               }
             }
           }
+        }
+      }
         }
       }
     },
@@ -15064,722 +15111,103 @@
           ]
         }
       ]
-    }
-},
-  "directions": {
-    "decode_request": {
-      "document": "request",
-      "program": {
-        "op": "with_index",
-        "name": "call-sequence",
-        "keyMode": "raw_json",
-        "policy": "last",
-        "body": {
-          "op": "with_index",
-          "name": "calls-by-name",
-          "keyMode": "raw_json",
-          "policy": "last",
-          "body": {
-            "op": "let",
-            "name": "initial-counter",
-            "source": {
-              "op": "remember",
-              "name": "call-sequence",
-              "source": {
-                "op": "literal",
-                "value": "next"
-              },
-              "body": {
-                "op": "literal",
-                "value": 0
-              }
-            },
-            "body": {
-              "op": "object",
-              "fields": {
-                "schemaVersion": {
-                  "op": "literal",
-                  "value": 2
-                },
-                "source": {
-                  "op": "object",
-                  "fields": {}
-                },
-                "model": {
-                  "op": "let",
-                  "name": "context-model",
-                  "source": {
-                    "op": "if",
-                    "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "type",
-                          "source": {
-                            "op": "read",
-                            "from": "context",
-                            "path": ""
-                          }
-                        },
-                        {
-                          "op": "literal",
-                          "value": "object"
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/model"
-                    }
-                  },
-                  "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "context-model"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "context-model"
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "runtime",
-                      "path": "/scope/model"
-                    }
-                  }
-                },
-                "content": {
-                  "op": "concat",
-                  "items": [
-                    {
-                      "op": "ref",
-                      "ref": "decode-system"
-                    },
-                    {
-                      "op": "ref",
-                      "ref": "decode-messages"
-                    }
-                  ]
-                },
-                "tools": {
-                  "op": "ref",
-                  "ref": "decode-tools"
-                },
-                "toolChoice": {
-                  "op": "ref",
-                  "ref": "decode-tool-choice"
-                },
-                "parameters": {
-                  "op": "ref",
-                  "ref": "decode-request-parameters"
-                },
-                "cache": {
-                  "op": "ref",
-                  "ref": "decode-cache"
-                },
-                "reasoning": {
-                  "op": "ref",
-                  "ref": "decode-reasoning"
-                }
-              }
-            }
-          }
-        }
-      },
-      "effects": [
-        {
-          "id": "candidate-count",
-          "kind": "reject",
-          "path": "/parameters/n",
-          "target": "/generationConfig/candidateCount",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/candidateCount"
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gt",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/generationConfig/candidateCount"
-                },
-                {
-                  "op": "literal",
-                  "value": 1
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "reason": "multiple choices require an adapter with an explicit choice lifecycle"
-        }
-      ],
-      "capabilities": {
-        "text": true,
-        "tools.function": true,
-        "native_extensions": true,
-        "cache.resources": true,
-        "images": true,
-        "audio": true,
-        "video": true,
-        "documents": true,
-        "tools.server": true,
-        "reasoning": true,
-        "reasoning.signatures": true
-      }
     },
-    "encode_request": {
-      "document": "generation-request",
-      "program": {
-        "op": "merge_deep",
-        "onConflict": {
-          "code": "unsupported_capability",
-          "stage": "wire",
-          "reason": "native extension collides with a mapped field",
-          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-        },
-        "items": [
-          {
-            "op": "object",
-            "fields": {
-              "contents": {
-                "op": "ref",
-                "ref": "encode-contents"
-              },
-              "systemInstruction": {
-                "op": "ref",
-                "ref": "encode-system-envelope"
-              },
-              "tools": {
-                "op": "ref",
-                "ref": "encode-tools"
-              },
-              "toolConfig": {
-                "op": "ref",
-                "ref": "encode-tool-choice"
-              },
-              "generationConfig": {
-                "op": "ref",
-                "ref": "encode-generation-config"
-              },
-              "safetySettings": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/gemini_safety_settings"
-              },
-              "cachedContent": {
-                "op": "let",
-                "name": "caches",
-                "source": {
-                  "op": "filter",
-                  "source": {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/cache"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/cache"
-                    },
-                    "otherwise": {
-                      "op": "array",
-                      "items": []
-                    }
-                  },
-                  "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "item",
-                        "path": "/kind"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "resource"
-                      }
-                    ]
-                  }
-                },
-                "body": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/0/resource/id",
-                  "name": "caches"
-                }
-              }
-            }
-          },
-          {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/wire:gemini"
-              }
-            },
-            "then": {
-              "op": "project",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/wire:gemini"
-              },
-              "keys": [
-                "systemInstruction"
-              ],
-              "policy": "exclude"
-            },
-            "otherwise": {
-              "op": "object",
-              "fields": {}
-            }
-          }
-        ]
-      },
-      "effects": [
-        {
-          "id": "request-resources",
-          "kind": "reject",
-          "path": "/resources",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/resources"
-              }
-            },
-            "then": {
-              "op": "not",
-              "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/resources"
-                  },
-                  {
-                    "op": "array",
-                    "items": []
-                  }
-                ]
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "reason": "request references require their original protocol and an equivalent resource field"
-        },
-        {
-          "id": "reasoning-level-or-budget",
-          "kind": "reject",
-          "path": "/reasoning",
-          "target": "/generationConfig/thinkingConfig",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning"
-              }
-            },
-            "then": {
-              "op": "all",
-              "items": [
-                {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/effort"
-                  }
-                },
-                {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/budget"
-                  }
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "reason": "Gemini cannot encode both level and budget"
-        },
-        {
-          "id": "history-default",
-          "kind": "default",
-          "scope": "request_field",
-          "path": "/reasoning/historyRetention",
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              },
-              {
-                "op": "literal",
-                "value": "all"
-              }
-            ]
-          },
-          "reason": "target sends supplied history without clearing it",
-          "default": "all"
-        },
-        {
-          "id": "foreign-wire-owner",
-          "kind": "reject",
-          "path": "/parameters",
-          "when": {
-            "op": "ref",
-            "ref": "has-foreign-wire-owner"
-          },
-          "reason": "foreign protocol-specific owner requires an explicit mapping"
-        }
-      ],
-      "capabilities": {
-        "text": true,
-        "tools.function": true,
-        "native_extensions": true,
-        "cache.resources": true,
-        "images": true,
-        "audio": true,
-        "video": true,
-        "documents": true,
-        "tools.server": true,
-        "reasoning": true,
-        "reasoning.signatures": true
-      }
-    ,
-"finalDocument": "upstream-request"
-},
-    "decode_response": {
-  "document": "provider-response",
-  "program": {
-    "op": "if",
-    "when": {
-      "op": "ref",
-      "ref": "has-error-envelope"
-    },
-    "then": {
-      "op": "ref",
-      "ref": "decode-error-envelope"
-    },
-    "otherwise": {
-      "op": "let",
-      "name": "decoded-failure",
-      "source": {
-        "op": "ref",
-        "ref": "decode-failure"
-      },
-      "body": {
-        "op": "ref",
-        "ref": "decode-generated-response"
-      }
-    }
-  },
-  "effects": [
-    {
-      "id": "input-counter-range",
-      "kind": "reject",
-      "path": "/usage/input",
-      "target": "/usageMetadata/promptTokenCount",
-      "when": {
-        "op": "if",
-        "when": {
-          "op": "is_integer",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/usageMetadata/promptTokenCount"
-          }
-        },
-        "then": {
-          "op": "integer",
-          "operation": "lt",
-          "items": [
-            {
-              "op": "read",
-              "from": "input",
-              "path": "/usageMetadata/promptTokenCount"
-            },
-            {
-              "op": "literal",
-              "value": 0
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "literal",
-          "value": false
-        }
-      },
-      "reason": "usage counter must be a nonnegative int64"
-    }
-  ],
-  "capabilities": {
-    "text": true,
-    "tools.function": true,
-    "usage": true,
-    "native_extensions": true,
-    "reasoning": true,
-    "reasoning.signatures": true
-  }
-},
-    "encode_response": {
-  "document": "response-candidate",
-  "program": {
-    "op": "let",
-    "name": "encoded-failure",
-    "source": {
-      "op": "ref",
-      "ref": "encode-failure"
-    },
-    "body": {
+    "check-output-message-envelope": {
       "op": "if",
       "when": {
-        "op": "all",
+        "op": "equal",
         "items": [
           {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/error"
-            }
+            "op": "read",
+            "from": "input",
+            "path": "/kind"
           },
           {
-            "op": "any",
-            "items": [
-              {
-                "op": "not",
-                "source": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/content"
-                  }
-                }
-              },
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/content"
-                  },
-                  {
-                    "op": "literal",
-                    "value": []
-                  }
-                ]
-              }
-            ]
-          }
+                              "op": "literal",
+                              "value": "message"
+                            }
         ]
       },
       "then": {
-        "op": "ref",
-        "ref": "encode-error-envelope"
-      },
-      "otherwise": {
-        "op": "ref",
-        "ref": "encode-generated-response"
-      }
-    }
-  },
-  "effects": [
-    {
-      "id": "cache-creation-counter",
-      "kind": "reject",
-      "path": "/usage/cacheCreation",
-      "target": "/usageMetadata",
-      "when": {
-        "op": "present",
-        "source": {
-          "op": "read",
-          "from": "input",
-          "path": "/usage/cacheCreation"
-        }
-      },
-      "reason": "target has no cache creation counter; configure usage_projection"
-    }
-  ],
-  "capabilities": {
-    "text": true,
-    "tools.function": true,
-    "usage": true,
-    "native_extensions": true,
-    "reasoning": true,
-    "reasoning.signatures": true
-  }
-,
-"finalDocument": "client-response"
-},
-    "decode_event": {
-      "document": "provider-event",
-      "eventBatch": true,
-      "deferEvents": true,
-      "state": {
-        "response": {
-          "schema": {
-            "type": "any"
-          },
-          "update": {
-            "op": "ref",
-            "ref": "stream-source-response"
-          }
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/id"
+            }
         },
-        "model": {
-          "schema": {
-            "type": "any"
-          },
-          "update": {
-            "op": "ref",
-            "ref": "stream-source-model"
-          }
-        },
-        "started": {
-          "schema": {
-            "type": "boolean"
-          },
-          "update": {
-            "op": "any",
+        "then": {
+          "op": "reject",
+          "source": {
+            "op": "pointer_join",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "message-path"
+            },
             "items": [
               {
-                "op": "read",
-                "from": "state",
-                "path": "/started"
-              },
-              {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/candidates/0"
-                }
+                "op": "literal",
+                "value": "id"
               }
             ]
           },
-          "initial": false
+          "reason": "message item identity requires the selected target projection before encoding",
+          "diagnostic": {
+                          "code": "unsupported_capability",
+                          "stage": "evaluate"
+                        }
         },
-        "usageFields": {
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "update": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
                 "op": "read",
                 "from": "input",
-                "path": "/usageMetadata"
+                "path": "/status"
               }
-            },
-            "then": {
-              "op": "merge",
-              "policy": "last",
+          },
+          "then": {
+            "op": "reject",
+            "source": {
+              "op": "pointer_join",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "message-path"
+              },
               "items": [
                 {
-                  "op": "read",
-                  "from": "state",
-                  "path": "/usageFields"
-                },
-                {
-                  "op": "project",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usageMetadata"
-                  },
-                  "keys": [
-                    "promptTokenCount",
-                    "candidatesTokenCount",
-                    "totalTokenCount",
-                    "cachedContentTokenCount",
-                    "thoughtsTokenCount",
-                    "toolUsePromptTokenCount"
-                  ],
-                  "policy": "include"
+                  "op": "literal",
+                  "value": "status"
                 }
               ]
             },
-            "otherwise": {
-              "op": "read",
-              "from": "state",
-              "path": "/usageFields"
-            }
+            "reason": "message item status requires the selected target projection before encoding",
+            "diagnostic": {
+                          "code": "unsupported_capability",
+                          "stage": "evaluate"
+                        }
           },
-          "initial": {}
+          "otherwise": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
         }
       },
-      "indexes": {
-        "sourceItems": {
-          "keyMode": "string",
-          "policy": "last",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "retainSource": true
-        },
-        "sourceCursor": {
-          "keyMode": "string",
-          "policy": "last",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          }
-        }
-      },
-      "program": {
+      "otherwise": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+    },
+    "decode-stream-leaf-events": {
         "op": "let",
         "name": "cursor-initialized",
         "source": {
@@ -16426,6 +15854,1646 @@
           }
         }
       },
+    "is-message-container-event": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/item/kind"
+            },
+            {
+                              "op": "literal",
+                              "value": "message"
+                            }
+          ]
+        },
+        {
+          "op": "all",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "state",
+                "path": "/messageContainer"
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+              "op": "read",
+              "from": "input",
+              "path": "/itemId"
+            },
+                {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/messageContainer/id"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "consume-message-container": {
+      "op": "let",
+      "name": "checked-container",
+      "source": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      }
+        },
+        "then": {
+          "op": "let",
+          "name": "message-path",
+          "source": {
+            "op": "literal",
+            "value": "/item"
+          },
+          "body": {
+            "op": "let",
+            "name": "checked-message-envelope",
+            "source": {
+              "op": "with_input",
+              "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      },
+              "body": {
+                "op": "ref",
+                "ref": "check-output-message-envelope"
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item"
+                      },
+                      "keys": [
+                        "kind",
+                        "role",
+                        "source",
+                        "native",
+                        "id",
+                        "status"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                                "op": "literal",
+                                "value": {}
+                              }
+                  ]
+                }
+              },
+              "then": {
+                "op": "reject",
+                "path": "/item",
+                "reason": "message fields require an explicit target mapping; child content must arrive as associated events",
+                "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+              }
+            }
+          }
+        }
+      },
+      "body": {
+        "op": "let",
+        "name": "checked-container-scope",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/metadata"
+                    }
+              },
+              {
+                "op": "exists",
+                "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parentId"
+            }
+              }
+            ]
+          },
+          "then": {
+            "op": "reject",
+            "path": "/item",
+            "reason": "message container metadata or nesting requires an explicit target mapping",
+            "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+          }
+        },
+        "body": {
+          "op": "if",
+          "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "item.started"
+                }
+              ]
+            },
+          "then": {
+            "op": "let",
+            "name": "single-message",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/messageContainer"
+                }
+              },
+              "then": {
+                "op": "reject",
+                "path": "/itemId",
+                "reason": "target stream cannot preserve a second independent message container",
+                "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "assistant-role",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/item/role"
+                      },
+                      {
+                      "op": "literal",
+                      "value": "assistant"
+                    }
+                    ]
+                  }
+                },
+                "then": {
+                  "op": "reject",
+                  "path": "/item/role",
+                  "reason": "target generated message requires the assistant role",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+                }
+              },
+              "body": {
+                "op": "let",
+                "name": "parent-identity",
+                "source": {
+                  "op": "resolve_item",
+                  "source": {
+                    "op": "object",
+                    "fields": {
+                      "itemId": {
+              "op": "read",
+              "from": "input",
+              "path": "/itemId"
+            }
+                    }
+                  }
+                },
+                "body": {
+                                "op": "array",
+                                "items": []
+                              }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "let",
+            "name": "active-message",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/messageContainer"
+                      }
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+              "op": "read",
+              "from": "input",
+              "path": "/itemId"
+            },
+                        {
+                          "op": "read",
+                          "from": "state",
+                          "path": "/messageContainer/id"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "then": {
+                "op": "reject",
+                "path": "/itemId",
+                "reason": "message update requires its registered container",
+                "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "open-message",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "state",
+                      "path": "/messageContainer/isFinished"
+                    },
+                    {
+                          "op": "literal",
+                          "value": true
+                        }
+                  ]
+                },
+                "then": {
+                  "op": "reject",
+                  "path": "/itemId",
+                  "reason": "message update arrived after its container completed",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+                }
+              },
+              "body": {
+                "op": "choose",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                "cases": {
+                  "item.snapshot": {
+                                "op": "array",
+                                "items": []
+                              },
+                  "item.finished": {
+                                "op": "array",
+                                "items": []
+                              }
+                },
+                "otherwise": {
+                  "op": "reject",
+                  "path": "/type",
+                  "reason": "message containers do not carry leaf deltas",
+                  "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "resolve-target-item": {
+      "op": "let",
+      "name": "identity",
+      "source": {
+        "op": "resolve_item",
+        "source": {
+          "op": "object",
+          "fields": {
+            "itemId": {
+              "op": "read",
+              "from": "input",
+              "path": "/itemId"
+            },
+            "callId": {
+              "op": "read",
+              "from": "input",
+              "path": "/callId"
+            },
+            "index": {
+              "op": "read",
+              "from": "input",
+              "path": "/index"
+            },
+            "parentId": {
+              "op": "read",
+              "from": "input",
+              "path": "/parentId"
+            }
+          }
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "/parent",
+            "name": "identity"
+          }
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/messageContainer"
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+              "op": "read",
+              "from": "input",
+              "path": "/parentId"
+            },
+                  {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/messageContainer/id"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/messageContainer/isFinished"
+                  },
+                  {
+                            "op": "literal",
+                            "value": false
+                          }
+                ]
+              }
+            ]
+          },
+          "then": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "identity"
+          },
+          "otherwise": {
+            "op": "reject",
+            "path": "/parentId",
+            "reason": "parentId requires the target's declared open message container",
+            "diagnostic": {
+                    "code": "unsupported_capability",
+                    "stage": "wire"
+                  }
+          }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "identity"
+        }
+      }
+    }
+},
+  "directions": {
+    "decode_request": {
+      "document": "request",
+      "program": {
+        "op": "with_index",
+        "name": "call-sequence",
+        "keyMode": "raw_json",
+        "policy": "last",
+        "body": {
+          "op": "with_index",
+          "name": "calls-by-name",
+          "keyMode": "raw_json",
+          "policy": "last",
+          "body": {
+            "op": "let",
+            "name": "initial-counter",
+            "source": {
+              "op": "remember",
+              "name": "call-sequence",
+              "source": {
+                "op": "literal",
+                "value": "next"
+              },
+              "body": {
+                "op": "literal",
+                "value": 0
+              }
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "schemaVersion": {
+                  "op": "literal",
+                  "value": 2
+                },
+                "source": {
+                  "op": "object",
+                  "fields": {}
+                },
+                "model": {
+                  "op": "let",
+                  "name": "context-model",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "context",
+                            "path": ""
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "object"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "context",
+                      "path": "/model"
+                    }
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "context-model"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "context-model"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "from": "runtime",
+                      "path": "/scope/model"
+                    }
+                  }
+                },
+                "content": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "ref",
+                      "ref": "decode-system"
+                    },
+                    {
+                      "op": "ref",
+                      "ref": "decode-messages"
+                    }
+                  ]
+                },
+                "tools": {
+                  "op": "ref",
+                  "ref": "decode-tools"
+                },
+                "toolChoice": {
+                  "op": "ref",
+                  "ref": "decode-tool-choice"
+                },
+                "parameters": {
+                  "op": "ref",
+                  "ref": "decode-request-parameters"
+                },
+                "cache": {
+                  "op": "ref",
+                  "ref": "decode-cache"
+                },
+                "reasoning": {
+                  "op": "ref",
+                  "ref": "decode-reasoning"
+                }
+              }
+            }
+          }
+        }
+      },
+      "effects": [
+        {
+          "id": "candidate-count",
+          "kind": "reject",
+          "path": "/parameters/n",
+          "target": "/generationConfig/candidateCount",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "is_integer",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/candidateCount"
+              }
+            },
+            "then": {
+              "op": "integer",
+              "operation": "gt",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/candidateCount"
+                },
+                {
+                  "op": "literal",
+                  "value": 1
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "multiple choices require an adapter with an explicit choice lifecycle"
+        }
+      ],
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "native_extensions": true,
+        "cache.resources": true,
+        "images": true,
+        "audio": true,
+        "video": true,
+        "documents": true,
+        "tools.server": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    },
+    "encode_request": {
+      "document": "generation-request",
+      "program": {
+        "op": "merge_deep",
+        "onConflict": {
+          "code": "unsupported_capability",
+          "stage": "wire",
+          "reason": "native extension collides with a mapped field",
+          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+        },
+        "items": [
+          {
+            "op": "object",
+            "fields": {
+              "contents": {
+                "op": "ref",
+                "ref": "encode-contents"
+              },
+              "systemInstruction": {
+                "op": "ref",
+                "ref": "encode-system-envelope"
+              },
+              "tools": {
+                "op": "ref",
+                "ref": "encode-tools"
+              },
+              "toolConfig": {
+                "op": "ref",
+                "ref": "encode-tool-choice"
+              },
+              "generationConfig": {
+                "op": "ref",
+                "ref": "encode-generation-config"
+              },
+              "safetySettings": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/gemini_safety_settings"
+              },
+              "cachedContent": {
+                "op": "let",
+                "name": "caches",
+                "source": {
+                  "op": "filter",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/cache"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/cache"
+                    },
+                    "otherwise": {
+                      "op": "array",
+                      "items": []
+                    }
+                  },
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/kind"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "resource"
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/0/resource/id",
+                  "name": "caches"
+                }
+              }
+            }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/wire:gemini"
+              }
+            },
+            "then": {
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/wire:gemini"
+              },
+              "keys": [
+                "systemInstruction"
+              ],
+              "policy": "exclude"
+            },
+            "otherwise": {
+              "op": "object",
+              "fields": {}
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "id": "request-resources",
+          "kind": "reject",
+          "path": "/resources",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/resources"
+              }
+            },
+            "then": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/resources"
+                  },
+                  {
+                    "op": "array",
+                    "items": []
+                  }
+                ]
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "request references require their original protocol and an equivalent resource field"
+        },
+        {
+          "id": "reasoning-level-or-budget",
+          "kind": "reject",
+          "path": "/reasoning",
+          "target": "/generationConfig/thinkingConfig",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/reasoning"
+              }
+            },
+            "then": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  }
+                },
+                {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  }
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "reason": "Gemini cannot encode both level and budget"
+        },
+        {
+          "id": "history-default",
+          "kind": "default",
+          "scope": "request_field",
+          "path": "/reasoning/historyRetention",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": "all"
+              }
+            ]
+          },
+          "reason": "target sends supplied history without clearing it",
+          "default": "all"
+        },
+        {
+          "id": "foreign-wire-owner",
+          "kind": "reject",
+          "path": "/parameters",
+          "when": {
+            "op": "ref",
+            "ref": "has-foreign-wire-owner"
+          },
+          "reason": "foreign protocol-specific owner requires an explicit mapping"
+        },
+        {
+          "id": "response-storage-intent",
+          "kind": "reject",
+          "path": "/parameters/store",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/store"
+            }
+          },
+          "reason": "response storage intent requires the selected target projection before encoding"
+        }
+      ],
+      "capabilities": {
+        "text": true,
+        "tools.function": true,
+        "native_extensions": true,
+        "cache.resources": true,
+        "images": true,
+        "audio": true,
+        "video": true,
+        "documents": true,
+        "tools.server": true,
+        "reasoning": true,
+        "reasoning.signatures": true
+      }
+    ,
+"finalDocument": "upstream-request"
+},
+    "decode_response": {
+  "document": "provider-response",
+  "program": {
+    "op": "if",
+    "when": {
+      "op": "ref",
+      "ref": "has-error-envelope"
+    },
+    "then": {
+      "op": "ref",
+      "ref": "decode-error-envelope"
+    },
+    "otherwise": {
+      "op": "let",
+      "name": "decoded-failure",
+      "source": {
+        "op": "ref",
+        "ref": "decode-failure"
+      },
+      "body": {
+        "op": "ref",
+        "ref": "decode-generated-response"
+      }
+    }
+  },
+  "effects": [
+    {
+      "id": "input-counter-range",
+      "kind": "reject",
+      "path": "/usage/input",
+      "target": "/usageMetadata/promptTokenCount",
+      "when": {
+        "op": "if",
+        "when": {
+          "op": "is_integer",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/usageMetadata/promptTokenCount"
+          }
+        },
+        "then": {
+          "op": "integer",
+          "operation": "lt",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/usageMetadata/promptTokenCount"
+            },
+            {
+              "op": "literal",
+              "value": 0
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "reason": "usage counter must be a nonnegative int64"
+    }
+  ],
+  "capabilities": {
+    "text": true,
+    "tools.function": true,
+    "usage": true,
+    "native_extensions": true,
+    "reasoning": true,
+    "reasoning.signatures": true
+  }
+},
+    "encode_response": {
+  "document": "response-candidate",
+  "program": {
+    "op": "let",
+    "name": "encoded-failure",
+    "source": {
+      "op": "ref",
+      "ref": "encode-failure"
+    },
+    "body": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/error"
+            }
+          },
+          {
+            "op": "any",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content"
+                  }
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/content"
+                  },
+                  {
+                    "op": "literal",
+                    "value": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "op": "ref",
+        "ref": "encode-error-envelope"
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "encode-generated-response"
+      }
+    }
+  },
+  "effects": [
+    {
+      "id": "cache-creation-counter",
+      "kind": "reject",
+      "path": "/usage/cacheCreation",
+      "target": "/usageMetadata",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/usage/cacheCreation"
+        }
+      },
+      "reason": "target has no cache creation counter; configure usage_projection"
+    },
+        {
+          "id": "response-attribute-mapping",
+          "kind": "reject",
+          "path": "/attributes",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "project",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/attributes"
+            }
+                    },
+                    "then": {
+              "op": "read",
+              "from": "input",
+              "path": "/attributes"
+            },
+                    "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
+                  },
+                  "keys": [
+                    "finishReason",
+                    "wire:gemini"
+                  ],
+                  "policy": "exclude"
+                },
+                {
+                        "op": "object",
+                        "fields": {}
+                      }
+              ]
+            }
+          },
+          "reason": "target has no declared encoding for these response attributes; apply the selected target projection"
+        }
+  ],
+  "capabilities": {
+    "text": true,
+    "tools.function": true,
+    "usage": true,
+    "native_extensions": true,
+    "reasoning": true,
+    "reasoning.signatures": true
+  }
+,
+"finalDocument": "client-response"
+},
+    "decode_event": {
+      "document": "provider-event",
+      "eventBatch": true,
+      "deferEvents": true,
+      "state": {
+        "response": {
+          "schema": {
+            "type": "any"
+          },
+          "update": {
+            "op": "ref",
+            "ref": "stream-source-response"
+          }
+        },
+        "model": {
+          "schema": {
+            "type": "any"
+          },
+          "update": {
+            "op": "ref",
+            "ref": "stream-source-model"
+          }
+        },
+        "started": {
+          "schema": {
+            "type": "boolean"
+          },
+          "update": {
+            "op": "any",
+            "items": [
+              {
+                "op": "read",
+                "from": "state",
+                "path": "/started"
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/candidates/0"
+                }
+              }
+            ]
+          },
+          "initial": false
+        },
+        "usageFields": {
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "update": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "merge",
+              "policy": "last",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "state",
+                  "path": "/usageFields"
+                },
+                {
+                  "op": "project",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/usageMetadata"
+                  },
+                  "keys": [
+                    "promptTokenCount",
+                    "candidatesTokenCount",
+                    "totalTokenCount",
+                    "cachedContentTokenCount",
+                    "thoughtsTokenCount",
+                    "toolUsePromptTokenCount"
+                  ],
+                  "policy": "include"
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "state",
+              "path": "/usageFields"
+            }
+          },
+          "initial": {}
+        },
+        "hasMessage": {
+          "schema": {
+            "type": "boolean"
+          },
+          "initial": false,
+          "update": {
+            "op": "any",
+            "items": [
+              {
+                "op": "read",
+                "from": "state",
+                "path": "/hasMessage"
+              },
+              {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/candidates/0/content/parts"
+                        }
+                },
+                "then": {
+                  "op": "integer",
+                  "operation": "gt",
+                  "items": [
+                    {
+                      "op": "length",
+                      "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/candidates/0/content/parts"
+                        }
+                    },
+                    {
+                          "op": "literal",
+                          "value": 0
+                        }
+                  ]
+                },
+                "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+              }
+            ]
+          }
+        }
+      },
+      "indexes": {
+        "sourceItems": {
+          "keyMode": "string",
+          "policy": "last",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "retainSource": true
+        },
+        "sourceCursor": {
+          "keyMode": "string",
+          "policy": "last",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        }
+      },
+      "program": {
+        "op": "let",
+        "name": "frame-events",
+        "source": {
+          "op": "ref",
+          "ref": "decode-stream-leaf-events"
+        },
+        "body": {
+          "op": "let",
+          "name": "first-start-id",
+          "source": {
+            "op": "let",
+            "name": "start-items",
+            "source": {
+              "op": "filter",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "frame-events"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/type"
+                  },
+                  {
+                                "op": "literal",
+                                "value": "item.started"
+                              }
+                ]
+              }
+            },
+            "body": {
+              "op": "read",
+              "from": "binding",
+              "path": "/0/itemId",
+              "name": "start-items"
+            }
+          },
+          "body": {
+            "op": "flatmap",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "frame-events"
+            },
+            "body": {
+              "op": "choose",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/type"
+              },
+              "cases": {
+                "item.started": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "not",
+                            "source": {
+                              "op": "read",
+                              "from": "state",
+                              "path": "/hasMessage"
+                            }
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/itemId"
+                              },
+                              {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "first-start-id"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "object",
+                            "fields": {
+                              "schemaVersion": {
+                                "op": "literal",
+                                "value": 2
+                              },
+                              "type": {
+                                "op": "literal",
+                                "value": "item.started"
+                              },
+                              "responseId": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/responseId"
+                              },
+                              "itemId": {
+                                "op": "literal",
+                                "value": "candidate:0"
+                              },
+                              "item": {
+                                "op": "object",
+                                "fields": {
+                                  "kind": {
+                              "op": "literal",
+                              "value": "message"
+                            },
+                                  "role": {
+                      "op": "literal",
+                      "value": "assistant"
+                    },
+                                  "source": {
+                                    "op": "capture_source",
+                                    "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/candidates/0/content"
+            }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                                "op": "array",
+                                "items": []
+                              }
+                    },
+                    {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "merge",
+                          "policy": "last",
+                          "items": [
+                            {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+                            {
+                              "op": "object",
+                              "fields": {
+                                "parentId": {
+                                  "op": "literal",
+                                  "value": "candidate:0"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "response.finished": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/hasMessage"
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "first-start-id"
+                            }
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "object",
+                            "fields": {
+                              "schemaVersion": {
+                                "op": "literal",
+                                "value": 2
+                              },
+                              "type": {
+                    "op": "literal",
+                    "value": "item.finished"
+                  },
+                              "responseId": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/responseId"
+                              },
+                              "itemId": {
+                                "op": "literal",
+                                "value": "candidate:0"
+                              },
+                              "item": {
+                                "op": "object",
+                                "fields": {
+                                  "kind": {
+                                    "op": "literal",
+                                    "value": "message"
+                                  },
+                                  "role": {
+                                    "op": "literal",
+                                    "value": "assistant"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                                "op": "array",
+                                "items": []
+                              }
+                    },
+                    {
+                      "op": "array",
+                      "items": [
+                        {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              }
+                      ]
+                    }
+                  ]
+                },
+                "item.delta": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "merge",
+                      "policy": "last",
+                      "items": [
+                        {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+                        {
+                          "op": "object",
+                          "fields": {
+                            "parentId": {
+                              "op": "literal",
+                              "value": "candidate:0"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "item.snapshot": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "merge",
+                      "policy": "last",
+                      "items": [
+                        {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+                        {
+                          "op": "object",
+                          "fields": {
+                            "parentId": {
+                              "op": "literal",
+                              "value": "candidate:0"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "item.finished": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "merge",
+                      "policy": "last",
+                      "items": [
+                        {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+                        {
+                          "op": "object",
+                          "fields": {
+                            "parentId": {
+                              "op": "literal",
+                              "value": "candidate:0"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "otherwise": {
+                "op": "array",
+                "items": [
+                  {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              }
+                ]
+              }
+            }
+          }
+        }
+      },
       "effects": [],
       "capabilities": {
         "text": true,
@@ -16554,6 +17622,9 @@
           "update": {
             "op": "if",
             "when": {
+              "op": "all",
+              "items": [
+                {
               "op": "equal",
               "items": [
                 {
@@ -16564,6 +17635,15 @@
                 {
                   "op": "literal",
                   "value": "item.started"
+                }
+              ]
+            },
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "is-message-container-event"
+                  }
                 }
               ]
             },
@@ -16633,6 +17713,114 @@
             ]
           },
           "initial": false
+        },
+        "messageContainer": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "isFinished": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "isFinished"
+            ]
+          },
+          "update": {
+            "op": "if",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "ref",
+                  "ref": "is-message-container-event"
+                },
+                {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "item.started"
+                }
+              ]
+            }
+              ]
+            },
+            "then": {
+              "op": "object",
+              "fields": {
+                "id": {
+              "op": "read",
+              "from": "input",
+              "path": "/itemId"
+            },
+                "isFinished": {
+                            "op": "literal",
+                            "value": false
+                          }
+              }
+            },
+            "otherwise": {
+              "op": "if",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "ref",
+                    "ref": "is-message-container-event"
+                  },
+                  {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/type"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "item.finished"
+                                  }
+                                ]
+                              }
+                ]
+              },
+              "then": {
+                "op": "merge",
+                "policy": "last",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/messageContainer"
+                  },
+                  {
+                      "op": "object",
+                      "fields": {
+                        "isFinished": {
+                          "op": "literal",
+                          "value": true
+                        }
+                      }
+                    }
+                ]
+              },
+              "otherwise": {
+                "op": "read",
+                "from": "state",
+                "path": "/messageContainer"
+              }
+            }
+          }
         }
       },
       "indexes": {
@@ -16654,6 +17842,16 @@
         }
       },
       "program": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "is-message-container-event"
+        },
+        "then": {
+          "op": "ref",
+          "ref": "consume-message-container"
+        },
+        "otherwise": {
         "op": "let",
         "name": "response-id",
         "source": {
@@ -17424,8 +18622,19 @@
             }
           }
         }
+      }
       },
       "observe": {
+        "op": "if",
+        "when": {
+          "op": "ref",
+          "ref": "is-message-container-event"
+        },
+        "then": {
+          "op": "ref",
+          "ref": "consume-message-container"
+        },
+        "otherwise": {
         "op": "let",
         "name": "response-id",
         "source": {
@@ -17625,6 +18834,7 @@
             }
           }
         }
+      }
       },
       "finalize": {
         "op": "let",
@@ -17789,7 +18999,52 @@
     "code": "unsupported_capability",
     "stage": "evaluate"
   }
-}
+},
+        {
+          "id": "response-attribute-mapping",
+          "kind": "reject",
+          "path": "/response/attributes",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "project",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/response/attributes"
+                    }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/response/attributes"
+                    },
+                    "otherwise": {
+                        "op": "object",
+                        "fields": {}
+                      }
+                  },
+                  "keys": [
+                    "finishReason"
+                  ],
+                  "policy": "exclude"
+                },
+                {
+                        "op": "object",
+                        "fields": {}
+                      }
+              ]
+            }
+          },
+          "reason": "target has no declared encoding for these response attributes; apply the selected target projection"
+        }
 ],
       "capabilities": {
         "text": true,
@@ -20532,11 +21787,24 @@
           "source": {},
           "type": "item.started",
           "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant",
+            "source": {}
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
           "itemId": "part:0",
           "index": 0,
           "item": {
             "kind": "text"
-          }
+          },
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
@@ -20545,14 +21813,27 @@
           "responseId": "r",
           "itemId": "part:0",
           "index": 0,
-          "delta": "hi"
+          "delta": "hi",
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
           "type": "item.finished",
           "responseId": "r",
           "itemId": "part:0",
-          "index": 0
+          "index": 0,
+          "parentId": "candidate:0"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
         },
         {
           "schemaVersion": 2,
@@ -20799,19 +22080,32 @@
           "source": {},
           "type": "item.started",
           "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant",
+            "source": {}
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
           "itemId": "tool:call",
           "index": 0,
           "item": {
-            "kind": "tool_call",
-            "name": "lookup",
-            "callId": "call",
-            "input": {
-              "kind": "json",
-              "value": {
-                "n": 9007199254740993
-              }
-            }
-          }
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              },
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
@@ -20819,7 +22113,19 @@
           "type": "item.finished",
           "responseId": "r",
           "itemId": "tool:call",
-          "index": 0
+          "index": 0,
+          "parentId": "candidate:0"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
         },
         {
           "schemaVersion": 2,
@@ -21027,11 +22333,24 @@
           "source": {},
           "type": "item.started",
           "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant",
+            "source": {}
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
           "itemId": "part:0",
           "index": 0,
           "item": {
             "kind": "reasoning"
-          }
+          },
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
@@ -21040,7 +22359,8 @@
           "responseId": "r",
           "itemId": "part:0",
           "index": 0,
-          "delta": "hi"
+          "delta": "hi",
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
@@ -21077,14 +22397,27 @@
                 "model": "m"
               }
             }
-          }
+          },
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
           "type": "item.finished",
           "responseId": "r",
           "itemId": "part:0",
-          "index": 0
+          "index": 0,
+          "parentId": "candidate:0"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
         },
         {
           "schemaVersion": 2,
@@ -21401,11 +22734,24 @@
           "source": {},
           "type": "item.started",
           "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant",
+            "source": {}
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.started",
+          "responseId": "r",
           "itemId": "part:0",
           "index": 0,
           "item": {
             "kind": "text"
-          }
+          },
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
@@ -21414,14 +22760,27 @@
           "responseId": "r",
           "itemId": "part:0",
           "index": 0,
-          "delta": "hi"
+          "delta": "hi",
+          "parentId": "candidate:0"
         },
         {
           "schemaVersion": 2,
           "type": "item.finished",
           "responseId": "r",
           "itemId": "part:0",
-          "index": 0
+          "index": 0,
+          "parentId": "candidate:0"
+        },
+        {
+          "schemaVersion": 2,
+          "source": {},
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
         },
         {
           "schemaVersion": 2,
@@ -33371,6 +34730,557 @@
                 }
               }
             ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "response-shape",
+      "order": 230,
+      "enabled": true,
+      "phase": "response",
+      "steps": [
+        {
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/attributes/created_at"
+            }
+          },
+          "set": {
+            "/attributes/created_at": {
+                                                  "op": "omit"
+                                                }
+          },
+          "diagnostic": {
+            "kind": "degrade",
+            "reason": {
+              "op": "literal",
+              "value": "target response has no creation timestamp field"
+            },
+            "path": "/attributes/created_at"
+          }
+        },
+        {
+          "each": {
+            "select": "node",
+            "pathBinding": "node-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/kind"
+                      },
+                      {
+                              "op": "literal",
+                              "value": "message"
+                            }
+                    ]
+                  }
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/id"
+            }
+                },
+                "set": {
+                  "/id": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target response has no separate message item identity; response and tool call identities are retained"
+                  },
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "node-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "id"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+                        {
+                      "op": "literal",
+                      "value": "completed"
+                    }
+                      ]
+                    },
+                    {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/status"
+                        },
+                        {
+                      "op": "literal",
+                      "value": "completed"
+                    }
+                      ]
+                    }
+                  ]
+                },
+                "set": {
+                  "/status": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "reason": {
+                    "op": "literal",
+                    "value": "message status is represented by the enclosing completed response or stream item lifecycle"
+                  },
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "node-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "status"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this message status without changing the observed lifecycle"
+                  },
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "node-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "status"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "event-shape",
+      "order": 230,
+      "enabled": true,
+      "phase": "event",
+      "steps": [
+        {
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/response"
+          }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/response/attributes/created_at"
+              }
+            },
+            "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+          },
+          "set": {
+            "/response/attributes/created_at": {
+                                                  "op": "omit"
+                                                }
+          },
+          "diagnostic": {
+            "kind": "degrade",
+            "path": "/response/attributes/created_at",
+            "reason": {
+              "op": "literal",
+              "value": "target stream has no response creation timestamp field"
+            }
+          }
+        },
+        {
+          "each": {
+            "select": "node",
+            "pathBinding": "node-path",
+            "steps": [
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/kind"
+                      },
+                      {
+                              "op": "literal",
+                              "value": "message"
+                            }
+                    ]
+                  }
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/id"
+            }
+                },
+                "set": {
+                  "/id": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target response has no separate message item identity; response and tool call identities are retained"
+                  },
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "node-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "id"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+                            {
+                      "op": "literal",
+                      "value": "completed"
+                    }
+                          ]
+                        },
+                        {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "root",
+                                  "path": "/type"
+                                },
+                                {
+                    "op": "literal",
+                    "value": "item.finished"
+                  }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "root",
+                                  "path": "/response/status"
+                                },
+                                {
+                      "op": "literal",
+                      "value": "completed"
+                    }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+                            {
+                                    "op": "literal",
+                                    "value": "in_progress"
+                                  }
+                          ]
+                        },
+                        {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "root",
+                                  "path": "/type"
+                                },
+                                {
+                                "op": "literal",
+                                "value": "item.started"
+                              }
+                              ]
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "root",
+                                  "path": "/type"
+                                },
+                                {
+                                "op": "literal",
+                                "value": "item.snapshot"
+                              }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "set": {
+                  "/status": {
+                                                  "op": "omit"
+                                                }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "reason": {
+                    "op": "literal",
+                    "value": "message status is represented by the enclosing completed response or stream item lifecycle"
+                  },
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "node-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "status"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot express this message status without changing the observed lifecycle"
+                  },
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "node-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "status"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "responses-storage",
+      "order": 190,
+      "enabled": true,
+      "phase": "request",
+      "steps": [
+        {
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/store"
+              },
+              {
+                            "op": "literal",
+                            "value": false
+                          }
+            ]
+          },
+          "set": {
+            "/parameters/store": {
+                                                  "op": "omit"
+                                                }
+          },
+          "diagnostic": {
+            "kind": "normalize",
+            "path": "/parameters/store",
+            "reason": {
+              "op": "literal",
+              "value": "explicit store=false matches the target API without a generated-response retrieval store"
+            }
+          }
+        },
+        {
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/store"
+                  },
+                  {
+                          "op": "literal",
+                          "value": true
+                        }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/store"
+                  },
+                  {
+                            "op": "literal",
+                            "value": null
+                          }
+                ]
+              }
+            ]
+          },
+          "diagnostic": {
+            "kind": "reject",
+            "path": "/parameters/store",
+            "reason": {
+              "op": "literal",
+              "value": "target cannot provide requested or default response retrieval storage"
+            }
           }
         }
       ]

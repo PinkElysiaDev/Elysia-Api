@@ -48,13 +48,15 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 	switch declaration.Select {
 	case "metadata":
 		local = reflect.TypeFor[ResponseMetadata]()
+	case "node":
+		local = reflect.TypeFor[Node]()
 	case "usage":
 		if outer.whole == reflect.TypeFor[Request]() {
 			return nil, fmt.Errorf("%s/select: requests have no usage owner", path)
 		}
 		local = reflect.TypeFor[Usage]()
 	default:
-		return nil, fmt.Errorf("%s/select: expected metadata or usage", path)
+		return nil, fmt.Errorf("%s/select: expected node, metadata or usage", path)
 	}
 	child := controlCompileScope{whole: outer.whole, expression: outer.expression, canOmit: declaration.Select == "metadata"}
 	child.expression.coreRoot, child.expression.coreInput, child.expression.hasInputScope = outer.whole, local, true
@@ -79,6 +81,9 @@ func compileControlEach(declaration ProtocolControlEach, compiler *expressionCom
 func (each *compiledControlEach) apply(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, owner *coreControlOptions) (bool, error) {
 	if each.selection == "usage" {
 		return each.applyUsage(state, conversion, document, route, rule, sink, owner)
+	}
+	if each.selection == "node" {
+		return each.applyNodes(state, conversion, document, route, rule, sink, owner)
 	}
 	changed := false
 	visit := func(items *[]ResponseMetadata, path string) error {
@@ -154,35 +159,18 @@ func (each *compiledControlEach) applyUsage(state evaluation, conversion *Compil
 }
 
 func visitControlMetadata(state evaluation, document any, visit func(*[]ResponseMetadata, string) error) error {
-	var nodes func([]Node, string) error
-	nodes = func(items []Node, path string) error {
-		for index := range items {
-			if err := state.advance(); err != nil {
-				return err
-			}
-			node := &items[index]
-			location := path + "/" + strconv.Itoa(index)
-			if err := visit(&node.Metadata, location+"/metadata"); err != nil {
-				return err
-			}
-			if err := nodes(node.Children, location+"/children"); err != nil {
-				return err
-			}
-			if err := nodes(node.ReasoningContent, location+"/reasoningContent"); err != nil {
-				return err
-			}
-		}
-		return nil
+	nodeMetadata := func(node *Node, path string) error {
+		return visit(&node.Metadata, path+"/metadata")
 	}
 	response := func(value *Response, path string) error {
 		if err := visit(&value.Metadata, path+"/metadata"); err != nil {
 			return err
 		}
-		return nodes(value.Content, path+"/content")
+		return visitControlNodeSlice(state, value.Content, path+"/content", nodeMetadata)
 	}
 	switch current := document.(type) {
 	case *Request:
-		return nodes(current.Content, "/content")
+		return visitControlNodeSlice(state, current.Content, "/content", nodeMetadata)
 	case *Response:
 		return response(current, "")
 	case *Event:
@@ -190,18 +178,17 @@ func visitControlMetadata(state evaluation, document any, visit func(*[]Response
 			return err
 		}
 		if current.Item != nil {
-			if err := visit(&current.Item.Metadata, "/item/metadata"); err != nil {
-				return err
-			}
-			if err := nodes(current.Item.Children, "/item/children"); err != nil {
-				return err
-			}
-			if err := nodes(current.Item.ReasoningContent, "/item/reasoningContent"); err != nil {
+			if err := visitControlNode(state, current.Item, "/item", nodeMetadata); err != nil {
 				return err
 			}
 		}
 		if current.Response != nil {
-			return response(current.Response, "/response")
+			if err := response(current.Response, "/response"); err != nil {
+				return err
+			}
+		}
+		if current.Request != nil {
+			return visitControlNodeSlice(state, current.Request.Content, "/request/content", nodeMetadata)
 		}
 		return nil
 	}

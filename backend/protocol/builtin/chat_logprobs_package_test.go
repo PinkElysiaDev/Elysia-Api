@@ -17,10 +17,10 @@ func TestChatPackageStreamLogprobOwners(t *testing.T) {
 				`{"id":"r","model":"m","created":1,"object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}`,
 			}
 			frames, response := decodePackageStream(t, compiled, raws, p.Scope{})
-			if len(response.Content) != 1 || len(response.Content[0].Metadata) != 1 {
+			if len(response.Content) != 1 || response.Content[0].Kind != p.MessageNode || len(response.Content[0].Children) != 1 || len(response.Content[0].Children[0].Metadata) != 1 {
 				t.Fatal("token probabilities lost their generated item", response.Content)
 			}
-			metadata := response.Content[0].Metadata[0]
+			metadata := response.Content[0].Children[0].Metadata[0]
 			if metadata.Name != "logprobs" || metadata.Location != "content" || metadata.Update != "" || metadata.SourceCodec != Chat {
 				t.Fatal("collected token probabilities retained a wire container or update instruction", metadata)
 			}
@@ -34,10 +34,10 @@ func TestChatPackageStreamLogprobOwners(t *testing.T) {
 			}
 			rebuilt := encodePackageStream(t, compiled, frames, p.Scope{}, false)
 			_, observed := decodePackageStream(t, compiled, rebuilt, p.Scope{})
-			if len(observed.Content) != 1 || observed.Content[0].Kind != response.Content[0].Kind || len(observed.Content[0].Metadata) != 1 {
+			if len(observed.Content) != 1 || observed.Content[0].Kind != p.MessageNode || len(observed.Content[0].Children) != 1 || observed.Content[0].Children[0].Kind != response.Content[0].Children[0].Kind || len(observed.Content[0].Children[0].Metadata) != 1 {
 				t.Fatal("target changed probability ownership", observed.Content)
 			}
-			sameJSON(t, observed.Content[0].Metadata[0].Value.Bytes(), probabilities)
+			sameJSON(t, observed.Content[0].Children[0].Metadata[0].Value.Bytes(), probabilities)
 			native := encodePackageStream(t, compiled, frames, p.Scope{}, true)
 			if len(native) != len(raws) || native[0] != raws[0] || native[1] != raws[1] {
 				t.Fatal("normalization changed native frame bytes", native)
@@ -73,10 +73,10 @@ func TestChatPackageStreamLogprobSnapshots(t *testing.T) {
 				raws[index] = frame.JSONString()
 			}
 			_, response := decodePackageStream(t, compiled, raws, p.Scope{})
-			if len(response.Content) != 1 || !response.Content[0].Payload.IsString("ab") || len(response.Content[0].Metadata) != 1 {
+			if len(response.Content) != 1 || response.Content[0].Kind != p.MessageNode || len(response.Content[0].Children) != 1 || !response.Content[0].Children[0].Payload.IsString("ab") || len(response.Content[0].Children[0].Metadata) != 1 {
 				t.Fatal("probability snapshots changed generated content", response.Content)
 			}
-			sameJSON(t, response.Content[0].Metadata[0].Value.Bytes(), complete.JSONString())
+			sameJSON(t, response.Content[0].Children[0].Metadata[0].Value.Bytes(), complete.JSONString())
 		})
 	}
 }

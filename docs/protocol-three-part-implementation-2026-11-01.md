@@ -1,6 +1,6 @@
 # 三部分架构实施记录
 
-基线：`refactor/protocol-dsl`，`b2844846 / dev.101`。第一阶段提交为 `acc97556 / dev.102`，第二阶段为 `1841b04b / dev.103`，第三阶段为 `0c749dd1 / dev.104`；第四阶段为本次 `dev.105`。后续目标处置仍在开发，不能将组件闭合当作全部迁移完成。新验收依据见[契约](protocol-three-part-contract.md)。
+基线：`refactor/protocol-dsl`，`b2844846 / dev.101`。第一阶段提交为 `acc97556 / dev.102`，第二阶段为 `1841b04b / dev.103`，第三阶段为 `0c749dd1 / dev.104`，第四阶段为 `95ff04dc / dev.105`，第五阶段为 `dev.106`。不能将组件闭合当作全部迁移完成。新验收依据见[契约](protocol-three-part-contract.md)。
 
 ## 基线留档
 
@@ -151,12 +151,49 @@ Responses 包按实际 JSON token 计量，包含对象键和容器边界。通�
 
 以上均为受限内存设置的功能检查，不是性能测量。最终前端页面、审计、六目标构建及正式配对性能等待完整目标处置与生产切换阶段，未使用旧构建产物冒充本版本验收。
 
+## 第五阶段：目标处置和消息父容器
+
+`dev.106` 实现如下；生产切换仍取决于后续功能与性能门槛：
+
+- `core_controls` 可遍历真实节点，绑定当前 Node、原始核心 root 和实际路径。仅开放节点 ID/status、响应 ID 和固定键的响应属性；正文、来源、资源、Native 及整节点删除不可写。复用 typed 读写与现有诊断，不经过整树 JSON 往返。
+- 目标配置以稳定的 `response-shape`／`event-shape` 规则表达身份、状态和时间戳的取舍。兼容降级、严格拒绝和整条禁用保持统一；编码器拒绝规则禁用后仍无法表达的字段。
+- Responses JSON 的缺失身份、JSON／流的缺失时间取自本次已绑定的执行事实；已有非法值不被当作缺失修复，错误包络不补生成身份。流编码器读取已经投影或保存的时间，不再隐式补时间。转换上下文仅复用现有私有 operationMetadata 指针。网关、验证、预览和已有收集投影接入同一事实，不从用户 JSON 取执行身份。
+- Responses 的流项目 ID 与 Message 生命周期状态由 `event-shape` 生成；项目编码器不再重复生成 ID。裸编码样例显式提供原先期望的 ID，输出期望不变。根响应 ID 缺失时的旧 Mapping 生成分支仍待统一，本阶段没有宣称全部包络生成均已收敛。
+- `VerificationRoute` 保留当前样例明确选择的 JSON／SSE 传输，不再让保存的流绑定把 JSON 响应样例错误地当作流。模型和操作约束仍保留。
+- 显式配置产生的拒绝可作为负面证据，必须有当前启用规则、策略哈希、rejected 保真标记和正确转换阶段；它不提供正向能力覆盖。结构、执行和资源错误不能替代成功样例。
+- Chat 请求按明确边界组合裸助手历史。Chat、Anthropic 与 Gemini 来源流保留真实 Message 父容器，文本、thinking、加密 reasoning 和客户端工具叶子保持顺序、参数及作用域。核心在内容验证成功后统一关闭叶子并递减父计数；不开放任意多层容器、媒体或服务端执行子项。Chat SSE 仍只支持 choice 0，JSON 多候选能力不变；Gemini 的既有 SSE 能力本就不含媒体，这项限制不扩展到 JSON 请求媒体。
+- 各目标使用既有索引与少量状态消费逻辑父容器，不新增整轮事件缓存。第二个独立父容器在尚无明确合并策略时拒绝；没有把边界合并藏进 ID 省略中。Native observer 同步相同关联，实际发送后才推进交付位置。
+- 来源的 Message 完成事件携带已有的类型／角色薄头，目标配置可以在真实完成时赋予输出状态；不提前把开始事件标为已完成，也不新增稀疏节点核心类型、正文副本或关联表。工具及服务端执行项目仍遵守各自的完成合同。
+- Anthropic 的初始 usage 只归属 ResponseStarted；无实际计数的终帧不再额外制造核心 usage。合法稀疏来源仍单独验证；用于 Native 字节保真的合成签名帧补齐了目标必需的最终 usage，而非放松目标协议。
+- Anthropic／Gemini 的显式 store:false 根据无响应检索存储 API 的行为无损归一；true/null 明确拒绝，禁用规则不静默删除。这里的 store 不代表供应商日志或训练设置。来源的缺省存储语义及 ClientOutput 所有权尚未统一，本项不能称为完整存储迁移。
+
+四包完整 Verify、目标处置、运行事实和严格模式证据均已通过。网关矩阵覆盖四协议 16 个方向的文本 JSON／SSE，共 32 个场景，检查正文、终态、usage 和一次上游调用；Chat 流请求明确要求 `include_usage=true`。Agent 的 JSON／SSE 工具两轮也通过。它们不替代复杂能力、正式性能或真实供应商复测。
+
+本阶段验证同时纠正了一处测试夹具缺陷：管理上下文为补齐执行事实曾使用固定请求 ID，连续 JSON／SSE 请求被存储幂等约束正确去重，造成日志等待超时。夹具改用每请求独立 ID 后，原缓存／落库用例定向通过；没有修改生产结算、SQL 幂等性或超时。
+
+| 记录 | 结果与范围 |
+|---|---|
+| `phase-five-core-final` / `phase-five-package-evidence-confirm` | 核心全量、四包正式验证通过 |
+| `phase-five-chat-message-confirm` | Chat 消息、工具、logprobs、Native 和历史定向通过 |
+| `phase-five-http-matrix-identities` | 文本矩阵 32/32、Agent JSON／SSE 两轮通过 |
+| `phase-five-go-all-constrained` | server 之外的全部包通过；server 出现上述夹具失败及 Windows 内存耗尽，不能写为 Go 全量通过 |
+| `phase-five-live-settlement-fixed` | 修复请求 ID 后，连续 JSON／SSE 的缓存计数及落库通过 |
+| `phase-five-server-all-fixed` | 未再报原日志等待断言，仍被系统内存耗尽中断，server 全量未完成 |
+| `phase-five-vet` | 全量 vet 通过 |
+| `phase-five-staticcheck-confirm` | v0.8.2 因既有 24 条诊断退出 1；差分新增／移除均为零 |
+| `phase-five-race` | 核心与 builtin 相关 race 通过；server 在低堆限制下达到 10 分钟总超时，随后独立复核 |
+| `phase-five-server-race-confirm` | 提高测试堆限制后的服务端 race 通过，含 32 场景矩阵及 Agent 两轮；404.7 秒，无数据竞争报告 |
+| `phase-five-server-all-confirm` | 服务端全量通过，153.7 秒；结合之前通过的其余包，本阶段全部 Go 包完成验收，不再排除矩阵 |
+
+内存不足已实际表现为记录器无法提交几 MiB 堆、Go `VirtualAlloc` 的 8192 字节申请失败（Windows errno 1455），并非性能测量。系统余量恢复后，服务端采用 GOMAXPROCS=2、GOGC=50、GOMEMLIMIT=1GiB 完成全量及 race；只复核未完成部分，没有延长日志落库等业务断言的等待时间。未结束用户程序或修改分页设置。检查设置逐命令保存在忽略目录，不能与正式性能门槛混用。
+
 ## 尚未完成的门槛
 
-- 四协议已接入双向流，Chat 目标 logprobs、Anthropic 混合接续和 Responses 服务端产物已有组件验收；跨协议父子输出组织及全部 HTTP/Agent 组合仍需闭合。
+- 四协议文本的 16 方向 JSON／SSE 主链已通过，Chat 目标 logprobs、Anthropic 混合接续和 Responses 服务端产物已有组件验收；复杂能力的 HTTP/Agent 组合及多消息布局仍需闭合。
 - 四份默认包的完整独立激活证据已齐；组合证据及目标取舍仍需完善。metadata／usage、模型归一化、Gemini historyRetention/safety 已配置化；错误、签名恢复、缓存提示、工具结果、历史布局及客户端交付意图尚需接线。
+- 本轮只读审计定位了后续必须关闭的实际入口缺口：package 默认策略尚未启用上游计量收集；Responses include 未进入客户端续传要求，Agent 仍在参数区表达 store/include；Gemini 的工具 strict、结果错误状态和结构结果尚无完整处置；Anthropic 多根输出、Gemini 有序输出与多个候选尚需明确区分。单文本矩阵不覆盖这些语义，不构成切换生产的依据。
 - 新资源契约尚未覆盖所有保留状态；默认转换策略仍有供应商 Go 分支。
 - 生产预置仍走旧加载器；旧执行路径、自动修复绑定及旧格式执行尚未退役。
-- 四协议 16 方向实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。
+- 复杂能力实际调用、最终全量/静态/race/页面/六目标验收，以及三版本正式配对性能与火焰图尚未完成。
 
 共享读取与编译复用目前属于实现变化，不能在正式测量前写成性能收益。旧调查和能力清单保留为历史材料，不再要求复制其中的旧错误树或资源计费缺陷。

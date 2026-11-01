@@ -18,6 +18,13 @@ func (options EvaluationContext) WithOperation(id string, startedAt int64) (Eval
 	return options, nil
 }
 
+// WithOperation shares the execution facts already bound to options with the
+// conversion route. Runtime reads use these facts, never user context fields.
+func (route ConversionContext) WithOperation(options EvaluationContext) ConversionContext {
+	route.operation = options.operation
+	return route
+}
+
 func operationMetadataError(path, reason string) error {
 	return &ConversionError{Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Stage: "runtime", Path: path, Reason: reason}}}
 }

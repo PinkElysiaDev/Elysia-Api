@@ -142,7 +142,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 			}
 			updateRecordProtocolUsage(record, result.Usage)
 		}
-		route, err := candidate.conversionContext(candidate.compiled, true).WithResponseModelOrigin(candidate.compiled, candidate.compiled, outboundBody, body)
+		route, err := candidate.conversionContext(candidate.compiled, true).WithOperation(options).WithResponseModelOrigin(candidate.compiled, candidate.compiled, outboundBody, body)
 		if err != nil {
 			return nil, err
 		}

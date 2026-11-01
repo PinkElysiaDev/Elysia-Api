@@ -96,7 +96,7 @@ func mapGatewayHTTPFailure(ctx context.Context, record *usageRecord, status int,
 
 func projectGatewayFailure(ctx context.Context, status int, response *protocol.Response, ingress *protocol.Compiled, candidate gatewayCandidate, options protocol.EvaluationContext) *gatewayFailure {
 	original := protocol.CheckGenerationOutcome(response)
-	projected, err := candidate.conversion.Response(ctx, response, candidate.conversionContext(ingress, true), options.Diagnostics)
+	projected, err := candidate.conversion.Response(ctx, response, candidate.conversionContext(ingress, true).WithOperation(options), options.Diagnostics)
 	if err != nil {
 		return &gatewayFailure{status, errors.Join(original, err)}
 	}

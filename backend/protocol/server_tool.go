@@ -105,6 +105,5 @@ func (replay *EventReplay) consumeServerTool(key string, item *replayItem, event
 			return err
 		}
 	}
-	item.isFinished = event.Type == ItemFinished
 	return nil
 }

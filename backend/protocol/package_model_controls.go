@@ -19,7 +19,7 @@ type ProtocolControlStep struct {
 	Omit       bool                          `json:"omit,omitempty"`
 }
 
-// ProtocolControlEach selects fixed typed metadata or usage owners. Input is
+// ProtocolControlEach selects fixed typed node, metadata or usage owners. Input is
 // local to the selected value; root remains the complete core document.
 type ProtocolControlEach struct {
 	Select      string                `json:"select"`
@@ -157,7 +157,8 @@ func compileControlSteps(steps []ProtocolControlStep, compiler *expressionCompil
 }
 
 func compileConversionControlSteps(steps []ProtocolControlStep, compiler *expressionCompiler, path string, root reflect.Type, frameUsage bool) ([]compiledControlStep, error) {
-	scope := controlCompileScope{expression: expressionScope{coreInput: root, canReadFrameUsage: frameUsage}, whole: root, canSelect: true, canUseAuxiliary: root == reflect.TypeFor[Event]()}
+	canReadOperation := root == reflect.TypeFor[Response]() || root == reflect.TypeFor[Event]()
+	scope := controlCompileScope{expression: expressionScope{coreInput: root, canReadFrameUsage: frameUsage, canReadOperation: canReadOperation}, whole: root, canSelect: true, canUseAuxiliary: root == reflect.TypeFor[Event]()}
 	return compileScopedControlSteps(steps, compiler, path, false, scope, new(int))
 }
 

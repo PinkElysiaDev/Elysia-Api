@@ -104,7 +104,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		err := verifyRequestCombination(ctx, ingress, upstream, sample)
-		if recordEnvelopeRejection(conversion, err, check, &report) {
+		if recordDeclaredRejection(conversion, err, check, &report) {
 			continue
 		}
 		check.Passed = err == nil
@@ -124,7 +124,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		err := verifyResponseCombination(ctx, ingress, upstream, sample)
-		if recordEnvelopeRejection(conversion, err, check, &report) {
+		if recordDeclaredRejection(conversion, err, check, &report) {
 			continue
 		}
 		check.Passed = err == nil
@@ -152,7 +152,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 				continue
 			}
 			err = verifyEventCombination(ctx, ingress, upstream, sample)
-			if recordEnvelopeRejection(conversion, err, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent}, &report) {
+			if recordDeclaredRejection(conversion, err, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent}, &report) {
 				continue
 			}
 			if err != nil && !hasSameWire(ingress, upstream) && slices.Contains(observed, NativeExtensionsCapability) && hasIssueCode(err, UnsupportedNative) {
@@ -223,10 +223,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	return report
 }
 
-// Storage intent and required counters are value-dependent policy boundaries,
-// not extra model capabilities. A rejected fixture supplies no positive coverage;
-// independent passing request/response/stream fixtures are still mandatory.
-func recordEnvelopeRejection(conversion *CompiledConversion, err error, check VerificationCheck, report *CombinationReport) bool {
+// A declared policy refusal is negative evidence, never positive capability
+// coverage. Structure, mapping, I/O and resource failures remain failures.
+func recordDeclaredRejection(conversion *CompiledConversion, err error, check VerificationCheck, report *CombinationReport) bool {
 	var failure *ConversionError
 	if conversion == nil || !errors.As(err, &failure) || len(failure.Issues) == 0 {
 		return false
@@ -235,7 +234,8 @@ func recordEnvelopeRejection(conversion *CompiledConversion, err error, check Ve
 		allowed := false
 		for _, rule := range conversion.Policy.Rules {
 			if rule.Enabled && rule.ID == issue.RuleID && issue.Code == ConversionRejected && issue.PolicyHash == conversion.Hash {
-				allowed = (rule.Action == "responses_storage" && issue.Path == "/store") ||
+				allowed = (rule.Action == "core_controls" && issue.Fidelity == "rejected" && issue.Stage == "conversion."+string(rule.Phase)) ||
+					(rule.Action == "responses_storage" && issue.Path == "/store") ||
 					(rule.Action == "anthropic_usage_envelope" && conversion.Policy.Mode == "strict" &&
 						slices.Contains([]string{"/usage/input", "/usage/output", "/response/usage/input", "/response/usage/output"}, issue.Path))
 			}
@@ -307,6 +307,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	// presentation preference.
 	yes := true
 	options.ClientOutput = &ClientOutput{IncludeUsage: &yes}
+	route = route.WithOperation(options)
 	projected := []Event{}
 	eventState := NewConversionEventState(conversion, route)
 	convertedFrames := []*EventFrame{}
@@ -523,7 +524,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		return err
 	}
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
-		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
+		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON).WithOperation(options)
 		route.Scope = options.Scope
 		if outbound := sample.Context["upstreamRequest"]; !outbound.IsZero() {
 			route, err = route.WithResponseModelOrigin(ingress, upstream, outbound.Bytes(), sample.Input.Bytes())

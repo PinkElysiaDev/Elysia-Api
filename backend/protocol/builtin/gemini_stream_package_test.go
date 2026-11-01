@@ -94,7 +94,7 @@ func TestGeminiPackageStreamSignaturesToolsAndUsage(t *testing.T) {
 		}
 	}
 
-	call := response.Content[2]
+	call := messageLeaves(t, response)[2]
 	request := &p.Request{SchemaVersion: compiled.CoreVersion(), Model: p.StringValue("m"), Content: []p.Node{
 		call, {Kind: p.ToolResultNode, CallID: call.CallID, Name: call.Name, Payload: testValue(t, `{"ok":true}`)},
 	}}
@@ -109,10 +109,14 @@ func TestGeminiPackageStreamSignaturesToolsAndUsage(t *testing.T) {
 
 func checkGeminiPackageStreamResult(t *testing.T, response *p.Response) {
 	t.Helper()
-	if response == nil || !response.ID.IsString("r") || !response.Model.IsString("m") || len(response.Content) != 3 {
+	if response == nil || !response.ID.IsString("r") || !response.Model.IsString("m") {
 		t.Fatal("stream response shape changed", response)
 	}
-	thinking, text, call := response.Content[0], response.Content[1], response.Content[2]
+	leaves := messageLeaves(t, response)
+	if len(leaves) != 3 {
+		t.Fatal("message lost a generated part", leaves)
+	}
+	thinking, text, call := leaves[0], leaves[1], leaves[2]
 	if thinking.Kind != p.ReasoningNode || !thinking.Payload.IsString("think") || len(thinking.Resources) != 1 || !thinking.Resources[0].ID.IsString("sig-thought") {
 		t.Fatal("thinking or its signature was lost", thinking)
 	}
@@ -134,12 +138,14 @@ func TestGeminiPackageStreamLateUsageAndIdlessCalls(t *testing.T) {
 		`{"candidates":[{"index":0,"finishReason":"STOP"}]}`,
 		`{"usageMetadata":{"thoughtsTokenCount":1,"totalTokenCount":4}}`,
 	}, p.Scope{})
-	if len(response.Content) != 2 || response.Content[0].CallID.IsZero() || response.Content[0].CallID == response.Content[1].CallID || response.Usage == nil || response.Usage.Output == nil || response.Usage.Total == nil || response.Usage.Output.Count != 2 || response.Usage.Total.Count != 4 {
+	calls := messageLeaves(t, response)
+	if len(calls) != 2 || calls[0].CallID.IsZero() || calls[0].CallID == calls[1].CallID || response.Usage == nil || response.Usage.Output == nil || response.Usage.Total == nil || response.Usage.Output.Count != 2 || response.Usage.Total.Count != 4 {
 		t.Fatal("idless calls collided or late reasoning was missed", response)
 	}
 	rendered := encodePackageStream(t, compiled, frames, p.Scope{}, false)
 	_, rebuilt := decodePackageStream(t, compiled, rendered, p.Scope{})
-	if len(rebuilt.Content) != 2 || rebuilt.Content[0].CallID != response.Content[0].CallID || rebuilt.Content[1].CallID != response.Content[1].CallID || rebuilt.Usage == nil || rebuilt.Usage.Output == nil || rebuilt.Usage.Total == nil || rebuilt.Usage.Output.Count != 2 || rebuilt.Usage.Total.Count != 4 {
+	rebuiltCalls := messageLeaves(t, rebuilt)
+	if len(rebuiltCalls) != 2 || rebuiltCalls[0].CallID != calls[0].CallID || rebuiltCalls[1].CallID != calls[1].CallID || rebuilt.Usage == nil || rebuilt.Usage.Output == nil || rebuilt.Usage.Total == nil || rebuilt.Usage.Output.Count != 2 || rebuilt.Usage.Total.Count != 4 {
 		t.Fatal("target lost call identity or usage tails", rebuilt)
 	}
 }

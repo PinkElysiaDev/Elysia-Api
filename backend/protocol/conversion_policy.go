@@ -88,6 +88,7 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	operation         *operationMetadata
 	frameUsage        *frameUsageObservation
 	fieldObservations map[string]fieldObservation
 	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
@@ -502,6 +503,9 @@ func (c *CompiledConversion) ContextHash() string {
 	value, _ := EncodeValue(c.VerificationContext)
 	return hashValue(value)
 }
+
+// VerificationRoute binds model constraints to the fixture's wire direction.
+// A stream binding's saved transport cannot turn its JSON adapter check into SSE.
 func (c *CompiledConversion) VerificationRoute(source, target Identity, transport Transport) ConversionContext {
 	created, _ := EncodeValue(1)
 	route := ConversionContext{Source: source, Target: target, Transport: transport, Delivery: &DeliveryState{ID: StringValue("response_verification"), Created: created}}
@@ -510,7 +514,6 @@ func (c *CompiledConversion) VerificationRoute(source, target Identity, transpor
 		route.InterleavedThinking = c.VerificationContext.InterleavedThinking
 		route.Model = c.VerificationContext.Model
 		route.Operation = c.VerificationContext.Operation
-		route.Transport = c.VerificationContext.Transport
 	}
 	return route
 }

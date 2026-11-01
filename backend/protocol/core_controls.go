@@ -29,21 +29,35 @@ func compileTypedControlSetter(root reflect.Type, path string) (func(any, JSONOu
 			return assignCoreValue(output, &document.(*Response).Model, reader)
 		}, AnyType, nil
 	}
+	if root == reflect.TypeFor[Response]() && path == "/id" {
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlValue(output, &document.(*Response).ID, reader)
+		}, AnyType, nil
+	}
 	if root == reflect.TypeFor[Response]() && path == "/usage" {
 		return func(document any, output JSONOutput, reader *valueReader) error {
 			return replaceControlUsage(output, &document.(*Response).Usage, reader)
 		}, ObjectType, nil
+	}
+	if root == reflect.TypeFor[Response]() {
+		return compileResponseAttributeSetter(path)
 	}
 	if root == reflect.TypeFor[Event]() && path == "/usage" {
 		return func(document any, output JSONOutput, reader *valueReader) error {
 			return replaceControlUsage(output, &document.(*Event).Usage, reader)
 		}, ObjectType, nil
 	}
+	if root == reflect.TypeFor[Event]() {
+		return compileEventResponseAttributeSetter(path)
+	}
 	if root == reflect.TypeFor[ResponseMetadata]() {
 		return compileMetadataControlSetter(path)
 	}
 	if root == reflect.TypeFor[Usage]() {
 		return compileUsageControlSetter(path)
+	}
+	if root == reflect.TypeFor[Node]() {
+		return compileNodeControlSetter(path)
 	}
 	return nil, "", fmt.Errorf("control update does not support %s field %s", root.Name(), path)
 }
@@ -232,13 +246,14 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 	}
 	limits = intersectControlLimits(limits, semanticLimits(ownerLimits))
 	state := evaluation{ctx: ctx, inputReader: read, rootReader: read, context: contextValue, valueReader: &valueReader{},
-		objectReader: newPlanObjectReader(contextValue, objectReuseReads), bindings: make([]JSONOutput, options.bindingSlots), budget: &evaluationBudget{limits: limits, stepLimit: min(conversion.limits.Nodes, options.Limits.Nodes)}}
+		objectReader: newPlanObjectReader(contextValue, objectReuseReads), bindings: make([]JSONOutput, options.bindingSlots), budget: &evaluationBudget{limits: limits, stepLimit: min(conversion.limits.Nodes, options.Limits.Nodes)},
+		runtime: evaluationRuntime{isBound: true, operation: route.operation}}
 	state.coreRequest, _ = document.(*Request)
 	if options.FrameUsage {
 		if facts := route.frameUsage; facts != nil && (facts.source != route.Source || facts.target != route.Target || facts.scope != route.Scope) {
 			return false, operationMetadataError("/frame/usage", "frame usage belongs to a different route or scope")
 		}
-		state.runtime.isBound, state.runtime.hasFrameUsage = true, route.frameUsage != nil
+		state.runtime.hasFrameUsage = route.frameUsage != nil
 		if route.frameUsage != nil {
 			var err error
 			state.runtime.frameUsage, err = route.frameUsage.forEvent(*document.(*Event))

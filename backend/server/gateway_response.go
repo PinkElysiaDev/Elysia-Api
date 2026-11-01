@@ -41,7 +41,7 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	}
 	// Recovery evidence is created while capturing this response. Only the
 	// outbound model is a dispatch snapshot; refresh mutable recovery context now.
-	route := candidate.conversionContext(plan.ingress, true)
+	route := candidate.conversionContext(plan.ingress, true).WithOperation(options)
 	route.ResponseModel = responseRoute.ResponseModel
 	route, originErr := route.WithObservedResponseModel(body)
 	if originErr != nil {
