@@ -94,6 +94,9 @@ func responsesFinalResponseCases() []finalWireCase {
 	return []finalWireCase{
 		{"message", response, acceptedFinalWire},
 		{"reasoning", reasoning, acceptedFinalWire},
+		{"matching-derived-text", edit(`"object":"response"`, `"object":"response","output_text":""`), acceptedFinalWire},
+		{"conflicting-derived-text", edit(`"object":"response"`, `"object":"response","output_text":"different"`), "/output_text"},
+		{"null-derived-text", edit(`"object":"response"`, `"object":"response","output_text":null`), "/output_text"},
 		{"error-bypasses-success", `{"error":{},"object":false,"output":null}`, acceptedFinalWire},
 		{"object-before-id", edit(`"id":"r","object":"response"`, `"id":null,"object":"other"`), "/object"},
 		{"model-before-status", edit(`"model":"m","status":"completed"`, `"model":null,"status":null`), "/model"},

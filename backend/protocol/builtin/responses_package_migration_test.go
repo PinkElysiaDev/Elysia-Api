@@ -142,8 +142,8 @@ func TestResponsesPackageDerivedTextAndNullFilters(t *testing.T) {
 			t.Fatal("derived-text rejection was lost", raw, oldErr, newErr)
 		}
 		before, after := oldFailure.Issues[0], newFailure.Issues[0]
-		if before.Code != after.Code || before.Path != after.Path {
-			t.Fatal("derived-text rejection changed its code or business path", before, after)
+		if after.Code != p.UpstreamContractViolation || before.Path != after.Path {
+			t.Fatal("derived-text rejection lost its external contract boundary", before, after)
 		}
 		if before.Stage != after.Stage || before.Direction != after.Direction || before.Reason != after.Reason {
 			t.Log("diagnostic difference retained for migration review", before, after)

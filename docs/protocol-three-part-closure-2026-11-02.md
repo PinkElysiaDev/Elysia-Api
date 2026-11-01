@@ -109,3 +109,19 @@ Responses 共享重复输出对象／索引约束、非空文本判断及六个�
 测试初稿的诊断阶段写成未支持的名称，编译器拒绝；修正为既有 evaluate。随后测试指出旧差分仍要求非法 raw 类型成功，按新版本合同改为直接拒绝断言。所有最终检查记录保存在原忽略目录。
 
 本批不代表批次 1 全部完成：对象 aggregate 证明、output_text 修改后一致性还未闭合；缓存／错误、布局、真实流、入口所有权、正式性能及旧链退役继续待实施。未测 B／C，不宣称性能无回退。
+
+## 批次 1F：派生文本与当前正文一致（dev.117）
+
+四目标 Mapping 在保留或省略 Responses output_text 前，使用 equal_text 检查当前核心中的有序可见文本；比较分段字符串，不构造完整拼接正文。JSON 及含完整 response 的流快照共用对应声明，refusal、reasoning、工具参数不纳入可见文本。其余 metadata 不触发正文比较。Responses Spec 将来源的类型、显式 output 数组和正文一致性提为具名约束，同时接到重建与最终客户端输出。
+
+新增直接回归覆盖分段 Unicode 文本、正文修改、有／无根 Native、终态事件和直接编码拒绝；最终 wire 用代表性一致、冲突、null 检查。网关基础矩阵的 Responses 上游 JSON 现在显式包含合法 output_text，验证四目标真实本地转换。未调用供应商。
+
+来源非法 output_text 统一归因为 upstream_contract_violation，目标非法输出使用 conversion_rejected；不复刻旧 stream 分类或首错文字。已有来源失败测试按这项新合同直接断言，没有刷新快照。Responses 再共享三个真实重复的绑定读取，整包 token 为 99,911；其余三包分别为 Anthropic 91,433、Gemini 72,956、Chat 99,075，限额不变。
+
+- closure-output-text-all：protocol 全量 6.884 秒、builtin 全量 38.999 秒，通过。
+- closure-output-text-gateway：32 场景真实 JSON／SSE 网关矩阵通过，10.796 秒。
+- closure-output-text-race：派生文本、最终响应和来源边界相关 race 通过，无竞争报告。
+- closure-output-text-vet：protocol 及 server vet 通过。
+- closure-output-text-staticcheck：固定 v0.8.2 仍为 24 条主诊断及 1 条关联位置，与前批无新增／消失；退出 1。
+
+本批不新增执行原语，不修改核心 Go 的供应商分派；旧拼接检查仅留在旧 codec 路径。对象 aggregate、缓存／一般错误、布局、复杂流、入口所有权和最终生产／性能门槛仍待完成。

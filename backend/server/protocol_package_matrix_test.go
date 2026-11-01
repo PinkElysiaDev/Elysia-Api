@@ -135,6 +135,18 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			packages := seedGatewayPackages(t, server)
 			upstream := packages[upstreamName]
 			jsonReply, streamReply := buildPackageGatewayReply(t, upstream, false), buildPackageGatewayReply(t, upstream, true)
+			if upstreamName == "openai-responses" {
+				value, err := protocol.ParseValue(jsonReply)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fields, err := value.ReadObject()
+				if err != nil {
+					t.Fatal(err)
+				}
+				fields["output_text"] = protocol.StringValue("hi")
+				jsonReply = mustEncodedProtocolValue(t, fields).Bytes()
+			}
 			var calls atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)

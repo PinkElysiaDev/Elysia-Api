@@ -28188,6 +28188,196 @@
         "op": "literal",
         "value": true
       }
+    },
+    "has-consistent-response-output-text": {
+      "op": "equal_text",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/value"
+        },
+        {
+          "op": "flatmap",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/content"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "root",
+                "path": "/content"
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            }
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/children"
+              }
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/children"
+                },
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "text"
+                    }
+                  ]
+                }
+              },
+              "body": {
+                "op": "read",
+                "from": "item",
+                "path": "/payload"
+              }
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          }
+        }
+      ]
+    },
+    "has-consistent-event-output-text": {
+      "op": "equal_text",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/value"
+        },
+        {
+          "op": "flatmap",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/response/content"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "root",
+                "path": "/response/content"
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            }
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/children"
+              }
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/children"
+                },
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "text"
+                    }
+                  ]
+                }
+              },
+              "body": {
+                "op": "read",
+                "from": "item",
+                "path": "/payload"
+              }
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          }
+        }
+      ]
     }
   },
   "directions": {
@@ -45840,6 +46030,98 @@
               },
               {
                 "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/response"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/codec"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "responses"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/location"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "response"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "output_text"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "has-consistent-event-output-text"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "output_text conflicts with ordered visible output"
+                  }
+                }
+              },
+              {
+                "when": {
                   "op": "equal",
                   "items": [
                     {
@@ -47431,6 +47713,83 @@
                   "reason": {
                     "op": "literal",
                     "value": "metadata does not satisfy its declared disposition shape"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/codec"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "responses"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/location"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "response"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/name"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "output_text"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "ref",
+                      "ref": "has-consistent-response-output-text"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "output_text conflicts with ordered visible output"
                   }
                 }
               },

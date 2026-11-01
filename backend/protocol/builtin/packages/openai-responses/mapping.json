@@ -14714,10 +14714,8 @@
                 "ref": "read-target-wire-id"
               },
               "summary_index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/partIndex",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-part-index"
               },
               "part": {
                 "op": "ref",
@@ -14745,10 +14743,8 @@
                 "ref": "read-target-wire-id"
               },
               "content_index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/partIndex",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-part-index"
               },
               "part": {
                 "op": "ref",
@@ -14809,10 +14805,8 @@
                     "source": {
                       "items": [
                         {
-                          "from": "binding",
-                          "name": "body-suffix",
-                          "op": "read",
-                          "path": ""
+                          "op": "ref",
+                          "ref": "read-body-suffix"
                         },
                         {
                           "op": "literal",
@@ -14863,16 +14857,12 @@
                         "ref": "read-target-wire-id"
                       },
                       "content_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/partIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-part-index"
                       },
                       "delta": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "body-suffix"
+                        "op": "ref",
+                        "ref": "read-body-suffix"
                       },
                       "logprobs": {
                         "op": "if",
@@ -14903,10 +14893,8 @@
                 "source": {
                   "items": [
                     {
-                      "from": "binding",
-                      "name": "body-suffix",
-                      "op": "read",
-                      "path": ""
+                      "op": "ref",
+                      "ref": "read-body-suffix"
                     },
                     {
                       "op": "literal",
@@ -14951,10 +14939,8 @@
                             "ref": "read-target-wire-id"
                           },
                           "delta": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "body-suffix"
+                            "op": "ref",
+                            "ref": "read-body-suffix"
                           }
                         }
                       },
@@ -14978,10 +14964,8 @@
                             "ref": "read-target-wire-id"
                           },
                           "delta": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "body-suffix"
+                            "op": "ref",
+                            "ref": "read-body-suffix"
                           }
                         }
                       }
@@ -15012,16 +14996,12 @@
                             "ref": "read-target-wire-id"
                           },
                           "summary_index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/partIndex",
-                            "name": "target-item"
+                            "op": "ref",
+                            "ref": "read-target-part-index"
                           },
                           "delta": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "body-suffix"
+                            "op": "ref",
+                            "ref": "read-body-suffix"
                           }
                         }
                       },
@@ -15051,16 +15031,12 @@
                               "ref": "read-target-wire-id"
                             },
                             "content_index": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "/partIndex",
-                              "name": "target-item"
+                              "op": "ref",
+                              "ref": "read-target-part-index"
                             },
                             "delta": {
-                              "op": "read",
-                              "from": "binding",
-                              "path": "",
-                              "name": "body-suffix"
+                              "op": "ref",
+                              "ref": "read-body-suffix"
                             }
                           }
                         },
@@ -15090,16 +15066,12 @@
                                 "ref": "read-target-wire-id"
                               },
                               "content_index": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/partIndex",
-                                "name": "target-item"
+                                "op": "ref",
+                                "ref": "read-target-part-index"
                               },
                               "delta": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "body-suffix"
+                                "op": "ref",
+                                "ref": "read-body-suffix"
                               }
                             }
                           },
@@ -15123,16 +15095,12 @@
                                 "ref": "read-target-wire-id"
                               },
                               "content_index": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "/partIndex",
-                                "name": "target-item"
+                                "op": "ref",
+                                "ref": "read-target-part-index"
                               },
                               "delta": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "body-suffix"
+                                "op": "ref",
+                                "ref": "read-body-suffix"
                               }
                             }
                           }
@@ -15207,10 +15175,8 @@
                     "ref": "read-target-wire-id"
                   },
                   "summary_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/partIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-part-index"
                   },
                   "text": {
                     "op": "ref",
@@ -15244,10 +15210,8 @@
                       "ref": "read-target-wire-id"
                     },
                     "content_index": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/partIndex",
-                      "name": "target-item"
+                      "op": "ref",
+                      "ref": "read-target-part-index"
                     },
                     "text": {
                       "op": "ref",
@@ -15281,10 +15245,8 @@
                         "ref": "read-target-wire-id"
                       },
                       "content_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/partIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-part-index"
                       },
                       "refusal": {
                         "op": "ref",
@@ -15312,10 +15274,8 @@
                         "ref": "read-target-wire-id"
                       },
                       "content_index": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/partIndex",
-                        "name": "target-item"
+                        "op": "ref",
+                        "ref": "read-target-part-index"
                       },
                       "text": {
                         "op": "ref",
@@ -15375,10 +15335,8 @@
                     "ref": "read-target-wire-id"
                   },
                   "summary_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/partIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-part-index"
                   },
                   "part": {
                     "op": "ref",
@@ -15406,10 +15364,8 @@
                     "ref": "read-target-wire-id"
                   },
                   "content_index": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/partIndex",
-                    "name": "target-item"
+                    "op": "ref",
+                    "ref": "read-target-part-index"
                   },
                   "part": {
                     "op": "ref",
@@ -16735,10 +16691,8 @@
                 "ref": "read-target-wire-id"
               },
               "content_index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/partIndex",
-                "name": "target-item"
+                "op": "ref",
+                "ref": "read-target-part-index"
               },
               "annotation_index": {
                 "op": "integer",
@@ -22032,10 +21986,8 @@
                   "ref": "stream-output-key"
                 },
                 "index": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/position",
-                  "name": "registered-item"
+                  "op": "ref",
+                  "ref": "read-registered-position"
                 },
                 "item": {
                   "op": "ref",
@@ -22201,10 +22153,8 @@
                 "ref": "stream-output-key"
               },
               "index": {
-                "op": "read",
-                "from": "binding",
-                "path": "/position",
-                "name": "registered-item"
+                "op": "ref",
+                "ref": "read-registered-position"
               },
               "item": {
                 "op": "merge",
@@ -22578,10 +22528,8 @@
             "source": {
               "items": [
                 {
-                  "from": "binding",
-                  "name": "body-suffix",
-                  "op": "read",
-                  "path": ""
+                  "op": "ref",
+                  "ref": "read-body-suffix"
                 },
                 {
                   "op": "literal",
@@ -22614,10 +22562,8 @@
                     "ref": "read-target-wire-id"
                   },
                   "delta": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "body-suffix"
+                    "op": "ref",
+                    "ref": "read-body-suffix"
                   }
                 }
               }
@@ -23864,10 +23810,8 @@
         "policy": "reject"
       },
       "body": {
-        "op": "read",
-        "from": "binding",
-        "path": "/position",
-        "name": "registered-item"
+        "op": "ref",
+        "ref": "read-registered-position"
       }
     },
     "source-summary-position": {
@@ -23897,10 +23841,8 @@
         "ref": "source-output-item"
       },
       "body": {
-        "op": "read",
-        "from": "binding",
-        "path": "/position",
-        "name": "registered-item"
+        "op": "ref",
+        "ref": "read-registered-position"
       }
     },
     "requested-reasoning-effort": {
@@ -25674,6 +25616,214 @@
         "op": "literal",
         "value": true
       }
+    },
+    "read-target-part-index": {
+      "op": "read",
+      "from": "binding",
+      "name": "target-item",
+      "path": "/partIndex"
+    },
+    "read-body-suffix": {
+      "op": "read",
+      "from": "binding",
+      "name": "body-suffix",
+      "path": ""
+    },
+    "read-registered-position": {
+      "op": "read",
+      "from": "binding",
+      "name": "registered-item",
+      "path": "/position"
+    },
+    "has-consistent-response-output-text": {
+      "op": "equal_text",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/value"
+        },
+        {
+          "op": "flatmap",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/content"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "root",
+                "path": "/content"
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            }
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/children"
+              }
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/children"
+                },
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "text"
+                    }
+                  ]
+                }
+              },
+              "body": {
+                "op": "read",
+                "from": "item",
+                "path": "/payload"
+              }
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          }
+        }
+      ]
+    },
+    "has-consistent-event-output-text": {
+      "op": "equal_text",
+      "items": [
+        {
+          "op": "read",
+          "from": "input",
+          "path": "/value"
+        },
+        {
+          "op": "flatmap",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "root",
+                  "path": "/response/content"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "root",
+                "path": "/response/content"
+              },
+              "otherwise": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "message"
+                }
+              ]
+            }
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/children"
+              }
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/children"
+                },
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/kind"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "text"
+                    }
+                  ]
+                }
+              },
+              "body": {
+                "op": "read",
+                "from": "item",
+                "path": "/payload"
+              }
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          }
+        }
+      ]
     }
   },
   "directions": {
@@ -27187,10 +27337,8 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
+                            "op": "ref",
+                            "ref": "read-registered-position"
                           },
                           "item": {
                             "op": "merge",
@@ -27298,10 +27446,8 @@
                               "op": "object",
                               "fields": {
                                 "position": {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "/position",
-                                  "name": "registered-item"
+                                  "op": "ref",
+                                  "ref": "read-registered-position"
                                 },
                                 "node": {
                                   "op": "read",
@@ -27339,10 +27485,8 @@
                                     "ref": "stream-output-key"
                                   },
                                   "index": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/position",
-                                    "name": "registered-item"
+                                    "op": "ref",
+                                    "ref": "read-registered-position"
                                   },
                                   "item": {
                                     "op": "read",
@@ -28161,10 +28305,8 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
+                            "op": "ref",
+                            "ref": "read-registered-position"
                           },
                           "item": {
                             "op": "merge",
@@ -28388,10 +28530,8 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
+                            "op": "ref",
+                            "ref": "read-registered-position"
                           },
                           "delta": {
                             "op": "read",
@@ -28433,10 +28573,8 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
+                            "op": "ref",
+                            "ref": "read-registered-position"
                           },
                           "item": {
                             "op": "merge",
@@ -28546,10 +28684,8 @@
                             "ref": "stream-output-key"
                           },
                           "index": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/position",
-                            "name": "registered-item"
+                            "op": "ref",
+                            "ref": "read-registered-position"
                           },
                           "item": {
                             "op": "merge",
@@ -41481,6 +41617,98 @@
               },
               {
                 "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/response"
+                    }
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/codec"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "responses"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/location"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "response"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/name"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "output_text"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "not",
+                      "source": {
+                        "op": "ref",
+                        "ref": "has-consistent-event-output-text"
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "output_text conflicts with ordered visible output"
+                  }
+                }
+              },
+              {
+                "when": {
                   "op": "ref",
                   "ref": "is-input-responses"
                 },
@@ -41826,6 +42054,83 @@
                   "reason": {
                     "op": "literal",
                     "value": "metadata does not satisfy its declared disposition shape"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/codec"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "responses"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/location"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "response"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/name"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "output_text"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "not",
+                    "source": {
+                      "op": "ref",
+                      "ref": "has-consistent-response-output-text"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "diagnostic": {
+                  "kind": "invalid",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/path"
+                  },
+                  "code": "invalid_input",
+                  "stage": "conversion.metadata",
+                  "reason": {
+                    "op": "literal",
+                    "value": "output_text conflicts with ordered visible output"
                   }
                 }
               },

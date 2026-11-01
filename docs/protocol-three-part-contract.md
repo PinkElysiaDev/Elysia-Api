@@ -130,6 +130,8 @@ request_field 的位置可以是独立 parameters 字段或 reasoning 的 Value 
 
 ## Metadata 配置边界（dev.114）
 
+dev.117 补齐派生文本一致性：四份目标 Mapping 在保留或省略 Responses output_text 前，通过 equal_text 将其与当前核心可见文本段比较；终态事件比较完整响应，不将文本 delta 与完整派生值比较。Responses Spec 的具名 response-output-text 约束同时用于来源、重建和最终客户端输出。比较不构造正文拼接字符串，refusal、reasoning 和工具参数不混入可见文本。
+
 核心版本 2 的普通 metadata 不查询 Go 供应商白名单；核心仍检查 logprobs、增量形式及资源边界。外部字段类型由 Spec 定义，目标 Mapping 在处置前显式选择 codec、location、name 和允许形状。四个默认包未声明的字段（包括空值）拒绝，不能落入统一兼容省略；自定义包可仅修改两份配置声明自己的字段。
 
 enum 可声明 otherwise，只在字符串未命中时执行；省略该分支仍报未映射错误，非字符串不会转入该分支。该分支已用于默认 metadata 字段目录。编译器、schema、操作目录和编辑器使用同一声明。
