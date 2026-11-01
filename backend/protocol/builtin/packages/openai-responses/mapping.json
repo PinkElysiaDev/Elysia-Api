@@ -2346,31 +2346,8 @@
                 }
               },
               "body": {
-                "op": "if",
-                "when": {
-                  "op": "not",
-                  "source": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "nonempty"
-                      },
-                      {
-                        "op": "literal",
-                        "value": []
-                      }
-                    ]
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "nonempty"
-                }
+                "op": "ref",
+                "ref": "nonempty-array"
               }
             }
           }
@@ -9455,31 +9432,8 @@
         ]
       },
       "body": {
-        "op": "if",
-        "when": {
-          "op": "not",
-          "source": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "nonempty"
-              },
-              {
-                "op": "literal",
-                "value": []
-              }
-            ]
-          }
-        },
-        "then": {
-          "op": "read",
-          "from": "binding",
-          "path": "",
-          "name": "nonempty"
-        }
+        "op": "ref",
+        "ref": "nonempty-array"
       }
     },
     "decode-stream-content-part": {
@@ -16190,33 +16144,8 @@
                     "ref": "read-current-item"
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "/hasFinished",
-                            "name": "target-item"
-                          },
-                          {
-                            "op": "literal",
-                            "value": true
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "ref",
-                      "ref": "finish-target-entry"
-                    },
-                    "otherwise": {
-                      "op": "array",
-                      "items": []
-                    }
+                    "op": "ref",
+                    "ref": "finish-target-if-open"
                   }
                 }
               },
@@ -16233,33 +16162,8 @@
                   "policy": "reject"
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/hasFinished",
-                          "name": "target-item"
-                        },
-                        {
-                          "op": "literal",
-                          "value": true
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "ref",
-                    "ref": "finish-target-entry"
-                  },
-                  "otherwise": {
-                    "op": "array",
-                    "items": []
-                  }
+                  "op": "ref",
+                  "ref": "finish-target-if-open"
                 }
               }
             ]
@@ -25443,49 +25347,8 @@
             }
           },
           "body": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "item",
-                "path": "/children"
-              }
-            },
-            "then": {
-              "op": "map",
-              "source": {
-                "op": "filter",
-                "source": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/children"
-                },
-                "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/kind"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "text"
-                    }
-                  ]
-                }
-              },
-              "body": {
-                "op": "read",
-                "from": "item",
-                "path": "/payload"
-              }
-            },
-            "otherwise": {
-              "op": "array",
-              "items": []
-            }
+            "op": "ref",
+            "ref": "visible-text-parts"
           }
         }
       ]
@@ -25538,49 +25401,8 @@
             }
           },
           "body": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "item",
-                "path": "/children"
-              }
-            },
-            "then": {
-              "op": "map",
-              "source": {
-                "op": "filter",
-                "source": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/children"
-                },
-                "when": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/kind"
-                    },
-                    {
-                      "op": "literal",
-                      "value": "text"
-                    }
-                  ]
-                }
-              },
-              "body": {
-                "op": "read",
-                "from": "item",
-                "path": "/payload"
-              }
-            },
-            "otherwise": {
-              "op": "array",
-              "items": []
-            }
+            "op": "ref",
+            "ref": "visible-text-parts"
           }
         }
       ]
@@ -25841,6 +25663,183 @@
           ]
         }
       ]
+    },
+    "visible-text-parts": {
+      "op": "if",
+      "otherwise": {
+        "items": [],
+        "op": "array"
+      },
+      "then": {
+        "body": {
+          "from": "item",
+          "op": "read",
+          "path": "/payload"
+        },
+        "op": "map",
+        "source": {
+          "op": "filter",
+          "source": {
+            "from": "item",
+            "op": "read",
+            "path": "/children"
+          },
+          "when": {
+            "items": [
+              {
+                "from": "item",
+                "op": "read",
+                "path": "/kind"
+              },
+              {
+                "op": "literal",
+                "value": "text"
+              }
+            ],
+            "op": "equal"
+          }
+        }
+      },
+      "when": {
+        "op": "present",
+        "source": {
+          "from": "item",
+          "op": "read",
+          "path": "/children"
+        }
+      }
+    },
+    "response-output-text-metadata": {
+      "items": [
+        {
+          "items": [
+            {
+              "from": "input",
+              "op": "read",
+              "path": "/codec"
+            },
+            {
+              "op": "literal",
+              "value": "responses"
+            }
+          ],
+          "op": "equal"
+        },
+        {
+          "items": [
+            {
+              "from": "input",
+              "op": "read",
+              "path": "/location"
+            },
+            {
+              "op": "literal",
+              "value": "response"
+            }
+          ],
+          "op": "equal"
+        },
+        {
+          "items": [
+            {
+              "from": "input",
+              "op": "read",
+              "path": "/name"
+            },
+            {
+              "op": "literal",
+              "value": "output_text"
+            }
+          ],
+          "op": "equal"
+        }
+      ],
+      "op": "all"
+    },
+    "finish-target-if-open": {
+      "op": "if",
+      "otherwise": {
+        "items": [],
+        "op": "array"
+      },
+      "then": {
+        "op": "ref",
+        "ref": "finish-target-entry"
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "items": [
+            {
+              "from": "binding",
+              "name": "target-item",
+              "op": "read",
+              "path": "/hasFinished"
+            },
+            {
+              "op": "literal",
+              "value": true
+            }
+          ],
+          "op": "equal"
+        }
+      }
+    },
+    "default-mode-disabled": {
+      "items": [
+        {
+          "op": "if",
+          "otherwise": {
+            "op": "literal",
+            "value": ""
+          },
+          "then": {
+            "from": "context",
+            "op": "read",
+            "path": "/capability/defaultMode"
+          },
+          "when": {
+            "op": "present",
+            "source": {
+              "from": "context",
+              "op": "read",
+              "path": "/capability/defaultMode"
+            }
+          }
+        },
+        {
+          "op": "literal",
+          "value": "disabled"
+        }
+      ],
+      "op": "equal"
+    },
+    "nonempty-array": {
+      "op": "if",
+      "then": {
+        "from": "binding",
+        "name": "nonempty",
+        "op": "read",
+        "path": ""
+      },
+      "when": {
+        "op": "not",
+        "source": {
+          "items": [
+            {
+              "from": "binding",
+              "name": "nonempty",
+              "op": "read",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": []
+            }
+          ],
+          "op": "equal"
+        }
+      }
     }
   },
   "directions": {
@@ -39415,33 +39414,8 @@
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/defaultMode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/defaultMode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "default-mode-disabled"
             }
           ]
         },
@@ -39624,33 +39598,8 @@
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/defaultMode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/defaultMode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
-                },
-                {
-                  "op": "literal",
-                  "value": "disabled"
-                }
-              ]
+              "op": "ref",
+              "ref": "default-mode-disabled"
             }
           ]
         },
@@ -41647,51 +41596,8 @@
                   "then": {
                     "op": "if",
                     "when": {
-                      "op": "all",
-                      "items": [
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/codec"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "responses"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/location"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "response"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "output_text"
-                            }
-                          ]
-                        }
-                      ]
+                      "op": "ref",
+                      "ref": "response-output-text-metadata"
                     },
                     "then": {
                       "op": "not",
@@ -42079,51 +41985,8 @@
                 "when": {
                   "op": "if",
                   "when": {
-                    "op": "all",
-                    "items": [
-                      {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/codec"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "responses"
-                          }
-                        ]
-                      },
-                      {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/location"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "response"
-                          }
-                        ]
-                      },
-                      {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/name"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "output_text"
-                          }
-                        ]
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "response-output-text-metadata"
                   },
                   "then": {
                     "op": "not",
@@ -44894,6 +44757,151 @@
             "select": "tool_result",
             "pathBinding": "result-path",
             "steps": [
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/status/payloadForm"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "result_envelope"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/status"
+                          },
+                          "keys": [
+                            "isError",
+                            "payloadForm"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "from": "input",
+                              "op": "read",
+                              "path": "/payload"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "if",
+                        "when": {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload/error"
+                              }
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload/output"
+                              }
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "from": "input",
+                              "op": "read",
+                              "path": "/status/isError"
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload/error"
+                              }
+                            }
+                          ]
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/status": {
+                    "op": "object",
+                    "fields": {
+                      "isError": {
+                        "from": "input",
+                        "op": "read",
+                        "path": "/status/isError"
+                      }
+                    }
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "ref",
+                    "ref": "tool-result-status-path"
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "result envelope retained as payload with a separate error flag; target envelope structure changes"
+                  }
+                }
+              },
               {
                 "when": {
                   "op": "if",

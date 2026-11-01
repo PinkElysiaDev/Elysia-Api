@@ -48119,6 +48119,161 @@
                 "when": {
                   "op": "if",
                   "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/status/payloadForm"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "result_envelope"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/status"
+                          },
+                          "keys": [
+                            "isError",
+                            "payloadForm"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/payload"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "if",
+                        "when": {
+                          "op": "any",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload/error"
+                              }
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload/output"
+                              }
+                            }
+                          ]
+                        },
+                        "then": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/status/isError"
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/payload/error"
+                              }
+                            }
+                          ]
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "set": {
+                  "/status": {
+                    "op": "object",
+                    "fields": {
+                      "isError": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/status/isError"
+                      }
+                    }
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "source": {
+                    "op": "pointer_join",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "result-path"
+                    },
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "status"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "op": "literal",
+                    "value": "result envelope retained as payload with a separate error flag; target envelope structure changes"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
             "op": "exists",
             "source": {
                 "op": "read",

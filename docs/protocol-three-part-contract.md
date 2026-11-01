@@ -168,6 +168,14 @@ Anthropic／Gemini Mapping 显式提供 system-instruction-hoist／140。system 
 
 本阶段实现稳定分区、普通容器合并和受限角色更新；相邻分组、一般容器展开、文本合并、引用偏移及复杂 SSE 布局仍未闭合。
 
+## 工具结果包络（dev.122）
+
+工具结果沿用 payload 与 status，不增加供应商专属核心类型。status.payloadForm=result_envelope 表示 payload 是带独立 error／output 成员及其余数据的结果包络；isError 与 error 成员是否存在一致，显式 null 仍为存在。普通 payload 中恰有同名键不自动获得包络语义；必须由来源 Mapping 声明。未知状态成员或不一致标志拒绝。
+
+Gemini Mapping 将单独 error／output 解包到普通 payload；两者并存或带额外成员时保留完整对象及包络标志。编码按标志直接重建对象，不挑选一个成员，也不猜测字符串里的 JSON。functionResponse 的未知成员仍属于带来源扩展，重建时与已映射字段独占合并，不能覆盖 id、name 或 response。
+
+其他三个默认目标的 tool-results／150 明确将包络保留为序列化 payload，并延续已有错误标志／文本标记处置，诊断结构损失；严格模式拒绝，禁用规则后编码器拒绝未解决表示。Gemini 目标不需要该降级，原生和删除 Native 后重建保留 error、output、其余成员及 null。整个处置由 Mapping 表达，未新增 Go 供应商分派。
+
 ## 认证续传（dev.109）
 
 Responses 的 include 原表示由 `ClientOutput.RawResponsesInclude` 持有；`RequireContinuationState` 表示产生受保护状态时客户端必须获得可继续使用的表示。目标规则只写 `ResponsesIncludeResolved`，不能改写来源原值或撤销续传要求。Agent 可声明原值和要求，本地收集器直接保留资源进入后续轮次。

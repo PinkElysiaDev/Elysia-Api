@@ -1602,7 +1602,7 @@
                             "status": {
                               "op": "if",
                               "when": {
-                                "op": "all",
+                                "op": "any",
                                 "items": [
                                   {
                                     "op": "exists",
@@ -1613,25 +1613,12 @@
                                     }
                                   },
                                   {
-                                    "op": "equal",
-                                    "items": [
-                                      {
-                                        "op": "project",
-                                        "source": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/functionResponse/response"
-                            },
-                                        "keys": [
-                                          "error"
-                                        ],
-                                        "policy": "exclude"
-                                      },
-                                      {
-                                "op": "literal",
-                                "value": {}
-                              }
-                                    ]
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/functionResponse/response/output"
+                                    }
                                   }
                                 ]
                               },
@@ -1639,59 +1626,97 @@
                                 "op": "object",
                                 "fields": {
                                   "isError": {
-                          "op": "literal",
-                          "value": true
-                        }
-                                }
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "all",
-                                  "items": [
-                                    {
-                                      "op": "exists",
+                                    "op": "exists",
+                                    "source": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/functionResponse/response/error"
+                                    }
+                                  },
+                                  "payloadForm": {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "not",
                                       "source": {
-                                        "op": "read",
-                                        "from": "item",
-                                        "path": "/functionResponse/response/output"
+                                        "op": "any",
+                                        "items": [
+                                          {
+                                            "op": "all",
+                                            "items": [
+                                              {
+                                                "op": "exists",
+                                                "source": {
+                                                  "op": "read",
+                                                  "from": "item",
+                                                  "path": "/functionResponse/response/error"
+                                                }
+                                              },
+                                              {
+                                                "op": "equal",
+                                                "items": [
+                                                  {
+                                                    "op": "project",
+                                                    "source": {
+                                                      "op": "read",
+                                                      "from": "item",
+                                                      "path": "/functionResponse/response"
+                                                    },
+                                                    "keys": [
+                                                      "error"
+                                                    ],
+                                                    "policy": "exclude"
+                                                  },
+                                                  {
+                                                    "op": "literal",
+                                                    "value": {}
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "op": "all",
+                                            "items": [
+                                              {
+                                                "op": "exists",
+                                                "source": {
+                                                  "op": "read",
+                                                  "from": "item",
+                                                  "path": "/functionResponse/response/output"
+                                                }
+                                              },
+                                              {
+                                                "op": "equal",
+                                                "items": [
+                                                  {
+                                                    "op": "project",
+                                                    "source": {
+                                                      "op": "read",
+                                                      "from": "item",
+                                                      "path": "/functionResponse/response"
+                                                    },
+                                                    "keys": [
+                                                      "output"
+                                                    ],
+                                                    "policy": "exclude"
+                                                  },
+                                                  {
+                                                    "op": "literal",
+                                                    "value": {}
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
                                       }
                                     },
-                                    {
-                                      "op": "equal",
-                                      "items": [
-                                        {
-                                          "op": "project",
-                                          "source": {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/functionResponse/response"
-                            },
-                                          "keys": [
-                                            "output"
-                                          ],
-                                          "policy": "exclude"
-                                        },
-                                        {
-                                "op": "literal",
-                                "value": {}
-                              }
-                                      ]
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "result_envelope"
                                     }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "object",
-                                  "fields": {
-                                    "isError": {
-                            "op": "literal",
-                            "value": false
-                          }
                                   }
-                                },
-                                "otherwise": {
-                                                  "op": "omit"
-                                                }
+                                }
                               }
                             }
                           }
@@ -14280,9 +14305,38 @@
             }
           },
           "then": {
-            "op": "read",
-            "from": "item",
-            "path": "/attributes/wire:gemini"
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/kind"
+                },
+                {
+                  "op": "literal",
+                  "value": "tool_result"
+                }
+              ]
+            },
+            "then": {
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/attributes/wire:gemini"
+              },
+              "keys": [
+                "functionResponse"
+              ],
+              "policy": "exclude"
+            },
+            "otherwise": {
+              "op": "read",
+              "from": "item",
+              "path": "/attributes/wire:gemini"
+            }
           },
           "otherwise": {
             "op": "object",
@@ -14363,105 +14417,153 @@
                 "op": "object",
                 "fields": {
                   "functionResponse": {
-                    "op": "object",
-                    "fields": {
-                      "name": {
-                    "op": "read",
-                    "from": "item",
-                    "path": "/name"
-                  },
-                      "id": {
-                      "op": "read",
-                      "from": "item",
-                      "path": "/callId"
-                    },
-                      "response": {
-                        "op": "if",
-                        "when": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "item",
-                              "path": "/status/isError"
+                    "op": "merge",
+                    "items": [
+                      {
+                        "op": "object",
+                        "fields": {
+                          "name": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/name"
+                          },
+                          "id": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/callId"
+                          },
+                          "response": {
+                            "op": "if",
+                            "when": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/status/payloadForm"
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": "result_envelope"
+                                }
+                              ]
                             },
-                            {
-                          "op": "literal",
-                          "value": true
-                        }
-                          ]
-                        },
-                        "then": {
-                          "op": "object",
-                          "fields": {
-                            "error": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/payload"
-                }
-                          }
-                        },
-                        "otherwise": {
-                          "op": "if",
-                          "when": {
-                            "op": "any",
-                            "items": [
-                              {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "item",
-                                  "path": "/payload/error"
-                                }
-                              },
-                              {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "item",
-                                  "path": "/payload/output"
-                                }
-                              },
-                              {
-                                "op": "not",
-                                "source": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                            "op": "type",
-                            "source": {
+                            "then": {
                               "op": "read",
                               "from": "item",
                               "path": "/payload"
-                            }
-                          },
+                            },
+                            "otherwise": {
+                              "op": "if",
+                              "when": {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/status/isError"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": true
+                                  }
+                                ]
+                              },
+                              "then": {
+                                "op": "object",
+                                "fields": {
+                                  "error": {
+                                    "op": "read",
+                                    "from": "item",
+                                    "path": "/payload"
+                                  }
+                                }
+                              },
+                              "otherwise": {
+                                "op": "if",
+                                "when": {
+                                  "op": "any",
+                                  "items": [
                                     {
-                          "op": "literal",
-                          "value": "object"
-                        }
+                                      "op": "exists",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/payload/error"
+                                      }
+                                    },
+                                    {
+                                      "op": "exists",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/payload/output"
+                                      }
+                                    },
+                                    {
+                                      "op": "not",
+                                      "source": {
+                                        "op": "equal",
+                                        "items": [
+                                          {
+                                            "op": "type",
+                                            "source": {
+                                              "op": "read",
+                                              "from": "item",
+                                              "path": "/payload"
+                                            }
+                                          },
+                                          {
+                                            "op": "literal",
+                                            "value": "object"
+                                          }
+                                        ]
+                                      }
+                                    }
                                   ]
+                                },
+                                "then": {
+                                  "op": "object",
+                                  "fields": {
+                                    "output": {
+                                      "op": "read",
+                                      "from": "item",
+                                      "path": "/payload"
+                                    }
+                                  }
+                                },
+                                "otherwise": {
+                                  "op": "read",
+                                  "from": "item",
+                                  "path": "/payload"
                                 }
                               }
-                            ]
-                          },
-                          "then": {
-                            "op": "object",
-                            "fields": {
-                              "output": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/payload"
-                }
                             }
-                          },
-                          "otherwise": {
-                  "op": "read",
-                  "from": "item",
-                  "path": "/payload"
-                }
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/attributes/wire:gemini/functionResponse"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/attributes/wire:gemini/functionResponse"
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": {}
                         }
                       }
-                    }
+                    ],
+                    "policy": "reject"
                   }
                 }
               }
@@ -17644,27 +17746,154 @@
               }
             },
             "then": {
-              "op": "not",
-              "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "project",
-                    "source": {
+              "op": "if",
+              "when": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
                       "op": "read",
                       "from": "item",
-                      "path": "/status"
+                      "path": "/status/payloadForm"
                     },
-                    "keys": [
-                      "isError"
-                    ],
-                    "policy": "exclude"
+                    {
+                      "op": "literal",
+                      "value": "result_envelope"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "project",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/status"
+                        },
+                        "keys": [
+                          "isError",
+                          "payloadForm"
+                        ],
+                        "policy": "exclude"
+                      },
+                      {
+                        "op": "literal",
+                        "value": {}
+                      }
+                    ]
                   },
-                  {
-                                "op": "literal",
-                                "value": {}
-                              }
-                ]
+                  "then": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "type",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/payload"
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": "object"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "if",
+                      "when": {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/payload/error"
+                            }
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/payload/output"
+                            }
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/status/isError"
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/payload/error"
+                            }
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": false
+                    }
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "otherwise": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "then": {
+                "op": "literal",
+                "value": false
+              },
+              "otherwise": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/status"
+                      },
+                      "keys": [
+                        "isError"
+                      ],
+                      "policy": "exclude"
+                    },
+                    {
+                      "op": "literal",
+                      "value": {}
+                    }
+                  ]
+                }
               }
             },
             "otherwise": {
@@ -25990,6 +26219,314 @@
         "model": "m"
       },
       "sequence": true
+    },
+    {
+      "id": "mixed-result-envelope-decode",
+      "direction": "decode_request",
+      "capabilities": [],
+      "input": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "functionCall": {
+                  "id": "call",
+                  "name": "lookup",
+                  "args": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "id": "call",
+                  "name": "lookup",
+                  "response": {
+                    "error": {
+                      "message": "partial"
+                    },
+                    "output": {
+                      "value": 1
+                    },
+                    "trace": null
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "functionDeclarations": [
+              {
+                "name": "lookup",
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "tool_result",
+                "name": "lookup",
+                "callId": "call",
+                "payload": {
+                  "error": {
+                    "message": "partial"
+                  },
+                  "output": {
+                    "value": 1
+                  },
+                  "trace": null
+                },
+                "status": {
+                  "isError": true,
+                  "payloadForm": "result_envelope"
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            },
+            "options": {
+              "strictDefault": "disabled"
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "gemini",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
+    },
+    {
+      "id": "mixed-result-envelope-encode",
+      "direction": "encode_request",
+      "capabilities": [],
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "tool_result",
+                "name": "lookup",
+                "callId": "call",
+                "payload": {
+                  "error": {
+                    "message": "partial"
+                  },
+                  "output": {
+                    "value": 1
+                  },
+                  "trace": null
+                },
+                "status": {
+                  "isError": true,
+                  "payloadForm": "result_envelope"
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            },
+            "options": {
+              "strictDefault": "disabled"
+            }
+          }
+        ],
+        "parameters": {
+          "max_output_tokens": 10
+        },
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "gemini",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "expected": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "model",
+            "parts": [
+              {
+                "functionCall": {
+                  "id": "call",
+                  "name": "lookup",
+                  "args": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "id": "call",
+                  "name": "lookup",
+                  "response": {
+                    "error": {
+                      "message": "partial"
+                    },
+                    "output": {
+                      "value": 1
+                    },
+                    "trace": null
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "functionDeclarations": [
+              {
+                "name": "lookup",
+                "parameters": {
+                  "type": "object"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "maxOutputTokens": 10
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      }
     }
   ],
   "agent": {
@@ -39263,27 +39800,154 @@
               }
           },
                   "then": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "project",
-                          "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/status"
-              },
-                          "keys": [
-                            "isError"
-                          ],
-                          "policy": "exclude"
+                    "op": "if",
+                    "when": {
+                      "op": "if",
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/status/payloadForm"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "result_envelope"
+                          }
+                        ]
+                      },
+                      "then": {
+                        "op": "if",
+                        "when": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "project",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/status"
+                              },
+                              "keys": [
+                                "isError",
+                                "payloadForm"
+                              ],
+                              "policy": "exclude"
+                            },
+                            {
+                              "op": "literal",
+                              "value": {}
+                            }
+                          ]
                         },
-                        {
+                        "then": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "type",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/payload"
+                                }
+                              },
+                              {
                                 "op": "literal",
-                                "value": {}
+                                "value": "object"
                               }
-                      ]
+                            ]
+                          },
+                          "then": {
+                            "op": "if",
+                            "when": {
+                              "op": "any",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/payload/error"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/payload/output"
+                                  }
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/status/isError"
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/payload/error"
+                                  }
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": false
+                            }
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": false
+                          }
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      },
+                      "otherwise": {
+                        "op": "literal",
+                        "value": false
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": false
+                    },
+                    "otherwise": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/status"
+                            },
+                            "keys": [
+                              "isError"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
                     }
                   },
                   "otherwise": {

@@ -206,3 +206,22 @@ aggregate.layout 退出 /cache/0、ttl、breakpoint 和 request 的 Go 特例。
 | 前端 | 本地 tsc 和修改编辑器 ESLint 通过 |
 
 最终整包 token：Anthropic 95,013、Gemini 76,038、Chat 99,315、Responses 99,824，限额保持。草稿的 Native effect 权限、测试对不存在叶子 Source 的假设，以及仅靠前缀检查仍会隐式合并根的问题已修正。全部中间失败与最终检查保留在忽略目录。一般相邻历史分组、多段 reasoning／多根输出、Gemini 混合结果、UTF-16 引用、复杂流和入口所有权仍待闭合；未归档版本 B、未测正式性能、未切换生产默认或删除旧链。
+
+## 批次 3A：Gemini 混合工具结果包络（dev.122）
+
+修复来源 response 同时存在 error／output 或其他成员时丢失错误状态的问题。使用现有 payload 和 status.payloadForm=result_envelope 表达完整包络；显式 null 保留，普通对象内同名键不会自动升级为语义标志。Gemini 配置按声明重建完整对象，其他三个目标通过 tool-results／150 保留序列化数据和错误标志，报告结构损失；严格拒绝，禁用后不隐式处置。未增加供应商 Go 分派、核心字段或 DSL 原语。
+
+functionResponse 扩展成员由独占字段合并保留，不能替换或向 response 语义 owner 追加成员。测试覆盖删除 Native 并修改调用 ID 后重建、状态矛盾、未知状态、扩展冲突，以及来源输入隔离。Gemini 默认包增加独立编写的混合包络解码／编码样例，进入正式激活验证。既有真实工具历史测试增加 Gemini→Anthropic JSON／SSE，直接检查出站完整包络、错误标志、工具关联、完整响应、usage 和恰好一次上游调用。
+
+Responses 提取五组真实重复表达式：可见文本段、output_text metadata 选择、开放目标结束、默认模式禁用判断及非空数组。保留命名程序与原词法作用域，不新增展开树或提高预算。四包 token 为 Anthropic 95,267、Gemini 77,108、Chat 99,569、Responses 99,841。
+
+| 检查 | 结果 |
+|---|---|
+| closure-mixed-results-all | protocol 全量 6.995 秒、builtin 全量 43.285 秒，通过 |
+| closure-mixed-results-race | 包络、工具结果和真实 32 场景网关 race：builtin 24.111 秒、server 235.078 秒，通过 |
+| closure-mixed-results-final | 最终独占合并、正式样例和真实工具历史通过：builtin 4.236 秒、server 11.605 秒 |
+| closure-mixed-results-final-race | 最终正式样例、包络边界及真实工具历史通过：builtin 49.307 秒、server 130.049 秒，无 race 报告 |
+| closure-mixed-results-vet | protocol 全树和 server 通过 |
+| closure-mixed-results-staticcheck | v0.8.2：原 24 主诊断＋1 关联位置，去行列后多重集无新增或消失，退出 1 |
+
+前端未修改，不重复前端检查。全部原始失败及成功日志位于忽略目录。本批不宣称性能无回退；尚未形成 B，也未切换生产默认。一般布局、多段 reasoning／多根输出、复杂 SSE、全入口所有权、A/B/C 正式性能及旧链退役继续待完成。

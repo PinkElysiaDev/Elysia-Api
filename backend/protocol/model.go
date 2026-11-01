@@ -147,6 +147,8 @@ type CacheIntent struct {
 
 // Node is one ordered content item. Tool calls and results occupy their original
 // positions in Children instead of a separate, independently mutable list.
+// Tool result status separates failure from payload. payloadForm=result_envelope
+// marks a payload with independent error/output members and additional data.
 type Node struct {
 	Metadata []ResponseMetadata `json:"metadata,omitempty"`
 	Kind     NodeKind           `json:"kind"`
