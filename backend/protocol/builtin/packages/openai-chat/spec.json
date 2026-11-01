@@ -88,6 +88,18 @@
         },
         {
           "ref": "request-storage"
+        },
+        {
+          "path": "/messages",
+          "schema": {
+            "type": "array"
+          },
+          "reason": "message history requires an array",
+          "each": [
+            {
+              "ref": "message-continuations"
+            }
+          ]
         }
       ]
     },
@@ -664,6 +676,81 @@
               }
             }
           }
+        },
+        {
+          "path": "/choices",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/error"
+              }
+            }
+          },
+          "schema": {
+            "type": "array"
+          },
+          "reason": "carrier choices require an array",
+          "each": [
+            {
+              "path": "/message/elysia_continuation",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/message/elysia_continuation"
+                }
+              },
+              "schema": {
+                "type": "array"
+              },
+              "reason": "invalid gateway carrier token array",
+              "each": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "check": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        "value": "elysia-continuation.v1."
+                      }
+                    ]
+                  },
+                  "reason": "invalid gateway carrier token"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -5244,6 +5331,78 @@
           },
           "code": "upstream_contract_violation",
           "reason": "usage count overflow"
+        },
+        {
+          "path": "/choices",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/choices"
+            }
+          },
+          "schema": {
+            "type": "array"
+          },
+          "reason": "carrier choices require an array",
+          "each": [
+            {
+              "path": "/delta/elysia_continuation",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/delta/elysia_continuation"
+                }
+              },
+              "schema": {
+                "type": "array"
+              },
+              "reason": "invalid gateway carrier token array",
+              "each": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "check": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "has_prefix",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        "value": "elysia-continuation.v1."
+                      }
+                    ]
+                  },
+                  "reason": "invalid gateway carrier token"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -5860,6 +6019,107 @@
           "nullable": true
         },
         "reason": "store must be a boolean or null"
+      }
+    ],
+    "message-continuations": [
+      {
+        "path": "/elysia_continuation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": "invalid gateway continuation carrier",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/elysia_continuation"
+          }
+        },
+        "check": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/0"
+          }
+        }
+      },
+      {
+        "path": "/elysia_continuation",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/elysia_continuation"
+          }
+        },
+        "schema": {
+          "type": "array"
+        },
+        "reason": "invalid gateway continuation token",
+        "each": [
+          {
+            "path": "",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "invalid gateway continuation token",
+            "check": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "string"
+                    }
+                  ]
+                },
+                {
+                  "op": "has_prefix",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  "value": "elysia-continuation.v1."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "path": "/role",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/elysia_continuation"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "enum": [
+            "assistant"
+          ]
+        },
+        "reason": "gateway continuation field requires assistant history"
       }
     ]
   }

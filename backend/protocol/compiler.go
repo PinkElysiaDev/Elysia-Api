@@ -32,6 +32,8 @@ type EvaluationContext struct {
 	wireLimits         Limits
 	valueReader        *valueReader
 	inputView          *inputView
+	continuationInput  *continuationInput
+	continuation       *ContinuationBinding
 	requestReplay      *requestReplay
 	outputStream       *WireStreamValidation
 	operation          *operationMetadata

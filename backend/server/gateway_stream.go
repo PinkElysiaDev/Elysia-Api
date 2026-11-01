@@ -56,11 +56,16 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	route := candidate.conversionContext(plan.ingress, true).WithOperation(operationOptions)
 	route.Delivery = protocol.NewDeliveryState()
 	eventState := protocol.NewConversionEventState(candidate.conversion, route)
-	carriers := &builtin.ContinuationStream{Family: plan.ingress.Identity().Family}
+	var carriers *builtin.ContinuationStream
 	var collector *protocol.ResponseCollector
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
 		collector, _ = protocol.NewResponseCollector(candidate.sourceEventTarget(), limits)
+		if candidate.continuation.isPackage {
+			options = options.WithContinuation(candidate.continuation.binding)
+		} else {
+			carriers = &builtin.ContinuationStream{Family: plan.ingress.Identity().Family}
+		}
 	}
 	if options.ClientOutput == nil {
 		options.ClientOutput = &protocol.ClientOutput{}
@@ -110,8 +115,19 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		}
 		value = converted
 	}
-	frames := []protocol.Value{value}
-	if stream.candidate.continuation != nil {
+	var single [1]protocol.Value
+	single[0] = value
+	frames := single[:]
+	continuation := stream.candidate.continuation
+	if continuation != nil && continuation.isPackage {
+		inserted, err := stream.plan.ingress.EncodeContinuationFrame(stream.ctx, value, stream.options)
+		if err != nil {
+			return err
+		}
+		if inserted != nil {
+			frames = inserted
+		}
+	} else if continuation != nil {
 		stream.carriers.Tokens = stream.candidate.continuation.tokens
 		var err error
 		frames, err = stream.carriers.Frames(value)
@@ -120,7 +136,13 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		}
 	}
 	for _, frame := range frames {
-		if err := stream.finalValidation.Consume(stream.ctx, frame); err != nil {
+		var err error
+		if continuation != nil && continuation.isPackage {
+			err = stream.finalValidation.ConsumeContinuation(stream.ctx, frame, stream.options)
+		} else {
+			err = stream.finalValidation.Consume(stream.ctx, frame)
+		}
+		if err != nil {
 			return err
 		}
 		if frame.Len() > stream.limits.BufferBytes {
@@ -137,7 +159,12 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		return err
 	}
 	if stream.plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
-		return stream.finalValidation.CommitDelivery()
+		if err := stream.finalValidation.CommitDelivery(); err != nil {
+			return err
+		}
+		if continuation != nil && continuation.isPackage {
+			return continuation.binding.CommitDelivery()
+		}
 	}
 	return nil
 }
@@ -169,6 +196,9 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 	for eventIndex, event := range decoded.Events {
 		if stream.collector != nil {
 			if _, _, captureErr := stream.collector.Consume(event); captureErr != nil {
+				if stream.candidate.continuation.isPackage {
+					return captureErr
+				}
 				if err := stream.candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {
 					return err
 				}
@@ -190,7 +220,11 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 				}
 			}
 		}
-		queued, e := stream.eventState.Push(deliveryEvents[eventIndex])
+		projected := deliveryEvents[eventIndex]
+		if stream.collector != nil && stream.candidate.continuation.isPackage {
+			projected = stream.collector.BindContinuationEvent(projected, stream.candidate.continuation.binding)
+		}
+		queued, e := stream.eventState.PushContext(stream.ctx, projected)
 		if e != nil {
 			return e
 		}
@@ -286,6 +320,9 @@ func (stream *gatewayStream) finish(err error) error {
 	}
 	if err == nil {
 		err = stream.finalValidation.Finish()
+	}
+	if err == nil && stream.candidate.continuation != nil && stream.candidate.continuation.isPackage {
+		err = stream.candidate.continuation.binding.Finish()
 	}
 	if err != nil {
 		err = errors.Join(stream.terminalFailure, err)

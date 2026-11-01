@@ -308,6 +308,19 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	yes := true
 	options.ClientOutput = &ClientOutput{IncludeUsage: &yes}
 	route = route.WithOperation(options)
+	evidence, err := newContinuationEvidence(conversion, ingress, ConversionEvent, route)
+	if err != nil {
+		return err
+	}
+	var collector *ResponseCollector
+	if evidence != nil {
+		collector, err = NewResponseCollector(upstream.Target(EncodeEvent, sample.Scope), upstream.limits)
+		if err != nil {
+			return err
+		}
+		route = route.WithContinuation(evidence.binding, route.requireContinuation)
+		options = options.WithContinuation(route.continuation)
+	}
 	projected := []Event{}
 	eventState := NewConversionEventState(conversion, route)
 	convertedFrames := []*EventFrame{}
@@ -322,8 +335,29 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		if conversion.HasAnthropicEnvelope(ConversionEvent, route) {
 			deliveryEvents = DeliveryFrameEvents(frame.Events)
 		}
-		for _, event := range deliveryEvents {
-			queued, err := eventState.Push(event)
+		for eventIndex, event := range deliveryEvents {
+			if collector != nil {
+				source := frame.Events[eventIndex]
+				if _, _, err := collector.Consume(source); err != nil {
+					return err
+				}
+				if node, _, ok := collector.CompletedNode(source); ok {
+					if err := evidence.capture(ctx, []Node{node}); err != nil {
+						return err
+					}
+				}
+				if source.Type == ResponseFinished {
+					response, err := collector.Finish()
+					if err != nil {
+						return err
+					}
+					if err := evidence.capture(ctx, response.Content); err != nil {
+						return err
+					}
+				}
+				event = collector.BindContinuationEvent(event, evidence.binding)
+			}
+			queued, err := eventState.PushContext(ctx, event)
 			if err != nil {
 				return err
 			}
@@ -427,8 +461,26 @@ func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frame
 					return err
 				}
 			}
-			if err := validation.Consume(ctx, wire); err != nil {
-				return err
+			actual := []Value{wire}
+			if options.continuation != nil {
+				carriers, err := compiled.EncodeContinuationFrame(ctx, wire, options)
+				if err != nil {
+					return err
+				}
+				if carriers != nil {
+					actual = carriers
+				}
+			}
+			for _, delivered := range actual {
+				var err error
+				if options.continuation != nil {
+					err = validation.ConsumeContinuation(ctx, delivered, options)
+				} else {
+					err = validation.Consume(ctx, delivered)
+				}
+				if err != nil {
+					return err
+				}
 			}
 			if compiled.Supports(DecodeEvent) {
 				frame, err := compiled.DecodeFrame(ctx, wire, options)
@@ -437,11 +489,14 @@ func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frame
 				}
 				decoded = append(decoded, frame.Events...)
 			}
-		}
-		if compiled.packagePlan != nil && len(batch) > 0 {
-			// Offline evidence simulates delivery only after the entire final
-			// wire batch is valid; the next encoder observes those exact values.
-			return validation.CommitDelivery()
+			if compiled.packagePlan != nil {
+				if err := validation.CommitDelivery(); err != nil {
+					return err
+				}
+				if err := options.continuation.CommitDelivery(); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}
@@ -454,7 +509,10 @@ func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frame
 	if err != nil {
 		return nil, err
 	}
-	return decoded, validation.Finish()
+	if err := validation.Finish(); err != nil {
+		return nil, err
+	}
+	return decoded, options.continuation.Finish()
 }
 
 func encodeCombinationEventFrames(ctx context.Context, compiled *Compiled, frames []*EventFrame, options EvaluationContext, consume func([]Value) error) error {
@@ -543,7 +601,12 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		if encodeErr != nil {
 			return encodeErr
 		}
-		route, err = conversion.PreviewRecovery(ConversionResponse, value, route)
+		if ingress.packagePlan != nil {
+			route, err = prepareContinuationEvidence(ctx, conversion, ingress, ConversionResponse, response.Content, route)
+			options = options.WithContinuation(route.continuation)
+		} else {
+			route, err = conversion.PreviewRecovery(ConversionResponse, value, route)
+		}
 		if err != nil {
 			return err
 		}
@@ -567,7 +630,18 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		}
 		wire = wireValue.Bytes()
 	}
-	if err := ingress.ValidateWireOutput(EncodeResponse, wireValue); err != nil {
+	if options.continuation != nil {
+		actual, err := ingress.EncodeContinuationResponse(ctx, wireValue, options)
+		if err != nil {
+			return err
+		}
+		if err := ingress.ValidateContinuationResponse(ctx, actual, options); err != nil {
+			return err
+		}
+		if err := options.continuation.CommitDelivery(); err != nil {
+			return err
+		}
+	} else if err := ingress.ValidateWireOutput(EncodeResponse, wireValue); err != nil {
 		return err
 	}
 	if !ingress.Supports(DecodeResponse) {

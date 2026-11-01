@@ -38,7 +38,7 @@ func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule
 	if rule.Action == "auxiliary_event" || rule.Action == "control_event" {
 		return phase == ConversionEvent
 	}
-	if rule.Action == "core_controls" {
+	if rule.Action == "core_controls" || rule.Action == "continuation_recovery" {
 		return phase == ConversionRequest || phase == ConversionResponse || phase == ConversionEvent
 	}
 	if phase == ConversionResponse || phase == ConversionEvent {
@@ -130,6 +130,8 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		event := state.document.(*Event)
 		shouldEncode, err = c.applyAuxiliaryEvent(event, route, rule, sink)
 		state.auxiliary, state.omittedAuxiliary = event.auxiliary, event.omittedAuxiliary
+	} else if rule.Action == "continuation_recovery" {
+		err = c.applyContinuationRecovery(ctx, state.document, route, rule, sink)
 	} else if rule.Action == "core_controls" {
 		shouldEncode, err = c.applyCoreControls(ctx, state.document, route, rule, sink)
 		if event, ok := state.document.(*Event); ok {

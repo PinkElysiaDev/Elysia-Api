@@ -19,13 +19,14 @@ type RequestBaselineModule interface {
 // after-mappings preserve it; a semantic JSON boundary drops it. It is attached
 // privately after successful decoding and is never cached globally.
 type requestEncodingWorkspace struct {
-	compiled *Compiled
-	identity Identity
-	source   Provenance
-	context  NativeRequestContext
-	limits   Limits
-	original Value
-	baseline *Request
+	compiled     *Compiled
+	identity     Identity
+	source       Provenance
+	context      NativeRequestContext
+	limits       Limits
+	original     Value
+	baseline     *Request
+	continuation *continuationInput
 }
 
 // requestReplay belongs to one synchronous encode, including its baseline
@@ -90,6 +91,17 @@ func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Nati
 	if err != nil {
 		return preparedRequestReplay{}, err
 	}
+	selection := request.continuationInput
+	if selection != nil {
+		if options.continuationInput == nil || options.continuationInput.input != selection.input || options.continuationInput.compiled != compiled {
+			return preparedRequestReplay{}, operationMetadataError("/continuation", "native carrier replay lacks the authenticated source revision")
+		}
+		original, err = selection.strip(ctx, original, "", snapshotLimits)
+		if err != nil {
+			return preparedRequestReplay{}, err
+		}
+		options.continuationInput = selection
+	}
 	options.Scope = native.Source.Scope
 	return preparedRequestReplay{compiled: &replay, original: original, baseline: request, options: options}, nil
 }
@@ -135,6 +147,7 @@ func (compiled *Compiled) attachRequestWorkspace(ctx context.Context, request, b
 		compiled: compiled,
 		identity: compiled.identity, source: native.Source, context: sourceContext,
 		limits: compiled.wireLimits(ctx, DecodeRequest), original: native.Value, baseline: baseline,
+		continuation: request.continuationInput,
 	}
 }
 

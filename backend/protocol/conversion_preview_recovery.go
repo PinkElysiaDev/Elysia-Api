@@ -10,6 +10,11 @@ import (
 // claims a production persistence write, and never attaches synthetic provider
 // signatures. Only the preview/verification entrypoints call this method.
 func (c *CompiledConversion) PreviewRecovery(phase ConversionPhase, input Value, route ConversionContext) (ConversionContext, error) {
+	// Package recovery needs a pinned carrier and actual output validation. A
+	// standalone semantic preview cannot grant that proof through a public map.
+	if c.HasContinuationRecovery(phase, route) {
+		return route, nil
+	}
 	if c == nil || c.Policy.Continuation == nil || !c.SignatureProjectionEnabled(phase, route) ||
 		(!c.Policy.Continuation.ClientCarrier && !c.Policy.Continuation.Persist) {
 		return route, nil

@@ -88,9 +88,13 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
-	operation         *operationMetadata
-	frameUsage        *frameUsageObservation
-	fieldObservations map[string]fieldObservation
+	continuation        *ContinuationBinding
+	continuationEvent   *continuationEventObservation
+	requireContinuation bool
+	operation           *operationMetadata
+	frameUsage          *frameUsageObservation
+	selectedFrameUsage  *Usage
+	fieldObservations   map[string]fieldObservation
 	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
 	ResponseWire        bool                   `json:"-"`
 	ResponseModel       *ResponseModelOrigin   `json:"responseModel,omitempty"`
@@ -107,6 +111,7 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	recovery              map[ConversionPhase][]ConversionRule
 	needsFrameUsage       bool
 	phases                map[ConversionPhase][]ConversionRule
 	ownedPhases           map[ConversionPhase]bool
@@ -249,6 +254,12 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 				return nil, err
 			}
 			c.options[r.ID] = option
+		} else if r.Action == "continuation_recovery" {
+			option, err := compileContinuationRecovery(r, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
 		} else if r.Action == "auxiliary_event" {
 			option, err := compileAuxiliaryOption(r)
 			if err != nil {
@@ -330,6 +341,12 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			continue
 		}
 		c.phases[rule.Phase] = append(c.phases[rule.Phase], rule)
+		if rule.Action == "continuation_recovery" {
+			if c.recovery == nil {
+				c.recovery = map[ConversionPhase][]ConversionRule{}
+			}
+			c.recovery[rule.Phase] = append(c.recovery[rule.Phase], rule)
+		}
 		if rule.Action == "core_controls" && rule.Phase == ConversionEvent {
 			option := c.options[rule.ID].value.(coreControlOptions)
 			c.needsFrameUsage = c.needsFrameUsage || option.FrameUsage
@@ -404,6 +421,9 @@ func (m ConversionMatch) MatchesContext(ctx ConversionContext) bool { return m.m
 func (c *CompiledConversion) SignatureProjectionEnabled(phase ConversionPhase, route ConversionContext) bool {
 	if c == nil {
 		return false
+	}
+	if c.HasContinuationRecovery(phase, route) {
+		return true
 	}
 	for _, r := range c.Policy.Rules {
 		match := r.Match

@@ -7,6 +7,7 @@ import (
 
 // ProtocolConversionDefault declares one complete overridable target rule.
 type ProtocolConversionDefault struct {
+	Recovery   *ProtocolRecoveryDisposition  `json:"recovery,omitempty"`
 	ID         string                        `json:"id"`
 	Order      int                           `json:"order"`
 	Enabled    bool                          `json:"enabled"`
@@ -60,6 +61,14 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 			return fmt.Errorf("%s/order: ambiguous rule order", path)
 		}
 		orders[order] = declaration.Enabled || orders[order]
+		if declaration.Recovery != nil {
+			rule, err := compiled.compileRecoveryDefault(declaration, compiler)
+			if err != nil {
+				return locateMappingError(path, err)
+			}
+			compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
+			continue
+		}
 		if declaration.FrameUsage && declaration.Phase != ConversionEvent {
 			return fmt.Errorf("%s/frameUsage: requires event controls", path)
 		}

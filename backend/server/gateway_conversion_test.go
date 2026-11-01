@@ -249,6 +249,18 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 }
 
 func TestGatewayStrictLateGeminiSignature(t *testing.T) {
+	testGatewayStrictLateGeminiSignature(t, false, false)
+}
+
+func TestPackageGatewayStrictLateGeminiSignature(t *testing.T) {
+	for _, editDelta := range []bool{false, true} {
+		t.Run(fmt.Sprintf("edited=%v", editDelta), func(t *testing.T) {
+			testGatewayStrictLateGeminiSignature(t, true, editDelta)
+		})
+	}
+}
+
+func testGatewayStrictLateGeminiSignature(t *testing.T, isPackage, editDelta bool) {
 	t.Parallel()
 	s, cfgPath := newProtocolAdminTestServer(t)
 	s.store.Close()
@@ -260,13 +272,26 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	t.Cleanup(func() {
 		s.store.Close()
 	})
-	activateDiscoveryPresets(t, s)
+	var upstream *protocol.Compiled
+	if isPackage {
+		upstream = seedGatewayPackages(t, s)["google-generate-content"]
+	} else {
+		activateDiscoveryPresets(t, s)
+	}
 	service, _ := s.protocolService()
-	upstream, _ := service.Pin(protocol.PresetGeminiID)
+	if !isPackage {
+		upstream, _ = service.Pin(protocol.PresetGeminiID)
+	}
+	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
 		w.Header().Set("Content-Type", "text/event-stream")
+		first := "hel"
+		if editDelta {
+			first = "proof-input-prefix"
+		}
 		for _, frame := range []string{
-			`{"candidates":[{"content":{"role":"model","parts":[{"text":"hel"}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":0}}`,
+			`{"candidates":[{"content":{"role":"model","parts":[{"text":"` + first + `"}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":0}}`,
 			`{"candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]}}]}`,
 			`{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"late-signature"}]}}]}`,
 			`{"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":2}}`,
@@ -278,6 +303,18 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	setupGatewayModel(t, s, upstream, provider.URL)
 	bindings, _ := s.store.ListProtocolBindings(t.Context())
 	bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "strict", Name: "strict", Mode: "strict", Rules: []protocol.ConversionRule{}}}
+	if editDelta {
+		// Strict mode rejects the edit itself; compatible mode reaches the later
+		// signature boundary and must still reject an invalid recovery proof.
+		bindings[0].Conversion.Overrides.Mode = "compatible"
+		present := true
+		var expression protocol.Expression
+		if err := mustProtocolValue(t, `{"op":"if","when":{"op":"equal","items":[{"op":"read","from":"input","path":"/delta"},{"op":"literal","value":"proof-input-prefix"}]},"then":{"op":"merge","policy":"last","items":[{"op":"read","from":"input","path":""},{"op":"object","fields":{"delta":{"op":"literal","value":"modified"}}}]},"otherwise":{"op":"read","from":"input","path":""}}`).Decode(&expression); err != nil {
+			t.Fatal(err)
+		}
+		bindings[0].Conversion.Overrides.Rules = []protocol.ConversionRule{{ID: "edit-visible-delta", Order: 1, Enabled: true, Phase: protocol.ConversionEvent,
+			Match: protocol.ConversionMatch{Path: "/delta", Present: &present}, Action: "transform", Expression: &expression}}
+	}
 	verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +327,15 @@ func TestGatewayStrictLateGeminiSignature(t *testing.T) {
 	r.Header.Set("x-elysia-session-id", "strict-session")
 	rec := httptest.NewRecorder()
 	serveTestHTTP(s.engine, rec, r)
+	if calls != 1 {
+		t.Fatal("continuation handling changed generation count", calls, rec.Code, rec.Body.String())
+	}
+	if editDelta {
+		if rec.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" || !strings.Contains(rec.Body.String(), "/continuation") || strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) {
+			t.Fatal("modified text retained the source continuation proof", rec.Code, rec.Body.String())
+		}
+		return
+	}
 	if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || !strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) || !strings.Contains(rec.Body.String(), `"type":"message_stop"`) {
 		t.Fatal(rec.Code, rec.Body)
 	}

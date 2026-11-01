@@ -70,6 +70,10 @@ func (compiled *Compiled) HasAgentPolicy() bool { return compiled.agentMapping !
 
 func compileAgentOutputSetter(name string) (func(*ClientOutput, JSONOutput, *valueReader) error, JSONType, error) {
 	switch name {
+	case "requireContinuationState":
+		return func(output *ClientOutput, value JSONOutput, reader *valueReader) error {
+			return writeCoreBool(value, &output.RequireContinuationState, reader)
+		}, BooleanType, nil
 	case "includeUsage":
 		return func(output *ClientOutput, value JSONOutput, reader *valueReader) error {
 			return writeCoreBoolPointer(value, &output.IncludeUsage, reader)

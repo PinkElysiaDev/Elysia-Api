@@ -632,6 +632,73 @@
             "op": "ref",
             "ref": "request-tool-links"
           }
+        },
+        {
+          "path": "/messages",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "code": "invalid_input",
+          "reason": "continuation carriers require a message history",
+          "each": [
+            {
+              "path": "/content",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/role"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "assistant"
+                      }
+                    ]
+                  },
+                  {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "type",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/content"
+                        }
+                      },
+                      {
+                        "op": "literal",
+                        "value": "array"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "allowUnknown": true
+                }
+              },
+              "code": "invalid_input",
+              "reason": "continuation carriers require content blocks",
+              "each": [
+                {
+                  "ref": "continuation-wrapper"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -2415,6 +2482,37 @@
               }
             ]
           }
+        },
+        {
+          "path": "/content",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "code": "conversion_rejected",
+          "reason": "continuation carriers require content blocks",
+          "each": [
+            {
+              "ref": "continuation-wrapper"
+            }
+          ]
         }
       ]
     },
@@ -4598,6 +4696,43 @@
               ]
             }
           }
+        },
+        {
+          "path": "",
+          "when": {
+            "op": "ref",
+            "ref": "is-continuation-start"
+          },
+          "schema": {
+            "type": "object",
+            "required": [
+              "type",
+              "index",
+              "content_block"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "content_block_start"
+                ]
+              },
+              "index": {
+                "type": "integer"
+              },
+              "content_block": {
+                "type": "object",
+                "allowUnknown": true
+              }
+            },
+            "allowUnknown": false
+          },
+          "code": "conversion_rejected",
+          "reason": "continuation start cannot mix other event fields"
+        },
+        {
+          "ref": "continuation-wrapper",
+          "path": "/content_block"
         }
       ],
       "stream": {
@@ -5021,6 +5156,39 @@
               "when": {
                 "op": "ref",
                 "ref": "has-initial-tool-input"
+              }
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "thinking_block",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/content_block/thinking"
+              },
+              "sealPayload": true,
+              "when": {
+                "op": "ref",
+                "ref": "is-continuation-start"
+              }
+            },
+            {
+              "action": "entity_snapshot",
+              "entity": "thinking_signature",
+              "key": {
+                "path": "/index"
+              },
+              "payload": {
+                "path": "/content_block/signature"
+              },
+              "sealPayload": true,
+              "when": {
+                "op": "ref",
+                "ref": "is-continuation-start"
+              },
+              "parent": {
+                "path": "/index"
               }
             }
           ],
@@ -7027,6 +7195,130 @@
           }
         }
       ]
+    },
+    "has-continuation-signature": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/signature"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "string"
+          }
+        ]
+      },
+      "then": {
+        "op": "has_prefix",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/signature"
+        },
+        "value": "elysia-continuation.v1."
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "is-continuation-start": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "content_block_start"
+            }
+          ]
+        },
+        {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content_block/signature"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "string"
+              }
+            ]
+          },
+          "then": {
+            "op": "has_prefix",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/content_block/signature"
+            },
+            "value": "elysia-continuation.v1."
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      ]
     }
+  },
+  "constraints": {
+    "continuation-wrapper": [
+      {
+        "path": "",
+        "when": {
+          "op": "ref",
+          "ref": "has-continuation-signature"
+        },
+        "schema": {
+          "type": "object",
+          "required": [
+            "type",
+            "thinking",
+            "signature"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "thinking"
+              ]
+            },
+            "thinking": {
+              "type": "string",
+              "enum": [
+                ""
+              ]
+            },
+            "signature": {
+              "type": "string"
+            }
+          },
+          "allowUnknown": false
+        },
+        "code": "invalid_input",
+        "reason": "continuation carrier requires an empty thinking wrapper without other fields"
+      }
+    ]
   }
 }

@@ -263,6 +263,18 @@ func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expression
 }
 
 func compileControlSetter(path string) (func(*Request, JSONOutput, *valueReader) error, JSONType, error) {
+	if path == "/clientOutput/responsesIncludeResolved" {
+		return func(request *Request, output JSONOutput, _ *valueReader) error {
+			if request.ClientOutput == nil {
+				return &declaredRejectionError{diagnostic: RejectDiagnostic{Code: InvalidInput, Path: "/clientOutput"}, reason: "include disposition requires an existing source intent"}
+			}
+			value, err := readPlannedBoolean(output)
+			if err == nil {
+				request.ClientOutput.ResponsesIncludeResolved = value
+			}
+			return err
+		}, BooleanType, nil
+	}
 	if path == "/clientOutput/responsesStorage/effective" || path == "/clientOutput/responsesStorage/effectiveUnknown" {
 		return compileStorageControlSetter(path), BooleanType, nil
 	}

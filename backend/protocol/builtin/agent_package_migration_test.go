@@ -75,6 +75,7 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 						t.Fatal("historical Agent fixture must explicitly disable storage", stored)
 					}
 					delete(want, "store")
+					delete(want, "responses_include")
 					if wantErr != nil || gotErr != nil || !reflect.DeepEqual(want, got) {
 						t.Fatal(want, got, wantErr, gotErr)
 					}
@@ -95,6 +96,7 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 					expected := oldRequest.Clone()
 					delete(expected.Parameters, "store")
 					expected.ClientOutput.ResponsesStorage = &p.ResponsesStorageIntent{}
+					migrateFixtureInclude(t, expected)
 					declaredOutput, err := p.EncodeValue(newRequest.ClientOutput)
 					if err != nil || !equalAgentMigrationValues(t, declaredOutput, sample.ExpectedClientOutput) {
 						t.Fatal("Agent did not produce its complete declared client intent", newRequest.ClientOutput, err)
@@ -124,6 +126,7 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 						t.Fatal("Agent wire cannot be decoded", wantErr, gotErr)
 					}
 					migrateFixtureStorage(t, oldDecoded, legacy.Codec(p.DecodeRequest))
+					migrateFixtureInclude(t, oldDecoded)
 					if !equalAgentMigrationValues(t, oldDecoded.ClientOutput, newDecoded.ClientOutput) {
 						t.Fatal("Agent wire changed client storage intent", oldDecoded.ClientOutput, newDecoded.ClientOutput)
 					}

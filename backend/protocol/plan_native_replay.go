@@ -8,8 +8,9 @@ import (
 )
 
 type nativeEvaluation struct {
-	target Target
-	limits Limits
+	target       Target
+	limits       Limits
+	continuation *continuationInput
 }
 
 type nativeLocationPattern struct {
@@ -21,8 +22,9 @@ func (compiled *Compiled) newNativeEvaluation(ctx context.Context, direction Dir
 		return nil
 	}
 	return &nativeEvaluation{
-		target: Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope},
-		limits: compiled.nativeLimits(ctx, direction),
+		target:       Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope},
+		limits:       compiled.nativeLimits(ctx, direction),
+		continuation: options.continuationInput,
 	}
 }
 
@@ -51,6 +53,20 @@ func (plan *compiledOutputPlan) buildNativeTarget(state evaluation) (plannedOutp
 	// Authorize the snapshot observed by the mapping. Typed core reads retain
 	// their existing JSON normalization; replay never bypasses that boundary.
 	value, err := ReplayNative(*native, state.native.target, nil, state.native.limits)
+	if err == nil && state.native.continuation != nil && state.native.continuation.containsRemoval(native.Source.Path) {
+		selection := state.native.continuation
+		if selection.removals[native.Source.Path] {
+			return plannedOutput{}, operationMetadataError("/continuation", "consumed carrier cannot be replayed as provider content")
+		}
+		if native.Source.Protocol != selection.compiled.identity {
+			return plannedOutput{}, operationMetadataError("/continuation", "native carrier source revision changed")
+		}
+		original, readErr := readValuePointer(selection.input, mustContinuationPointer(native.Source.Path))
+		if readErr != nil || !equalValues(original, native.Value) {
+			return plannedOutput{}, operationMetadataError("/continuation", "native carrier fragment no longer matches its source")
+		}
+		value, err = selection.strip(state.ctx, value, native.Source.Path, state.native.limits)
+	}
 	return plannedLeaf(value), err
 }
 

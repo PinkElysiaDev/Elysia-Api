@@ -46,15 +46,22 @@ func TestCollectorObservationBoundaries(t *testing.T) {
 }
 
 func TestCollectorDeferredTerminalMismatch(t *testing.T) {
-	c, _ := NewResponseCollector(replayTarget(), DefaultLimits())
-	for _, e := range []Event{messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode}), {SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue("real")}, messageEvent(ItemFinished, "t", "", nil)} {
-		if _, _, err := c.Consume(e); err != nil {
-			t.Fatal(err)
+	target := replayTarget()
+	target.Scope = Scope{Provider: "fixture", Account: "account"}
+	for _, terminal := range []Node{
+		{Kind: TextNode, Payload: StringValue("wrong")},
+		{Kind: TextNode, Payload: StringValue("real"), Resources: []Resource{{Kind: "signature", ID: StringValue("terminal-only"), Scope: target.Scope}}},
+	} {
+		c, _ := NewResponseCollector(target, DefaultLimits())
+		for _, e := range []Event{messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode}), {SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue("real")}, messageEvent(ItemFinished, "t", "", nil)} {
+			if _, _, err := c.Consume(e); err != nil {
+				t.Fatal(err)
+			}
 		}
-	}
-	_, _, err := c.Consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue("wrong")}}}})
-	if err == nil || !strings.Contains(err.Error(), "terminal content") {
-		t.Fatal("terminal comparison missed deferred text", err)
+		_, _, err := c.Consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{terminal}}})
+		if err == nil || !strings.Contains(err.Error(), "terminal content") {
+			t.Fatal("terminal comparison missed changed text or resource", err)
+		}
 	}
 }
 

@@ -15,14 +15,30 @@ import (
 )
 
 func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
+	testGatewayGeminiIncludeAndReasoningProjection(t, false)
+}
+
+func TestPackageGatewayGeminiContinuationDelivery(t *testing.T) {
+	testGatewayGeminiIncludeAndReasoningProjection(t, true)
+}
+
+func testGatewayGeminiIncludeAndReasoningProjection(t *testing.T, isPackage bool) {
 	t.Parallel()
 	for _, client := range []string{"responses", "messages", "chat"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%v", client, stream), func(t *testing.T) {
 				s, _ := newProtocolAdminTestServer(t)
-				activateDiscoveryPresets(t, s)
-				service, _ := s.protocolService()
-				upstream, _ := service.Pin(protocol.PresetGeminiID)
+				var upstream, ingress *protocol.Compiled
+				if isPackage {
+					packages := seedGatewayPackages(t, s)
+					upstream = packages["google-generate-content"]
+					name := map[string]string{"responses": "openai-responses", "messages": "anthropic", "chat": "openai-chat"}[client]
+					ingress = packages[name]
+				} else {
+					activateDiscoveryPresets(t, s)
+					service, _ := s.protocolService()
+					upstream, _ = service.Pin(protocol.PresetGeminiID)
+				}
 				clientKind := client
 				calls := 0
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +67,9 @@ func TestGatewayGeminiIncludeAndReasoningProjection(t *testing.T) {
 				if clientKind == "chat" {
 					path = "/gateway/openai-chat-completions/chat/completions"
 					body = fmt.Sprintf(`{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v,"stream_options":{"include_usage":true}}`, stream)
+				}
+				if isPackage {
+					path = "/gateway/" + ingress.Identity().DefinitionID + ingress.Operations()["generate"].Path
 				}
 				req := httptest.NewRequest("POST", path, strings.NewReader(body))
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
@@ -133,6 +152,14 @@ func TestGatewayInvalidIncludeDoesNotCallUpstream(t *testing.T) {
 }
 
 func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
+	testGatewayIncludeCarrierDeliveryModes(t, false)
+}
+
+func TestPackageGatewayIncludeRequiresClientCarrier(t *testing.T) {
+	testGatewayIncludeCarrierDeliveryModes(t, true)
+}
+
+func testGatewayIncludeCarrierDeliveryModes(t *testing.T, isPackage bool) {
 	t.Parallel()
 	for _, strict := range []bool{false, true} {
 		for _, signed := range []bool{false, true} {
@@ -147,10 +174,17 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 				t.Cleanup(func() {
 					s.store.Close()
 				})
-				activateDiscoveryPresets(t, s)
+				var upstream, ingress *protocol.Compiled
+				if isPackage {
+					packages := seedGatewayPackages(t, s)
+					upstream, ingress = packages["google-generate-content"], packages["openai-responses"]
+				} else {
+					activateDiscoveryPresets(t, s)
+					service, _ := s.protocolService()
+					upstream, _ = service.Pin(protocol.PresetGeminiID)
+					ingress, _ = service.Pin(protocol.PresetResponsesID)
+				}
 				service, _ := s.protocolService()
-				upstream, _ := service.Pin(protocol.PresetGeminiID)
-				ingress, _ := service.Pin(protocol.PresetResponsesID)
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					signature := ""
@@ -177,14 +211,24 @@ func TestGatewayIncludeCarrierDeliveryModes(t *testing.T) {
 					t.Fatal(err)
 				}
 				s.invalidateRouteCache()
-				req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hello","store":false,"include":["reasoning.encrypted_content"]}`))
+				req := httptest.NewRequest("POST", "/gateway/"+ingress.Identity().DefinitionID+ingress.Operations()["generate"].Path, strings.NewReader(`{"model":"group","input":"hello","store":false,"include":["reasoning.encrypted_content"]}`))
 				req.Header.Set("Authorization", "Bearer gateway-test-token")
 				req.Header.Set("x-elysia-session-id", "delivery-test")
 				rec := httptest.NewRecorder()
 				serveTestHTTP(s.engine, rec, req)
-				if strict && signed {
-					if rec.Code != 502 || !strings.Contains(rec.Body.String(), "/include") {
+				if signed && (strict || isPackage) {
+					path := "/include"
+					if isPackage {
+						path = "/continuation"
+					}
+					if rec.Code != 502 || !strings.Contains(rec.Body.String(), path) {
 						t.Fatal(rec.Code, rec.Body.String())
+					}
+					if isPackage {
+						stats, err := s.store.ContinuationStats(t.Context())
+						if err != nil || stats["records"] != 1 {
+							t.Fatal("test did not exercise successful persistence without client delivery", stats, err)
+						}
 					}
 					return
 				}

@@ -2159,6 +2159,10 @@ func writeCoreClientOutput(output JSONOutput, value *ClientOutput, reader *value
 }
 func writeCoreClientOutputField(field jsonOutputField, value *ClientOutput, reader *valueReader) error {
 	switch field.key {
+	case "requireContinuationState":
+		return writeCoreBool(field.value, &value.RequireContinuationState, reader)
+	case "responsesIncludeResolved":
+		return writeCoreBool(field.value, &value.ResponsesIncludeResolved, reader)
 	case "collectUsage":
 		return writeCoreBool(field.value, &value.CollectUsage, reader)
 	case "includeUsage":
@@ -2170,7 +2174,7 @@ func writeCoreClientOutputField(field jsonOutputField, value *ClientOutput, read
 	case "responsesStorage":
 		return writeCoreResponsesStorageIntentPointer(field.value, &value.ResponsesStorage, reader)
 	default:
-		key := foldedCoreField(field.key, []string{"collectUsage", "includeUsage", "rawStreamOptions", "rawResponsesInclude", "responsesStorage"})
+		key := foldedCoreField(field.key, []string{"requireContinuationState", "responsesIncludeResolved", "collectUsage", "includeUsage", "rawStreamOptions", "rawResponsesInclude", "responsesStorage"})
 		if key == "" {
 			return unknownCoreField(field.key)
 		}
@@ -2181,6 +2185,16 @@ func writeCoreClientOutputField(field jsonOutputField, value *ClientOutput, read
 func readCoreClientOutput(value ClientOutput, pointer []string) (JSONOutput, error) {
 	if len(pointer) != 0 {
 		switch pointer[0] {
+		case "requireContinuationState":
+			if value.RequireContinuationState {
+				return readCoreBool(value.RequireContinuationState, pointer[1:])
+			}
+			return JSONOutput{}, nil
+		case "responsesIncludeResolved":
+			if value.ResponsesIncludeResolved {
+				return readCoreBool(value.ResponsesIncludeResolved, pointer[1:])
+			}
+			return JSONOutput{}, nil
 		case "collectUsage":
 			if value.CollectUsage {
 				return readCoreBool(value.CollectUsage, pointer[1:])
@@ -2210,9 +2224,23 @@ func readCoreClientOutput(value ClientOutput, pointer []string) (JSONOutput, err
 			return JSONOutput{}, nil
 		}
 	}
-	fields := make([]jsonOutputField, 0, 5)
+	fields := make([]jsonOutputField, 0, 7)
 	var output JSONOutput
 	var err error
+	if value.RequireContinuationState {
+		output, err = readCoreBool(value.RequireContinuationState, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"requireContinuationState", output})
+	}
+	if value.ResponsesIncludeResolved {
+		output, err = readCoreBool(value.ResponsesIncludeResolved, nil)
+		if err != nil {
+			return JSONOutput{}, err
+		}
+		fields = append(fields, jsonOutputField{"responsesIncludeResolved", output})
+	}
 	if value.CollectUsage {
 		output, err = readCoreBool(value.CollectUsage, nil)
 		if err != nil {

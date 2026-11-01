@@ -19,6 +19,14 @@ import (
 // Synthetic visible reasoning plus opaque provider state, matching the shape
 // found in the real Responses baseline. No real encrypted payload is stored.
 func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
+	testGatewayEncryptedReasoningContinuation(t, false)
+}
+
+func TestPackageGatewayEncryptedReasoningContinuation(t *testing.T) {
+	testGatewayEncryptedReasoningContinuation(t, true)
+}
+
+func testGatewayEncryptedReasoningContinuation(t *testing.T, isPackage bool) {
 	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
@@ -33,9 +41,16 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 			t.Cleanup(func() {
 				s.store.Close()
 			})
-			activateDiscoveryPresets(t, s)
-			service, _ := s.protocolService()
-			upstream, _ := service.Pin(protocol.PresetResponsesID)
+			var upstream, ingress *protocol.Compiled
+			if isPackage {
+				packages := seedGatewayPackages(t, s)
+				upstream, ingress = packages["openai-responses"], packages["anthropic"]
+			} else {
+				activateDiscoveryPresets(t, s)
+				service, _ := s.protocolService()
+				upstream, _ = service.Pin(protocol.PresetResponsesID)
+				ingress, _ = service.Pin(protocol.PresetAnthropicID)
+			}
 			const reasoning = `{"type":"reasoning","id":"thought","status":"completed","summary":[],"content":[{"type":"reasoning_text","text":"visible thought"}],"encrypted_content":"synthetic-opaque-state"}`
 			const message = `{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":[]}]}`
 			const complete = `{"id":"resp","object":"response","created_at":1,"model":"upstream-model","status":"completed","output":[` + reasoning + `,` + message + `],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`
@@ -78,7 +93,7 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 			defer provider.Close()
 			setupGatewayModel(t, s, upstream, provider.URL)
 			call := func(body string) *httptest.ResponseRecorder {
-				r := httptest.NewRequest("POST", "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
+				r := httptest.NewRequest("POST", "/gateway/"+ingress.Identity().DefinitionID+ingress.Operations()["generate"].Path, strings.NewReader(body))
 				r.Header.Set("Authorization", "Bearer gateway-test-token")
 				r.Header.Set("x-elysia-session-id", "encrypted-reasoning")
 				rec := httptest.NewRecorder()
@@ -129,8 +144,14 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 				}
 				content, _ = sonic.ConfigStd.Marshal(ordered)
 			}
-			history := []byte(`{"messages":[{"role":"assistant","content":` + string(content) + `}]}`)
-			_, tokens, err := builtin.ExtractContinuationCarriers(history, "claude", 1<<20)
+			history := []byte(`{"model":"group","max_tokens":64,"messages":[{"role":"assistant","content":` + string(content) + `}]}`)
+			var tokens []string
+			var err error
+			if isPackage {
+				_, tokens, err = ingress.ExtractContinuations(t.Context(), mustProtocolValue(t, string(history)), protocol.EvaluationContext{})
+			} else {
+				_, tokens, err = builtin.ExtractContinuationCarriers(history, "claude", 1<<20)
+			}
 			if err != nil || len(tokens) != 1 || calls != 1 {
 				t.Fatal("carrier count", len(tokens), calls, err)
 			}
@@ -166,6 +187,37 @@ func TestGatewayResponsesEncryptedReasoningContinuation(t *testing.T) {
 			second := call(`{"model":"group","max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":` + string(content) + `},{"role":"user","content":"continue"}]}`)
 			if second.Code != 200 || calls != 2 {
 				t.Fatal(second.Code, calls, second.Body.String())
+			}
+			if isPackage && !stream {
+				tampered := strings.Replace(string(content), tokens[0], protocol.ContinuationPrefix+"tampered", 1)
+				rejected := call(`{"model":"group","max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":` + tampered + `},{"role":"user","content":"continue"}]}`)
+				if rejected.Code != http.StatusBadRequest || calls != 2 || !strings.Contains(rejected.Body.String(), "continuation") {
+					t.Fatal("unauthenticated carrier reached the provider", rejected.Code, calls, rejected.Body.String())
+				}
+				policy := protocol.DefaultConversionPolicy(ingress, upstream)
+				for i := range policy.Rules {
+					if policy.Rules[i].ID == "request-signatures" {
+						policy.Rules[i].Enabled = false
+					}
+				}
+				bindings, err := s.store.ListProtocolBindings(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &policy}
+				service, _ := s.protocolService()
+				bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := s.store.SaveProtocolBinding(t.Context(), bindings[0]); err != nil {
+					t.Fatal(err)
+				}
+				s.invalidateRouteCache()
+				rejected = call(`{"model":"group","max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":` + string(content) + `},{"role":"user","content":"continue"}]}`)
+				if rejected.Code != http.StatusBadRequest || calls != 2 || !strings.Contains(rejected.Body.String(), "/continuation") {
+					t.Fatal("disabled recovery still consumed the carrier", rejected.Code, calls, rejected.Body.String())
+				}
 			}
 			stats, err := s.store.ContinuationStats(t.Context())
 			if err != nil || stats["records"] < 1 {

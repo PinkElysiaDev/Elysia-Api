@@ -73,6 +73,21 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 	if err := state.validateContext(phase); err != nil {
 		return Value{}, err
 	}
+	if phase == ConversionEvent && route.frameUsage != nil {
+		facts := route.frameUsage
+		if facts.source != route.Source || facts.target != route.Target || facts.scope != route.Scope {
+			return Value{}, operationMetadataError("/frame/usage", "frame usage belongs to a different route or scope")
+		}
+		if err := state.load(phase, true); err != nil {
+			return Value{}, err
+		}
+		var err error
+		// Select before target rules can replace the response's presentation ID.
+		route.selectedFrameUsage, err = facts.forEvent(*state.document.(*Event))
+		if err != nil {
+			return Value{}, err
+		}
+	}
 	value := input
 	var reasoningTarget string
 	var modelControls *modelControlExecution

@@ -54,37 +54,60 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 		}
 	}
 	applyClientModelAlias(semantic, plan.clientModel)
-	body, err = plan.ingress.EncodeResponse(ctx, semantic, options)
+	wireValue, err := plan.ingress.EncodeResponseValue(ctx, semantic, options)
 	if err != nil {
 		return err
 	}
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		body, err = candidate.conversion.Wire(ctx, body, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+		wireValue, err = candidate.conversion.ApplyValue(ctx, protocol.ConversionWire, wireValue, route, options.Diagnostics)
 		if err != nil {
 			return err
 		}
 		// The target decoder applies its declared structure and capabilities.
-		if _, err = plan.ingress.DecodeResponse(ctx, body, options); err != nil {
+		if _, err = plan.ingress.DecodeResponseValue(ctx, wireValue, options); err != nil {
 			return err
 		}
 	}
-	if candidate.continuation != nil {
-		body, err = builtin.AttachContinuationCarriers(body, plan.ingress.Identity().Family, candidate.continuation.tokens)
+	if candidate.continuation != nil && candidate.continuation.isPackage {
+		options = options.WithContinuation(candidate.continuation.binding)
+		wireValue, err = plan.ingress.EncodeContinuationResponse(ctx, wireValue, options)
 		if err != nil {
 			return err
 		}
+		err = plan.ingress.ValidateContinuationResponse(ctx, wireValue, options)
+	} else {
+		if candidate.continuation != nil {
+			body, err = builtin.AttachContinuationCarriers(wireValue.Bytes(), plan.ingress.Identity().Family, candidate.continuation.tokens)
+			if err != nil {
+				return err
+			}
+			wireValue, err = protocol.ParseValue(body)
+			if err != nil {
+				return err
+			}
+		}
+		err = plan.ingress.ValidateWireOutput(protocol.EncodeResponse, wireValue)
 	}
-	wireValue, err := protocol.ParseValue(body)
 	if err != nil {
-		return err
-	}
-	if err := plan.ingress.ValidateWireOutput(protocol.EncodeResponse, wireValue); err != nil {
 		return route.AttributeResponseModelFailure(err, semantic, wireValue)
 	}
-	if len(body) > plan.ingress.ResourceLimits().BufferBytes {
+	if wireValue.Len() > plan.ingress.ResourceLimits().BufferBytes {
 		return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/response", Reason: "response including continuation carriers exceeds target buffer limit"}})
 	}
 	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
-	c.Data(http.StatusOK, "application/json", body)
+	if candidate.continuation != nil && candidate.continuation.isPackage && candidate.continuation.binding.HasPending() {
+		binding := candidate.continuation.binding
+		state := ensureHTTPDeliveryState(c)
+		onHTTPComplete(c, func() {
+			if state.result.Outcome == deliveryCompleted {
+				// Validation has confirmed every planned carrier. Failure here is
+				// an internal ownership violation, not a recoverable I/O outcome.
+				if err := binding.CommitDelivery(); err != nil {
+					panic(err)
+				}
+			}
+		})
+	}
+	c.Data(http.StatusOK, "application/json", wireValue.Bytes())
 	return nil
 }

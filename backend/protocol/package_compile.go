@@ -8,6 +8,7 @@ import (
 )
 
 type compiledPackagePlan struct {
+	continuation         *compiledContinuation
 	coreVersion          int
 	dslVersion           int
 	effects              map[Direction][]compiledSemanticEffect
@@ -270,6 +271,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	programScope := scope
 	programScope.canWriteStreamIndexes = true
 	programScope.wireCapture = isDecode
+	programScope.canSelectCarrier = direction == DecodeRequest
 	programScope.canReadNative = !isDecode
 	program, err := compiler.compile(mapping.Program, path+"/program", programScope, 1)
 	if err != nil {

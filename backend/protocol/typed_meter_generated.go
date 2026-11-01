@@ -1245,6 +1245,26 @@ func (meter *typedMeter) measure34(value ClientOutput) bool {
 		return false
 	}
 	count := 0
+	if value.RequireContinuationState {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(26) || !meter.measure14(value.RequireContinuationState) {
+			return false
+		}
+	}
+	if value.ResponsesIncludeResolved {
+		if count > 0 {
+			meter.bytes++
+		}
+		count++
+		meter.bytes++
+		if !meter.scalar(26) || !meter.measure14(value.ResponsesIncludeResolved) {
+			return false
+		}
+	}
 	if value.CollectUsage {
 		if count > 0 {
 			meter.bytes++

@@ -86,6 +86,8 @@ type expressionScope struct {
 	wireCapture            bool
 	canReadRuntime         bool
 	canReadClientOutput    bool
+	canReadContinuation    bool
+	canSelectCarrier       bool
 	canReadOperation       bool
 	canReadFrameUsage      bool
 	canReadOutputStream    bool
@@ -146,6 +148,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if scope.isWireContract && compiled.op == "check_usage" {
 		return nil, fmt.Errorf("%s: core usage checks belong to Mapping, not an external wire contract", path)
 	}
+	if compiled.op == "is_carrier" && !scope.canSelectCarrier {
+		return nil, fmt.Errorf("%s: carrier selection requires a source request mapping", path)
+	}
 	if _, hasDiagnostic := expression.present["onConflict"]; hasDiagnostic || expression.OnConflict != nil {
 		var err error
 		compiled.onConflict, err = compileMergeConflictDiagnostic(expression.OnConflict, path+"/onConflict")
@@ -191,13 +196,17 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
 			pointer, compiled.pointer = pointer[1:], pointer[1:]
 		case "runtime":
+			isContinuation := scope.canReadContinuation && len(pointer) == 2 && pointer[0] == "continuation" && pointer[1] == "tokens"
+			isOutputPosition := scope.canReadOutputStream && len(pointer) == 2 && (pointer[0] == "stream" || pointer[0] == "emission" || pointer[0] == "delivered")
 			isClientOutput := scope.canReadClientOutput && len(pointer) > 0 && pointer[0] == "clientOutput"
 			isFrameUsage := scope.canReadFrameUsage && len(pointer) >= 2 && pointer[0] == "frame" && pointer[1] == "usage"
 			isOperation := scope.canReadOperation && len(pointer) == 2 && pointer[0] == "operation" && (pointer[1] == "id" || pointer[1] == "startedAt")
-			if !scope.canReadRuntime && !isClientOutput && !isFrameUsage && !isOperation {
+			if !scope.canReadRuntime && !isClientOutput && !isFrameUsage && !isOperation && !isContinuation && !isOutputPosition {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
 			switch {
+			case isContinuation:
+				compiled.result = ArrayType
 			case isFrameUsage:
 				if !validFrameUsagePointer(pointer[2:]) {
 					return nil, fmt.Errorf("%s/path: frame usage exposes only declared numeric counters", path)
@@ -591,7 +600,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				expression.nativeLocation.suffix = "/" + escapePointer(source.Name)
 			}
 		}
-	case "capture_native", "capture_source":
+	case "capture_native", "capture_source", "is_carrier":
 		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
 			return fail("native capture requires a read from the original wire")
 		}

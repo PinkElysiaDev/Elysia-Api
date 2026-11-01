@@ -13,7 +13,7 @@ type referenceContext struct {
 	name                                        string
 	input, root, item                           *ValueSchema
 	coreInput, coreRoot, coreItem, walkCoreItem reflect.Type
-	permissions                                 uint16
+	permissions                                 uint32
 	bindingDepth, indexDepth                    int
 	streamPrimitiveUsed                         *bool
 }
@@ -36,7 +36,7 @@ func referenceKey(name string, scope expressionScope) referenceContext {
 		bindingDepth: scope.bindingDepth, indexDepth: scope.indexDepth, streamPrimitiveUsed: scope.streamPrimitiveUsed}
 	for index, enabled := range [...]bool{scope.canReadNativeFrame, scope.canUseStreamPrimitives, scope.hasInputScope,
 		scope.isIteration, scope.isSingleVisit, scope.isWalk, scope.wireCapture, scope.canReadRuntime,
-		scope.canReadOutputStream, scope.canReadNative, scope.canWriteStreamIndexes, scope.isWireContract, scope.canReadFrameUsage, scope.canReadOperation, scope.canReadClientOutput} {
+		scope.canReadOutputStream, scope.canReadNative, scope.canWriteStreamIndexes, scope.isWireContract, scope.canReadFrameUsage, scope.canReadOperation, scope.canReadClientOutput, scope.canReadContinuation, scope.canSelectCarrier} {
 		if enabled {
 			key.permissions |= 1 << index
 		}

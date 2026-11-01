@@ -42,14 +42,47 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		route = route.WithOperation(EvaluationContext{operation: &verificationOperation})
 		route.ResponseWire = input.Direction == EncodeResponse || input.Direction == EncodeEvent
 		var output Value
+		var recoveryTarget *Compiled
 		if err == nil {
-			route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
+			if input.ConversionPhase == ConversionResponse && conversion.HasContinuationRecovery(input.ConversionPhase, route) {
+				var exists bool
+				recoveryTarget, exists = service.View().Pin(route.Target.DefinitionID)
+				var response Response
+				if !exists || recoveryTarget.Identity() != route.Target {
+					err = operationMetadataError("/context", "preview target revision changed")
+				} else {
+					err = input.Input.Decode(&response)
+				}
+				if err == nil {
+					route, err = prepareContinuationEvidence(ctx, conversion, recoveryTarget, ConversionResponse, response.Content, route)
+				}
+			} else {
+				route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
+			}
 		}
 		if err == nil {
 			if input.ConversionPhase == ConversionSourceEvent {
 				output, err = service.PreviewSourceEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
 			} else {
 				output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
+			}
+		}
+		if err == nil && recoveryTarget != nil && route.continuation != nil {
+			var response Response
+			err = output.Decode(&response)
+			if err == nil {
+				options := (EvaluationContext{Scope: route.Scope, operation: route.operation}).WithContinuation(route.continuation)
+				var wire Value
+				wire, err = recoveryTarget.EncodeResponseValue(ctx, &response, options)
+				if err == nil {
+					wire, err = recoveryTarget.EncodeContinuationResponse(ctx, wire, options)
+				}
+				if err == nil {
+					err = recoveryTarget.ValidateContinuationResponse(ctx, wire, options)
+				}
+				if err == nil {
+					err = route.continuation.CommitDelivery()
+				}
 			}
 		}
 		issues := sink.Issues()

@@ -104,6 +104,18 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 | 废弃要求 | 旧错误文字与首错树、模拟 `/message/0` 等非原文位置、重复身份计费、旧 logprobs 检查点 | 不再作为迁移门槛 |
 | 性能要求 | 双方正确完成且工作量一致的负载 | 同机配对实测；不能比较旧版提前失败耗时 |
 
+## 认证续传（dev.109）
+
+Responses 的 include 原表示由 `ClientOutput.RawResponsesInclude` 持有；`RequireContinuationState` 表示产生受保护状态时客户端必须获得可继续使用的表示。目标规则只写 `ResponsesIncludeResolved`，不能改写来源原值或撤销续传要求。Agent 可声明原值和要求，本地收集器直接保留资源进入后续轮次。
+
+`mapping.continuation` 声明 `extract`、`encode_response` 和 `encode_event`。提取返回 token 及真实原文位置，不在解码前删除数组成员；成员映射通过 `is_carrier` 消费已选载体，后续 Source 下标不变。宿主认证 Owner、Scope、历史及节点摘要后确认该请求；未经认证的载体不能通过删除根 Native 绕过编码检查。
+
+出站程序只读取宿主封装的 token/ID 和已有流交付位置。只读 `emitted` 从最终输出观察 token，与最终 Spec 校验共享输入视图；它不能读取待发 token 集合并自报成功。流式写入及 Flush 成功后推进交付；JSON 等 HTTP completion。没有待发 token 时不执行载体程序。
+
+`conversionDefaults[].recovery` 只声明 signature/encrypted_content 的保留条件及无恢复通道时的处理，仍按稳定规则 ID 覆盖或禁用。加密及认证由宿主实现，配置和普通 context 不能伪造恢复证明。服务端 Persist 与客户端交付分开；明确的客户端要求不能仅靠 Persist 满足。已识别保留前缀的认证失败是请求错误，不作为兼容省略处理。
+
+上述为当前实现合同，验收状态见实施记录；不表示生产预置已经切换。
+
 ## 升级边界
 
 最终切换前先排空任务。旧协议/策略格式保留历史可读性，不能执行，不自动翻译、重绑或重投任务。已有绑定由用户显式选择新预置修订；配置不可用时管理界面仍须可访问。新安装使用新默认包。

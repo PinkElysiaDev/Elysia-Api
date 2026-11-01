@@ -19,6 +19,7 @@ type conversionAction struct {
 // Build fresh editor schemas so callers cannot mutate compiler constraints.
 func conversionActionCatalog() []conversionAction {
 	return []conversionAction{
+		{name: "continuation_recovery", phases: []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, isWholeValue: true, description: "Project declared protected resources using host-authenticated recovery evidence and the target's explicit disposition."},
 		{name: "control_event", phases: []ConversionPhase{ConversionEvent}, isWholeValue: true, description: "Apply a declared target disposition only to explicitly named, source-validated control kinds."},
 		{name: "auxiliary_event", phases: []ConversionPhase{ConversionEvent}, isWholeValue: true, description: "Apply the target's declared disposition to a privately validated auxiliary source frame."},
 		{name: "core_controls", phases: []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, valueSchema: map[string]any{"type": "object", "required": []string{"coreVersion", "target", "mappingHash", "limits", "phase", "steps"}}, description: "Apply the selected mapping's declared typed field updates and dispositions without materializing the complete core document.", isWholeValue: true},

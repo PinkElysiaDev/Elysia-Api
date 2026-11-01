@@ -2475,24 +2475,62 @@
                       "op": "let",
                       "name": "selected",
                       "source": {
-                        "op": "project",
-                        "policy": "exclude",
-                        "source": {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
+                        "op": "if",
+                        "when": {
+                          "op": "is_carrier",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/elysia_continuation"
+                          }
                         },
-                        "keys": [
-                          "type",
-                          "role",
-                          "content",
-                          "tool_calls",
-                          "reasoning_content",
-                          "refusal",
-                          "cache_control",
-                          "tool_call_id",
-                          "name"
-                        ]
+                        "then": {
+                          "op": "project",
+                          "source": {
+                            "op": "project",
+                            "policy": "exclude",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": ""
+                            },
+                            "keys": [
+                              "type",
+                              "role",
+                              "content",
+                              "tool_calls",
+                              "reasoning_content",
+                              "refusal",
+                              "cache_control",
+                              "tool_call_id",
+                              "name"
+                            ]
+                          },
+                          "keys": [
+                            "elysia_continuation"
+                          ],
+                          "policy": "exclude"
+                        },
+                        "otherwise": {
+                          "op": "project",
+                          "policy": "exclude",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": ""
+                          },
+                          "keys": [
+                            "type",
+                            "role",
+                            "content",
+                            "tool_calls",
+                            "reasoning_content",
+                            "refusal",
+                            "cache_control",
+                            "tool_call_id",
+                            "name"
+                          ]
+                        }
                       },
                       "body": {
                         "op": "if",
@@ -2562,22 +2600,58 @@
                       "op": "let",
                       "name": "selected",
                       "source": {
-                        "op": "project",
-                        "policy": "exclude",
-                        "source": {
-                          "op": "read",
-                          "from": "item",
-                          "path": ""
+                        "op": "if",
+                        "when": {
+                          "op": "is_carrier",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/elysia_continuation"
+                          }
                         },
-                        "keys": [
-                          "type",
-                          "role",
-                          "content",
-                          "tool_calls",
-                          "reasoning_content",
-                          "refusal",
-                          "cache_control"
-                        ]
+                        "then": {
+                          "op": "project",
+                          "source": {
+                            "op": "project",
+                            "policy": "exclude",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": ""
+                            },
+                            "keys": [
+                              "type",
+                              "role",
+                              "content",
+                              "tool_calls",
+                              "reasoning_content",
+                              "refusal",
+                              "cache_control"
+                            ]
+                          },
+                          "keys": [
+                            "elysia_continuation"
+                          ],
+                          "policy": "exclude"
+                        },
+                        "otherwise": {
+                          "op": "project",
+                          "policy": "exclude",
+                          "source": {
+                            "op": "read",
+                            "from": "item",
+                            "path": ""
+                          },
+                          "keys": [
+                            "type",
+                            "role",
+                            "content",
+                            "tool_calls",
+                            "reasoning_content",
+                            "refusal",
+                            "cache_control"
+                          ]
+                        }
                       },
                       "body": {
                         "op": "if",
@@ -27133,6 +27207,56 @@
             }
           },
           "reason": "storage intent belongs to clientOutput.responsesStorage"
+        },
+        {
+          "id": "legacy-include-owner",
+          "kind": "reject",
+          "path": "/parameters/responses_include",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_include"
+            }
+          },
+          "reason": "include preferences belong to clientOutput.rawResponsesInclude"
+        },
+        {
+          "id": "unresolved-include-selection",
+          "kind": "reject",
+          "path": "/include",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/rawResponsesInclude"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/clientOutput/responsesIncludeResolved"
+                    },
+                    {
+                      "op": "literal",
+                      "value": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "reason": "client output selection requires its declared target disposition"
         }
       ],
       "capabilities": {
@@ -27151,120 +27275,171 @@
     ,
 "finalDocument": "upstream-request",
       "finalCheck": {
-        "op": "let",
-        "name": "storage",
-        "source": {
-          "op": "read",
-          "from": "runtime",
-          "path": "/clientOutput/responsesStorage"
-        },
-        "body": {
-          "op": "if",
-          "when": {
-            "op": "exists",
+        "op": "all",
+        "items": [
+          {
+            "op": "let",
+            "name": "storage",
             "source": {
               "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "storage"
-            }
-          },
-          "then": {
-            "op": "if",
-            "when": {
+              "from": "runtime",
+              "path": "/clientOutput/responsesStorage"
+            },
+            "body": {
               "op": "if",
               "when": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "/effectiveUnknown",
-                    "name": "storage"
-                  },
-                  {
-                    "op": "literal",
-                    "value": true
-                  }
-                ]
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "storage"
+                }
               },
               "then": {
-                "op": "all",
-                "items": [
-                  {
+                "op": "if",
+                "when": {
+                  "op": "if",
+                  "when": {
                     "op": "equal",
                     "items": [
                       {
                         "op": "read",
                         "from": "binding",
-                        "path": "/sourceCodec",
+                        "path": "/effectiveUnknown",
                         "name": "storage"
                       },
                       {
                         "op": "literal",
-                        "value": "openai-chat"
+                        "value": true
                       }
                     ]
                   },
-                  {
-                    "op": "equal",
+                  "then": {
+                    "op": "all",
                     "items": [
                       {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/sourceCodec",
+                            "name": "storage"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "openai-chat"
+                          }
+                        ]
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/store"
+                          },
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/raw",
+                            "name": "storage"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
                         "op": "read",
                         "from": "input",
                         "path": "/store"
-                      },
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "/raw",
-                        "name": "storage"
                       }
-                    ]
+                    },
+                    "then": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/store"
+                        },
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/effective",
+                          "name": "storage"
+                        }
+                      ]
+                    },
+                    "otherwise": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "/effective",
+                          "name": "storage"
+                        },
+                        {
+                          "op": "literal",
+                          "value": false
+                        }
+                      ]
+                    }
                   }
-                ]
+                },
+                "then": {
+                  "op": "literal",
+                  "value": true
+                },
+                "otherwise": {
+                  "op": "reject",
+                  "path": "/store",
+                  "reason": "final storage instruction differs from the prepared target intent",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire"
+                  }
+                }
               },
               "otherwise": {
-                "op": "if",
-                "when": {
+                "op": "literal",
+                "value": true
+              }
+            }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "runtime",
+                  "path": "/clientOutput/rawResponsesInclude"
+                }
+              },
+              "then": {
+                "op": "not",
+                "source": {
                   "op": "exists",
                   "source": {
                     "op": "read",
                     "from": "input",
-                    "path": "/store"
+                    "path": "/include"
                   }
-                },
-                "then": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/store"
-                    },
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/effective",
-                      "name": "storage"
-                    }
-                  ]
-                },
-                "otherwise": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/effective",
-                      "name": "storage"
-                    },
-                    {
-                      "op": "literal",
-                      "value": false
-                    }
-                  ]
                 }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": true
               }
             },
             "then": {
@@ -27273,19 +27448,15 @@
             },
             "otherwise": {
               "op": "reject",
-              "path": "/store",
-              "reason": "final storage instruction differs from the prepared target intent",
+              "path": "/include",
+              "reason": "final include selection differs from the prepared caller preference",
               "diagnostic": {
                 "code": "conversion_rejected",
                 "stage": "wire"
               }
             }
-          },
-          "otherwise": {
-            "op": "literal",
-            "value": true
           }
-        }
+        ]
       }
 },
     "decode_response": {
@@ -49384,7 +49555,7 @@
     },
     {
       "id": "request-shape",
-      "order": 180,
+      "order": 181,
       "enabled": true,
       "phase": "request",
       "steps": [
@@ -49496,6 +49667,51 @@
       "enabled": true,
       "phase": "response",
       "steps": [
+        {
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/model"
+                  }
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/error"
+                  }
+                }
+              }
+            ]
+          },
+          "set": {
+            "/model": {
+              "op": "read",
+              "from": "context",
+              "path": "/model",
+              "required": true
+            }
+          },
+          "diagnostic": {
+            "kind": "normalize",
+            "path": "/model",
+            "reason": {
+              "op": "literal",
+              "value": "Use the selected request model for a target-required field; this is not an observed provider model"
+            }
+          }
+        },
         {
           "when": {
             "op": "all",
@@ -49662,6 +49878,62 @@
       "enabled": true,
       "phase": "event",
       "steps": [
+        {
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "response.started"
+                  }
+                ]
+              },
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/response"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/response/model"
+                  }
+                }
+              }
+            ]
+          },
+          "set": {
+            "/response/model": {
+              "op": "read",
+              "from": "context",
+              "path": "/model",
+              "required": true
+            }
+          },
+          "diagnostic": {
+            "kind": "normalize",
+            "path": "/response/model",
+            "reason": {
+              "op": "literal",
+              "value": "Use the selected request model for a target-required field; this is not an observed provider model"
+            }
+          }
+        },
         {
           "each": {
             "select": "node",
@@ -49907,6 +50179,588 @@
           }
         }
       ]
+    },
+    {
+      "id": "responses-include",
+      "order": 180,
+      "phase": "request",
+      "enabled": true,
+      "steps": [
+        {
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/clientOutput/rawResponsesInclude"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "array"
+                }
+              ]
+            },
+            "then": {
+              "op": "let",
+              "name": "selectors",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/rawResponsesInclude"
+                },
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": "reasoning.encrypted_content"
+                      }
+                    ]
+                  }
+                }
+              },
+              "body": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/0",
+                  "name": "selectors"
+                }
+              }
+            },
+            "otherwise": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/rawResponsesInclude"
+              }
+            }
+          },
+          "diagnostic": {
+            "kind": "reject",
+            "path": "/include",
+            "reason": {
+              "op": "literal",
+              "value": "target has no declared mapping for this Responses include selector"
+            }
+          }
+        },
+        {
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/rawResponsesInclude"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesIncludeResolved": {
+              "op": "literal",
+              "value": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "request-signatures",
+      "order": 200,
+      "enabled": true,
+      "phase": "request",
+      "recovery": {
+        "kinds": [
+          "signature",
+          "encrypted_content"
+        ],
+        "preserveWhen": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/source/protocol/family"
+                },
+                {
+                  "op": "literal",
+                  "value": "openai_chat"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/source/protocol/wireVersion"
+                },
+                {
+                  "op": "literal",
+                  "value": "v2"
+                }
+              ]
+            }
+          ]
+        },
+        "onUnavailable": "degrade"
+      }
+    },
+    {
+      "id": "response-signatures",
+      "order": 200,
+      "enabled": true,
+      "phase": "response",
+      "recovery": {
+        "kinds": [
+          "signature",
+          "encrypted_content"
+        ],
+        "preserveWhen": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/source/protocol/family"
+                },
+                {
+                  "op": "literal",
+                  "value": "openai_chat"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/source/protocol/wireVersion"
+                },
+                {
+                  "op": "literal",
+                  "value": "v2"
+                }
+              ]
+            }
+          ]
+        },
+        "onUnavailable": "degrade"
+      }
+    },
+    {
+      "id": "event-signatures",
+      "order": 200,
+      "enabled": true,
+      "phase": "event",
+      "recovery": {
+        "kinds": [
+          "signature",
+          "encrypted_content"
+        ],
+        "preserveWhen": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/source/protocol/family"
+                },
+                {
+                  "op": "literal",
+                  "value": "openai_chat"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/source/protocol/wireVersion"
+                },
+                {
+                  "op": "literal",
+                  "value": "v2"
+                }
+              ]
+            }
+          ]
+        },
+        "onUnavailable": "degrade"
+      }
     }
-]
+],
+  "continuation": {
+    "extract": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/messages"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "array"
+          }
+        ]
+      },
+      "then": {
+        "op": "flatmap",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/messages"
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/elysia_continuation"
+            }
+          },
+          "then": {
+            "op": "let",
+            "name": "carrier-field",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": "/elysia_continuation"
+            },
+            "body": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "carrier-field"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "token": {
+                    "op": "read",
+                    "from": "item",
+                    "path": ""
+                  },
+                  "source": {
+                    "op": "capture_source",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": ""
+                    }
+                  },
+                  "remove": {
+                    "op": "capture_source",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "carrier-field"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "array",
+            "items": []
+          }
+        }
+      },
+      "otherwise": {
+        "op": "array",
+        "items": []
+      }
+    },
+    "encode_response": {
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "not",
+            "source": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/error"
+              }
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/choices/0/message"
+            }
+          },
+          {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/choices/1"
+              }
+            }
+          }
+        ]
+      },
+      "program": {
+        "op": "let",
+        "name": "message",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/choices/0/message"
+        },
+        "body": {
+          "op": "merge",
+          "policy": "last",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            {
+              "op": "object",
+              "fields": {
+                "choices": {
+                  "op": "array",
+                  "items": [
+                    {
+                      "op": "merge",
+                      "policy": "last",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/choices/0"
+                        },
+                        {
+                          "op": "object",
+                          "fields": {
+                            "message": {
+                              "op": "merge",
+                              "policy": "last",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "message"
+                                },
+                                {
+                                  "op": "object",
+                                  "fields": {
+                                    "elysia_continuation": {
+                                      "op": "map",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "runtime",
+                                        "path": "/continuation/tokens"
+                                      },
+                                      "body": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/token"
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "emitted": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/choices/0/message/elysia_continuation"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/choices/0/message/elysia_continuation"
+        },
+        "otherwise": {
+          "op": "array",
+          "items": []
+        }
+      }
+    },
+    "encode_event": {
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/choices/0/finish_reason"
+            }
+          },
+          {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/choices/1"
+              }
+            }
+          }
+        ]
+      },
+      "program": {
+        "op": "array",
+        "items": [
+          {
+            "op": "merge",
+            "policy": "last",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "object",
+                "fields": {
+                  "choices": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "merge",
+                        "policy": "last",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/choices/0"
+                          },
+                          {
+                            "op": "object",
+                            "fields": {
+                              "delta": {
+                                "op": "merge",
+                                "policy": "last",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/choices/0/delta"
+                                  },
+                                  {
+                                    "op": "object",
+                                    "fields": {
+                                      "elysia_continuation": {
+                                        "op": "map",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "runtime",
+                                          "path": "/continuation/tokens"
+                                        },
+                                        "body": {
+                                          "op": "read",
+                                          "from": "item",
+                                          "path": "/token"
+                                        }
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "emitted": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/choices/0/delta/elysia_continuation"
+          }
+        },
+        "then": {
+          "op": "read",
+          "from": "input",
+          "path": "/choices/0/delta/elysia_continuation"
+        },
+        "otherwise": {
+          "op": "array",
+          "items": []
+        }
+      }
+    }
+  }
 }

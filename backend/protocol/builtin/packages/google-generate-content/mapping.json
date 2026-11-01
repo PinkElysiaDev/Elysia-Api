@@ -16336,6 +16336,41 @@
           "effective": false
         }
       }
+    },
+    "preserve-source-continuation": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/source/protocol/family"
+            },
+            {
+              "op": "read",
+              "from": "context",
+              "path": "/target/family"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/source/protocol/wireVersion"
+            },
+            {
+              "op": "read",
+              "from": "context",
+              "path": "/target/wireVersion"
+            }
+          ]
+        }
+      ]
     }
 },
   "directions": {
@@ -16807,6 +16842,56 @@
             ]
           },
           "reason": "target requires a resolved response storage intent without response retrieval storage"
+        },
+        {
+          "id": "legacy-include-owner",
+          "kind": "reject",
+          "path": "/parameters/responses_include",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/responses_include"
+            }
+          },
+          "reason": "include preferences belong to clientOutput.rawResponsesInclude"
+        },
+        {
+          "id": "unresolved-include-selection",
+          "kind": "reject",
+          "path": "/include",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/rawResponsesInclude"
+                }
+              },
+              {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/clientOutput/responsesIncludeResolved"
+                    },
+                    {
+                      "op": "literal",
+                      "value": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "reason": "client output selection requires its declared target disposition"
         }
       ],
       "capabilities": {
@@ -23012,6 +23097,438 @@
             },
             "cacheRead": {
               "count": 15,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-stream-metered-text-decode",
+      "direction": "decode_event",
+      "capabilities": [
+        "text",
+        "usage"
+      ],
+      "input": [
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "he"
+                  }
+                ]
+              }
+            }
+          ],
+          "responseId": "r",
+          "modelVersion": "m",
+          "usageMetadata": {
+            "promptTokenCount": 2,
+            "candidatesTokenCount": 0,
+            "totalTokenCount": 2
+          }
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "llo"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 2,
+            "candidatesTokenCount": 3,
+            "totalTokenCount": 5
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "delta": "he"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 2,
+              "origin": "observed"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "delta": "llo"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 3,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 5,
+              "origin": "observed"
+            }
+          }
+        }
+      ],
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "sequence": true
+    },
+    {
+      "id": "declared-stream-metered-signature-decode",
+      "direction": "decode_event",
+      "capabilities": [
+        "text",
+        "usage",
+        "reasoning.signatures"
+      ],
+      "input": [
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "he"
+                  }
+                ]
+              }
+            }
+          ],
+          "responseId": "r",
+          "modelVersion": "m",
+          "usageMetadata": {
+            "promptTokenCount": 2,
+            "candidatesTokenCount": 0,
+            "totalTokenCount": 2
+          }
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "text": "llo"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": [
+                  {
+                    "thoughtSignature": "signed"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "index": 0,
+              "content": {
+                "role": "model",
+                "parts": []
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 2,
+            "candidatesTokenCount": 3,
+            "totalTokenCount": 5
+          }
+        }
+      ],
+      "expected": [
+        {
+          "schemaVersion": 2,
+          "type": "response.started",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "id": "r",
+            "model": "m",
+            "status": "in_progress",
+            "content": []
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.started",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "item": {
+            "kind": "text"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "delta": "he"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 0,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 2,
+              "origin": "observed"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.delta",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "delta": "llo"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.snapshot",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0",
+          "item": {
+            "kind": "text",
+            "resources": [
+              {
+                "kind": "signature",
+                "id": "signed",
+                "scope": {
+                  "provider": "fixture",
+                  "account": "fixture",
+                  "model": "m"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "part:0",
+          "index": 0,
+          "parentId": "candidate:0"
+        },
+        {
+          "schemaVersion": 2,
+          "type": "item.finished",
+          "responseId": "r",
+          "itemId": "candidate:0",
+          "item": {
+            "kind": "message",
+            "role": "assistant"
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "response.finished",
+          "responseId": "r",
+          "response": {
+            "schemaVersion": 2,
+            "id": "r",
+            "model": "m",
+            "status": "completed",
+            "content": null,
+            "attributes": {
+              "finishReason": "stop"
+            }
+          }
+        },
+        {
+          "schemaVersion": 2,
+          "type": "usage.updated",
+          "responseId": "r",
+          "usage": {
+            "input": {
+              "count": 2,
+              "origin": "observed"
+            },
+            "output": {
+              "count": 3,
+              "origin": "observed"
+            },
+            "total": {
+              "count": 5,
               "origin": "observed"
             }
           }
@@ -35573,6 +36090,165 @@
             "/clientOutput/responsesStorage/effectiveUnknown": {
               "op": "literal",
               "value": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "request-signatures",
+      "order": 200,
+      "enabled": true,
+      "phase": "request",
+      "recovery": {
+        "kinds": [
+          "signature",
+          "encrypted_content"
+        ],
+        "preserveWhen": {
+          "op": "ref",
+          "ref": "preserve-source-continuation"
+        },
+        "onUnavailable": "degrade"
+      }
+    },
+    {
+      "id": "response-signatures",
+      "order": 200,
+      "enabled": true,
+      "phase": "response",
+      "recovery": {
+        "kinds": [
+          "signature",
+          "encrypted_content"
+        ],
+        "preserveWhen": {
+          "op": "ref",
+          "ref": "preserve-source-continuation"
+        },
+        "onUnavailable": "degrade"
+      }
+    },
+    {
+      "id": "event-signatures",
+      "order": 200,
+      "enabled": true,
+      "phase": "event",
+      "recovery": {
+        "kinds": [
+          "signature",
+          "encrypted_content"
+        ],
+        "preserveWhen": {
+          "op": "ref",
+          "ref": "preserve-source-continuation"
+        },
+        "onUnavailable": "degrade"
+      }
+    },
+    {
+      "id": "responses-include",
+      "order": 180,
+      "phase": "request",
+      "enabled": true,
+      "steps": [
+        {
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/clientOutput/rawResponsesInclude"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "array"
+                }
+              ]
+            },
+            "then": {
+              "op": "let",
+              "name": "selectors",
+              "source": {
+                "op": "filter",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/clientOutput/rawResponsesInclude"
+                },
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": "reasoning.encrypted_content"
+                      }
+                    ]
+                  }
+                }
+              },
+              "body": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "/0",
+                  "name": "selectors"
+                }
+              }
+            },
+            "otherwise": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/rawResponsesInclude"
+              }
+            }
+          },
+          "diagnostic": {
+            "kind": "reject",
+            "path": "/include",
+            "reason": {
+              "op": "literal",
+              "value": "target has no declared mapping for this Responses include selector"
+            }
+          }
+        },
+        {
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/rawResponsesInclude"
+            }
+          },
+          "set": {
+            "/clientOutput/responsesIncludeResolved": {
+              "op": "literal",
+              "value": true
+            }
+          },
+          "diagnostic": {
+            "kind": "normalize",
+            "path": "/include",
+            "reason": {
+              "op": "literal",
+              "value": "the gateway preserves the client continuation selection; it is not an upstream request field"
             }
           }
         }

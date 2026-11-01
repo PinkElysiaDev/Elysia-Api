@@ -13,6 +13,9 @@ import (
 )
 
 type gatewayContinuation struct {
+	isPackage                        bool
+	binding                          *protocol.ContinuationBinding
+	phase                            protocol.ConversionPhase
 	codec                            *protocol.ContinuationCodec
 	owner, session, parent, scopeKey string
 	scope                            protocol.Scope
@@ -30,6 +33,9 @@ type gatewayContinuation struct {
 }
 
 func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) (*gatewayContinuation, error) {
+	if plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
+		return s.newPackageGatewayContinuation(token, plan, candidate, sink)
+	}
 	policy := candidate.conversion
 	if policy == nil || policy.Policy.Continuation == nil {
 		return nil, nil
@@ -45,17 +51,25 @@ func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candida
 	if codec == nil {
 		return &gatewayContinuation{identity: candidate.compiled.Identity(), strict: policy.Policy.Mode == "strict", sink: sink}, nil
 	}
-	sum := sha256.Sum256([]byte(token))
-	owner := codec.Digest(hex.EncodeToString(sum[:]))
-	scopeValue, _ := protocol.EncodeValue(candidate.scope)
-	g := &gatewayContinuation{codec: codec, owner: owner, session: plan.session, scope: candidate.scope, scopeKey: codec.Digest(string(scopeValue.Bytes())), identity: candidate.compiled.Identity(), settings: *policy.Policy.Continuation, strict: policy.Policy.Mode == "strict", saved: map[string]bool{}, restored: map[string]bool{}, sink: sink}
+	g := newContinuationOwner(codec, token, plan, candidate, sink)
 	switch plan.ingress.Identity().Family {
 	case "claude", "openai_chat", "openai_responses":
 	default:
 		g.settings.ClientCarrier = false
 	}
-	g.parent = g.historyDigest(plan.request.Content)
 	return g, nil
+}
+
+func newContinuationOwner(codec *protocol.ContinuationCodec, token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) *gatewayContinuation {
+	g := &gatewayContinuation{codec: codec, session: plan.session, scope: candidate.scope, identity: candidate.compiled.Identity(), settings: *candidate.conversion.Policy.Continuation, strict: candidate.conversion.Policy.Mode == "strict", saved: map[string]bool{}, restored: map[string]bool{}, sink: sink}
+	if codec != nil {
+		sum := sha256.Sum256([]byte(token))
+		g.owner = codec.Digest(hex.EncodeToString(sum[:]))
+		scopeValue, _ := protocol.EncodeValue(candidate.scope)
+		g.scopeKey = codec.Digest(scopeValue.JSONString())
+		g.parent = g.historyDigest(plan.request.Content)
+	}
+	return g
 }
 
 func (g *gatewayContinuation) warning(reason string) error {
@@ -66,6 +80,14 @@ func (g *gatewayContinuation) warning(reason string) error {
 	}
 	g.sink.Add(issue)
 	return nil
+}
+
+// A recognized package carrier is an authenticated input, never a lossy hint.
+func (g *gatewayContinuation) recoveryFailure(reason string) error {
+	if !g.isPackage {
+		return g.warning(reason)
+	}
+	return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.ContinuationUnavailable, Severity: protocol.SeverityError, Protocol: g.identity, Stage: "continuation", Path: "/continuation", Reason: reason}})
 }
 
 func (g *gatewayContinuation) historyDigest(nodes []protocol.Node) string {
@@ -98,7 +120,7 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 	}
 	if g.codec == nil {
 		if len(tokens) > 0 {
-			return g.warning("continuation recovery requires the configured master key")
+			return g.recoveryFailure("continuation recovery requires the configured master key")
 		}
 		return nil
 	}
@@ -107,13 +129,13 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 	for _, token := range tokens {
 		r, err := g.codec.Open(token, g.settings.RecordBytes)
 		if err != nil {
-			if e := g.warning(err.Error()); e != nil {
+			if e := g.recoveryFailure(err.Error()); e != nil {
 				return e
 			}
 			continue
 		}
 		if r.Session != g.session || r.Owner != g.owner || !protocol.CheckScope(r.Scope, g.scope) {
-			if e := g.warning("continuation session, owner or upstream scope differs"); e != nil {
+			if e := g.recoveryFailure("continuation session, owner or upstream scope differs"); e != nil {
 				return e
 			}
 			continue
@@ -163,20 +185,20 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 				}
 			}
 			if len(matches) > 1 {
-				if e := g.warning("continuation association is ambiguous"); e != nil {
+				if e := g.recoveryFailure("continuation association is ambiguous"); e != nil {
 					return e
 				}
 				continue
 			}
 			if len(matches) == 1 {
 				if matches[0].Session != g.session {
-					if e := g.warning("continuation session differs"); e != nil {
+					if e := g.recoveryFailure("continuation session differs"); e != nil {
 						return e
 					}
 					continue
 				}
 				if err := protocol.RestoreContinuation(n, matches[0], g.owner, g.scope, g.identity); err != nil {
-					if e := g.warning(err.Error()); e != nil {
+					if e := g.recoveryFailure(err.Error()); e != nil {
 						return e
 					}
 				} else {
@@ -213,8 +235,11 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 	}
 	for _, r := range records {
 		if !used[r.ID] {
-			return g.warning("authenticated continuation no longer matches an unchanged history node, position and parent")
+			return g.recoveryFailure("authenticated continuation no longer matches an unchanged history node, position and parent")
 		}
+	}
+	if g.isPackage {
+		return request.AcceptContinuations(tokens)
 	}
 	return nil
 }
@@ -222,6 +247,9 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 func (s *Server) captureContinuationNode(ctx context.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
 	if g == nil || !protocol.HasContinuationState(node) {
 		return nil
+	}
+	if g.isPackage {
+		return s.capturePackageContinuationNode(ctx, g, node, ordinal)
 	}
 	if g.codec == nil {
 		return g.warning("signature recovery requires the configured master key")

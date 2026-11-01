@@ -51,6 +51,7 @@ type ControlState struct {
 
 // Event associates deltas and snapshots with stable session/response/item IDs.
 type Event struct {
+	continuation       *continuationEntity
 	auxiliary          *sourceFrameReceipt
 	omittedAuxiliary   *omittedEventReceipt
 	controlReceipt     *controlEventReceipt

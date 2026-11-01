@@ -41,3 +41,13 @@ func writeCoreCacheIntentField(jsonOutputField, *CacheIntent, *valueReader) erro
 func writeCoreEvent(JSONOutput, *Event, *valueReader) error           { panic("coreplan generation") }
 func writeCoreNative(JSONOutput, *Native, *valueReader) error         { panic("coreplan generation") }
 func writeCoreProvenance(JSONOutput, *Provenance, *valueReader) error { panic("coreplan generation") }
+func readCoreResponseMetadata(ResponseMetadata, []string) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func writeCoreCounter(JSONOutput, *Counter, *valueReader) error         { panic("coreplan generation") }
+func writeCoreCounterPointer(JSONOutput, **Counter, *valueReader) error { panic("coreplan generation") }
+func writeCoreBool(JSONOutput, *bool, *valueReader) error               { panic("coreplan generation") }
+func writeCoreBoolPointer(JSONOutput, **bool, *valueReader) error       { panic("coreplan generation") }
+func writeCoreResponsesStorageIntentPointer(JSONOutput, **ResponsesStorageIntent, *valueReader) error {
+	panic("coreplan generation")
+}

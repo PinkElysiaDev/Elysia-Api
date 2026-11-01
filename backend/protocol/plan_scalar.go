@@ -55,6 +55,12 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 		if !state.runtime.isBound {
 			return plannedOutput{}, fmt.Errorf("runtime metadata is not bound")
 		}
+		if expression.pointer[0] == "continuation" {
+			if state.runtime.continuation == nil {
+				return plannedLeaf(Value{raw: "[]"}), nil
+			}
+			return state.runtime.continuation.tokenOutput(), nil
+		}
 		if expression.pointer[0] == "clientOutput" {
 			var value JSONOutput
 			var err error

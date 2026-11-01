@@ -120,6 +120,38 @@
         },
         {
           "ref": "request-storage"
+        },
+        {
+          "ref": "request-include"
+        },
+        {
+          "path": "/input",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/input"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "array"
+              }
+            ]
+          },
+          "schema": {
+            "type": "array"
+          },
+          "reason": "input history requires an array",
+          "each": [
+            {
+              "ref": "continuation-item"
+            }
+          ]
         }
       ]
     },
@@ -2528,15 +2560,8 @@
             ]
           },
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
         },
         {
@@ -2568,15 +2593,8 @@
             }
           },
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
         },
         {
@@ -2608,15 +2626,8 @@
             }
           },
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
         },
         {
@@ -2648,15 +2659,8 @@
             }
           },
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
         },
         {
@@ -2688,15 +2692,8 @@
             }
           },
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
         },
         {
@@ -2715,15 +2712,8 @@
             "ref": "is-integer-count"
           },
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
         },
         {
@@ -3209,16 +3199,25 @@
             }
           ],
           "when": {
-            "op": "not",
-            "source": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/error"
-              }
-            }
+            "op": "ref",
+            "ref": "is-generated-envelope"
           }
+        },
+        {
+          "path": "/output",
+          "when": {
+            "op": "ref",
+            "ref": "is-generated-envelope"
+          },
+          "schema": {
+            "type": "array"
+          },
+          "reason": "response output requires an array",
+          "each": [
+            {
+              "ref": "continuation-item"
+            }
+          ]
         }
       ]
     },
@@ -3563,6 +3562,9 @@
         },
         {
           "ref": "request-storage"
+        },
+        {
+          "ref": "request-include"
         }
       ]
     },
@@ -3977,45 +3979,24 @@
             "path": "/response/id",
             "type": "string",
             "when": {
-              "op": "not",
-              "source": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/error"
-                }
-              }
+              "op": "ref",
+              "ref": "is-generated-envelope"
             }
           },
           {
             "path": "/response/model",
             "type": "string",
             "when": {
-              "op": "not",
-              "source": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/error"
-                }
-              }
+              "op": "ref",
+              "ref": "is-generated-envelope"
             }
           },
           {
             "path": "/response/created_at",
             "type": "integer",
             "when": {
-              "op": "not",
-              "source": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/error"
-                }
-              }
+              "op": "ref",
+              "ref": "is-generated-envelope"
             }
           },
           {
@@ -11998,6 +11979,10 @@
               "ref": "is-turn-state-event"
             }
           }
+        },
+        {
+          "ref": "continuation-item",
+          "path": "/item"
         }
       ]
     }
@@ -13617,6 +13602,69 @@
         "op": "literal",
         "value": false
       }
+    },
+    "is-responses-continuation": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/encrypted_content"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "string"
+          }
+        ]
+      },
+      "then": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "reasoning"
+              }
+            ]
+          },
+          {
+            "op": "has_prefix",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/encrypted_content"
+            },
+            "value": "elysia-continuation.v1."
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "is-generated-envelope": {
+      "op": "not",
+      "source": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/error"
+        }
+      }
     }
   },
   "constraints": {
@@ -14883,6 +14931,87 @@
           "nullable": true
         },
         "reason": "store must be a boolean or null"
+      }
+    ],
+    "request-include": [
+      {
+        "path": "/include",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/include"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "nullable": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": "include must be an array of strings or null"
+      }
+    ],
+    "continuation-item": [
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "required": [
+            "type",
+            "id",
+            "summary",
+            "encrypted_content"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "reasoning"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "array",
+              "enum": [
+                []
+              ]
+            },
+            "encrypted_content": {
+              "type": "string"
+            }
+          },
+          "allowUnknown": false
+        },
+        "reason": "invalid gateway continuation carrier",
+        "when": {
+          "op": "ref",
+          "ref": "is-responses-continuation"
+        }
+      },
+      {
+        "path": "/id",
+        "when": {
+          "op": "ref",
+          "ref": "is-responses-continuation"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "check": {
+          "op": "has_prefix",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          "value": "elysia_continuation_"
+        },
+        "reason": "gateway carrier identity requires its reserved prefix"
       }
     ]
   }

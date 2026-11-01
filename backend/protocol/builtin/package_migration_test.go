@@ -329,6 +329,7 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 		request.SchemaVersion = p.ProtocolCoreVersion
 		if !isPackage {
 			migrateFixtureStorage(t, request, compiled.Codec(p.DecodeRequest))
+			migrateFixtureInclude(t, request)
 		}
 		value, err := p.EncodeValue(request)
 		return value.Bytes(), err
@@ -339,6 +340,7 @@ func executePackageMigrationSample(t *testing.T, compiled *p.Compiled, sample p.
 		}
 		if isPackage {
 			request.SchemaVersion = p.ProtocolCoreVersion
+			migrateFixtureInclude(t, &request)
 			if !request.Parameters["store"].IsZero() {
 				codec := map[string]string{"openai_chat": Chat, "openai_responses": Responses}[compiled.Identity().Family]
 				migrateFixtureStorage(t, &request, codec)
@@ -396,6 +398,32 @@ func migrateFixtureStorage(t *testing.T, request *p.Request, codec string) {
 		request.ClientOutput = &p.ClientOutput{}
 	}
 	request.ClientOutput.ResponsesStorage = storage
+}
+
+// Old fixtures stored the same delivery selectors under generation parameters.
+// Move only that known field; retain null, unknown selectors and raw spelling.
+func migrateFixtureInclude(t *testing.T, request *p.Request) {
+	t.Helper()
+	raw := request.Parameters["responses_include"]
+	if raw.IsZero() {
+		return
+	}
+	if request.ClientOutput == nil {
+		request.ClientOutput = &p.ClientOutput{}
+	}
+	request.ClientOutput.RawResponsesInclude = raw
+	if !raw.IsNull() {
+		var selectors []string
+		if err := raw.Decode(&selectors); err != nil {
+			t.Fatal("historical include fixture is not an array or null", err)
+		}
+		for _, selector := range selectors {
+			if selector == "reasoning.encrypted_content" {
+				request.ClientOutput.RequireContinuationState = true
+			}
+		}
+	}
+	delete(request.Parameters, "responses_include")
 }
 
 func migrationError(err error) string {

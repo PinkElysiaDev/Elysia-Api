@@ -1,6 +1,9 @@
 package protocol
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // ConversionEventState belongs to one upstream attempt. Waiting retains the
 // original event order, including interleaved parallel tools, under fixed caps.
@@ -37,16 +40,22 @@ func eventResponseVersion(version int) int {
 }
 
 func (s *ConversionEventState) Push(event Event) ([]Event, error) {
+	return s.PushContext(context.Background(), event)
+}
+
+// PushContext preserves source order while waiting only for declared resources
+// that need a completed, authenticated entity.
+func (s *ConversionEventState) PushContext(ctx context.Context, event Event) ([]Event, error) {
 	if s.conversion == nil {
 		return []Event{event}, nil
 	}
 	if s.conversion.hasDeliveryRule(s.route) && !s.started && event.Type != ResponseStarted && (event.Type == ItemStarted || event.Type == ResponseFinished) {
-		start, err := s.Push(Event{SchemaVersion: event.SchemaVersion, Source: event.Source, Type: ResponseStarted, ResponseID: event.ResponseID})
+		start, err := s.PushContext(ctx, Event{SchemaVersion: event.SchemaVersion, Source: event.Source, Type: ResponseStarted, ResponseID: event.ResponseID})
 		if err != nil {
 			return nil, err
 		}
 		s.Buffered = true
-		rest, err := s.Push(event)
+		rest, err := s.PushContext(ctx, event)
 		return append(start, rest...), err
 	}
 	if event.Type == ResponseStarted && s.conversion.hasDeliveryRule(s.route) {
@@ -127,13 +136,16 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 			s.pending, s.bytes = nil, 0
 			return out, nil
 		}
-		if event.Type == OperationFailed || event.Type == OperationCancelled {
-			s.terminal = nil
-		}
+	}
+	if event.Type == OperationFailed || event.Type == OperationCancelled {
+		// A real failure ends waiting without publishing partial buffered items.
+		clear(s.open)
+		s.pending, s.terminal, s.bytes = nil, nil, 0
+		return []Event{event}, nil
 	}
 	wait := false
 	if event.Type == ItemStarted && event.Item != nil {
-		wait = s.conversion.Policy.Mode == "strict" && s.conversion.SignatureProjectionEnabled(ConversionEvent, s.route) && (s.route.Source.Family != s.route.Target.Family || s.route.Source.WireVersion != s.route.Target.WireVersion)
+		wait = !s.conversion.HasContinuationRecovery(ConversionEvent, s.route) && s.conversion.Policy.Mode == "strict" && s.conversion.SignatureProjectionEnabled(ConversionEvent, s.route) && (s.route.Source.Family != s.route.Target.Family || s.route.Source.WireVersion != s.route.Target.WireVersion)
 		value, _ := EncodeValue(event.Item)
 		for _, r := range s.conversion.Policy.Rules {
 			if r.Enabled && r.Phase == ConversionEvent && r.Action == "buffer_node" && (r.Match.NodeKind == "" || r.Match.NodeKind == event.Item.Kind) && r.Match.matches(s.route, value) {
@@ -151,6 +163,23 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 		}
 		s.open[key] = true
 		s.Buffered = true
+	}
+	if entity := event.continuation; entity != nil {
+		key := "continuation:" + entity.key
+		if entity.isComplete {
+			delete(s.open, key)
+		} else if event.Item != nil && HasContinuationState(*event.Item) {
+			needsRecovery, err := s.conversion.NeedsContinuationRecovery(ctx, ConversionEvent, *event.Item, s.route)
+			if err != nil {
+				return nil, err
+			}
+			if needsRecovery && !s.open[key] {
+				if len(s.open) >= s.conversion.limits.StateItems {
+					return nil, streamIssue(LimitExceeded, "/conversion/events", "waiting node limit exceeded")
+				}
+				s.open[key], s.Buffered = true, true
+			}
+		}
 	}
 	if len(s.pending) == 0 && len(s.open) == 0 {
 		return []Event{event}, nil

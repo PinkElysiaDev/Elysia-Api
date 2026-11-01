@@ -9,6 +9,9 @@ import (
 // Request applies ingress and request rules to an owned result, then resolves
 // gateway usage settings. ApplyValue executes only its selected rule phase.
 func (c *CompiledConversion) Request(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
+	if request != nil && request.continuationInput != nil && !request.continuationsAccepted {
+		return nil, operationMetadataError("/continuation", "selected continuation carriers have not been authenticated")
+	}
 	if c != nil {
 		if err := checkSemanticValue(request, c.phaseLimits(ctx, ConversionRequest)); err != nil {
 			return nil, resourceIssue(err, route.Source, DecodeRequest, "conversion.request")
@@ -31,6 +34,9 @@ func (c *CompiledConversion) Request(ctx context.Context, request *Request, rout
 	var result Request
 	if err = decodeContract(v.Bytes(), &result); err != nil {
 		return nil, err
+	}
+	if request != nil {
+		result.inheritContinuations(request)
 	}
 	applyClientOutputSettings(&result, c.Policy.Usage)
 	return &result, nil
@@ -93,6 +99,26 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 }
 
 func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
+	entity := event.continuation
+	if entity == nil {
+		return c.convertEvent(ctx, event, route, sink)
+	}
+	route.continuationEvent = &continuationEventObservation{original: event, entity: entity}
+	result, err := c.convertEvent(ctx, event, route, sink)
+	if err != nil {
+		return Event{}, err
+	}
+	if !sameContinuationEvent(event, result) {
+		entity.isChanged = true
+		if entity.isRecovering {
+			return Event{}, operationMetadataError("/continuation", "conversion changed content bound to authenticated continuation")
+		}
+	}
+	result.continuation = entity
+	return result, nil
+}
+
+func (c *CompiledConversion) convertEvent(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
 	if event.auxiliary != nil || event.omittedAuxiliary != nil || event.controlReceipt != nil || event.omittedControl != nil {
 		return c.convertProtectedEvent(ctx, event, route, sink)
 	}

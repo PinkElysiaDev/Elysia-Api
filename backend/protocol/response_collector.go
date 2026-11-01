@@ -3,9 +3,10 @@ package protocol
 import "strings"
 
 type collectedPosition struct {
-	parent     string
-	collection string
-	index      int
+	continuation *continuationEntity
+	parent       string
+	collection   string
+	index        int
 }
 
 // ResponseCollector assembles a bounded result for consumers that need a whole
@@ -103,6 +104,9 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 	}
 	collector.materializeText(key)
 	collector.materializeItemMetadata(key)
+	if position.continuation != nil {
+		position.continuation.complete(*node)
+	}
 	if node.Kind == ServerToolNode {
 		return cloneServerTool(node), ordinal, true
 	}

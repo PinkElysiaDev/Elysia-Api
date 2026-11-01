@@ -196,29 +196,35 @@ type Tool struct {
 // Request has one ordered content history. Parameters are named semantic
 // fields, not an automatic pass-through container for unknown wire extensions.
 type Request struct {
-	SchemaVersion      int              `json:"schemaVersion"`
-	Source             Identity         `json:"source"`
-	Model              Value            `json:"model,omitzero"`
-	Content            []Node           `json:"content"`
-	Tools              []Tool           `json:"tools,omitempty"`
-	ToolChoice         Value            `json:"toolChoice,omitzero"`
-	Parameters         Object           `json:"parameters,omitempty"`
-	OutputLimitDefault bool             `json:"outputLimitDefault,omitempty"`
-	Reasoning          *ReasoningIntent `json:"reasoning,omitempty"`
-	Cache              []CacheIntent    `json:"cache,omitempty"`
-	Resources          []Resource       `json:"resources,omitempty"`
-	Native             *Native          `json:"native,omitempty"`
-	ClientOutput       *ClientOutput    `json:"clientOutput,omitempty"`
+	continuationInput     *continuationInput
+	continuationsAccepted bool
+	SchemaVersion         int              `json:"schemaVersion"`
+	Source                Identity         `json:"source"`
+	Model                 Value            `json:"model,omitzero"`
+	Content               []Node           `json:"content"`
+	Tools                 []Tool           `json:"tools,omitempty"`
+	ToolChoice            Value            `json:"toolChoice,omitzero"`
+	Parameters            Object           `json:"parameters,omitempty"`
+	OutputLimitDefault    bool             `json:"outputLimitDefault,omitempty"`
+	Reasoning             *ReasoningIntent `json:"reasoning,omitempty"`
+	Cache                 []CacheIntent    `json:"cache,omitempty"`
+	Resources             []Resource       `json:"resources,omitempty"`
+	Native                *Native          `json:"native,omitempty"`
+	ClientOutput          *ClientOutput    `json:"clientOutput,omitempty"`
 }
 
 // ClientOutput describes delivery to the caller, independently of generation.
 // RawStreamOptions retains absent/null and extensions for same-wire replay.
 type ClientOutput struct {
-	CollectUsage        bool                    `json:"collectUsage,omitempty"`
-	IncludeUsage        *bool                   `json:"includeUsage,omitempty"`
-	RawStreamOptions    Value                   `json:"rawStreamOptions,omitzero"`
-	RawResponsesInclude Value                   `json:"rawResponsesInclude,omitzero"`
-	ResponsesStorage    *ResponsesStorageIntent `json:"responsesStorage,omitempty"`
+	// RequireContinuationState requests client-visible recovery when protected state exists.
+	RequireContinuationState bool `json:"requireContinuationState,omitempty"`
+	// ResponsesIncludeResolved records the target rule's handling of source selectors.
+	ResponsesIncludeResolved bool                    `json:"responsesIncludeResolved,omitempty"`
+	CollectUsage             bool                    `json:"collectUsage,omitempty"`
+	IncludeUsage             *bool                   `json:"includeUsage,omitempty"`
+	RawStreamOptions         Value                   `json:"rawStreamOptions,omitzero"`
+	RawResponsesInclude      Value                   `json:"rawResponsesInclude,omitzero"`
+	ResponsesStorage         *ResponsesStorageIntent `json:"responsesStorage,omitempty"`
 }
 
 // ResponsesStorageIntent describes API response retrieval, independently of

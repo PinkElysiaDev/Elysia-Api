@@ -60,10 +60,6 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		return nil, err
 	}
 	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input), bodyBytes: len(body)}
-	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(ctx).BufferBytes)
-	if err != nil {
-		return nil, err
-	}
 	operationOptions, err := (protocol.EvaluationContext{}).WithOperation(record.RequestID, record.StartedAt.Unix())
 	if err != nil {
 		return nil, err
@@ -80,6 +76,14 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 	}
 	options.ResolveRequestScope = func(request *protocol.Request) (protocol.Scope, error) {
 		return s.bindGatewayRequest(ctx, c, view, bindings, plan, path, request, record)
+	}
+	if ingress.CoreVersion() == protocol.ProtocolCoreVersion {
+		options, plan.carriers, err = ingress.ExtractContinuations(ctx, input, options)
+	} else {
+		input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(ctx).BufferBytes)
+	}
+	if err != nil {
+		return nil, err
 	}
 	request, err := ingress.DecodeRequestValue(ctx, input, options)
 	if err != nil {
@@ -134,7 +138,9 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		}
 		candidate.prepared, err = candidate.conversion.Request(ctx, restored, candidate.conversionContext(ingress, false), sink)
 		if err == nil && candidate.continuation != nil {
-			candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
+			if !candidate.continuation.isPackage {
+				candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
+			}
 			candidate.continuation.conversion = candidate.conversion
 			candidate.continuation.route = candidate.conversionContext(ingress, true)
 		}
@@ -346,6 +352,13 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 	if response {
 		source, target = target, source
 	}
+	route := protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	if candidate.continuation != nil && candidate.continuation.isPackage {
+		if response {
+			return route.WithContinuation(candidate.continuation.binding, candidate.continuation.requireCarrier)
+		}
+		return route
+	}
 	recoverable := map[string]bool{}
 	if candidate.continuation != nil {
 		for key := range candidate.continuation.saved {
@@ -358,7 +371,8 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 			}
 		}
 	}
-	return protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	route.Recoverable = recoverable
+	return route
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {

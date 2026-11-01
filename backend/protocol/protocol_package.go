@@ -135,6 +135,7 @@ type ProtocolStreamActionSpec struct {
 // ProtocolMapping contains only declarative programs and their semantic effects.
 // A v2 module or after mapping cannot be selected through this contract.
 type ProtocolMapping struct {
+	Continuation       *ProtocolContinuationMapping           `json:"continuation,omitempty"`
 	ConversionDefaults []ProtocolConversionDefault            `json:"conversionDefaults,omitempty"`
 	FieldObservations  map[string]ProtocolFieldObservation    `json:"fieldObservations,omitempty"`
 	CoreVersion        int                                    `json:"coreVersion"`
@@ -353,6 +354,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		compiled.mappings[direction], compiled.packagePlan.effects[direction] = program, effects
 	}
 	if err := compiled.bindPackageOperations(spec, mapping); err != nil {
+		return nil, err
+	}
+	if err := compiled.compileContinuation(mapping.Continuation, expressions); err != nil {
 		return nil, err
 	}
 	if err := compiled.compilePackageModelMappings(spec, mapping, wireSpec, expressions); err != nil {

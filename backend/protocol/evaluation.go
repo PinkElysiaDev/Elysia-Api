@@ -25,6 +25,8 @@ type evaluation struct {
 }
 
 type evaluationRuntime struct {
+	continuation          *ContinuationBinding
+	continuationInput     *continuationInput
 	clientOutput          *ClientOutput
 	observedNativeFrame   Value
 	isBound               bool
@@ -39,6 +41,7 @@ type evaluationRuntime struct {
 
 func bindEvaluationRuntime(compiled *Compiled, direction Direction, options EvaluationContext) evaluationRuntime {
 	runtime := evaluationRuntime{clientOutput: options.ClientOutput, observedNativeFrame: options.observedNativeFrame, isBound: true, isInterleavedThinking: options.InterleavedThinking, scopeModel: options.Scope.Model, operation: options.operation, emissionOffset: options.emissionOffset}
+	runtime.continuation, runtime.continuationInput = options.continuation, options.continuationInput
 	stream := options.outputStream
 	if stream != nil && compiled.packagePlan != nil && direction == EncodeEvent && stream.direction == EncodeEvent && stream.packageStream != nil &&
 		compiled.hash == stream.compiled.hash && compiled.mappings[direction].definitionHash == stream.compiled.mappings[direction].definitionHash && options.Scope == stream.options.Scope {

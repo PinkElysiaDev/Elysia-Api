@@ -104,6 +104,10 @@ func TestPackageDeclaredResponseShapeDispositions(t *testing.T) {
 
 func TestPackageDeclaredStreamShapeDispositions(t *testing.T) {
 	source := compileBuiltinPackage(t, "openai-responses")
+	operation, err := (p.EvaluationContext{}).WithOperation("shape-projection", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"anthropic", "google-generate-content"} {
 		t.Run(name, func(t *testing.T) {
 			target := compileBuiltinPackage(t, name)
@@ -111,7 +115,7 @@ func TestPackageDeclaredStreamShapeDispositions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
+			route := (p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "model"}).WithOperation(operation)
 			event := p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemStarted, ItemID: p.StringValue("stream-message"),
 				Item: &p.Node{Kind: p.MessageNode, ID: p.StringValue("message"), Status: p.StringValue("in_progress"), Role: p.StringValue("assistant")}}
 			result, err := conversion.Event(t.Context(), event, route, nil)

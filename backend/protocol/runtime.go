@@ -34,6 +34,13 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 	if input.IsZero() {
 		return nil, fmt.Errorf("invalid JSON value")
 	}
+	if compiled.packagePlan != nil {
+		var err error
+		options, _, err = compiled.ExtractContinuations(ctx, input, options)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if compiled.native.Preserve || compiled.mappings[DecodeRequest].hasCoreOutputPlan {
 		options.valueReader = requestValueReader(input)
 	}
@@ -43,6 +50,7 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 	if err != nil {
 		return nil, err
 	}
+	request.continuationInput = options.continuationInput
 
 	var baseline *Request
 	if compiled.native.Preserve && compiled.supportsRequestWorkspace() {
@@ -139,6 +147,15 @@ func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Reque
 	if err := validateRequestContext(request); err != nil {
 		return Value{}, err
 	}
+	if request != nil && request.continuationInput != nil {
+		if !request.continuationsAccepted {
+			return Value{}, operationMetadataError("/continuation", "selected continuation carriers have not been authenticated")
+		}
+		if native := request.Native; native != nil && (native.Value != request.continuationInput.input || native.Source.Protocol != request.continuationInput.compiled.identity || native.Source.Path != "") {
+			return Value{}, operationMetadataError("/continuation", "request native no longer matches its authenticated carrier source")
+		}
+		options.continuationInput = request.continuationInput
+	}
 	target := compiled.target(EncodeRequest, options)
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return Value{}, err
@@ -160,12 +177,17 @@ func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Reque
 }
 
 // DecodeResponse executes the independent upstream response mapping.
-func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, options EvaluationContext) (result *Response, err error) {
-	defer func() { err = compiled.runtimeError(DecodeResponse, err) }()
+func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, options EvaluationContext) (*Response, error) {
 	input, err := ParseValue(body)
 	if err != nil {
-		return nil, err
+		return nil, compiled.runtimeError(DecodeResponse, err)
 	}
+	return compiled.DecodeResponseValue(ctx, input, options)
+}
+
+// DecodeResponseValue consumes immutable wire without a second transport copy.
+func (compiled *Compiled) DecodeResponseValue(ctx context.Context, input Value, options EvaluationContext) (result *Response, err error) {
+	defer func() { err = compiled.runtimeError(DecodeResponse, err) }()
 	response, err := decodeTyped(ctx, compiled, DecodeResponse, input, options, func(module TypedModule, options EvaluationContext) (*Response, error) {
 		return module.DecodeResponse(ctx, input, options)
 	})
@@ -197,21 +219,31 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 
 // EncodeResponse executes the independently authored client response mapping.
 func (compiled *Compiled) EncodeResponse(ctx context.Context, response *Response, options EvaluationContext) (result []byte, err error) {
+	value, err := compiled.EncodeResponseValue(ctx, response, options)
+	if err != nil {
+		return nil, err
+	}
+	return value.Bytes(), nil
+}
+
+// EncodeResponseValue keeps the immutable response through carrier and final
+// delivery validation; byte encoding remains the public owned-copy boundary.
+func (compiled *Compiled) EncodeResponseValue(ctx context.Context, response *Response, options EvaluationContext) (result Value, err error) {
 	defer func() { err = compiled.runtimeError(EncodeResponse, err) }()
 	if err := IssuesError(CheckResponse(response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	output, err := encodeTyped(ctx, compiled, EncodeResponse, response, options, func(module TypedModule, input *Response, options EvaluationContext) (Value, error) {
 		return module.EncodeResponse(ctx, input, options)
 	})
 	if err != nil {
-		return nil, err
+		return Value{}, err
 	}
 	output, err = compiled.preserveMappedNative(ctx, EncodeResponse, response.Native, output, options)
 	if err != nil {
-		return nil, err
+		return Value{}, err
 	}
-	return output.Bytes(), nil
+	return output, nil
 }
 
 // DecodeEvents maps a wire frame to ordered semantic events. Lifecycle and

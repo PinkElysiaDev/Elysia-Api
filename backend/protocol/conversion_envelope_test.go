@@ -86,6 +86,35 @@ func TestEnvelopeStreamIdentityUsageAndCancellation(t *testing.T) {
 	}
 }
 
+func TestEventFailureDiscardsWaitingItems(t *testing.T) {
+	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "wait-test", Rules: []ConversionRule{{ID: "wait-tool", Enabled: true, Phase: ConversionEvent, Action: "buffer_node", Match: ConversionMatch{NodeKind: ToolCallNode}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, terminal := range []EventType{OperationFailed, OperationCancelled} {
+		t.Run(string(terminal), func(t *testing.T) {
+			state := NewConversionEventState(conversion, ConversionContext{})
+			start := toolStart()
+			for _, event := range []Event{start, {SchemaVersion: start.SchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue("{")}} {
+				if output, err := state.PushContext(t.Context(), event); err != nil || len(output) != 0 {
+					t.Fatal("incomplete tool escaped waiting", output, err)
+				}
+			}
+			failure := Event{SchemaVersion: start.SchemaVersion, Type: terminal, Error: StringValue("upstream stopped")}
+			output, err := state.PushContext(t.Context(), failure)
+			if err != nil || len(output) != 1 || output[0].Type != terminal || output[0].Error != failure.Error {
+				t.Fatal("waiting replaced the original failure", output, err)
+			}
+			if len(state.pending) != 0 || len(state.open) != 0 || state.bytes != 0 {
+				t.Fatal("failed stream retained waiting content")
+			}
+			if tail, err := state.Drain(); err != nil || len(tail) != 0 {
+				t.Fatal("failed stream produced a second terminal", tail, err)
+			}
+		})
+	}
+}
+
 func TestEventProjectionResponseVersion(t *testing.T) {
 	for _, action := range []string{"anthropic_usage_envelope", "response_shape", "response_envelope"} {
 		rule := ConversionRule{ID: "envelope", Enabled: true, Phase: ConversionEvent, Action: action}

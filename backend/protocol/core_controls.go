@@ -47,8 +47,28 @@ func compileTypedControlSetter(root reflect.Type, path string) (func(any, JSONOu
 			return replaceControlUsage(output, &document.(*Event).Usage, reader)
 		}, ObjectType, nil
 	}
+	if root == reflect.TypeFor[Event]() && path == "/responseId" {
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			return replaceControlValue(output, &document.(*Event).ResponseID, reader)
+		}, StringType, nil
+	}
 	if root == reflect.TypeFor[Event]() {
-		return compileEventResponseAttributeSetter(path)
+		var selectField func(*Response) *Value
+		switch path {
+		case "/response/id":
+			selectField = func(response *Response) *Value { return &response.ID }
+		case "/response/model":
+			selectField = func(response *Response) *Value { return &response.Model }
+		default:
+			return compileEventResponseAttributeSetter(path)
+		}
+		return func(document any, output JSONOutput, reader *valueReader) error {
+			response := document.(*Event).Response
+			if response == nil {
+				return &declaredRejectionError{diagnostic: RejectDiagnostic{Code: InvalidInput, Path: "/response"}, reason: "field update requires an existing response"}
+			}
+			return assignCoreValue(output, selectField(response), reader)
+		}, StringType, nil
 	}
 	if root == reflect.TypeFor[ResponseMetadata]() {
 		return compileMetadataControlSetter(path)
@@ -213,8 +233,9 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 	if options.hasContext {
 		contextValue, err = EncodeValue(struct {
 			Transport    Transport                   `json:"transport"`
+			Model        string                      `json:"model"`
 			Observations map[string]fieldObservation `json:"observations,omitempty"`
-		}{route.Transport, route.fieldObservations})
+		}{route.Transport, route.Model, route.fieldObservations})
 		if err != nil {
 			return false, err
 		}
@@ -250,17 +271,8 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 		runtime: evaluationRuntime{isBound: true, operation: route.operation}}
 	state.coreRequest, _ = document.(*Request)
 	if options.FrameUsage {
-		if facts := route.frameUsage; facts != nil && (facts.source != route.Source || facts.target != route.Target || facts.scope != route.Scope) {
-			return false, operationMetadataError("/frame/usage", "frame usage belongs to a different route or scope")
-		}
 		state.runtime.hasFrameUsage = route.frameUsage != nil
-		if route.frameUsage != nil {
-			var err error
-			state.runtime.frameUsage, err = route.frameUsage.forEvent(*document.(*Event))
-			if err != nil {
-				return false, err
-			}
-		}
+		state.runtime.frameUsage = route.selectedFrameUsage
 	}
 	result, err := applyControlSteps(state, conversion, document, route, rule, sink, options.steps, &options)
 	if err != nil {
