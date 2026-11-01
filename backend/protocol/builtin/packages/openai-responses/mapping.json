@@ -5043,50 +5043,16 @@
             "when": {
               "op": "exists",
               "source": {
-                "op": "if",
-                "when": {
-                  "op": "exists",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/input_tokens_details/cached_tokens"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/input_tokens_details/cached_tokens"
-                },
-                "otherwise": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_read_input_tokens"
-                }
+                "op": "ref",
+                "ref": "read-cached-input-count"
               }
             },
             "then": {
               "op": "object",
               "fields": {
                 "count": {
-                  "op": "if",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/input_tokens_details/cached_tokens"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/input_tokens_details/cached_tokens"
-                  },
-                  "otherwise": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/usage/cache_read_input_tokens"
-                  }
+                  "op": "ref",
+                  "ref": "read-cached-input-count"
                 },
                 "origin": {
                   "op": "literal",
@@ -16823,33 +16789,8 @@
           "op": "let",
           "name": "selected",
           "source": {
-            "op": "object",
-            "fields": {
-              "wire:openai_responses": {
-                "op": "let",
-                "name": "selected",
-                "source": {
-                  "op": "project",
-                  "policy": "exclude",
-                  "source": {
-                    "op": "read",
-                    "from": "item",
-                    "path": ""
-                  },
-                  "keys": [
-                    "type",
-                    "cache_control",
-                    "id",
-                    "call_id",
-                    "output"
-                  ]
-                },
-                "body": {
-                  "op": "ref",
-                  "ref": "emit-nonempty-object"
-                }
-              }
-            }
+            "op": "ref",
+            "ref": "decode-tool-result-attributes"
           },
           "body": {
             "op": "ref",
@@ -16942,33 +16883,8 @@
             "policy": "reject",
             "items": [
               {
-                "op": "object",
-                "fields": {
-                  "wire:openai_responses": {
-                    "op": "let",
-                    "name": "selected",
-                    "source": {
-                      "op": "project",
-                      "policy": "exclude",
-                      "source": {
-                        "op": "read",
-                        "from": "item",
-                        "path": ""
-                      },
-                      "keys": [
-                        "type",
-                        "cache_control",
-                        "id",
-                        "call_id",
-                        "output"
-                      ]
-                    },
-                    "body": {
-                      "op": "ref",
-                      "ref": "emit-nonempty-object"
-                    }
-                  }
-                }
+                "op": "ref",
+                "ref": "decode-tool-result-attributes"
               },
               {
                 "op": "object",
@@ -24253,34 +24169,8 @@
     "client-response-storage": {
       "op": "if",
       "when": {
-        "op": "all",
-        "items": [
-          {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "runtime",
-              "path": "/clientOutput/responsesStorage"
-            }
-          },
-          {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "runtime",
-                  "path": "/clientOutput/responsesStorage/effectiveUnknown"
-                },
-                {
-                  "op": "literal",
-                  "value": true
-                }
-              ]
-            }
-          }
-        ]
+        "op": "ref",
+        "ref": "has-effective-storage-decision"
       },
       "then": {
         "op": "read",
@@ -25390,6 +25280,148 @@
               "value": 300
             }
           ]
+        }
+      ]
+    },
+    "read-cached-input-count": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/usage/input_tokens_details/cached_tokens"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/usage/input_tokens_details/cached_tokens"
+      },
+      "otherwise": {
+        "op": "read",
+        "from": "input",
+        "path": "/usage/cache_read_input_tokens"
+      }
+    },
+    "decode-tool-result-attributes": {
+      "op": "object",
+      "fields": {
+        "wire:openai_responses": {
+          "op": "let",
+          "name": "selected",
+          "source": {
+            "op": "project",
+            "policy": "exclude",
+            "source": {
+              "op": "read",
+              "from": "item",
+              "path": ""
+            },
+            "keys": [
+              "type",
+              "cache_control",
+              "id",
+              "call_id",
+              "output"
+            ]
+          },
+          "body": {
+            "op": "ref",
+            "ref": "emit-nonempty-object"
+          }
+        }
+      }
+    },
+    "has-effective-storage-decision": {
+      "op": "all",
+      "items": [
+        {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "runtime",
+            "path": "/clientOutput/responsesStorage"
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "runtime",
+                "path": "/clientOutput/responsesStorage/effectiveUnknown"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "decode-text-delta-event": {
+      "op": "array",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "schemaVersion": {
+              "op": "literal",
+              "value": 2
+            },
+            "type": {
+              "op": "literal",
+              "value": "item.delta"
+            },
+            "responseId": {
+              "op": "ref",
+              "ref": "stream-response-identity"
+            },
+            "itemId": {
+              "op": "ref",
+              "ref": "stream-output-key"
+            },
+            "index": {
+              "op": "ref",
+              "ref": "source-output-position"
+            },
+            "delta": {
+              "op": "read",
+              "from": "input",
+              "path": "/delta"
+            }
+          }
+        }
+      ]
+    },
+    "decode-failed-response-event": {
+      "op": "array",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "schemaVersion": {
+              "op": "literal",
+              "value": 2
+            },
+            "type": {
+              "op": "literal",
+              "value": "operation.failed"
+            },
+            "responseId": {
+              "op": "read",
+              "from": "state",
+              "path": "/response"
+            },
+            "error": {
+              "op": "ref",
+              "ref": "decode-stream-failure"
+            }
+          }
         }
       ]
     }
@@ -26883,39 +26915,8 @@
                   ]
                 },
                 "response.function_call_arguments.delta": {
-                  "op": "array",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "schemaVersion": {
-                          "op": "literal",
-                          "value": 2
-                        },
-                        "type": {
-                          "op": "literal",
-                          "value": "item.delta"
-                        },
-                        "responseId": {
-                          "op": "ref",
-                          "ref": "stream-response-identity"
-                        },
-                        "itemId": {
-                          "op": "ref",
-                          "ref": "stream-output-key"
-                        },
-                        "index": {
-                          "op": "ref",
-                          "ref": "source-output-position"
-                        },
-                        "delta": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/delta"
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "decode-text-delta-event"
                 },
                 "response.function_call_arguments.done": {
                   "op": "array",
@@ -27676,58 +27677,12 @@
                   "items": []
                 },
                 "response.failed": {
-                  "op": "array",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "schemaVersion": {
-                          "op": "literal",
-                          "value": 2
-                        },
-                        "type": {
-                          "op": "literal",
-                          "value": "operation.failed"
-                        },
-                        "responseId": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        },
-                        "error": {
-                          "op": "ref",
-                          "ref": "decode-stream-failure"
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "decode-failed-response-event"
                 },
                 "error": {
-                  "op": "array",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "schemaVersion": {
-                          "op": "literal",
-                          "value": 2
-                        },
-                        "type": {
-                          "op": "literal",
-                          "value": "operation.failed"
-                        },
-                        "responseId": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        },
-                        "error": {
-                          "op": "ref",
-                          "ref": "decode-stream-failure"
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "decode-failed-response-event"
                 },
                 "response.reasoning_summary_part.added": {
                   "op": "let",
@@ -27941,39 +27896,8 @@
                   "ref": "emit-source-text-snapshot"
                 },
                 "response.custom_tool_call_input.delta": {
-                  "op": "array",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "schemaVersion": {
-                          "op": "literal",
-                          "value": 2
-                        },
-                        "type": {
-                          "op": "literal",
-                          "value": "item.delta"
-                        },
-                        "responseId": {
-                          "op": "ref",
-                          "ref": "stream-response-identity"
-                        },
-                        "itemId": {
-                          "op": "ref",
-                          "ref": "stream-output-key"
-                        },
-                        "index": {
-                          "op": "ref",
-                          "ref": "source-output-position"
-                        },
-                        "delta": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/delta"
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "decode-text-delta-event"
                 },
                 "response.custom_tool_call_input.done": {
                   "op": "let",
@@ -29739,34 +29663,8 @@
               "op": "all",
               "items": [
                 {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "runtime",
-                        "path": "/clientOutput/responsesStorage"
-                      }
-                    },
-                    {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "runtime",
-                            "path": "/clientOutput/responsesStorage/effectiveUnknown"
-                          },
-                          {
-                            "op": "literal",
-                            "value": true
-                          }
-                        ]
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "has-effective-storage-decision"
                 },
                 {
                   "op": "present",
