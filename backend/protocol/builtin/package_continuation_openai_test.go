@@ -133,18 +133,26 @@ func TestPackageOpenAICarrierDelivery(t *testing.T) {
 						if err != nil || frames != nil {
 							t.Fatal("nonterminal frame changed", frames, err)
 						}
-						if err := validation.Consume(t.Context(), testValue(t, start)); err != nil {
+						if err := validation.ConsumeTransformed(t.Context(), testValue(t, start), testValue(t, strings.Replace(start, `"model":"m"`, `"model":"alias"`, 1)), options); err != nil {
 							t.Fatal(err)
 						}
 						if err := validation.CommitDelivery(); err != nil {
 							t.Fatal(err)
 						}
-						frames, err = compiled.EncodeContinuationFrame(t.Context(), testValue(t, end), options)
+						before := testValue(t, end)
+						after := testValue(t, strings.Replace(end, `"model":"m"`, `"model":"alias"`, 1))
+						originals, frames, err := compiled.EncodeContinuationTransformedFrames(t.Context(), before, after, options)
 						if err != nil || len(frames) == 0 {
 							t.Fatal(frames, err)
 						}
-						for _, frame := range frames {
-							if err := validation.ConsumeContinuation(t.Context(), frame, options); err != nil {
+						if len(originals) != len(frames) {
+							t.Fatal("carrier frames lost their pre-rule pairing")
+						}
+						for index, frame := range frames {
+							if strings.ReplaceAll(originals[index].JSONString(), `"model":"m"`, `"model":"alias"`) != frame.JSONString() {
+								t.Fatal("carrier expansion changed the wire edit", originals[index], frame)
+							}
+							if err := validation.ConsumeTransformed(t.Context(), originals[index], frame, options); err != nil {
 								t.Fatal(frame, err)
 							}
 						}

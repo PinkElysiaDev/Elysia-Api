@@ -519,7 +519,7 @@ export function ProtocolV2Editor({
                     merge_text 处理 /content/*/children；text.measure 声明长度口径（如 utf16_length），offsetBinding、lengthBinding 为 metadata 表达式提供原文偏移，across 显式允许跨越未选中节点。
                     track_position 按固定 name 和 item key 记录增量长度；project_range 将声明的 start/end 换算到输出区间，拒绝跨其他 item 的范围。长度单位与引用字段由 Mapping 指定。
                     conversionDefaults.streamDisposition 声明流内损失的 degrade／reject、path 和 reason；目标事件程序使用 require_disposition 的固定 name 引用规则，source 提供实际位置。严格模式、规则禁用或不匹配时拒绝，原生 observer 同样执行授权。
-                    encode_response.deliveryRanges 声明引用关联：name 为通道，measure 度量字符串，texts 返回 key／text／mode／path，ranges 返回 key／id／start／end／path。选择程序只读 wire；最终改写仅保留 Unicode 字符边界上相同的前后区间，引用索引必须匹配已证明位置。当前仅接通完整响应，事件方向尚不接受该声明。
+                    encode_response／encode_event.deliveryRanges 声明引用关联：name 为通道，measure 度量字符串，texts 返回 key／text／mode／path，ranges 返回 key／id／start／end／path。选择程序只读 wire；最终改写仅保留 Unicode 字符边界上相同的前后区间，引用索引必须匹配已证明位置。事件方向保留摘要和区间，支持晚到引用；只有成功 Flush 后提交，snapshot 不能改写已交付前缀。
                   </p>
                 )}
                 <label className="block space-y-1.5 text-xs font-medium text-foreground">

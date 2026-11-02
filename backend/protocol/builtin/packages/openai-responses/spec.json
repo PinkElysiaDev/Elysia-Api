@@ -70,7 +70,6 @@
                 "op": "type",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input"
                 }
               },
@@ -94,7 +93,6 @@
                 "op": "type",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input"
                 }
               },
@@ -133,7 +131,6 @@
                 "op": "type",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input"
                 }
               },
@@ -196,7 +193,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/tool_usage"
               }
             },
@@ -231,7 +227,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -239,7 +234,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen"
                 }
               },
@@ -298,7 +292,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -306,7 +299,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/input_tokens_details"
                 }
               },
@@ -345,7 +337,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -353,7 +344,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
                 }
               },
@@ -395,7 +385,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -403,7 +392,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
                 }
               },
@@ -465,7 +453,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -473,7 +460,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/output_tokens_details"
                 }
               },
@@ -512,7 +498,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -520,7 +505,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
                 }
               },
@@ -562,7 +546,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -570,7 +553,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
                 }
               },
@@ -632,7 +614,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -640,7 +621,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/web_search"
                 }
               },
@@ -679,7 +659,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage"
                 }
               },
@@ -687,7 +666,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/web_search/num_requests"
                 }
               },
@@ -746,9 +724,7 @@
                     "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
                   },
                   {
-                    "op": "read",
-                    "from": "input",
-                    "path": ""
+                    "op": "read"
                   }
                 ]
               },
@@ -778,9 +754,7 @@
                         "operation": "subtract",
                         "items": [
                           {
-                            "op": "read",
-                            "from": "input",
-                            "path": ""
+                            "op": "read"
                           },
                           {
                             "op": "read",
@@ -832,9 +806,7 @@
                       "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
                     },
                     {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
+                      "op": "read"
                     }
                   ]
                 },
@@ -900,9 +872,7 @@
                       "operation": "subtract",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         },
                         {
                           "op": "read",
@@ -963,9 +933,7 @@
                     "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
                   },
                   {
-                    "op": "read",
-                    "from": "input",
-                    "path": ""
+                    "op": "read"
                   }
                 ]
               },
@@ -995,9 +963,7 @@
                         "operation": "subtract",
                         "items": [
                           {
-                            "op": "read",
-                            "from": "input",
-                            "path": ""
+                            "op": "read"
                           },
                           {
                             "op": "read",
@@ -1049,9 +1015,7 @@
                       "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
                     },
                     {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
+                      "op": "read"
                     }
                   ]
                 },
@@ -1117,9 +1081,7 @@
                       "operation": "subtract",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         },
                         {
                           "op": "read",
@@ -1180,9 +1142,7 @@
                     "path": "/tool_usage/image_gen/input_tokens"
                   },
                   {
-                    "op": "read",
-                    "from": "input",
-                    "path": ""
+                    "op": "read"
                   }
                 ]
               },
@@ -1212,9 +1172,7 @@
                         "operation": "subtract",
                         "items": [
                           {
-                            "op": "read",
-                            "from": "input",
-                            "path": ""
+                            "op": "read"
                           },
                           {
                             "op": "read",
@@ -1266,9 +1224,7 @@
                       "path": "/tool_usage/image_gen/output_tokens"
                     },
                     {
-                      "op": "read",
-                      "from": "input",
-                      "path": ""
+                      "op": "read"
                     }
                   ]
                 },
@@ -1334,9 +1290,7 @@
                       "operation": "subtract",
                       "items": [
                         {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         },
                         {
                           "op": "read",
@@ -1382,7 +1336,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/background"
               }
             }
@@ -1410,7 +1363,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/completed_at"
               }
             }
@@ -1438,7 +1390,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/frequency_penalty"
               }
             }
@@ -1466,7 +1417,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/max_output_tokens"
               }
             }
@@ -1494,7 +1444,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/max_tool_calls"
               }
             }
@@ -1522,7 +1471,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/metadata"
               }
             }
@@ -1554,7 +1502,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parallel_tool_calls"
               }
             }
@@ -1582,7 +1529,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/presence_penalty"
               }
             }
@@ -1610,7 +1556,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prompt_cache_key"
               }
             }
@@ -1638,7 +1583,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prompt_cache_retention"
               }
             }
@@ -1666,7 +1610,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/reasoning"
               }
             }
@@ -1695,7 +1638,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/safety_identifier"
               }
             }
@@ -1723,7 +1665,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/service_tier"
               }
             }
@@ -1751,7 +1692,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/store"
               }
             }
@@ -1779,7 +1719,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/temperature"
               }
             }
@@ -1807,7 +1746,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/text"
               }
             }
@@ -1836,7 +1774,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/tools"
               }
             }
@@ -1864,7 +1801,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/top_logprobs"
               }
             }
@@ -1892,7 +1828,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/top_p"
               }
             }
@@ -1920,7 +1855,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/truncation"
               }
             }
@@ -1948,7 +1882,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/user"
               }
             }
@@ -1975,7 +1908,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/output"
             }
           },
@@ -2011,7 +1943,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/error"
             }
           }
@@ -2031,9 +1962,7 @@
             "op": "equal",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               },
               {
                 "op": "literal",
@@ -2211,9 +2140,7 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       {
                         "op": "literal",
@@ -2258,7 +2185,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/content"
                     }
                   }
@@ -2283,9 +2209,7 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       {
                         "op": "literal",
@@ -2335,7 +2259,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/phase"
                     }
                   }
@@ -2357,9 +2280,7 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "read",
-                    "from": "input",
-                    "path": ""
+                    "op": "read"
                   },
                   {
                     "op": "literal",
@@ -2434,7 +2355,6 @@
                         "items": [
                           {
                             "op": "read",
-                            "from": "input",
                             "path": "/type"
                           },
                           {
@@ -2448,7 +2368,6 @@
                         "items": [
                           {
                             "op": "read",
-                            "from": "input",
                             "path": "/type"
                           },
                           {
@@ -2572,7 +2491,6 @@
                       "op": "type",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/input"
                       }
                     },
@@ -2591,7 +2509,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/input"
                         }
                       }
@@ -2600,7 +2517,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/previous_response_id"
                       }
                     }
@@ -2639,7 +2555,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/type"
                       }
                     }
@@ -2674,7 +2589,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/type"
                           }
                         }
@@ -2690,7 +2604,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/role"
                       },
                       {
@@ -2706,7 +2619,6 @@
                         "op": "type",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/content"
                         }
                       },
@@ -2748,7 +2660,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/type"
                       },
                       {
@@ -2784,7 +2695,6 @@
                 "op": "type",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input"
                 }
               },
@@ -2836,7 +2746,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/output_index"
             }
           },
@@ -2856,7 +2765,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/content_index"
             }
           },
@@ -2879,7 +2787,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/item_id"
                 }
               },
@@ -2887,7 +2794,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/item/id"
                 }
               }
@@ -2900,9 +2806,7 @@
             "op": "equal",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               },
               {
                 "op": "read",
@@ -2921,7 +2825,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -2962,7 +2865,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -3003,7 +2905,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -3045,7 +2946,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/response/output"
                 }
               }
@@ -3089,7 +2989,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/type"
                   },
                   {
@@ -3103,7 +3002,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/type"
                   },
                   {
@@ -3149,9 +3047,7 @@
             "op": "equal",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               },
               {
                 "op": "if",
@@ -3191,7 +3087,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/error"
             }
           },
@@ -3204,13 +3099,11 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/response/id"
               }
             },
             "then": {
               "op": "read",
-              "from": "input",
               "path": "/response/id"
             },
             "otherwise": {
@@ -3256,18 +3149,15 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/item_id"
                 }
               },
               "then": {
                 "op": "read",
-                "from": "input",
                 "path": "/item_id"
               },
               "otherwise": {
                 "op": "read",
-                "from": "input",
                 "path": "/item/id"
               }
             },
@@ -3279,13 +3169,11 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/output_index"
                   }
                 },
                 "then": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 },
                 "otherwise": {
@@ -3544,9 +3432,7 @@
                       {
                         "op": "length",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         }
                       },
                       {
@@ -3562,7 +3448,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   },
@@ -3581,9 +3466,7 @@
                       {
                         "op": "length",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         }
                       },
                       {
@@ -3602,7 +3485,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -3616,7 +3498,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -3639,7 +3520,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   },
@@ -3647,7 +3527,6 @@
                     "op": "length",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   }
@@ -3658,7 +3537,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -3672,7 +3550,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -3704,7 +3581,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -3743,7 +3619,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/item"
                   },
                   "keys": [
@@ -3781,14 +3656,12 @@
                   "fields": {
                     "status": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/status"
                     },
                     "snapshot": {
                       "op": "json_digest",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/item"
                       }
                     }
@@ -3810,7 +3683,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -3830,7 +3702,6 @@
                         "op": "type",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/item/code"
                         }
                       },
@@ -3842,7 +3713,6 @@
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/code"
                   },
                   "otherwise": {
@@ -3861,7 +3731,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -3878,7 +3747,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -3905,7 +3773,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -3919,7 +3786,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -3935,7 +3801,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -3949,7 +3814,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -3969,7 +3833,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -4007,7 +3870,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/annotations"
                         }
                       }
@@ -4046,7 +3908,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/logprobs"
                         }
                       }
@@ -4121,7 +3982,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/annotations"
                         }
                       }
@@ -4160,7 +4020,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/logprobs"
                         }
                       }
@@ -4219,7 +4078,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   },
@@ -4227,7 +4085,6 @@
                     "op": "length",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   }
@@ -4238,7 +4095,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -4252,7 +4108,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -4333,9 +4188,7 @@
                     "value": {
                       "op": "project",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -4407,9 +4260,7 @@
                     "value": {
                       "op": "project",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -4428,7 +4279,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -4447,7 +4297,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/item"
                   },
                   "keys": [
@@ -4468,7 +4317,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/summary"
                     }
                   },
@@ -4476,7 +4324,6 @@
                     "op": "length",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/summary"
                     }
                   },
@@ -4495,7 +4342,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -4514,7 +4360,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/item"
                   },
                   "keys": [
@@ -4535,7 +4380,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   },
@@ -4543,7 +4387,6 @@
                     "op": "length",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/content"
                     }
                   },
@@ -4562,7 +4405,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -4571,7 +4413,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -4607,7 +4448,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/type"
                   },
                   {
@@ -4627,7 +4467,6 @@
                         "op": "type",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/item/code"
                         }
                       },
@@ -4639,7 +4478,6 @@
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/item/code"
                   },
                   "otherwise": {
@@ -4674,14 +4512,12 @@
                   "fields": {
                     "status": {
                       "op": "read",
-                      "from": "input",
                       "path": "/item/status"
                     },
                     "snapshot": {
                       "op": "json_digest",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/item"
                       }
                     }
@@ -4705,13 +4541,11 @@
                     "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/content_index"
                     }
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/content_index"
                   },
                   "otherwise": {
@@ -4732,7 +4566,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -4768,7 +4601,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/annotations"
                     }
                   }
@@ -4807,7 +4639,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/logprobs"
                     }
                   }
@@ -4832,13 +4663,11 @@
                     "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/content_index"
                     }
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/content_index"
                   },
                   "otherwise": {
@@ -4859,7 +4688,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -4895,7 +4723,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/annotations"
                     }
                   }
@@ -4934,7 +4761,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/logprobs"
                     }
                   }
@@ -4970,7 +4796,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/part"
                   },
                   "keys": [
@@ -4985,7 +4810,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/part/type"
                   },
                   {
@@ -5025,7 +4849,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/annotations"
                     }
                   }
@@ -5061,7 +4884,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/annotations"
                     }
                   }
@@ -5100,7 +4922,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/logprobs"
                     }
                   }
@@ -5136,7 +4957,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/logprobs"
                     }
                   }
@@ -5161,13 +4981,11 @@
                     "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/content_index"
                     }
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/content_index"
                   },
                   "otherwise": {
@@ -5188,7 +5006,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -5224,7 +5041,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/annotations"
                     }
                   }
@@ -5260,7 +5076,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/annotations"
                     }
                   }
@@ -5299,7 +5114,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/logprobs"
                     }
                   }
@@ -5335,7 +5149,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/part/logprobs"
                     }
                   }
@@ -5360,13 +5173,11 @@
                     "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/content_index"
                     }
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/content_index"
                   },
                   "otherwise": {
@@ -5387,7 +5198,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -5420,7 +5230,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/part"
                   },
                   "keys": [
@@ -5435,7 +5244,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/part/type"
                   },
                   {
@@ -5461,7 +5269,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -5490,7 +5297,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5517,7 +5323,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5542,7 +5347,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -5572,7 +5376,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5599,7 +5402,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5624,7 +5426,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -5653,7 +5454,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5680,7 +5480,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5705,7 +5504,6 @@
                 "path": "/output_index",
                 "value": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_index"
                 }
               },
@@ -5735,7 +5533,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5762,7 +5559,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/logprobs"
                 }
               },
@@ -5791,7 +5587,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/output"
                     }
                   },
@@ -5825,7 +5620,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/safety_buffering"
                     }
                   },
@@ -5850,7 +5644,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/output_text"
                     }
                   },
@@ -5881,7 +5674,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/linapi_cache_billing"
                       }
                     },
@@ -5917,7 +5709,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/attribution"
                       }
                     },
@@ -5961,7 +5752,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens"
                       }
                     },
@@ -5992,7 +5782,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens"
                       }
                     },
@@ -6023,7 +5812,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/total_tokens"
                       }
                     },
@@ -6054,7 +5842,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/cache_read_input_tokens"
                       }
                     },
@@ -6085,7 +5872,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/cache_creation_input_tokens"
                       }
                     },
@@ -6117,7 +5903,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details"
                       }
                     },
@@ -6144,7 +5929,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details/cached_tokens"
                       }
                     },
@@ -6175,7 +5959,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details/cache_write_tokens"
                       }
                     },
@@ -6206,7 +5989,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details/cached_creation_tokens"
                       }
                     },
@@ -6237,7 +6019,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details/text_tokens"
                       }
                     },
@@ -6268,7 +6049,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details/image_tokens"
                       }
                     },
@@ -6299,7 +6079,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/input_tokens_details/audio_tokens"
                       }
                     },
@@ -6331,7 +6110,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details"
                       }
                     },
@@ -6358,7 +6136,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details/reasoning_tokens"
                       }
                     },
@@ -6389,7 +6166,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details/text_tokens"
                       }
                     },
@@ -6420,7 +6196,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details/image_tokens"
                       }
                     },
@@ -6451,7 +6226,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details/audio_tokens"
                       }
                     },
@@ -6482,7 +6256,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details/accepted_prediction_tokens"
                       }
                     },
@@ -6513,7 +6286,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/usage/output_tokens_details/rejected_prediction_tokens"
                       }
                     },
@@ -6548,7 +6320,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/usage/cache_creation_input_tokens"
                           }
                         },
@@ -6556,7 +6327,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/usage/input_tokens_details/cache_write_tokens"
                           }
                         }
@@ -6604,7 +6374,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/usage/cache_creation_input_tokens"
                           }
                         },
@@ -6612,7 +6381,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/usage/input_tokens_details/cached_creation_tokens"
                           }
                         }
@@ -6660,7 +6428,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/usage/input_tokens_details/cache_write_tokens"
                           }
                         },
@@ -6668,7 +6435,6 @@
                           "op": "exists",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/usage/input_tokens_details/cached_creation_tokens"
                           }
                         }
@@ -6712,17 +6478,13 @@
                     "when": {
                       "op": "present",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       }
                     },
                     "then": {
                       "op": "with_input",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "body": {
                         "op": "ref",
@@ -6751,7 +6513,6 @@
                         "items": [
                           {
                             "op": "read",
-                            "from": "input",
                             "path": "/type"
                           },
                           {
@@ -6770,7 +6531,6 @@
                     "op": "with_input",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response"
                     },
                     "body": {
@@ -6786,7 +6546,6 @@
                         "name": "new-usage",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/usage"
                         },
                         "body": {
@@ -6804,7 +6563,6 @@
                                 "source": {
                                   "op": "read",
                                   "from": "binding",
-                                  "path": "",
                                   "name": "old-usage"
                                 }
                               },
@@ -6838,7 +6596,6 @@
                                     "source": {
                                       "op": "read",
                                       "from": "binding",
-                                      "path": "",
                                       "name": "new-usage"
                                     }
                                   },
@@ -6847,8 +6604,7 @@
                                     "name": "updated-members",
                                     "source": {
                                       "op": "read",
-                                      "from": "item",
-                                      "path": ""
+                                      "from": "item"
                                     },
                                     "body": {
                                       "op": "literal",
@@ -6869,7 +6625,6 @@
                                           "source": {
                                             "op": "read",
                                             "from": "binding",
-                                            "path": "",
                                             "name": "old-usage"
                                           }
                                         },
@@ -6897,7 +6652,6 @@
                                           "source": {
                                             "op": "read",
                                             "from": "binding",
-                                            "path": "",
                                             "name": "new-usage"
                                           }
                                         },
@@ -6906,8 +6660,7 @@
                                           "name": "member",
                                           "source": {
                                             "op": "read",
-                                            "from": "item",
-                                            "path": ""
+                                            "from": "item"
                                           },
                                           "body": {
                                             "op": "let",
@@ -6944,7 +6697,6 @@
                                                             "source": {
                                                               "op": "read",
                                                               "from": "binding",
-                                                              "path": "",
                                                               "name": "prior"
                                                             }
                                                           },
@@ -6998,8 +6750,7 @@
                                                           "name": "nested-updated-members",
                                                           "source": {
                                                             "op": "read",
-                                                            "from": "item",
-                                                            "path": ""
+                                                            "from": "item"
                                                           },
                                                           "body": {
                                                             "op": "literal",
@@ -7020,7 +6771,6 @@
                                                                 "source": {
                                                                   "op": "read",
                                                                   "from": "binding",
-                                                                  "path": "",
                                                                   "name": "prior"
                                                                 }
                                                               },
@@ -7118,7 +6868,6 @@
                     "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/tool_usage"
                     }
                   },
@@ -7142,7 +6891,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7150,7 +6898,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen"
                       }
                     },
@@ -7178,7 +6925,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7186,7 +6932,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/input_tokens"
                       }
                     },
@@ -7217,7 +6962,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7225,7 +6969,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/input_tokens_details"
                       }
                     },
@@ -7253,7 +6996,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7261,7 +7003,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/input_tokens_details/image_tokens"
                       }
                     },
@@ -7292,7 +7033,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7300,7 +7040,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/input_tokens_details/text_tokens"
                       }
                     },
@@ -7331,7 +7070,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7339,7 +7077,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/output_tokens"
                       }
                     },
@@ -7370,7 +7107,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7378,7 +7114,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/output_tokens_details"
                       }
                     },
@@ -7406,7 +7141,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7414,7 +7148,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/output_tokens_details/image_tokens"
                       }
                     },
@@ -7445,7 +7178,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7453,7 +7185,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/output_tokens_details/text_tokens"
                       }
                     },
@@ -7484,7 +7215,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7492,7 +7222,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/image_gen/total_tokens"
                       }
                     },
@@ -7523,7 +7252,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7531,7 +7259,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/web_search"
                       }
                     },
@@ -7559,7 +7286,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage"
                       }
                     },
@@ -7567,7 +7293,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/tool_usage/web_search/num_requests"
                       }
                     },
@@ -7621,7 +7346,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/background"
                     }
                   },
@@ -7638,7 +7362,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/completed_at"
                     }
                   },
@@ -7655,7 +7378,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/frequency_penalty"
                     }
                   },
@@ -7672,7 +7394,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/max_output_tokens"
                     }
                   },
@@ -7689,7 +7410,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/max_tool_calls"
                     }
                   },
@@ -7706,7 +7426,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/metadata"
                     }
                   },
@@ -7724,7 +7443,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/parallel_tool_calls"
                     }
                   },
@@ -7741,7 +7459,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/presence_penalty"
                     }
                   },
@@ -7758,7 +7475,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/prompt_cache_key"
                     }
                   },
@@ -7775,7 +7491,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/prompt_cache_retention"
                     }
                   },
@@ -7792,7 +7507,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/reasoning"
                     }
                   },
@@ -7810,7 +7524,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/safety_identifier"
                     }
                   },
@@ -7827,7 +7540,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/service_tier"
                     }
                   },
@@ -7844,7 +7556,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/store"
                     }
                   },
@@ -7861,7 +7572,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/temperature"
                     }
                   },
@@ -7878,7 +7588,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/text"
                     }
                   },
@@ -7896,7 +7605,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/tools"
                     }
                   },
@@ -7913,7 +7621,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/top_logprobs"
                     }
                   },
@@ -7930,7 +7637,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/top_p"
                     }
                   },
@@ -7947,7 +7653,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/truncation"
                     }
                   },
@@ -7964,7 +7669,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/user"
                     }
                   },
@@ -8021,7 +7725,6 @@
                         "op": "project",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/response"
                         },
                         "keys": [
@@ -8070,7 +7773,6 @@
                           "op": "project",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response"
                           },
                           "keys": [
@@ -8112,9 +7814,7 @@
                       {
                         "op": "project",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         },
                         "keys": [
                           "type",
@@ -8143,9 +7843,7 @@
                     {
                       "op": "project",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -8189,9 +7887,7 @@
                           {
                             "op": "type",
                             "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": ""
+                              "op": "read"
                             }
                           },
                           {
@@ -8206,9 +7902,7 @@
                           {
                             "op": "type",
                             "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": ""
+                              "op": "read"
                             }
                           },
                           {
@@ -8231,7 +7925,6 @@
                           "op": "type",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/error"
                           }
                         },
@@ -8245,7 +7938,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/error/type"
                       }
                     },
@@ -8271,7 +7963,6 @@
                           "op": "type",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/error"
                           }
                         },
@@ -8285,7 +7976,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/error/code"
                       }
                     },
@@ -8312,7 +8002,6 @@
                           "op": "type",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/response/error"
                           }
                         },
@@ -8326,7 +8015,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/response/error/param"
                       }
                     },
@@ -8379,7 +8067,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/error"
                     }
                   }
@@ -8403,7 +8090,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/error"
                         }
                       },
@@ -8411,7 +8097,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/message"
                         }
                       }
@@ -8441,7 +8126,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/error"
                         }
                       },
@@ -8449,7 +8133,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/code"
                         }
                       }
@@ -8479,7 +8162,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/error"
                         }
                       },
@@ -8487,7 +8169,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/param"
                         }
                       }
@@ -8514,7 +8195,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/error"
                     }
                   },
@@ -8539,7 +8219,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/error"
                     }
                   }
@@ -8562,7 +8241,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/error"
                       }
                     },
@@ -8570,7 +8248,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/error/code"
                       }
                     },
@@ -8585,9 +8262,7 @@
                       {
                         "op": "type",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         }
                       },
                       {
@@ -8615,7 +8290,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/error"
                       }
                     },
@@ -8623,7 +8297,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/error/param"
                       }
                     },
@@ -8638,9 +8311,7 @@
                       {
                         "op": "type",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         }
                       },
                       {
@@ -8668,7 +8339,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/error"
                       }
                     }
@@ -8694,7 +8364,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/error"
                         }
                       }
@@ -8703,7 +8372,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/code"
                       }
                     },
@@ -8718,9 +8386,7 @@
                       {
                         "op": "type",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         }
                       },
                       {
@@ -8750,7 +8416,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/error"
                         }
                       }
@@ -8759,7 +8424,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/param"
                       }
                     },
@@ -8774,9 +8438,7 @@
                       {
                         "op": "type",
                         "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
+                          "op": "read"
                         }
                       },
                       {
@@ -8803,7 +8465,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/error"
                 }
               },
@@ -8818,7 +8479,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/error"
                   }
                 }
@@ -8860,7 +8520,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/part"
                   },
                   "keys": [
@@ -8985,7 +8644,6 @@
                   "op": "project",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/part"
                   },
                   "keys": [
@@ -9149,7 +8807,6 @@
                             "op": "exists",
                             "source": {
                               "op": "read",
-                              "from": "input",
                               "path": "/annotations"
                             }
                           }
@@ -9188,7 +8845,6 @@
                             "op": "exists",
                             "source": {
                               "op": "read",
-                              "from": "input",
                               "path": "/logprobs"
                             }
                           }
@@ -9224,7 +8880,6 @@
                         "value": {
                           "op": "read",
                           "from": "binding",
-                          "path": "",
                           "name": "output-position"
                         }
                       },
@@ -9264,7 +8919,6 @@
                             "op": "exists",
                             "source": {
                               "op": "read",
-                              "from": "input",
                               "path": "/annotations"
                             }
                           }
@@ -9303,7 +8957,6 @@
                             "op": "exists",
                             "source": {
                               "op": "read",
-                              "from": "input",
                               "path": "/logprobs"
                             }
                           }
@@ -9339,7 +8992,6 @@
                         "value": {
                           "op": "read",
                           "from": "binding",
-                          "path": "",
                           "name": "output-position"
                         }
                       },
@@ -9363,7 +9015,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/content"
                         }
                       },
@@ -9371,7 +9022,6 @@
                         "op": "length",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/content"
                         }
                       }
@@ -9388,7 +9038,6 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
                       "name": "output-position"
                     }
                   },
@@ -9411,7 +9060,6 @@
                           "fields": {
                             "phase": {
                               "op": "read",
-                              "from": "input",
                               "path": "/phase"
                             },
                             "metadata": {
@@ -9425,7 +9073,6 @@
                                       "op": "type",
                                       "source": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/metadata"
                                       }
                                     },
@@ -9442,7 +9089,6 @@
                                       "op": "project",
                                       "source": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/metadata"
                                       },
                                       "keys": [
@@ -9463,7 +9109,6 @@
                               },
                               "then": {
                                 "op": "read",
-                                "from": "input",
                                 "path": "/metadata"
                               }
                             },
@@ -9478,7 +9123,6 @@
                                       "op": "type",
                                       "source": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/internal_chat_message_metadata_passthrough"
                                       }
                                     },
@@ -9495,7 +9139,6 @@
                                       "op": "project",
                                       "source": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/internal_chat_message_metadata_passthrough"
                                       },
                                       "keys": [
@@ -9517,7 +9160,6 @@
                               },
                               "then": {
                                 "op": "read",
-                                "from": "input",
                                 "path": "/internal_chat_message_metadata_passthrough"
                               }
                             }
@@ -9528,7 +9170,6 @@
                           "fields": {
                             "status": {
                               "op": "read",
-                              "from": "input",
                               "path": "/status"
                             }
                           }
@@ -9558,7 +9199,6 @@
                               "source": {
                                 "op": "read",
                                 "from": "binding",
-                                "path": "",
                                 "name": "output-position"
                               },
                               "to": "string"
@@ -9582,7 +9222,6 @@
                         "value": {
                           "op": "read",
                           "from": "binding",
-                          "path": "",
                           "name": "output-position"
                         }
                       },
@@ -9600,9 +9239,7 @@
                         "value": {
                           "op": "project",
                           "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": ""
+                            "op": "read"
                           },
                           "keys": [
                             "type",
@@ -9634,7 +9271,6 @@
                               "source": {
                                 "op": "read",
                                 "from": "binding",
-                                "path": "",
                                 "name": "output-position"
                               },
                               "to": "string"
@@ -9658,7 +9294,6 @@
                         "value": {
                           "op": "read",
                           "from": "binding",
-                          "path": "",
                           "name": "output-position"
                         }
                       },
@@ -9676,9 +9311,7 @@
                         "value": {
                           "op": "project",
                           "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": ""
+                            "op": "read"
                           },
                           "keys": [
                             "type",
@@ -9698,7 +9331,6 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
                       "name": "output-position"
                     }
                   },
@@ -9716,9 +9348,7 @@
                     "value": {
                       "op": "project",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -9738,7 +9368,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/summary"
                         }
                       },
@@ -9746,7 +9375,6 @@
                         "op": "length",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/summary"
                         }
                       },
@@ -9766,7 +9394,6 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
                       "name": "output-position"
                     }
                   },
@@ -9784,9 +9411,7 @@
                     "value": {
                       "op": "project",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -9806,7 +9431,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/content"
                         }
                       },
@@ -9814,7 +9438,6 @@
                         "op": "length",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/content"
                         }
                       },
@@ -9834,8 +9457,7 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "name": "output-position",
-                      "path": ""
+                      "name": "output-position"
                     }
                   },
                   "when": {
@@ -9843,7 +9465,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/type"
                       },
                       {
@@ -9873,8 +9494,7 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "name": "output-position",
-                      "path": ""
+                      "name": "output-position"
                     }
                   },
                   "when": {
@@ -9882,7 +9502,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/type"
                       },
                       {
@@ -9912,7 +9531,6 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
                       "name": "output-position"
                     }
                   },
@@ -9921,7 +9539,6 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
                       "name": "output-position"
                     }
                   },
@@ -9930,7 +9547,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/type"
                       },
                       {
@@ -9950,7 +9566,6 @@
                             "op": "type",
                             "source": {
                               "op": "read",
-                              "from": "input",
                               "path": "/code"
                             }
                           },
@@ -9962,7 +9577,6 @@
                       },
                       "then": {
                         "op": "read",
-                        "from": "input",
                         "path": "/code"
                       },
                       "otherwise": {
@@ -9980,7 +9594,6 @@
                     "value": {
                       "op": "read",
                       "from": "binding",
-                      "path": "",
                       "name": "output-position"
                     }
                   },
@@ -10003,15 +9616,12 @@
                       "fields": {
                         "status": {
                           "op": "read",
-                          "from": "input",
                           "path": "/status"
                         },
                         "snapshot": {
                           "op": "json_digest",
                           "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": ""
+                            "op": "read"
                           }
                         }
                       }
@@ -10081,9 +9691,7 @@
                     "source": {
                       "op": "check_fields",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -10129,9 +9737,7 @@
                     "operation": "gte",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       {
                         "op": "literal",
@@ -10143,7 +9749,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/sequence_number"
                     }
                   }
@@ -10189,9 +9794,7 @@
                     "source": {
                       "op": "check_fields",
                       "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       "keys": [
                         "type",
@@ -10246,9 +9849,7 @@
                     "operation": "gte",
                     "items": [
                       {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
+                        "op": "read"
                       },
                       {
                         "op": "literal",
@@ -10561,7 +10162,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/background"
                     }
                   }
@@ -10577,7 +10177,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/output_format"
                     }
                   }
@@ -10593,7 +10192,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/quality"
                     }
                   }
@@ -10609,7 +10207,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/size"
                     }
                   }
@@ -10661,7 +10258,6 @@
                     "op": "enum",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/type"
                     },
                     "values": {
@@ -10690,7 +10286,6 @@
                       "op": "enum",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/type"
                       },
                       "values": {
@@ -10736,7 +10331,6 @@
             },
             "otherwise": {
               "op": "read",
-              "from": "input",
               "path": "/type"
             }
           }
@@ -10753,9 +10347,7 @@
           "check": {
             "op": "exists",
             "source": {
-              "op": "read",
-              "from": "input",
-              "path": ""
+              "op": "read"
             }
           },
           "when": {
@@ -10778,7 +10370,6 @@
       "op": "flatmap",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/input"
       },
       "body": {
@@ -10856,7 +10447,6 @@
                       {
                         "op": "read",
                         "from": "binding",
-                        "path": "",
                         "name": "item-path"
                       },
                       {
@@ -10925,7 +10515,6 @@
                         {
                           "op": "read",
                           "from": "binding",
-                          "path": "",
                           "name": "item-path"
                         },
                         {
@@ -10961,7 +10550,6 @@
           "op": "present",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/error"
           }
         },
@@ -10971,7 +10559,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/choices"
             }
           }
@@ -10982,7 +10569,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/output"
             }
           }
@@ -10993,7 +10579,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/content"
             }
           }
@@ -11004,7 +10589,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/candidates"
             }
           }
@@ -11023,9 +10607,7 @@
       "operation": "gte",
       "items": [
         {
-          "op": "read",
-          "from": "input",
-          "path": ""
+          "op": "read"
         },
         {
           "op": "literal",
@@ -11038,9 +10620,7 @@
       "when": {
         "op": "is_integer",
         "source": {
-          "op": "read",
-          "from": "input",
-          "path": ""
+          "op": "read"
         }
       },
       "then": {
@@ -11064,7 +10644,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens_details/cached_tokens"
                 }
               },
@@ -11072,7 +10651,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens"
                 }
               }
@@ -11084,12 +10662,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens_details/cached_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens"
               }
             ]
@@ -11108,7 +10684,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens_details/text_tokens"
                 }
               },
@@ -11116,7 +10691,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens"
                 }
               }
@@ -11128,12 +10702,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens_details/text_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens"
               }
             ]
@@ -11152,7 +10724,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens_details/image_tokens"
                 }
               },
@@ -11160,7 +10731,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens"
                 }
               }
@@ -11172,12 +10742,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens_details/image_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens"
               }
             ]
@@ -11196,7 +10764,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens_details/audio_tokens"
                 }
               },
@@ -11204,7 +10771,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens"
                 }
               }
@@ -11216,12 +10782,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens_details/audio_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/input_tokens"
               }
             ]
@@ -11240,7 +10804,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens_details/reasoning_tokens"
                 }
               },
@@ -11248,7 +10811,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens"
                 }
               }
@@ -11260,12 +10822,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/output_tokens_details/reasoning_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/output_tokens"
               }
             ]
@@ -11284,7 +10844,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens_details/text_tokens"
                 }
               },
@@ -11292,7 +10851,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens"
                 }
               }
@@ -11304,12 +10862,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/output_tokens_details/text_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/output_tokens"
               }
             ]
@@ -11328,7 +10884,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens_details/audio_tokens"
                 }
               },
@@ -11336,7 +10891,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens"
                 }
               }
@@ -11348,12 +10902,10 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/output_tokens_details/audio_tokens"
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/output_tokens"
               }
             ]
@@ -11372,7 +10924,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/input_tokens"
                 }
               },
@@ -11380,7 +10931,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/output_tokens"
                 }
               },
@@ -11388,7 +10938,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/total_tokens"
                 }
               }
@@ -11403,19 +10952,16 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/input_tokens"
                   },
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/output_tokens"
                   }
                 ]
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/total_tokens"
               }
             ]
@@ -11473,13 +11019,11 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/content_index"
               }
             },
             "then": {
               "op": "read",
-              "from": "input",
               "path": "/content_index"
             },
             "otherwise": {
@@ -11506,13 +11050,11 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/output_index"
               }
             },
             "then": {
               "op": "read",
-              "from": "input",
               "path": "/output_index"
             },
             "otherwise": {
@@ -11528,7 +11070,6 @@
       "op": "present",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/response/usage"
       }
     },
@@ -11538,7 +11079,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/response/tool_usage"
         }
       },
@@ -11549,7 +11089,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/input_tokens"
             }
           },
@@ -11557,7 +11096,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/output_tokens"
             }
           },
@@ -11565,7 +11103,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/total_tokens"
             }
           },
@@ -11573,7 +11110,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/input_tokens_details/image_tokens"
             }
           },
@@ -11581,7 +11117,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/input_tokens_details/text_tokens"
             }
           },
@@ -11589,7 +11124,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/output_tokens_details/image_tokens"
             }
           },
@@ -11597,7 +11131,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/image_gen/output_tokens_details/text_tokens"
             }
           },
@@ -11605,7 +11138,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/tool_usage/web_search/num_requests"
             }
           }
@@ -11637,7 +11169,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -11651,7 +11182,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -11666,7 +11196,6 @@
       "op": "exists",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/headers"
       }
     },
@@ -11679,9 +11208,7 @@
           "op": "entries",
           "policy": "preserve",
           "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
+            "op": "read"
           }
         },
         "policy": "reject",
@@ -11704,9 +11231,7 @@
         "op": "entries",
         "policy": "preserve",
         "source": {
-          "op": "read",
-          "from": "input",
-          "path": ""
+          "op": "read"
         }
       },
       "body": {
@@ -11719,7 +11244,6 @@
               "source": {
                 "op": "read",
                 "from": "binding",
-                "path": "",
                 "name": "headers"
               }
             },
@@ -11868,7 +11392,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -11893,9 +11416,7 @@
             "source": {
               "op": "entries",
               "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               }
             },
             "when": {
@@ -12029,7 +11550,6 @@
               "source": {
                 "op": "read",
                 "from": "binding",
-                "path": "",
                 "name": "output-position"
               },
               "to": "string"
@@ -12058,7 +11578,6 @@
           "fields": {
             "phase": {
               "op": "read",
-              "from": "input",
               "path": "/item/phase"
             },
             "metadata": {
@@ -12072,7 +11591,6 @@
                       "op": "type",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/item/metadata"
                       }
                     },
@@ -12089,7 +11607,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/item/metadata"
                       },
                       "keys": [
@@ -12110,7 +11627,6 @@
               },
               "then": {
                 "op": "read",
-                "from": "input",
                 "path": "/item/metadata"
               }
             },
@@ -12125,7 +11641,6 @@
                       "op": "type",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/item/internal_chat_message_metadata_passthrough"
                       }
                     },
@@ -12142,7 +11657,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/item/internal_chat_message_metadata_passthrough"
                       },
                       "keys": [
@@ -12164,7 +11678,6 @@
               },
               "then": {
                 "op": "read",
-                "from": "input",
                 "path": "/item/internal_chat_message_metadata_passthrough"
               }
             }
@@ -12175,7 +11688,6 @@
           "fields": {
             "status": {
               "op": "read",
-              "from": "input",
               "path": "/item/status"
             }
           }
@@ -12193,7 +11705,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/output_index"
           },
           "to": "string"
@@ -12206,7 +11717,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/content_index"
           },
           "to": "string"
@@ -12220,7 +11730,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/output_index"
           },
           "to": "string"
@@ -12233,7 +11742,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/content_index"
           },
           "to": "string"
@@ -12247,7 +11755,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/output_index"
           },
           "to": "string"
@@ -12260,7 +11767,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/summary_index"
           },
           "to": "string"
@@ -12271,7 +11777,6 @@
       "op": "choose",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/item/type"
       },
       "cases": {
@@ -12301,7 +11806,6 @@
       "op": "choose",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/type"
       },
       "cases": {
@@ -12331,7 +11835,6 @@
       "op": "choose",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/type"
       },
       "cases": {
@@ -12398,7 +11901,6 @@
             "op": "type",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/encrypted_content"
             }
           },
@@ -12419,7 +11921,6 @@
             "op": "has_prefix",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/encrypted_content"
             },
             "value": "elysia-continuation.v1."
@@ -12437,7 +11938,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/error"
         }
       }
@@ -12454,7 +11954,6 @@
           "op": "present",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_usage"
           }
         },
@@ -12462,7 +11961,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_usage/image_gen/input_tokens"
           }
         },
@@ -12488,7 +11986,6 @@
           "op": "present",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_usage"
           }
         },
@@ -12496,7 +11993,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_usage/image_gen/output_tokens"
           }
         },
@@ -12522,7 +12018,6 @@
           "op": "present",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_usage"
           }
         },
@@ -12530,7 +12025,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_usage/image_gen/total_tokens"
           }
         },
@@ -12549,7 +12043,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/type"
         },
         {
@@ -12563,7 +12056,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/type"
         },
         {
@@ -12577,7 +12069,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/type"
         },
         {
@@ -12591,7 +12082,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/type"
         },
         {
@@ -12605,7 +12095,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/part/type"
         },
         {
@@ -12619,7 +12108,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/part/type"
         },
         {
@@ -12633,7 +12121,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/item/type"
         },
         {
@@ -12648,9 +12135,7 @@
         "op": "equal",
         "items": [
           {
-            "op": "read",
-            "from": "input",
-            "path": ""
+            "op": "read"
           },
           {
             "op": "literal",
@@ -12669,9 +12154,7 @@
             "source": {
               "op": "entries",
               "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               }
             },
             "when": {
@@ -12760,7 +12243,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -12843,7 +12325,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -12992,7 +12473,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -13070,7 +12550,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/type"
             },
             {
@@ -13136,7 +12615,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -13150,7 +12628,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/action/type"
               },
               {
@@ -13194,7 +12671,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -13208,7 +12684,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/action/type"
               },
               {
@@ -13256,7 +12731,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -13270,7 +12744,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/action/type"
               },
               {
@@ -13302,7 +12775,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -13315,7 +12787,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/results"
             }
           },
@@ -13338,7 +12809,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/attributes"
               }
             },
@@ -13366,7 +12836,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/type"
               },
               {
@@ -13379,7 +12848,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/outputs"
             }
           },
@@ -13400,7 +12868,6 @@
               "items": [
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/type"
                 },
                 {
@@ -13421,7 +12888,6 @@
               "items": [
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/type"
                 },
                 {
@@ -13468,7 +12934,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/background"
           }
         },
@@ -13485,7 +12950,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/completed_at"
           }
         },
@@ -13502,7 +12966,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/frequency_penalty"
           }
         },
@@ -13519,7 +12982,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/max_output_tokens"
           }
         },
@@ -13536,7 +12998,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/max_tool_calls"
           }
         },
@@ -13553,7 +13014,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/metadata"
           }
         },
@@ -13571,7 +13031,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/output_text"
           }
         },
@@ -13587,7 +13046,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/parallel_tool_calls"
           }
         },
@@ -13604,7 +13062,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/presence_penalty"
           }
         },
@@ -13621,7 +13078,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/prompt_cache_key"
           }
         },
@@ -13638,7 +13094,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/prompt_cache_retention"
           }
         },
@@ -13655,7 +13110,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/reasoning"
           }
         },
@@ -13673,7 +13127,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/safety_identifier"
           }
         },
@@ -13690,7 +13143,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/service_tier"
           }
         },
@@ -13707,7 +13159,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/store"
           }
         },
@@ -13724,7 +13175,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/temperature"
           }
         },
@@ -13741,7 +13191,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/text"
           }
         },
@@ -13759,7 +13208,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tools"
           }
         },
@@ -13776,7 +13224,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/top_logprobs"
           }
         },
@@ -13793,7 +13240,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/top_p"
           }
         },
@@ -13810,7 +13256,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/truncation"
           }
         },
@@ -13827,7 +13272,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/user"
           }
         },
@@ -13846,7 +13290,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/response/usage/input_tokens"
           }
         },
@@ -13866,7 +13309,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/response/usage/output_tokens"
           }
         },
@@ -13886,7 +13328,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/response/usage/total_tokens"
           }
         },
@@ -13949,7 +13390,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/store"
           }
         },
@@ -13967,7 +13407,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/include"
           }
         },
@@ -14032,9 +13471,7 @@
         "check": {
           "op": "has_prefix",
           "source": {
-            "op": "read",
-            "from": "input",
-            "path": ""
+            "op": "read"
           },
           "value": "elysia_continuation_"
         },
@@ -14051,7 +13488,6 @@
               "op": "type",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/tools"
               }
             },
@@ -14078,7 +13514,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/type"
                     },
                     {
@@ -14091,7 +13526,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/strict"
                   }
                 }
@@ -14145,7 +13579,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/metadata"
           }
         },
@@ -14161,9 +13594,7 @@
             "op": "equal",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               },
               {
                 "op": "literal",
@@ -14187,7 +13618,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/user"
           }
         },
@@ -14205,7 +13635,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/truncation"
           }
         },
@@ -14225,7 +13654,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/previous_response_id"
           }
         },
@@ -14240,9 +13668,7 @@
             "op": "equal",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": ""
+                "op": "read"
               },
               {
                 "op": "literal",
@@ -14278,7 +13704,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/output_text"
             }
           }
@@ -14304,7 +13729,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/output_text"
             }
           }
@@ -14330,7 +13754,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/output_text"
             }
           }
@@ -14342,9 +13765,7 @@
           "op": "equal_text",
           "items": [
             {
-              "op": "read",
-              "from": "input",
-              "path": ""
+              "op": "read"
             },
             {
               "op": "flatmap",

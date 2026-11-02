@@ -81,12 +81,15 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
 	wireValidation := operationOptions
-	wireValidation.State = protocol.NewEvaluationState()
-	defer wireValidation.State.Release()
+	if plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
+		wireValidation.State = protocol.NewEvaluationState()
+		defer wireValidation.State.Release()
+	}
 	finalValidation, err := plan.ingress.NewWireStreamValidation(candidate.scope)
 	if err != nil {
 		return err
 	}
+	defer finalValidation.Release()
 	sourceOptions := options
 	if plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
 		options = options.WithOutputStream(finalValidation)
@@ -110,27 +113,32 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 	if stream.record.FirstByteMs == 0 {
 		stream.record.FirstByteMs = time.Since(stream.record.StartedAt).Milliseconds()
 	}
+	before := value
 	if stream.candidate.conversion.HasPhase(protocol.ConversionWire) {
 		converted, e := stream.candidate.conversion.ApplyValue(stream.ctx, protocol.ConversionWire, value, stream.route, stream.options.Diagnostics)
 		if e != nil {
 			return e
 		}
-		if _, e = stream.plan.ingress.DecodeFrame(stream.ctx, converted, stream.wireValidation); e != nil {
-			return e
+		if stream.plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
+			if _, e = stream.plan.ingress.DecodeFrame(stream.ctx, converted, stream.wireValidation); e != nil {
+				return e
+			}
 		}
 		value = converted
 	}
 	var single [1]protocol.Value
 	single[0] = value
 	frames := single[:]
+	var originals []protocol.Value
 	continuation := stream.candidate.continuation
 	if continuation != nil && continuation.isPackage {
-		inserted, err := stream.plan.ingress.EncodeContinuationFrame(stream.ctx, value, stream.options)
+		prior, inserted, err := stream.plan.ingress.EncodeContinuationTransformedFrames(stream.ctx, before, value, stream.options)
 		if err != nil {
 			return err
 		}
 		if inserted != nil {
 			frames = inserted
+			originals = prior
 		}
 	} else if continuation != nil {
 		stream.carriers.Tokens = stream.candidate.continuation.tokens
@@ -140,10 +148,14 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 			return err
 		}
 	}
-	for _, frame := range frames {
+	for index, frame := range frames {
 		var err error
-		if continuation != nil && continuation.isPackage {
-			err = stream.finalValidation.ConsumeContinuation(stream.ctx, frame, stream.options)
+		if stream.plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
+			original := before
+			if originals != nil {
+				original = originals[index]
+			}
+			err = stream.finalValidation.ConsumeTransformed(stream.ctx, original, frame, stream.options)
 		} else {
 			err = stream.finalValidation.Consume(stream.ctx, frame)
 		}

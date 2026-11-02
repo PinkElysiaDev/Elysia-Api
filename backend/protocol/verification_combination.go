@@ -451,9 +451,11 @@ func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frame
 	if err != nil {
 		return nil, err
 	}
+	defer validation.Release()
 	var decoded []Event
 	consume := func(batch []Value) error {
 		for _, wire := range batch {
+			before := wire
 			if conversion != nil && conversion.HasPhase(ConversionWire) {
 				route.ResponseWire = true
 				var err error
@@ -463,19 +465,25 @@ func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frame
 				}
 			}
 			actual := []Value{wire}
+			var originals []Value
 			if options.continuation != nil {
-				carriers, err := compiled.EncodeContinuationFrame(ctx, wire, options)
+				prior, carriers, err := compiled.EncodeContinuationTransformedFrames(ctx, before, wire, options)
 				if err != nil {
 					return err
 				}
 				if carriers != nil {
 					actual = carriers
+					originals = prior
 				}
 			}
-			for _, delivered := range actual {
+			for index, delivered := range actual {
 				var err error
-				if options.continuation != nil {
-					err = validation.ConsumeContinuation(ctx, delivered, options)
+				if compiled.packagePlan != nil {
+					original := before
+					if originals != nil {
+						original = originals[index]
+					}
+					err = validation.ConsumeTransformed(ctx, original, delivered, options)
 				} else {
 					err = validation.Consume(ctx, delivered)
 				}

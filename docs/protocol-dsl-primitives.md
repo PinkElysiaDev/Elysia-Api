@@ -492,15 +492,24 @@ Chat `event-layout / 310` 使用现有目标身份及通道索引识别 message 
 仅在首次观察相应边界时请求授权，不为每个 delta 重复登记。正文按到达顺序输出，
 reasoning、refusal、text 保持不同通道；容器附属语义及独立候选仍需明确投影。
 
-## 完整响应引用关联
+## 最终响应与事件引用关联
 
-`encode_response.deliveryRanges[]` 使用已有表达式建立只读的最终交付观察，不增加供应商原语。
+`encode_response.deliveryRanges[]` 和 `encode_event.deliveryRanges[]` 使用已有表达式建立只读的最终交付观察，不增加供应商原语。
 `measure` 的 input 是字符串，结果必须为非负整数；默认包直接绑定 `utf16_length`，不创建字符数组。
 `texts` 返回 `{key, text, mode, path}` 数组，`ranges` 返回 `{key, id, start, end, path}` 数组。
 同一观察内文本 key 唯一，引用身份按 key＋id 唯一；坐标必须为有序非负整数。
 
-选择计划直接遍历输出记录，不先编码为 JSON 再解码。正常无引用路径跳过正文选择；不变正文
+选择计划直接遍历输出记录，不先编码为 JSON 再解码。JSON 无引用路径跳过正文选择；SSE 为晚到引用保存摘要和位置。不变正文
 使用一个隐式连续区间，实际分歧才创建前后区间。相邻来源及目标位置都连续时合并区间。
 不匹配的最终索引、改写区域或未知关联返回结构化拒绝，不自动补正、删除引用或选择其他引擎。
 
-此字段目前仅允许完整响应方向；事件方向在实际流事务和交付边界接线后才开放。
+事件方向在 `WireStreamValidation.ConsumeTransformed(before, after, options)` 中共享最终 Spec、引用与续传载体检查。
+同一通道／文本 key 的 append 推进位置；snapshot 复用摘要验证此前前缀，只追加新增后缀。
+不得用等长替换恢复证明。来源或目标 snapshot 改写旧前缀均拒绝。
+区间事务只暂存可变尾段；在 `CommitDelivery` 前不改变已提交摘要与区间。当前批正文仅保留到 Flush，
+成功提交后只持有摘要、位置和独立身份；`AbortDelivery` 清除待提交载荷并关闭流，`Release` 释放所有观察。
+文本身份及显式区间按实际条目计入 StateItems；身份字节及当前批暂存载荷计入 BufferBytes。
+同一未改写载荷共用字符串和摘要，普通 1,024 帧追加不会产生 1,024 份历史区间。
+
+这里证明的是最终 wire 规则前后的文本关系；语义事件规则改写与原始事件之间的可信关联仍是独立待完成项。
+未知 wire 修改范围最多读取当前帧，不完整重建语义流；静态影响路径优化尚未完成。

@@ -231,6 +231,59 @@ func (compiled *Compiled) EncodeContinuationFrame(ctx context.Context, wire Valu
 	if err != nil || !changed {
 		return nil, err
 	}
+	return encodeContinuationFrames(ctx, output)
+}
+
+// EncodeContinuationTransformedFrames pairs an expanded carrier batch with the
+// same read-only carrier program applied before final wire rules. Pairing does
+// not assume that the original frame is last. The common unchanged path shares
+// the resulting frames and evaluates the carrier program only once.
+func (compiled *Compiled) EncodeContinuationTransformedFrames(ctx context.Context, before, after Value, options EvaluationContext) ([]Value, []Value, error) {
+	output, changed, err := compiled.encodeContinuation(ctx, after, options, EncodeEvent)
+	if err != nil || !changed {
+		return nil, nil, err
+	}
+	frames, err := encodeContinuationFrames(ctx, output)
+	if err != nil {
+		return nil, nil, err
+	}
+	if before.raw == after.raw {
+		return frames, frames, nil
+	}
+	binding := options.continuation
+	view := newInputView(before)
+	state := evaluation{ctx: ctx, input: before, root: before, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), runtime: bindEvaluationRuntime(compiled, EncodeEvent, options), budget: &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
+	if binding.plan.when != nil {
+		selected, err := binding.plan.when.evaluate(state)
+		if err != nil {
+			return nil, nil, err
+		}
+		matches, err := readBoolean(selected)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !matches {
+			return nil, nil, operationMetadataError("/continuation", "wire edit changed the carrier boundary")
+		}
+	}
+	original, err := binding.plan.program.build(state)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := checkPlannedOutputLimits(original, compiled.limits, "continuation_output"); err != nil {
+		return nil, nil, err
+	}
+	beforeFrames, err := encodeContinuationFrames(ctx, original)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(beforeFrames) != len(frames) {
+		return nil, nil, operationMetadataError("/continuation", "wire edit changed carrier batch cardinality")
+	}
+	return beforeFrames, frames, nil
+}
+
+func encodeContinuationFrames(ctx context.Context, output plannedOutput) ([]Value, error) {
 	items, err := plannedArrayItems(output.output)
 	if err != nil {
 		return nil, err
@@ -309,16 +362,5 @@ func (validation *WireStreamValidation) ConsumeContinuation(ctx context.Context,
 	if validation.packageStream == nil {
 		return fmt.Errorf("continuation output requires a package stream")
 	}
-	view := newInputView(frame)
-	if err := validation.consume(ctx, frame, view); err != nil {
-		return err
-	}
-	binding := options.continuation
-	if binding == nil {
-		return nil
-	}
-	if err := binding.check(validation.compiled, EncodeEvent, options.Scope); err != nil {
-		return err
-	}
-	return binding.observe(ctx, view)
+	return validation.ConsumeTransformed(ctx, frame, frame, options)
 }

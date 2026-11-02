@@ -11,8 +11,8 @@ func compileDeliveryRanges(declarations []ProtocolDeliveryRange, direction Direc
 	if len(declarations) == 0 {
 		return nil, nil
 	}
-	if direction != EncodeResponse {
-		return nil, fmt.Errorf("%s: requires response encoding", path)
+	if direction != EncodeResponse && direction != EncodeEvent {
+		return nil, fmt.Errorf("%s: requires response or event encoding", path)
 	}
 	seen := make(map[string]bool, len(declarations))
 	compiled := make([]compiledDeliveryRange, 0, len(declarations))

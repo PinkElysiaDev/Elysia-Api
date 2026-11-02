@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/hertz/pkg/network"
@@ -157,11 +158,12 @@ type deliveryCommitWriter struct {
 	afterFlush func()
 	flushes    int
 	writes     int
+	failAt     int
 }
 
 func (writer *deliveryCommitWriter) Write(body []byte) (int, error) {
 	writer.writes++
-	if writer.writeError != nil {
+	if writer.writeError != nil && (writer.failAt == 0 || writer.writes == writer.failAt) {
 		return 0, writer.writeError
 	}
 	return writer.ExtWriter.Write(body)
@@ -300,6 +302,85 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			}
 			if err := validation.Finish(); err != nil || writer.flushes != 2 {
 				t.Fatal("failure delivery did not terminate exactly once", err, writer.flushes)
+			}
+		})
+	}
+}
+
+func TestGatewayCarrierBatchDelivery(t *testing.T) {
+	document := outputAwareStreamPackage(t)
+	document.Spec.Documents["client-event"].Stream.Events["carrier.tail"] = protocol.ProtocolStreamEventSpec{{Action: "observe", AfterTerminal: true}}
+	var declaration protocol.ProtocolContinuationMapping
+	if err := mustProtocolValue(t, `{"encode_event":{"when":{"op":"equal","items":[{"op":"read","path":"/type"},{"op":"literal","value":"response.finished"}]},"program":{"op":"array","items":[{"op":"merge","policy":"last","items":[{"op":"read"},{"op":"object","fields":{"carrier":{"op":"map","source":{"op":"read","from":"runtime","path":"/continuation/tokens"},"body":{"op":"read","from":"item","path":"/token"}}}}]},{"op":"object","fields":{"type":{"op":"literal","value":"carrier.tail"},"responseId":{"op":"read","path":"/responseId"},"sequence":{"op":"integer","operation":"add","items":[{"op":"read","path":"/sequence"},{"op":"literal","value":1}]}}}]},"emitted":{"op":"if","when":{"op":"exists","source":{"op":"read","path":"/carrier"}},"then":{"op":"read","path":"/carrier"},"otherwise":{"op":"literal","value":[]}}}}`).Decode(&declaration); err != nil {
+		t.Fatal(err)
+	}
+	document.Mapping.Continuation = &declaration
+	compiled := compileSourceStreamPackage(t, document)
+	codec, err := protocol.NewContinuationCodec([]byte("local carrier batch fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue("fixture")}
+	sealed, err := codec.SealState(protocol.ContinuationRecord{Version: 1, ID: "one", Protocol: compiled.Identity(), Node: node, Digest: protocol.ContinuationNodeDigest(node), ExpiresAt: time.Now().Add(time.Hour).Unix()}, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ending := range []string{"complete", "second-frame-write-failure", "flush-failure", "cancel-after-flush"} {
+		t.Run(ending, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c := newTestContext(httptest.NewRecorder())
+			setTestRequest(c, httptest.NewRequest(http.MethodPost, "/generate", nil))
+			defer flushTestResponse(c)
+			writer := &deliveryCommitWriter{ExtWriter: startStream(c)}
+			binding, err := compiled.BindContinuation(protocol.EncodeEvent, compiled.Identity(), protocol.Scope{}, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := binding.Append(sealed); err != nil {
+				t.Fatal(err)
+			}
+			validation, err := compiled.NewWireStreamValidation(protocol.Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer validation.Release()
+			options := (protocol.EvaluationContext{}).WithOutputStream(validation).WithContinuation(binding)
+			present := true
+			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "carrier-edit", Rules: []protocol.ConversionRule{{ID: "marker", Enabled: true, Phase: protocol.ConversionWire, Action: "set", Path: "/marker", Value: protocol.StringValue("after"), Match: protocol.ConversionMatch{Path: "/marker", Present: &present}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
+				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.NDJSON}},
+				candidate: gatewayCandidate{conversion: conversion, continuation: &gatewayContinuation{isPackage: true, binding: binding}},
+				limits:    compiled.ResourceLimits(), options: options, finalValidation: validation}
+			if err := stream.emit(mustProtocolValue(t, `{"type":"response.started","responseId":"r","sequence":0}`)); err != nil {
+				t.Fatal(err)
+			}
+			failure := errors.New("synthetic carrier batch failure")
+			switch ending {
+			case "second-frame-write-failure":
+				writer.writeError, writer.failAt = failure, writer.writes+2
+			case "flush-failure":
+				writer.flushError = failure
+			case "cancel-after-flush":
+				writer.afterFlush = cancel
+			}
+			terminal := mustProtocolValue(t, `{"type":"response.finished","responseId":"r","sequence":1,"marker":"before"}`)
+			err = stream.emit(terminal)
+			if ending == "complete" || ending == "cancel-after-flush" {
+				if err != nil || binding.HasPending() || binding.Finish() != nil || validation.Finish() != nil || writer.writes != 3 || writer.flushes != 2 {
+					t.Fatal("carrier batch did not commit exactly once", err, writer.writes, writer.flushes)
+				}
+				return
+			}
+			if !errors.Is(err, failure) || !binding.HasPending() || binding.CommitDelivery() == nil || validation.CommitDelivery() == nil {
+				t.Fatal("partial batch acquired successful delivery", err)
+			}
+			writes, flushes := writer.writes, writer.flushes
+			if err := stream.emit(terminal); !errors.Is(err, failure) || writer.writes != writes || writer.flushes != flushes {
+				t.Fatal("failed carrier batch was retried", err)
 			}
 		})
 	}

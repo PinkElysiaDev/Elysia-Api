@@ -23,6 +23,11 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 	if !state.hasPendingDelivery {
 		return fmt.Errorf("delivery commit requires a successfully accepted output frame")
 	}
+	if validation.deliveryRanges != nil {
+		if err := validation.deliveryRanges.commit(); err != nil {
+			return err
+		}
+	}
 	state.delivered = state.accepted
 	state.deliveredFrameNumber = state.frameNumber
 	state.hasPendingDelivery = false
@@ -34,10 +39,24 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 // resumed. The host keeps the original transport error as the failure cause.
 func (validation *WireStreamValidation) AbortDelivery() {
 	validation.deliveryAborted = true
+	if ranges := validation.deliveryRanges; ranges != nil {
+		clear(ranges.pending)
+		ranges.stagedBytes = 0
+	}
 	if state := validation.packageStream; state != nil {
 		state.hasPendingDelivery = false
 		state.hasRejectedFrame = true
 	}
+}
+
+// Release drops request-owned validation state when delivery or cancellation
+// settles. A released validator remains closed and cannot resume an output.
+func (validation *WireStreamValidation) Release() {
+	validation.AbortDelivery()
+	validation.deliveryRanges = nil
+	validation.packageStream = nil
+	validation.decoder = nil
+	validation.replay = nil
 }
 
 func (runtime evaluationRuntime) readOutputStream(field string) (plannedOutput, error) {

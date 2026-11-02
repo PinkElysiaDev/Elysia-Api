@@ -34,6 +34,7 @@ type WireStreamValidation struct {
 	replay          *EventReplay
 	options         EvaluationContext
 	deliveryAborted bool
+	deliveryRanges  *deliveryRangeStream
 }
 
 // NewWireStreamValidation checks final event bytes against their output contract.
@@ -73,6 +74,9 @@ func (c *Compiled) newWireStreamValidation(direction Direction, scope Scope) (*W
 }
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
+	if v.direction == EncodeEvent && len(v.compiled.mappings[EncodeEvent].deliveryRanges) != 0 {
+		return v.ConsumeTransformed(ctx, frame, frame, v.options)
+	}
 	var view *inputView
 	if v.packageStream != nil {
 		view = newInputView(frame)

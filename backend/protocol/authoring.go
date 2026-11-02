@@ -63,6 +63,8 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		if err == nil {
 			if input.ConversionPhase == ConversionSourceEvent {
 				output, err = service.PreviewSourceEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
+			} else if input.ConversionPhase == ConversionWire && input.Direction == EncodeEvent {
+				output, err = service.previewWireEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
 			} else {
 				output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
 			}
@@ -241,6 +243,9 @@ func (service *Service) previewCompiled(ctx context.Context, compiled *Compiled,
 			var validator *WireStreamValidation
 			if isSequence {
 				validator, err = compiled.NewWireStreamValidation(options.Scope)
+				if err == nil {
+					defer validator.Release()
+				}
 			}
 			for _, frame := range frames {
 				if err != nil {
@@ -248,6 +253,9 @@ func (service *Service) previewCompiled(ctx context.Context, compiled *Compiled,
 				}
 				if validator != nil {
 					err = validator.Consume(ctx, frame)
+					if err == nil && compiled.packagePlan != nil {
+						err = validator.CommitDelivery()
+					}
 				} else {
 					err = compiled.ValidateWireOutput(direction, frame)
 				}

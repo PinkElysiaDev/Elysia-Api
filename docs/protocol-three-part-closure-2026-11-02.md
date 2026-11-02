@@ -407,4 +407,50 @@ node scripts/benchmark-performance.mjs --execution=packages --expect-commit=<完
 
 `closure-delivery-abort-final` 通过组件、Native／重建、断流、storage 和 32 场景网关矩阵：protocol 0.378 秒、builtin 0.799 秒、server 13.616 秒。`closure-delivery-abort-race-final` 通过状态、续传及网关失败检查：protocol 4.092 秒、server 5.728 秒。相关 vet 通过；固定 staticcheck v0.8.2 保留 24 主诊断＋1 关联位置，新增 0、消失 0。此前 dev.128 的全量与前端结果继续复用；前端未变，不重复执行。
 
-本切片不等于批次 2 已全部完成。多输出载体同一 Flush 批次中途失败、慢交付、完整 Native→重建→Native，以及 SSE 区间证明和可信事件修改仍待接通。生产默认、早期错误、旧链、B／C 与性能门槛均未宣称完成。
+## 最终闭合批次 1B：SSE 引用证明与交付事务（dev.130）
+
+`encode_event.deliveryRanges` 已接入 Chat／Responses 的可见文本及引用，沿用 JSON 的只读选择与
+UTF-16 区间算法。Spec 继续独立检查事件、身份和生命周期，Mapping 决定字段、通道和引用身份；
+Go 不判断供应商字段。Responses 的完整响应、message 快照和终态共享命名程序，省略等价 read
+默认项以保留配置空间；100,000 token／64 depth 限额不变。
+
+`WireStreamValidation.ConsumeTransformed` 统一最终 Spec、引用和续传载体检查。新包网关删除了
+wire 规则之后的完整 DecodeFrame 及对应映射状态；组合验证和完整 wire 事件预览接入同一边界。
+纯映射预览保持所选方向语义；完整 wire 事件预览要求 sequence，逐帧模拟成功交付并检查终态。
+
+文本观察保存摘要和位置，未改写时共用摘要及隐式区间。发生改写后仅比较当前增量的相同前后
+字符片段；晚到引用必须落在可证明区间且索引已正确调整。snapshot 用摘要检查旧前缀，只处理
+新增后缀。事务只复制可变尾区间，不复制历史区间；1,024 帧无改写追加不积累显式区间。
+引用重复观察不增加状态身份。身份和区间按实际条目计量，当前批暂存载荷受字节预算限制。
+
+成功 Flush 后提交摘要与区间，失败关闭并清理暂存载荷，结束时 Release 释放观察。续传扩展
+使用同一个只读程序、sealed batch 和已提交位置生成 before／after 配对；无修改执行一次，
+实际修改不得改变载体边界或帧数，不假设原帧总在批次末尾。定向传输检查使用原帧在首位的
+两帧载体批次，覆盖第二帧 Write 失败、Flush 失败与 Flush 后取消；不重发部分写入的批次。
+
+必要回归覆盖等长替换、emoji、未改写前后区间、晚到／重复引用、旧索引拒绝、无引用改写、
+snapshot 前缀改写拒绝、资源预算、暂存与已提交事实、自定义配置、组合验证及 wire 预览。
+真实本地 Responses→Chat SSE 完整消费验证正文、引用、usage、终态及一次上游调用；改写后
+晚到引用拒绝，不能发送失效引用或成功终止标记。
+
+本批仍不包含语义事件规则相对于原 frame 的可信修改事实，也未实现静态 wire 影响路径分析。
+不能因此宣称所有正文改写安全闭合。完整 Native 接续组合、全入口与所有权、早期错误配置化、
+B／C、正式性能、生产默认切换和旧链删除继续列为未完成。
+
+检查记录保存在忽略目录 `.tmp-dev/protocol-three-part-2026-10-31/checks/`：
+
+| 检查 | 结果 |
+|---|---|
+| closure-stream-ranges-final | protocol 全量 4.837 秒、builtin 全量 36.310 秒通过，包含四包编译及正式样例 |
+| closure-stream-ranges-gateway-final | 续传配对、真实 JSON／SSE 引用、32 场景矩阵、交付位置通过；builtin 0.523 秒、server 14.256 秒 |
+| closure-stream-ranges-carrier-batch | 同批两帧交付、第二帧 Write 失败、Flush 失败及 Flush 后取消通过；server 0.364 秒 |
+| closure-stream-ranges-fuzz | 区间事务与完整区间 oracle 对照，54,030 次输入通过 |
+| closure-stream-ranges-race | 核心状态、载体配对、真实引用调用及 32 场景矩阵通过；protocol 3.843 秒、builtin 19.012 秒、server 238.566 秒 |
+| closure-stream-ranges-vet | 受影响 protocol 全树及 server 通过 |
+| closure-stream-ranges-staticcheck | 固定 v0.8.2：24 条主诊断＋1 条关联位置；与 dev.129 去行列后的多重集一致，新增 0、消失 0；退出 1 |
+| closure-stream-ranges-types／editor-lint | 前端类型检查、协议编辑器 lint 通过 |
+
+race 之后新增的编译期“必须有最终 stream 合同”约束由最终全量和 vet 覆盖，执行状态代码未再改变。
+初次检查暴露的 Responses reasoning part 误读身份已通过配置过滤修复；测试中的模型修改按整流身份
+约束同时修改起始帧，未放宽合同。中间失败日志一并保留。这里没有正式 A／B／C 性能结论，
+也未重复运行尚未到最终候选阶段的六平台和真实客户端验收。

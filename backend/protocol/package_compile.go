@@ -224,6 +224,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		}
 		finalCheck = check
 	}
+	if direction == EncodeEvent && len(mapping.DeliveryRanges) != 0 && finalWire.Stream == nil {
+		return compiledMapping{}, nil, fmt.Errorf("%s/deliveryRanges: requires a final wire stream contract", path)
+	}
 	deliveryRanges, err := compileDeliveryRanges(mapping.DeliveryRanges, direction, finalWire.Schema, path+"/deliveryRanges", compiler)
 	if err != nil {
 		return compiledMapping{}, nil, err
