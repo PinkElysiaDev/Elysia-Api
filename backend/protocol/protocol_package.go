@@ -166,6 +166,7 @@ type ProtocolDirectionMapping struct {
 	// FinalCheck observes the final request wire and caller intent after all edits.
 	// It cannot mutate either input or access stream state.
 	FinalCheck     *Expression                   `json:"finalCheck,omitempty"`
+	DeliveryRanges []ProtocolDeliveryRange       `json:"deliveryRanges,omitempty"`
 	IsEventBatch   bool                          `json:"eventBatch,omitempty"`
 	CanDeferEvents bool                          `json:"deferEvents,omitempty"`
 	IsFrameBatch   bool                          `json:"frameBatch,omitempty"`
@@ -176,6 +177,15 @@ type ProtocolDirectionMapping struct {
 	Program        Expression                    `json:"program"`
 	Effects        []ProtocolSemanticEffect      `json:"effects"`
 	Capabilities   CapabilitySet                 `json:"capabilities,omitzero"`
+}
+
+// ProtocolDeliveryRange associates final wire text with references in one
+// declared coordinate system. Selectors are read-only and return record arrays.
+type ProtocolDeliveryRange struct {
+	Name    string     `json:"name"`
+	Measure Expression `json:"measure"`
+	Texts   Expression `json:"texts"`
+	Ranges  Expression `json:"ranges"`
 }
 
 // ProtocolStateSlot retains one bounded value between events. All updates read

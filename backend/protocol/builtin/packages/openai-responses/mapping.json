@@ -135,7 +135,6 @@
     },
     "read-metadata-value": {
       "op": "read",
-      "from": "input",
       "path": "/value"
     },
     "read-current-item": {
@@ -155,17 +154,14 @@
     },
     "read-metadata-name": {
       "op": "read",
-      "from": "input",
       "path": "/name"
     },
     "read-source-path": {
       "op": "read",
-      "from": "input",
       "path": "/path"
     },
     "read-metadata-codec": {
       "op": "read",
-      "from": "input",
       "path": "/codec"
     },
     "read-item-cache-policy": {
@@ -180,22 +176,18 @@
     },
     "read-reasoning-intent": {
       "op": "read",
-      "from": "input",
       "path": "/reasoning"
     },
     "read-reasoning-effort": {
       "op": "read",
-      "from": "input",
       "path": "/reasoning/effort"
     },
     "read-reasoning-summary": {
       "op": "read",
-      "from": "input",
       "path": "/reasoning/summary"
     },
     "read-response-reasoning-options": {
       "op": "read",
-      "from": "input",
       "path": "/parameters/responses_reasoning"
     },
     "read-item-id": {
@@ -230,77 +222,62 @@
     },
     "read-input-usage": {
       "op": "read",
-      "from": "input",
       "path": "/usage"
     },
     "read-input-model": {
       "op": "read",
-      "from": "input",
       "path": "/model"
     },
     "read-input-content": {
       "op": "read",
-      "from": "input",
       "path": "/content"
     },
     "read-output-limit": {
       "op": "read",
-      "from": "input",
       "path": "/parameters/max_output_tokens"
     },
     "read-response-include": {
       "op": "read",
-      "from": "input",
       "path": "/clientOutput/rawResponsesInclude"
     },
     "read-tool-usage": {
       "op": "read",
-      "from": "input",
       "path": "/tool_usage"
     },
     "read-input-error": {
       "op": "read",
-      "from": "input",
       "path": "/error"
     },
     "read-response-output": {
       "op": "read",
-      "from": "input",
       "path": "/output"
     },
     "read-input-id": {
       "op": "read",
-      "from": "input",
       "path": "/id"
     },
     "read-input-status": {
       "op": "read",
-      "from": "input",
       "path": "/status"
     },
     "read-reasoning-budget": {
       "op": "read",
-      "from": "input",
       "path": "/reasoning/budget"
     },
     "read-event-item-type": {
       "op": "read",
-      "from": "input",
       "path": "/item/type"
     },
     "read-event-item": {
       "op": "read",
-      "from": "input",
       "path": "/item"
     },
     "read-input-type": {
       "op": "read",
-      "from": "input",
       "path": "/type"
     },
     "read-event-response": {
       "op": "read",
-      "from": "input",
       "path": "/response"
     },
     "read-tool-call-id": {
@@ -310,7 +287,6 @@
     },
     "read-storage-intent": {
       "op": "read",
-      "from": "input",
       "path": "/store"
     },
     "read-same-wire": {
@@ -783,7 +759,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/value/cyber"
                     },
                     {
@@ -797,7 +772,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/value/cyber"
                     },
                     {
@@ -811,7 +785,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/value/cyber"
                     },
                     {
@@ -950,7 +923,6 @@
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/location"
               },
               {
@@ -1111,7 +1083,6 @@
             "name": "root-cache",
             "source": {
               "op": "read",
-              "from": "input",
               "path": ""
             },
             "body": {
@@ -1220,7 +1191,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prompt_cache_key"
               }
             },
@@ -1240,7 +1210,6 @@
                     },
                     "value": {
                       "op": "read",
-                      "from": "input",
                       "path": "/prompt_cache_key"
                     }
                   }
@@ -1258,7 +1227,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prompt_cache_retention"
               }
             },
@@ -1278,7 +1246,6 @@
                     },
                     "value": {
                       "op": "read",
-                      "from": "input",
                       "path": "/prompt_cache_retention"
                     }
                   }
@@ -1296,7 +1263,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prewarm"
               }
             },
@@ -1316,7 +1282,6 @@
                     },
                     "value": {
                       "op": "read",
-                      "from": "input",
                       "path": "/prewarm"
                     }
                   }
@@ -1334,7 +1299,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prompt_cache_options"
               }
             },
@@ -1344,7 +1308,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/prompt_cache_options/mode"
                 }
               },
@@ -1364,7 +1327,6 @@
                       },
                       "value": {
                         "op": "read",
-                        "from": "input",
                         "path": "/prompt_cache_options/mode"
                       }
                     }
@@ -1387,7 +1349,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/prompt_cache_options"
               }
             },
@@ -1397,7 +1358,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/prompt_cache_options/ttl"
                 }
               },
@@ -1417,7 +1377,6 @@
                       },
                       "value": {
                         "op": "read",
-                        "from": "input",
                         "path": "/prompt_cache_options/ttl"
                       }
                     }
@@ -1582,52 +1541,42 @@
             "fields": {
               "max_output_tokens": {
                 "op": "read",
-                "from": "input",
                 "path": "/max_output_tokens"
               },
               "temperature": {
                 "op": "read",
-                "from": "input",
                 "path": "/temperature"
               },
               "top_p": {
                 "op": "read",
-                "from": "input",
                 "path": "/top_p"
               },
               "stream": {
                 "op": "read",
-                "from": "input",
                 "path": "/stream"
               },
               "parallel_tool_calls": {
                 "op": "read",
-                "from": "input",
                 "path": "/parallel_tool_calls"
               },
               "metadata": {
                 "op": "read",
-                "from": "input",
                 "path": "/metadata"
               },
               "user": {
                 "op": "read",
-                "from": "input",
                 "path": "/user"
               },
               "responses_text": {
                 "op": "read",
-                "from": "input",
                 "path": "/text"
               },
               "responses_previous_response_id": {
                 "op": "read",
-                "from": "input",
                 "path": "/previous_response_id"
               },
               "responses_truncation": {
                 "op": "read",
-                "from": "input",
                 "path": "/truncation"
               },
               "responses_reasoning": {
@@ -1681,7 +1630,6 @@
                       "policy": "exclude",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": ""
                       },
                       "keys": [
@@ -1722,7 +1670,6 @@
                                 "op": "type",
                                 "source": {
                                   "op": "read",
-                                  "from": "input",
                                   "path": "/prompt_cache_options"
                                 }
                               },
@@ -1739,7 +1686,6 @@
                               "op": "project",
                               "source": {
                                 "op": "read",
-                                "from": "input",
                                 "path": "/prompt_cache_options"
                               },
                               "keys": [
@@ -2596,7 +2542,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/tools"
         }
       },
@@ -2607,7 +2552,6 @@
           "op": "map",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tools"
           },
           "body": {
@@ -2889,7 +2833,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/tools"
         }
       },
@@ -2900,7 +2843,6 @@
           "op": "map",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tools"
           },
           "body": {
@@ -3058,7 +3000,6 @@
         "op": "exists",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/tool_choice"
         }
       },
@@ -3068,7 +3009,6 @@
           "op": "type",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/tool_choice"
           }
         },
@@ -3082,7 +3022,6 @@
             "fields": {
               "mode": {
                 "op": "read",
-                "from": "input",
                 "path": "/tool_choice"
               }
             }
@@ -3096,13 +3035,11 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_choice/type"
                   }
                 },
                 "then": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_choice/type"
                 },
                 "otherwise": {
@@ -3112,7 +3049,6 @@
               },
               "name": {
                 "op": "read",
-                "from": "input",
                 "path": "/tool_choice/name"
               }
             }
@@ -3126,7 +3062,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/toolChoice"
         }
       },
@@ -3134,7 +3069,6 @@
         "op": "choose",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/toolChoice/mode"
         },
         "cases": {
@@ -3159,7 +3093,6 @@
               },
               "name": {
                 "op": "read",
-                "from": "input",
                 "path": "/toolChoice/name"
               }
             }
@@ -3173,7 +3106,6 @@
               },
               "name": {
                 "op": "read",
-                "from": "input",
                 "path": "/toolChoice/name"
               }
             }
@@ -3182,7 +3114,6 @@
       },
       "otherwise": {
         "op": "read",
-        "from": "input",
         "path": "/toolChoice"
       }
     },
@@ -3562,17 +3493,14 @@
           "fields": {
             "input_tokens": {
               "op": "read",
-              "from": "input",
               "path": "/usage/input/count"
             },
             "output_tokens": {
               "op": "read",
-              "from": "input",
               "path": "/usage/output/count"
             },
             "total_tokens": {
               "op": "read",
-              "from": "input",
               "path": "/usage/total/count"
             },
             "input_tokens_details": {
@@ -3583,27 +3511,22 @@
                 "fields": {
                   "cached_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/cacheRead/count"
                   },
                   "cache_write_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/cacheCreation/count"
                   },
                   "text_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/input.text_tokens/count"
                   },
                   "image_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/input.image_tokens/count"
                   },
                   "audio_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/input.audio_tokens/count"
                   }
                 }
@@ -3621,32 +3544,26 @@
                 "fields": {
                   "reasoning_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/output.reasoning_tokens/count"
                   },
                   "text_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/output.text_tokens/count"
                   },
                   "image_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/output.image_tokens/count"
                   },
                   "audio_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/output.audio_tokens/count"
                   },
                   "accepted_prediction_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/output.accepted_prediction_tokens/count"
                   },
                   "rejected_prediction_tokens": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/details/output.rejected_prediction_tokens/count"
                   }
                 }
@@ -3851,7 +3768,6 @@
             "op": "type",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/parameters"
             }
           },
@@ -3872,7 +3788,6 @@
                 "op": "keys",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/parameters"
                 }
               },
@@ -3993,27 +3908,22 @@
         },
         "temperature": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/temperature"
         },
         "top_p": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/top_p"
         },
         "stream": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/stream"
         },
         "parallel_tool_calls": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/parallel_tool_calls"
         },
         "metadata": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/metadata"
         },
         "user": {
@@ -4022,7 +3932,6 @@
         },
         "text": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/responses_text"
         },
         "include": {
@@ -4031,12 +3940,10 @@
         },
         "previous_response_id": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/responses_previous_response_id"
         },
         "truncation": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/responses_truncation"
         },
         "prompt_cache_key": {
@@ -4322,7 +4229,6 @@
           },
           "then": {
             "op": "read",
-            "from": "input",
             "path": "/content/0/children/0/payload"
           }
         },
@@ -4339,7 +4245,6 @@
           "op": "type",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/parameters/anthropic_metadata"
           }
         },
@@ -4355,13 +4260,11 @@
         "op": "exists",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/user"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/parameters/user"
       },
       "otherwise": {
@@ -4372,7 +4275,6 @@
         },
         "then": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/anthropic_metadata/user_id"
         }
       }
@@ -4394,7 +4296,6 @@
                 "op": "keys",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/parameters/anthropic_metadata"
                 }
               },
@@ -4442,7 +4343,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/user"
               }
             },
@@ -4450,7 +4350,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/anthropic_metadata/user_id"
               }
             }
@@ -4470,7 +4369,6 @@
                       "op": "type",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/parameters/user"
                       }
                     },
@@ -4487,7 +4385,6 @@
                       "op": "type",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/parameters/anthropic_metadata/user_id"
                       }
                     },
@@ -4504,12 +4401,10 @@
               "items": [
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/parameters/user"
                 },
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/parameters/anthropic_metadata/user_id"
                 }
               ]
@@ -4521,7 +4416,6 @@
                   "op": "stringify_json",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/user"
                   }
                 },
@@ -4529,7 +4423,6 @@
                   "op": "stringify_json",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/anthropic_metadata/user_id"
                   }
                 }
@@ -4566,7 +4459,6 @@
                     "op": "project",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": ""
                     },
                     "keys": [
@@ -4754,7 +4646,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/content_filters"
                   },
                   {
@@ -4854,13 +4745,11 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/metadata"
             }
           },
           "then": {
             "op": "read",
-            "from": "input",
             "path": "/metadata"
           },
           "otherwise": {
@@ -4903,13 +4792,11 @@
         "op": "exists",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/attributes/wire:openai_responses"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/attributes/wire:openai_responses"
       },
       "otherwise": {
@@ -5024,7 +4911,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/tool_usage/image_gen"
                         }
                       },
@@ -5035,7 +4921,6 @@
                           "items": [
                             {
                               "op": "read",
-                              "from": "input",
                               "path": "/tool_usage/image_gen"
                             },
                             {
@@ -5046,7 +4931,6 @@
                         },
                         "then": {
                           "op": "read",
-                          "from": "input",
                           "path": "/tool_usage/image_gen"
                         },
                         "otherwise": {
@@ -5060,7 +4944,6 @@
                                 "op": "project",
                                 "source": {
                                   "op": "read",
-                                  "from": "input",
                                   "path": "/tool_usage/image_gen"
                                 },
                                 "keys": [
@@ -5081,7 +4964,6 @@
                                       "op": "exists",
                                       "source": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/tool_usage/image_gen/input_tokens_details"
                                       }
                                     },
@@ -5092,7 +4974,6 @@
                                         "items": [
                                           {
                                             "op": "read",
-                                            "from": "input",
                                             "path": "/tool_usage/image_gen/input_tokens_details"
                                           },
                                           {
@@ -5103,7 +4984,6 @@
                                       },
                                       "then": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/tool_usage/image_gen/input_tokens_details"
                                       },
                                       "otherwise": {
@@ -5117,7 +4997,6 @@
                                               "op": "project",
                                               "source": {
                                                 "op": "read",
-                                                "from": "input",
                                                 "path": "/tool_usage/image_gen/input_tokens_details"
                                               },
                                               "keys": [
@@ -5145,7 +5024,6 @@
                                       "op": "exists",
                                       "source": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/tool_usage/image_gen/output_tokens_details"
                                       }
                                     },
@@ -5156,7 +5034,6 @@
                                         "items": [
                                           {
                                             "op": "read",
-                                            "from": "input",
                                             "path": "/tool_usage/image_gen/output_tokens_details"
                                           },
                                           {
@@ -5167,7 +5044,6 @@
                                       },
                                       "then": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/tool_usage/image_gen/output_tokens_details"
                                       },
                                       "otherwise": {
@@ -5181,7 +5057,6 @@
                                               "op": "project",
                                               "source": {
                                                 "op": "read",
-                                                "from": "input",
                                                 "path": "/tool_usage/image_gen/output_tokens_details"
                                               },
                                               "keys": [
@@ -5220,7 +5095,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/tool_usage/web_search"
                         }
                       },
@@ -5231,7 +5105,6 @@
                           "items": [
                             {
                               "op": "read",
-                              "from": "input",
                               "path": "/tool_usage/web_search"
                             },
                             {
@@ -5242,7 +5115,6 @@
                         },
                         "then": {
                           "op": "read",
-                          "from": "input",
                           "path": "/tool_usage/web_search"
                         },
                         "otherwise": {
@@ -5256,7 +5128,6 @@
                                 "op": "project",
                                 "source": {
                                   "op": "read",
-                                  "from": "input",
                                   "path": "/tool_usage/web_search"
                                 },
                                 "keys": [
@@ -5547,7 +5418,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/input_tokens"
                 }
               },
@@ -5556,7 +5426,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/input_tokens"
                   },
                   "origin": {
@@ -5572,7 +5441,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
                 }
               },
@@ -5581,7 +5449,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/input_tokens_details/image_tokens"
                   },
                   "origin": {
@@ -5597,7 +5464,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
                 }
               },
@@ -5606,7 +5472,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/input_tokens_details/text_tokens"
                   },
                   "origin": {
@@ -5622,7 +5487,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/output_tokens"
                 }
               },
@@ -5631,7 +5495,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/output_tokens"
                   },
                   "origin": {
@@ -5647,7 +5510,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
                 }
               },
@@ -5656,7 +5518,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/output_tokens_details/image_tokens"
                   },
                   "origin": {
@@ -5672,7 +5533,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
                 }
               },
@@ -5681,7 +5541,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/output_tokens_details/text_tokens"
                   },
                   "origin": {
@@ -5697,7 +5556,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/image_gen/total_tokens"
                 }
               },
@@ -5706,7 +5564,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/image_gen/total_tokens"
                   },
                   "origin": {
@@ -5722,7 +5579,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/tool_usage/web_search/num_requests"
                 }
               },
@@ -5731,7 +5587,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/tool_usage/web_search/num_requests"
                   },
                   "origin": {
@@ -5767,7 +5622,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/usage/input_tokens"
               }
             },
@@ -5776,7 +5630,6 @@
               "fields": {
                 "count": {
                   "op": "read",
-                  "from": "input",
                   "path": "/usage/input_tokens"
                 },
                 "origin": {
@@ -5792,7 +5645,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/usage/output_tokens"
               }
             },
@@ -5801,7 +5653,6 @@
               "fields": {
                 "count": {
                   "op": "read",
-                  "from": "input",
                   "path": "/usage/output_tokens"
                 },
                 "origin": {
@@ -5817,7 +5668,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/usage/total_tokens"
               }
             },
@@ -5827,7 +5677,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/usage/total_tokens"
                 }
               },
@@ -5836,7 +5685,6 @@
                 "fields": {
                   "count": {
                     "op": "read",
-                    "from": "input",
                     "path": "/usage/total_tokens"
                   },
                   "origin": {
@@ -5855,7 +5703,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/input_tokens"
                     }
                   },
@@ -5863,7 +5710,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens"
                     }
                   }
@@ -5878,12 +5724,10 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/input_tokens"
                       },
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens"
                       }
                     ]
@@ -5954,7 +5798,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/input_tokens_details/text_tokens"
                     }
                   },
@@ -5963,7 +5806,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/input_tokens_details/text_tokens"
                       },
                       "origin": {
@@ -5979,7 +5821,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/input_tokens_details/image_tokens"
                     }
                   },
@@ -5988,7 +5829,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/input_tokens_details/image_tokens"
                       },
                       "origin": {
@@ -6004,7 +5844,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/input_tokens_details/audio_tokens"
                     }
                   },
@@ -6013,7 +5852,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/input_tokens_details/audio_tokens"
                       },
                       "origin": {
@@ -6029,7 +5867,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details/reasoning_tokens"
                     }
                   },
@@ -6038,7 +5875,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details/reasoning_tokens"
                       },
                       "origin": {
@@ -6054,7 +5890,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details/text_tokens"
                     }
                   },
@@ -6063,7 +5898,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details/text_tokens"
                       },
                       "origin": {
@@ -6079,7 +5913,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details/image_tokens"
                     }
                   },
@@ -6088,7 +5921,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details/image_tokens"
                       },
                       "origin": {
@@ -6104,7 +5936,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details/audio_tokens"
                     }
                   },
@@ -6113,7 +5944,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details/audio_tokens"
                       },
                       "origin": {
@@ -6129,7 +5959,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details/accepted_prediction_tokens"
                     }
                   },
@@ -6138,7 +5967,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details/accepted_prediction_tokens"
                       },
                       "origin": {
@@ -6154,7 +5982,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details/rejected_prediction_tokens"
                     }
                   },
@@ -6163,7 +5990,6 @@
                     "fields": {
                       "count": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details/rejected_prediction_tokens"
                       },
                       "origin": {
@@ -6199,7 +6025,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/choices"
             }
           }
@@ -6230,7 +6055,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/candidates"
             }
           }
@@ -6322,18 +6146,15 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/created_at"
                   }
                 },
                 "then": {
                   "op": "read",
-                  "from": "input",
                   "path": "/created_at"
                 },
                 "otherwise": {
                   "op": "read",
-                  "from": "input",
                   "path": "/created"
                 }
               },
@@ -6419,7 +6240,6 @@
                       "op": "choose",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/incomplete_details/reason"
                       },
                       "cases": {
@@ -7786,7 +7606,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": ""
                       },
                       "keys": [
@@ -8436,7 +8255,6 @@
             "name": "usage-envelope",
             "source": {
               "op": "read",
-              "from": "input",
               "path": ""
             },
             "body": {
@@ -8454,7 +8272,6 @@
             },
             "created_at": {
               "op": "read",
-              "from": "input",
               "path": "/attributes/created_at"
             },
             "status": {
@@ -8463,7 +8280,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/attributes/finishReason"
                 }
               },
@@ -8471,7 +8287,6 @@
                 "op": "choose",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/attributes/finishReason"
                 },
                 "cases": {
@@ -8504,7 +8319,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/attributes/finishReason"
                 }
               },
@@ -8512,7 +8326,6 @@
                 "op": "choose",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/attributes/finishReason"
                 },
                 "cases": {
@@ -8938,7 +8751,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/reasoning/historyRetention"
               }
             }
@@ -9021,7 +8833,6 @@
           },
           "then": {
             "op": "read",
-            "from": "input",
             "path": "/reasoning/historyRetention"
           },
           "otherwise": {
@@ -9040,7 +8851,6 @@
           },
           "then": {
             "op": "read",
-            "from": "input",
             "path": "/parameters/responses_reasoning/summary"
           },
           "otherwise": {
@@ -9751,13 +9561,11 @@
         "op": "exists",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/response/id"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/response/id"
       },
       "otherwise": {
@@ -9772,13 +9580,11 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/output_index"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/output_index"
       },
       "otherwise": {
@@ -9788,7 +9594,6 @@
     },
     "stream-content-index": {
       "op": "read",
-      "from": "input",
       "path": "/content_index"
     },
     "stream-output-key": {
@@ -10095,7 +9900,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/input_tokens_details"
                     }
                   },
@@ -10106,7 +9910,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/input_tokens_details"
                       },
                       "keys": [
@@ -10131,7 +9934,6 @@
                     "op": "exists",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/usage/output_tokens_details"
                     }
                   },
@@ -10142,7 +9944,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/usage/output_tokens_details"
                       },
                       "keys": [
@@ -10578,7 +10379,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/created"
             }
           }
@@ -10991,7 +10791,6 @@
         },
         "then": {
           "op": "read",
-          "from": "input",
           "path": "/response/error"
         },
         "otherwise": {
@@ -11011,7 +10810,6 @@
             "op": "project",
             "source": {
               "op": "read",
-              "from": "input",
               "path": ""
             },
             "keys": [
@@ -11104,7 +10902,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": ""
                       },
                       "keys": [
@@ -11121,7 +10918,6 @@
                       "op": "project",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": ""
                       },
                       "keys": [
@@ -11181,7 +10977,6 @@
         "op": "capture_native",
         "source": {
           "op": "read",
-          "from": "input",
           "path": ""
         }
       },
@@ -11425,7 +11220,6 @@
           "op": "cast",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/summary_index"
           },
           "to": "string"
@@ -11466,7 +11260,6 @@
       "name": "safety-list",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/parameters/gemini_safety_settings"
       },
       "body": {
@@ -17088,7 +16881,6 @@
             },
             "delta": {
               "op": "read",
-              "from": "input",
               "path": "/delta"
             },
             "metadata": {
@@ -17394,7 +17186,6 @@
             "op": "flatmap",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/response/output"
             },
             "body": {
@@ -19325,22 +19116,18 @@
         },
         "id": {
           "op": "read",
-          "from": "input",
           "path": "/item/id"
         },
         "callId": {
           "op": "read",
-          "from": "input",
           "path": "/item/call_id"
         },
         "name": {
           "op": "read",
-          "from": "input",
           "path": "/item/name"
         },
         "status": {
           "op": "read",
-          "from": "input",
           "path": "/item/status"
         },
         "source": {
@@ -20657,13 +20444,11 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/reasoning/mode"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/reasoning/mode"
       },
       "otherwise": {
@@ -20692,13 +20477,11 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/reasoning/effortScope"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/reasoning/effortScope"
       },
       "otherwise": {
@@ -21746,7 +21529,6 @@
                         "op": "capture_source",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": ""
                         }
                       }
@@ -22373,7 +22155,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/logprobs"
         }
       },
@@ -22405,7 +22186,6 @@
               },
               "value": {
                 "op": "read",
-                "from": "input",
                 "path": "/logprobs"
               }
             }
@@ -22693,7 +22473,6 @@
           "fields": {
             "payload": {
               "op": "read",
-              "from": "input",
               "path": "/text"
             },
             "metadata": {
@@ -23004,7 +22783,6 @@
       "op": "choose",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/kind"
       },
       "cases": {
@@ -23034,7 +22812,6 @@
       "op": "choose",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/kind"
       },
       "cases": {
@@ -23170,13 +22947,11 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/cache"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/cache"
       },
       "otherwise": {
@@ -23405,7 +23180,6 @@
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/parameters/responses_reasoning/effort"
       },
       "otherwise": {
@@ -23429,12 +23203,10 @@
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/item/input"
       },
       "otherwise": {
         "op": "read",
-        "from": "input",
         "path": "/item/arguments"
       }
     },
@@ -23442,7 +23214,6 @@
       "op": "visit",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/part"
       },
       "body": {
@@ -23616,7 +23387,6 @@
         },
         "rawResponsesInclude": {
           "op": "read",
-          "from": "input",
           "path": "/include"
         },
         "requireContinuationState": {
@@ -23628,7 +23398,6 @@
                 "op": "type",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/include"
                 }
               },
@@ -23645,7 +23414,6 @@
               "op": "filter",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/include"
               },
               "when": {
@@ -23684,7 +23452,6 @@
       "name": "storage",
       "source": {
         "op": "read",
-        "from": "input",
         "path": "/clientOutput/responsesStorage"
       },
       "body": {
@@ -23870,7 +23637,6 @@
           "op": "keys",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/parameters/anthropic_thinking"
           }
         },
@@ -23898,7 +23664,6 @@
           "op": "keys",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/parameters/gemini_thinking"
           }
         },
@@ -24087,7 +23852,6 @@
             "op": "type",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/encrypted_content"
             }
           },
@@ -24117,7 +23881,6 @@
             "op": "has_prefix",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/encrypted_content"
             },
             "value": "elysia-continuation.v1."
@@ -24178,7 +23941,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": ""
         },
         {
@@ -24209,7 +23971,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/source/protocol/family"
             },
             {
@@ -24223,7 +23984,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/source/protocol/wireVersion"
             },
             {
@@ -24375,13 +24135,11 @@
         "op": "exists",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/usage/input_tokens_details/cache_write_tokens"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/usage/input_tokens_details/cache_write_tokens"
       },
       "otherwise": {
@@ -24390,18 +24148,15 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/usage/input_tokens_details/cached_creation_tokens"
           }
         },
         "then": {
           "op": "read",
-          "from": "input",
           "path": "/usage/input_tokens_details/cached_creation_tokens"
         },
         "otherwise": {
           "op": "read",
-          "from": "input",
           "path": "/usage/cache_creation_input_tokens"
         }
       }
@@ -24432,13 +24187,11 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/reasoning/interleaved"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/reasoning/interleaved"
       },
       "otherwise": {
@@ -24450,7 +24203,6 @@
       "op": "project",
       "source": {
         "op": "read",
-        "from": "input",
         "path": ""
       },
       "policy": "exclude",
@@ -24921,18 +24673,15 @@
         "op": "exists",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/usage/input_tokens_details/cached_tokens"
         }
       },
       "then": {
         "op": "read",
-        "from": "input",
         "path": "/usage/input_tokens_details/cached_tokens"
       },
       "otherwise": {
         "op": "read",
-        "from": "input",
         "path": "/usage/cache_read_input_tokens"
       }
     },
@@ -25022,7 +24771,6 @@
             },
             "delta": {
               "op": "read",
-              "from": "input",
               "path": "/delta"
             }
           }
@@ -25098,7 +24846,6 @@
         "op": "present",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/parameters/anthropic_metadata"
         }
       },
@@ -25111,7 +24858,6 @@
               "op": "type",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/anthropic_metadata"
               }
             },
@@ -25127,7 +24873,6 @@
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/parameters/anthropic_metadata/user_id"
             }
           },
@@ -25138,7 +24883,6 @@
                 "op": "type",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/parameters/anthropic_metadata/user_id"
                 }
               },
@@ -25186,7 +24930,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/value"
         },
         {
@@ -25240,7 +24983,6 @@
       "items": [
         {
           "op": "read",
-          "from": "input",
           "path": "/value"
         },
         {
@@ -25436,7 +25178,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/resource"
             }
           }
@@ -25452,7 +25193,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/kind"
                     },
                     {
@@ -25466,7 +25206,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/value"
                     },
                     {
@@ -25486,7 +25225,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/ttl"
                         }
                       }
@@ -25499,7 +25237,6 @@
                           "items": [
                             {
                               "op": "read",
-                              "from": "input",
                               "path": "/ttl"
                             },
                             {
@@ -25513,7 +25250,6 @@
                           "items": [
                             {
                               "op": "read",
-                              "from": "input",
                               "path": "/ttl"
                             },
                             {
@@ -25527,7 +25263,6 @@
                           "items": [
                             {
                               "op": "read",
-                              "from": "input",
                               "path": "/ttl"
                             },
                             {
@@ -25596,7 +25331,6 @@
         {
           "items": [
             {
-              "from": "input",
               "op": "read",
               "path": "/codec"
             },
@@ -25610,7 +25344,6 @@
         {
           "items": [
             {
-              "from": "input",
               "op": "read",
               "path": "/location"
             },
@@ -25624,7 +25357,6 @@
         {
           "items": [
             {
-              "from": "input",
               "op": "read",
               "path": "/name"
             },
@@ -25816,7 +25548,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/instructions"
                   }
                 },
@@ -25838,7 +25569,6 @@
                           "op": "capture_native",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/instructions"
                           }
                         },
@@ -25847,7 +25577,6 @@
                           "name": "content",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/instructions"
                           },
                           "body": {
@@ -25870,7 +25599,6 @@
                   "op": "type",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/input"
                   }
                 },
@@ -25904,7 +25632,6 @@
                                     "items": [
                                       {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/input"
                                       }
                                     ]
@@ -25926,7 +25653,6 @@
                       "op": "map",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/input"
                       },
                       "body": {
@@ -26026,7 +25752,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/parameters/wire:openai_responses"
           }
         },
@@ -26039,7 +25764,6 @@
             },
             {
               "op": "read",
-              "from": "input",
               "path": "/parameters/wire:openai_responses"
             }
           ]
@@ -26088,7 +25812,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/wire:openai_responses/model"
                   }
                 }
@@ -26106,7 +25829,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": ""
               },
               {
@@ -26155,7 +25877,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/parameters/store"
             }
           },
@@ -26169,7 +25890,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/parameters/responses_include"
             }
           },
@@ -26196,7 +25916,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/clientOutput/responsesIncludeResolved"
                     },
                     {
@@ -26213,7 +25932,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/clientOutput/responsesStorage/sourceCodec"
                     },
                     {
@@ -26240,7 +25958,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/kind"
                   },
                   {
@@ -26426,7 +26143,6 @@
               "items": [
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/include"
                 },
                 {
@@ -26605,13 +26321,11 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/metadata"
                       }
                     },
                     "then": {
                       "op": "read",
-                      "from": "input",
                       "path": "/metadata"
                     },
                     "otherwise": {
@@ -26671,7 +26385,346 @@
         "reasoning": true,
         "reasoning.encrypted": true
       },
-      "finalDocument": "client-response"
+      "finalDocument": "client-response",
+      "deliveryRanges": [
+        {
+          "name": "visible-text",
+          "measure": {
+            "op": "utf16_length",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "texts": {
+            "op": "flatmap",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/output"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/output"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "delivery-item",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/id"
+              },
+              "body": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "message"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "map",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/content"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/content"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": []
+                    }
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "output_text"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "object",
+                      "fields": {
+                        "key": {
+                          "op": "join",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "",
+                              "name": "delivery-item"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "/"
+                            },
+                            {
+                              "op": "cast",
+                              "to": "string",
+                              "source": {
+                                "op": "index"
+                              }
+                            }
+                          ]
+                        },
+                        "text": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/text"
+                        },
+                        "mode": {
+                          "op": "literal",
+                          "value": "snapshot"
+                        },
+                        "path": {
+                          "op": "literal",
+                          "value": "/text"
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "omit"
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "omit"
+                }
+              }
+            }
+          },
+          "ranges": {
+            "op": "flatmap",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/output"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/output"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "delivery-item",
+              "source": {
+                "op": "read",
+                "from": "item",
+                "path": "/id"
+              },
+              "body": {
+                "op": "if",
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "message"
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "flatmap",
+                  "source": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/content"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/content"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": []
+                    }
+                  },
+                  "body": {
+                    "op": "if",
+                    "when": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "output_text"
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "let",
+                      "name": "delivery-part",
+                      "source": {
+                        "op": "join",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "delivery-item"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "/"
+                          },
+                          {
+                            "op": "cast",
+                            "to": "string",
+                            "source": {
+                              "op": "index"
+                            }
+                          }
+                        ]
+                      },
+                      "body": {
+                        "op": "map",
+                        "source": {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/annotations"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/annotations"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": []
+                          }
+                        },
+                        "body": {
+                          "op": "if",
+                          "when": {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/type"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "url_citation"
+                              }
+                            ]
+                          },
+                          "then": {
+                            "op": "object",
+                            "fields": {
+                              "key": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "delivery-part"
+                              },
+                              "id": {
+                                "op": "cast",
+                                "to": "string",
+                                "source": {
+                                  "op": "index"
+                                }
+                              },
+                              "start": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/start_index"
+                              },
+                              "end": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/end_index"
+                              },
+                              "path": {
+                                "op": "literal",
+                                "value": "/annotations"
+                              }
+                            }
+                          },
+                          "otherwise": {
+                            "op": "omit"
+                          }
+                        }
+                      }
+                    },
+                    "otherwise": {
+                      "op": "omit"
+                    }
+                  }
+                },
+                "otherwise": {
+                  "op": "omit"
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "decode_event": {
       "document": "provider-event",
@@ -26847,7 +26900,6 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/usage"
                   }
                 }
@@ -26968,7 +27020,6 @@
             "op": "exists",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/headers"
             }
           },
@@ -26995,14 +27046,12 @@
                       },
                       "payload": {
                         "op": "read",
-                        "from": "input",
                         "path": "/headers"
                       },
                       "source": {
                         "op": "capture_source",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/headers"
                         }
                       }
@@ -27028,12 +27077,10 @@
                   },
                   "responseId": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response_id"
                   },
                   "sequence": {
                     "op": "read",
-                    "from": "input",
                     "path": "/sequence_number"
                   }
                 }
@@ -27367,7 +27414,6 @@
                                         "op": "parse_json",
                                         "source": {
                                           "op": "read",
-                                          "from": "input",
                                           "path": "/arguments"
                                         }
                                       }
@@ -27720,7 +27766,6 @@
                                 "fields": {
                                   "payload": {
                                     "op": "read",
-                                    "from": "input",
                                     "path": "/refusal"
                                   },
                                   "metadata": {
@@ -28136,7 +28181,6 @@
                         },
                         "delta": {
                           "op": "read",
-                          "from": "input",
                           "path": "/delta"
                         }
                       }
@@ -28325,7 +28369,6 @@
                                       },
                                       "value": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/input"
                                       }
                                     }
@@ -28423,7 +28466,6 @@
                                   "items": [
                                     {
                                       "op": "read",
-                                      "from": "input",
                                       "path": "/annotation"
                                     }
                                   ]
@@ -28523,7 +28565,6 @@
                           },
                           "delta": {
                             "op": "read",
-                            "from": "input",
                             "path": "/delta"
                           }
                         }
@@ -28593,7 +28634,6 @@
                                       },
                                       "value": {
                                         "op": "read",
-                                        "from": "input",
                                         "path": "/code"
                                       }
                                     }
@@ -28627,7 +28667,6 @@
                                     "op": "capture_source",
                                     "source": {
                                       "op": "read",
-                                      "from": "input",
                                       "path": ""
                                     }
                                   }
@@ -28707,7 +28746,6 @@
                                         "fields": {
                                           "partialImageIndex": {
                                             "op": "read",
-                                            "from": "input",
                                             "path": "/partial_image_index"
                                           }
                                         }
@@ -28729,7 +28767,6 @@
                                             "fields": {
                                               "data": {
                                                 "op": "read",
-                                                "from": "input",
                                                 "path": "/partial_image_b64"
                                               }
                                             }
@@ -28841,7 +28878,6 @@
                               "op": "project",
                               "source": {
                                 "op": "read",
-                                "from": "input",
                                 "path": ""
                               },
                               "keys": [
@@ -28909,7 +28945,6 @@
                               "op": "project",
                               "source": {
                                 "op": "read",
-                                "from": "input",
                                 "path": ""
                               },
                               "keys": [
@@ -29013,7 +29048,6 @@
                                 "op": "exists",
                                 "source": {
                                   "op": "read",
-                                  "from": "input",
                                   "path": "/part"
                                 }
                               },
@@ -29021,7 +29055,6 @@
                                 "op": "project",
                                 "source": {
                                   "op": "read",
-                                  "from": "input",
                                   "path": "/part"
                                 },
                                 "keys": [
@@ -29055,13 +29088,11 @@
                                   "op": "present",
                                   "source": {
                                     "op": "read",
-                                    "from": "input",
                                     "path": "/item/content"
                                   }
                                 },
                                 "then": {
                                   "op": "read",
-                                  "from": "input",
                                   "path": "/item/content"
                                 },
                                 "otherwise": {
@@ -29143,7 +29174,6 @@
             "name": "target-event",
             "source": {
               "op": "read",
-              "from": "input",
               "path": ""
             },
             "body": {
@@ -29161,7 +29191,6 @@
             "name": "target-event",
             "source": {
               "op": "read",
-              "from": "input",
               "path": ""
             },
             "body": {
@@ -29179,7 +29208,6 @@
             "name": "target-event",
             "source": {
               "op": "read",
-              "from": "input",
               "path": ""
             },
             "body": {
@@ -29206,7 +29234,6 @@
               },
               {
                 "op": "read",
-                "from": "input",
                 "path": "/response/usage"
               }
             ]
@@ -29233,13 +29260,11 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/attributes"
                   }
                 },
                 "then": {
                   "op": "read",
-                  "from": "input",
                   "path": "/response/attributes"
                 },
                 "otherwise": {
@@ -29276,7 +29301,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/response/attributes/finishReason"
                 }
               },
@@ -29284,7 +29308,6 @@
                 "op": "choose",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/response/attributes/finishReason"
                 },
                 "cases": {
@@ -29311,13 +29334,11 @@
                     "op": "present",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/response/status"
                     }
                   },
                   "then": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/status"
                   },
                   "otherwise": {
@@ -29332,13 +29353,11 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/status"
                   }
                 },
                 "then": {
                   "op": "read",
-                  "from": "input",
                   "path": "/response/status"
                 },
                 "otherwise": {
@@ -29442,7 +29461,6 @@
         "name": "target-event",
         "source": {
           "op": "read",
-          "from": "input",
           "path": ""
         },
         "body": {
@@ -29715,7 +29733,6 @@
         "name": "target-event",
         "source": {
           "op": "read",
-          "from": "input",
           "path": ""
         },
         "body": {
@@ -29970,7 +29987,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/headers"
                 }
               },
@@ -29978,7 +29994,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/sequence_number"
                 }
               }
@@ -30007,7 +30022,6 @@
               "items": [
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/response/store"
                 },
                 {
@@ -37515,7 +37529,6 @@
           "op": "lower",
           "source": {
             "op": "read",
-            "from": "input",
             "path": ""
           }
         }
@@ -38023,7 +38036,6 @@
                 "op": "present",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/outputLimitDefault"
                 }
               }
@@ -38077,7 +38089,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/outputLimitDefault"
               }
             }
@@ -38153,7 +38164,6 @@
                   "op": "type",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/reasoning_effort"
                   }
                 },
@@ -38218,7 +38228,6 @@
                   "op": "type",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/anthropic_thinking"
                   }
                 },
@@ -38251,7 +38260,6 @@
                   "op": "type",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/anthropic_output_config"
                   }
                 },
@@ -38284,7 +38292,6 @@
                   "op": "type",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/gemini_thinking"
                   }
                 },
@@ -39934,7 +39941,6 @@
                 "op": "exists",
                 "source": {
                   "op": "read",
-                  "from": "input",
                   "path": "/reasoning/historyRetention"
                 }
               }
@@ -40498,7 +40504,6 @@
           "op": "exists",
           "source": {
             "op": "read",
-            "from": "input",
             "path": "/reasoning/historyRetention"
           }
         },
@@ -40644,7 +40649,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/reasoning_effort"
               }
             }
@@ -40769,7 +40773,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/anthropic_thinking"
               }
             },
@@ -40820,7 +40823,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/anthropic_thinking"
               }
             },
@@ -40871,7 +40873,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/anthropic_thinking"
               }
             },
@@ -40922,7 +40923,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/anthropic_output_config"
               }
             },
@@ -40942,7 +40942,6 @@
                     "op": "keys",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/parameters/anthropic_output_config"
                     }
                   },
@@ -40997,7 +40996,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/gemini_thinking"
               }
             },
@@ -41048,7 +41046,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/gemini_thinking"
               }
             },
@@ -41099,7 +41096,6 @@
               "op": "present",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/gemini_thinking"
               }
             },
@@ -41356,7 +41352,6 @@
                     "op": "type",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/parameters/gemini_safety_settings"
                     }
                   },
@@ -41371,7 +41366,6 @@
                 "items": [
                   {
                     "op": "read",
-                    "from": "input",
                     "path": "/parameters/gemini_safety_settings"
                   },
                   {
@@ -41404,7 +41398,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/parameters/gemini_safety_settings"
               }
             },
@@ -41510,7 +41503,6 @@
                   "kind": "invalid",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/path"
                   },
                   "code": "invalid_input",
@@ -41894,7 +41886,6 @@
                   "kind": "invalid",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/path"
                   },
                   "code": "invalid_input",
@@ -42064,7 +42055,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.audio_tokens"
                   }
                 },
@@ -42103,7 +42093,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.document_tokens"
                   }
                 },
@@ -42142,7 +42131,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.image_tokens"
                   }
                 },
@@ -42181,7 +42169,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.text_tokens"
                   }
                 },
@@ -42220,7 +42207,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.video_tokens"
                   }
                 },
@@ -42259,7 +42245,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/ephemeral_1h_input_tokens"
                   }
                 },
@@ -42298,7 +42283,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/ephemeral_5m_input_tokens"
                   }
                 },
@@ -42337,7 +42321,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/input.document_tokens"
                   }
                 },
@@ -42376,7 +42359,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/input.video_tokens"
                   }
                 },
@@ -42415,7 +42397,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/output.document_tokens"
                   }
                 },
@@ -42454,7 +42435,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/output.video_tokens"
                   }
                 },
@@ -42493,7 +42473,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/toolUsePromptTokenCount"
                   }
                 },
@@ -42532,7 +42511,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.audio_tokens"
                   }
                 },
@@ -42571,7 +42549,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.document_tokens"
                   }
                 },
@@ -42610,7 +42587,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.image_tokens"
                   }
                 },
@@ -42649,7 +42625,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.text_tokens"
                   }
                 },
@@ -42688,7 +42663,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.video_tokens"
                   }
                 },
@@ -42743,7 +42717,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.audio_tokens"
                   }
                 },
@@ -42782,7 +42755,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.document_tokens"
                   }
                 },
@@ -42821,7 +42793,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.image_tokens"
                   }
                 },
@@ -42860,7 +42831,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.text_tokens"
                   }
                 },
@@ -42899,7 +42869,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/cache.video_tokens"
                   }
                 },
@@ -42938,7 +42907,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/ephemeral_1h_input_tokens"
                   }
                 },
@@ -42977,7 +42945,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/ephemeral_5m_input_tokens"
                   }
                 },
@@ -43016,7 +42983,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/input.document_tokens"
                   }
                 },
@@ -43055,7 +43021,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/input.video_tokens"
                   }
                 },
@@ -43094,7 +43059,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/output.document_tokens"
                   }
                 },
@@ -43133,7 +43097,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/output.video_tokens"
                   }
                 },
@@ -43172,7 +43135,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/toolUsePromptTokenCount"
                   }
                 },
@@ -43211,7 +43173,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.audio_tokens"
                   }
                 },
@@ -43250,7 +43211,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.document_tokens"
                   }
                 },
@@ -43289,7 +43249,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.image_tokens"
                   }
                 },
@@ -43328,7 +43287,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.text_tokens"
                   }
                 },
@@ -43367,7 +43325,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/details/tool_input.video_tokens"
                   }
                 },
@@ -43511,7 +43468,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/attributes/created_at"
               }
             }
@@ -43607,7 +43563,6 @@
                       "items": [
                         {
                           "op": "read",
-                          "from": "input",
                           "path": "/kind"
                         },
                         {
@@ -43696,7 +43651,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/model"
                   }
                 }
@@ -43743,7 +43697,6 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/responseId"
                   }
                 }
@@ -43754,7 +43707,6 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/id"
                   }
                 }
@@ -43816,7 +43768,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/attributes/created_at"
                   }
                 }
@@ -43827,7 +43778,6 @@
                   "op": "present",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/response/error"
                   }
                 }
@@ -43957,7 +43907,6 @@
                       "items": [
                         {
                           "op": "read",
-                          "from": "input",
                           "path": "/kind"
                         },
                         {
@@ -44070,7 +44019,6 @@
               "op": "exists",
               "source": {
                 "op": "read",
-                "from": "input",
                 "path": "/clientOutput/responsesStorage"
               }
             }
@@ -44083,7 +44031,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/clientOutput/responsesStorage/sourceCodec"
               },
               {
@@ -44095,7 +44042,6 @@
           "set": {
             "/clientOutput/responsesStorage/effective": {
               "op": "read",
-              "from": "input",
               "path": "/clientOutput/responsesStorage/requested"
             },
             "/clientOutput/responsesStorage/effectiveUnknown": {
@@ -44103,7 +44049,6 @@
               "items": [
                 {
                   "op": "read",
-                  "from": "input",
                   "path": "/clientOutput/responsesStorage/requestedUnknown"
                 },
                 {
@@ -44121,7 +44066,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/clientOutput/responsesStorage/requestedUnknown"
               },
               {
@@ -44156,7 +44100,6 @@
             "items": [
               {
                 "op": "read",
-                "from": "input",
                 "path": "/clientOutput/responsesStorage/requested"
               },
               {
@@ -44176,7 +44119,6 @@
           "set": {
             "/clientOutput/responsesStorage/effective": {
               "op": "read",
-              "from": "input",
               "path": "/clientOutput/responsesStorage/requested"
             },
             "/clientOutput/responsesStorage/effectiveUnknown": {
@@ -44190,7 +44132,6 @@
           "set": {
             "/clientOutput/responsesStorage/effective": {
               "op": "read",
-              "from": "input",
               "path": "/clientOutput/responsesStorage/requested"
             },
             "/clientOutput/responsesStorage/effectiveUnknown": {
@@ -44380,7 +44321,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/kind"
                       },
                       {
@@ -44416,7 +44356,6 @@
                         "op": "present",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/options/strict"
                         }
                       }
@@ -44427,7 +44366,6 @@
                         "op": "exists",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/options/strictDefault"
                         }
                       }
@@ -44451,7 +44389,6 @@
                         "op": "present",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": "/options/strict"
                         }
                       }
@@ -44461,7 +44398,6 @@
                       "items": [
                         {
                           "op": "read",
-                          "from": "input",
                           "path": "/options/strictDefault"
                         },
                         {
@@ -44516,7 +44452,6 @@
                       "op": "exists",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/options/eager_input_streaming"
                       }
                     },
@@ -44545,7 +44480,6 @@
                           "items": [
                             {
                               "op": "read",
-                              "from": "input",
                               "path": "/options/eager_input_streaming"
                             },
                             {
@@ -44595,7 +44529,6 @@
                   "op": "exists",
                   "source": {
                     "op": "read",
-                    "from": "input",
                     "path": "/options/eager_input_streaming"
                   }
                 },
@@ -44655,7 +44588,6 @@
                     "items": [
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/status/payloadForm"
                       },
                       {
@@ -44673,7 +44605,6 @@
                           "op": "project",
                           "source": {
                             "op": "read",
-                            "from": "input",
                             "path": "/status"
                           },
                           "keys": [
@@ -44696,7 +44627,6 @@
                           {
                             "op": "type",
                             "source": {
-                              "from": "input",
                               "op": "read",
                               "path": "/payload"
                             }
@@ -44716,7 +44646,6 @@
                               "op": "exists",
                               "source": {
                                 "op": "read",
-                                "from": "input",
                                 "path": "/payload/error"
                               }
                             },
@@ -44724,7 +44653,6 @@
                               "op": "exists",
                               "source": {
                                 "op": "read",
-                                "from": "input",
                                 "path": "/payload/output"
                               }
                             }
@@ -44734,7 +44662,6 @@
                           "op": "equal",
                           "items": [
                             {
-                              "from": "input",
                               "op": "read",
                               "path": "/status/isError"
                             },
@@ -44742,7 +44669,6 @@
                               "op": "exists",
                               "source": {
                                 "op": "read",
-                                "from": "input",
                                 "path": "/payload/error"
                               }
                             }
@@ -44773,7 +44699,6 @@
                     "op": "object",
                     "fields": {
                       "isError": {
-                        "from": "input",
                         "op": "read",
                         "path": "/status/isError"
                       }
@@ -44850,7 +44775,6 @@
                       "op": "type",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/payload"
                       }
                     },
@@ -44865,7 +44789,6 @@
                     "op": "stringify_json",
                     "source": {
                       "op": "read",
-                      "from": "input",
                       "path": "/payload"
                     }
                   }
@@ -44901,7 +44824,6 @@
                       "items": [
                         {
                           "op": "read",
-                          "from": "input",
                           "path": "/status/isError"
                         },
                         {
@@ -44914,7 +44836,6 @@
                       "op": "present",
                       "source": {
                         "op": "read",
-                        "from": "input",
                         "path": "/children"
                       }
                     }
@@ -44947,7 +44868,6 @@
                   "items": [
                     {
                       "op": "read",
-                      "from": "input",
                       "path": "/status/isError"
                     },
                     {
@@ -44966,7 +44886,6 @@
                       },
                       {
                         "op": "read",
-                        "from": "input",
                         "path": "/payload"
                       }
                     ]
@@ -45042,7 +44961,6 @@
             "op": "type",
             "source": {
               "op": "read",
-              "from": "input",
               "path": "/input"
             }
           },
@@ -45056,7 +44974,6 @@
         "op": "map",
         "source": {
           "op": "read",
-          "from": "input",
           "path": "/input"
         },
         "body": {
@@ -45351,7 +45268,6 @@
                         "op": "project",
                         "source": {
                           "op": "read",
-                          "from": "input",
                           "path": ""
                         },
                         "keys": [
@@ -45416,7 +45332,6 @@
           "items": [
             {
               "op": "read",
-              "from": "input",
               "path": "/item/encrypted_content"
             }
           ]

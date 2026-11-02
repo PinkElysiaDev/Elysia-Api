@@ -235,3 +235,26 @@ Chat 的 `event-layout / 310` 允许兼容模式合并同一回答的多个 mess
 保留事件到达顺序、工具关联和语义通道。strict 或禁用在首次实际边界损失时拒绝。
 未处理的容器 metadata、缓存、资源、独立候选和无法精确表示的引用范围仍拒绝。
 这项授权不改变 Spec 的原始事件检查或 Write／Flush 后才提交的实际交付位置。
+
+## 完整响应的引用交付证明（dev.128）
+
+Mapping 的 `directions.encode_response.deliveryRanges` 通过已有 Expression 声明文本及引用关联。
+每个声明包含唯一 `name`、字符串计量 `measure`、`texts` 和 `ranges`。文本记录为
+`key/text/mode/path`，引用记录为 `key/id/start/end/path`；key 绑定同一文本，id 区分该文本的引用。
+`mode` 为 append 或 snapshot，完整响应按一份完整文本检查。选择程序只读当前 wire，不能读取
+宿主 operation、修改状态或取得资源证明。外部字段类型仍由 Spec 检查。
+
+Chat 和 Responses 使用 `utf16_length`，供应商字段及引用索引路径全部由各自 Mapping 指定。
+宿主 `ValidateResponseOutput(before, after, options)` 统一最终 Spec、引用和续传载体检查，
+共享当前不可变输入视图。网关对新包 wire 修改后的完整语义再解码已移除；组合验证和 wire
+响应预览调用同一边界。纯映射样例仍只验证其所选方向的构造合同，不提前套用交付合同。
+验证成功仍不代表已完成网络交付。
+
+实际改写只保留 Unicode 字符边界上相同的前缀与后缀，中间不做通用 diff。
+等长不能证明内容相同；引用跨改写区、跨插入内容或失去稳定关联时拒绝。
+长度变化后的未改写后缀保留确定偏移，但 wire 规则必须已给出正确最终索引，边界不会自动修正。
+没有引用的响应不读取文本观察记录；借用字符串只用于同步比较，结果不持有正文副本。
+
+本切片仅接通完整 JSON 响应。`encode_event` 暂不接受该声明，避免配置看似有效却没有运行接线。
+SSE 晚到引用、snapshot、实际交付提交以及语义事件修改事实在后续切片完成；不能据此宣称全部
+文本改写边界或功能完整版本 B 已完成。

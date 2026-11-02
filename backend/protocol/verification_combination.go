@@ -621,6 +621,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		return err
 	}
 	wireValue, _ := ParseValue(wire)
+	beforeWire := wireValue
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil && conversion.HasPhase(ConversionWire) {
 		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
 		route.Scope = options.Scope
@@ -636,13 +637,13 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		if err != nil {
 			return err
 		}
-		if err := ingress.ValidateContinuationResponse(ctx, actual, options); err != nil {
+		if err := ingress.ValidateResponseOutput(ctx, beforeWire, actual, options); err != nil {
 			return err
 		}
 		if err := options.continuation.CommitDelivery(); err != nil {
 			return err
 		}
-	} else if err := ingress.ValidateWireOutput(EncodeResponse, wireValue); err != nil {
+	} else if err := ingress.ValidateResponseOutput(ctx, beforeWire, wireValue, options); err != nil {
 		return err
 	}
 	if !ingress.Supports(DecodeResponse) {

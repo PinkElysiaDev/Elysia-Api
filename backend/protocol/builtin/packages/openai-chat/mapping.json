@@ -29159,8 +29159,205 @@
     "reasoning": true
   }
 ,
-"finalDocument": "client-response"
-}
+"finalDocument": "client-response",
+      "deliveryRanges": [
+        {
+          "name": "visible-text",
+          "measure": {
+            "op": "utf16_length",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            }
+          },
+          "texts": {
+            "op": "map",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/choices"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/choices"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/message/content"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "string"
+                  }
+                ]
+              },
+              "then": {
+                "op": "object",
+                "fields": {
+                  "key": {
+                    "op": "cast",
+                    "to": "string",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/index"
+                    }
+                  },
+                  "text": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/message/content"
+                  },
+                  "mode": {
+                    "op": "literal",
+                    "value": "snapshot"
+                  },
+                  "path": {
+                    "op": "literal",
+                    "value": "/message/content"
+                  }
+                }
+              },
+              "otherwise": {
+                "op": "omit"
+              }
+            }
+          },
+          "ranges": {
+            "op": "flatmap",
+            "source": {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/choices"
+                }
+              },
+              "then": {
+                "op": "read",
+                "from": "input",
+                "path": "/choices"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            "body": {
+              "op": "let",
+              "name": "delivery-choice",
+              "source": {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "read",
+                  "from": "item",
+                  "path": "/index"
+                }
+              },
+              "body": {
+                "op": "map",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/message/annotations"
+                    }
+                  },
+                  "then": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/message/annotations"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": []
+                  }
+                },
+                "body": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "url_citation"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "object",
+                    "fields": {
+                      "key": {
+                        "op": "read",
+                        "from": "binding",
+                        "path": "",
+                        "name": "delivery-choice"
+                      },
+                      "id": {
+                        "op": "cast",
+                        "to": "string",
+                        "source": {
+                          "op": "index"
+                        }
+                      },
+                      "start": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/url_citation/start_index"
+                      },
+                      "end": {
+                        "op": "read",
+                        "from": "item",
+                        "path": "/url_citation/end_index"
+                      },
+                      "path": {
+                        "op": "literal",
+                        "value": "/message/annotations"
+                      }
+                    }
+                  },
+                  "otherwise": {
+                    "op": "omit"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
   ,
 "decode_event": {
   "document": "provider-event",

@@ -252,13 +252,18 @@ func (binding *ContinuationBinding) observe(ctx context.Context, view *inputView
 
 // ValidateContinuationResponse shares final shape validation and carrier observation.
 func (compiled *Compiled) ValidateContinuationResponse(ctx context.Context, wire Value, options EvaluationContext) error {
-	view := newInputView(wire)
+	options = options.withInputView(wire)
+	view := options.inputView
 	if err := view.checkResources(ctx, wire, compiled.limits, "continuation_output"); err != nil {
 		return resourceIssue(err, compiled.identity, EncodeResponse, "encode.response")
 	}
 	if err := compiled.validateWireInputView(ctx, EncodeResponse, view, compiled.limits, compiled.selectFinalWireContract(EncodeResponse)); err != nil {
 		return err
 	}
+	return compiled.validateContinuationResponseView(ctx, view, options)
+}
+
+func (compiled *Compiled) validateContinuationResponseView(ctx context.Context, view *inputView, options EvaluationContext) error {
 	binding := options.continuation
 	if binding == nil {
 		return nil

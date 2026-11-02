@@ -58,14 +58,16 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	if err != nil {
 		return err
 	}
+	beforeWire := wireValue
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
 		wireValue, err = candidate.conversion.ApplyValue(ctx, protocol.ConversionWire, wireValue, route, options.Diagnostics)
 		if err != nil {
 			return err
 		}
-		// The target decoder applies its declared structure and capabilities.
-		if _, err = plan.ingress.DecodeResponseValue(ctx, wireValue, options); err != nil {
-			return err
+		if plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
+			if _, err = plan.ingress.DecodeResponseValue(ctx, wireValue, options); err != nil {
+				return err
+			}
 		}
 	}
 	if candidate.continuation != nil && candidate.continuation.isPackage {
@@ -74,7 +76,6 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 		if err != nil {
 			return err
 		}
-		err = plan.ingress.ValidateContinuationResponse(ctx, wireValue, options)
 	} else {
 		if candidate.continuation != nil {
 			body, err = builtin.AttachContinuationCarriers(wireValue.Bytes(), plan.ingress.Identity().Family, candidate.continuation.tokens)
@@ -86,8 +87,8 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 				return err
 			}
 		}
-		err = plan.ingress.ValidateWireOutput(protocol.EncodeResponse, wireValue)
 	}
+	err = plan.ingress.ValidateResponseOutput(ctx, beforeWire, wireValue, options)
 	if err != nil {
 		return route.AttributeResponseModelFailure(err, semantic, wireValue)
 	}

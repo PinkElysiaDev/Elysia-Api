@@ -224,6 +224,10 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		}
 		finalCheck = check
 	}
+	deliveryRanges, err := compileDeliveryRanges(mapping.DeliveryRanges, direction, finalWire.Schema, path+"/deliveryRanges", compiler)
+	if err != nil {
+		return compiledMapping{}, nil, err
+	}
 	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler.limits, &scope)
 	if err != nil {
 		return compiledMapping{}, nil, err
@@ -413,6 +417,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		preservesDynamicNative: mapping.NativeReplay == "original_frame",
 		nativeWhen:             nativeWhen,
 		finalCheck:             finalCheck,
+		deliveryRanges:         deliveryRanges,
 		outputPlan:             plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
 		isEventBatch:      mapping.IsEventBatch,
 		canDeferEvents:    mapping.CanDeferEvents,

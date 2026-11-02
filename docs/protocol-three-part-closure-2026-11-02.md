@@ -376,3 +376,25 @@ node scripts/benchmark-performance.mjs --execution=packages --expect-commit=<完
 ```
 
 当前仍需：改写引用的最终边界、交付失败组合、全入口和早期错误、所有权、B 归档、完整配对性能及生产 C。`packages` 只是显式选择新链，不自动把当前源码认定为 B；正式五对交替运行及性能门槛留到功能完整之后。
+
+## 最终闭合批次 1A：完整响应引用证明（dev.128）
+
+新增 `encode_response.deliveryRanges` 及 `ValidateResponseOutput(before, after, options)`。Spec 保留最终外部形状；Mapping 指定文本、引用身份、路径和计量；Go 只执行只读选择及区间证明。Chat／Responses 默认包均已使用该字段。生成 schema 随 Go 合同反射同步，编辑器帮助与原语文档同时更新。事件方向尚未接线，因此编译器明确拒绝在事件方向声明此字段。
+
+实际改写保留相同 Unicode 字符前缀和后缀；等长替换、跨改写区、未知文本关联及未修正索引均拒绝。未改写后缀在长度变化后保留确定偏移；不会自动改正 wire 规则的旧索引。无引用时跳过正文观察；正常文本不建立显式区间表，分歧后才创建必要区间。默认 UTF-16 度量直接绑定已有原语，借用字符串只在同步比较中存在，未做临时观察 JSON 往返或整份正文复制。
+
+新包网关 JSON 出口移除 wire 规则之后的完整语义再解码，最终 Spec、引用和续传载体共用输入视图。组合验证和 wire 响应预览调用同一边界。自定义 reply 合同验证仅调整配置即可改变引用取舍，不依赖协议名称；真实 Chat 网关分别接受未改写区间、拒绝被改写引用，正文和 usage 完整消费、每次恰好一次上游调用。
+
+首次全量检查发现纯映射样例被误加最终交付合同；恢复其只验证所选方向构造合同的职责，不改样例或放宽最终交付检查。失败日志保留。Responses 新声明曾触发 token 上限，删除 429 处等价的显式 `from: input`，使用既有默认输入作用域；没有调整 100,000 token／64 depth 限额。四包正式样例和最终全量均通过。
+
+| 检查 | 结果 |
+|---|---|
+| closure-response-delivery-ranges-all-final | protocol 全量 6.272 秒、builtin 全量 35.411 秒，通过 |
+| closure-response-delivery-ranges-gateway | 32 场景矩阵、JSON 引用和 storage／续传交付，15.197 秒，通过 |
+| closure-response-delivery-ranges-fuzz | 4 workers，98,399 次区间 oracle 执行，通过 |
+| closure-response-delivery-ranges-race | protocol 3.102 秒、builtin 8.967 秒、server 100.188 秒，通过，无竞争报告 |
+| closure-response-delivery-ranges-vet | protocol 全树及 server 通过 |
+| closure-response-delivery-ranges-staticcheck | 固定 v0.8.2：保留 24 主诊断＋1 关联位置，新增 0、消失 0；退出 1 |
+| closure-response-delivery-ranges-types／lint | 前端类型及编辑器 ESLint 通过 |
+
+这只是批次 1 的连续可构建切片。仍需 `ConsumeTransformed`、SSE 区间预算与交付提交、可信语义事件修改事实、静态 wire 影响路径、Native／交付失败组合、早期错误配置化和全入口所有权。没有正式性能结论，未形成 B，未切换默认或删除旧链。

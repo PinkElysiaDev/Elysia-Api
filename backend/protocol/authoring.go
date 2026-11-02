@@ -67,6 +67,14 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 				output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
 			}
 		}
+		if err == nil && input.ConversionPhase == ConversionWire && input.Direction == EncodeResponse {
+			target, exists := service.View().Pin(route.Target.DefinitionID)
+			if !exists || target.Identity() != route.Target {
+				err = operationMetadataError("/context", "preview target revision changed")
+			} else {
+				err = target.ValidateResponseOutput(ctx, input.Input, output, EvaluationContext{Scope: route.Scope, operation: route.operation})
+			}
+		}
 		if err == nil && recoveryTarget != nil && route.continuation != nil {
 			var response Response
 			err = output.Decode(&response)

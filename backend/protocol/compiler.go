@@ -133,6 +133,7 @@ type compiledMapping struct {
 	preservesDynamicNative bool
 	nativeWhen             *compiledOutputPlan
 	finalCheck             *compiledOutputPlan
+	deliveryRanges         []compiledDeliveryRange
 	streamObserver         *compiledOutputPlan
 	capabilities           CapabilitySet
 	module                 Module
