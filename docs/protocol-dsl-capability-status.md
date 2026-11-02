@@ -21,7 +21,7 @@
 | 最终 JSON 引用证明 | Spec 外部形状；未改写 Unicode 区间 | dev.128 Chat／Responses deliveryRanges；ValidateResponseOutput、真实 Chat 网关、组合验证及 wire 预览；自定义字段合同组件通过 | 语义事件修改事实、静态修改路径分析仍待接线；当前不能声明所有文本改写已安全闭合 |
 | 最终 SSE 引用证明 | Spec 事件及生命周期；摘要、未改写 Unicode 区间和成功交付事实 | dev.130 Chat／Responses encode_event.deliveryRanges、ConsumeTransformed；真实跨协议 SSE、组合验证及 wire 事件预览；1,024 帧隐式区间和晚到引用 | 语义事件修改事实、静态影响路径分析和完整 Native 接续组合；性能仍待正式测量 |
 | 失败交付关闭 | 宿主 Write／Flush 事实；独立 wire 位置和认证续传 | dev.129 AbortDelivery；dev.130 同批多帧第二次写失败、Flush 失败、Flush 后取消；已提交位置和持久化事实保留，不重发部分批次 | 完整 Native→重建→Native 组合仍需验收 |
-| Native 与语义编码接续 | 原帧摘要、编码历史和最终外部生命周期分别检查 | dev.132 四协议实际正文改写后继续原生增量，完整消费、usage 和单次结算；Responses Mapping 使用 encoding.hasRendered 重建含子项正文的完成帧；原有复杂流矩阵复验 | 工具参数改写和慢交付等其余组合；语义引用证明不能用编码历史布尔值代替；正式性能待测 |
+| Native 与语义编码接续 | 原帧摘要、编码历史和最终外部生命周期分别检查 | dev.132 四协议实际正文改写后继续原生增量；Responses 工具参数及快照改写后继续原帧，完成事件不重复；完整消费、usage 和单次结算；Mapping 使用 encoding.hasRendered 重建含子项正文的完成帧 | 其余协议工具改写与慢交付等组合；语义引用证明不能用编码历史布尔值代替；正式性能待测 |
 
 ## Go 残留分类
 
@@ -29,7 +29,7 @@
 - 旧核心版本仍使用外部类型校验和 metadata 白名单；旧 codec 的 Responses output_text 专用检查暂留。新包的来源、目标投影、重建和最终输出均由声明检查 output_text，不调用旧拼接检查。
 - 仅旧 codec 自动策略：DefaultConversionPolicy 中依赖 Codec 的供应商动作；新包 Codec 为空，不能误称它们全部被新包调用。待旧链退役时删除。
 - 新网关错误出口不再通过 URL 后缀猜供应商或调用旧 renderer；非法上游错误体不再嗅探 Cloudflare 专用字段。旧 renderer 及模块源码尚待生产退役批次按调用关系删除。
-- 通用宿主职责：权限、Scope、Seal/Open、I/O、计量、取消和实际交付确认继续保留，不能因供应商配置化而删除。
+- 通用宿主职责：权限、Scope、Seal/Open、I/O、计量、取消和实际交付确认继续保留，不能因供应商配置化而删除。客户端模型目录成功响应仍在 server/http.go 中按两种格式构造；上游模型发现已配置化，不能用它代表客户端目录出口完成。
 
 无调用者的函数按实际引用逐项确认后删除，不以文件名或供应商字符串搜索作为唯一依据。staticcheck v0.8.2 当前有 24 条存量诊断，未宣称静态检查全净。
 
