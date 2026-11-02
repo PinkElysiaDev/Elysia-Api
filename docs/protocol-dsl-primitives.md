@@ -471,3 +471,23 @@ utf16_length，避免重新读取或拼接完整前缀。原语只允许在流�
 新末尾和新增区间在现有事件事务中暂存，失败不会改写已提交区间；提交只追加新段或扩大
 最后一个连续段，不复制历史区间数组。网络交付位置另由原有成功发送边界推进。
 默认 Chat 流已接入：原生观察和重建使用同一后缀程序，引用去重先于位置换算。
+
+## 流内损失授权
+
+`conversionDefaults[].streamDisposition` 声明 `kind: degrade | reject`、`path` 和 `reason`，
+仅用于 event 阶段，不能与 steps、recovery、control 或 use 混用。匹配条件限于路由；
+规则 ID、order、enabled 和整条用户覆盖沿用转换策略。声明绑定目标身份和事件程序指纹。
+
+目标事件 program、observe 或 finalize 通过 `require_disposition` 请求处置：`name` 是
+编译绑定的规则 ID，`source` 返回实际 JSON Pointer 诊断位置，空位置使用声明的 path。
+表达式返回 true 并登记事务请求；不能在来源解码、只读 effects 或请求程序中调用。
+宿主用 `EvaluationContext.WithConversion` 绑定本次已解析策略及路由，配置值不能伪造绑定。
+
+输出计划构造后、编码前，只查询被请求的规则并按有效顺序执行。兼容模式接受明确的 degrade；
+strict、reject、禁用、未匹配、规则被替换成其他动作或缺少绑定均拒绝。未发生损失时不要求绑定。
+检查、编码或 Native 协调失败时，不提交事件状态或成功诊断。原生 observer 执行相同授权。
+该原语不授予 Native 重放、受保护资源、权限、usage 或终态修改权，也不替代成功交付确认。
+
+Chat `event-layout / 310` 使用现有目标身份及通道索引识别 message 和同类 item 的边界损失，
+仅在首次观察相应边界时请求授权，不为每个 delta 重复登记。正文按到达顺序输出，
+reasoning、refusal、text 保持不同通道；容器附属语义及独立候选仍需明确投影。

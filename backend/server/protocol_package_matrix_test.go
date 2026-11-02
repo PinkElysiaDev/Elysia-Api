@@ -13,6 +13,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 func buildPackageGatewayRequest(name string, isStream bool) string {
@@ -139,7 +140,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			var multiRootReply []byte
 			var textRangeReply bytes.Buffer
 			if upstreamName == "openai-responses" {
-				fixture, err := os.ReadFile("../protocol/builtin/testdata/responses-text-ranges.json")
+				fixture, err := os.ReadFile("../protocol/builtin/testdata/responses-stream-layout.json")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -241,8 +242,18 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			}))
 			defer provider.Close()
 			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, protocol.CapabilitySet{
-				protocol.TextCapability: true, protocol.UsageCapability: true,
+				protocol.TextCapability: true, protocol.UsageCapability: true, protocol.FunctionToolsCapability: true,
 			})
+			if upstreamName == "openai-responses" {
+				yes := true
+				if _, err := server.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{ToolsCapable: &yes}); err != nil {
+					t.Fatal(err)
+				}
+				if err := server.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "gateway-group", Name: "group", Enabled: true, ToolsCapable: true, Models: []string{"gateway-source:upstream-model"}, Strategy: "sequential"}); err != nil {
+					t.Fatal(err)
+				}
+				server.invalidateRouteCache()
+			}
 			for _, ingressName := range gatewayPackageNames {
 				for _, isStream := range []bool{false, true} {
 					operationName := "generate"
@@ -256,6 +267,9 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						expectsMultipleRoots.Store(upstreamName == "openai-responses" && (ingressName == "openai-chat" || ingressName == "anthropic" || ingressName == "google-generate-content"))
 						hasTextRanges := upstreamName == "openai-responses" && ingressName == "openai-chat" && isStream
 						expectsTextRanges.Store(hasTextRanges)
+						if hasTextRanges {
+							body = strings.TrimSuffix(body, "}") + `,"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"n":{"type":"integer"}}}}}]}`
+						}
 						hasInstructions := ingressName == "openai-chat" && (upstreamName == "anthropic" || upstreamName == "google-generate-content")
 						expectsInstructions.Store(hasInstructions)
 						if hasInstructions {
@@ -275,9 +289,31 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						}
 						expectedText := "hi"
 						if hasTextRanges {
-							expectedText = "😀hi"
+							expectedText = "😀hi!"
 						}
-						checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream), expectedText)
+						collected := collectPackageGatewayReply(t, ingress, reply, isStream)
+						checkPackageGatewayReply(t, collected, expectedText)
+						if hasTextRanges {
+							tools, citations := 0, 0
+							for _, message := range collected.Content {
+								for _, node := range message.Children {
+									if node.Kind == protocol.ToolCallNode {
+										tools++
+										if !node.CallID.IsString("call") || !node.Name.IsString("lookup") || node.Input == nil || node.Input.Value.JSONString() != `{"n":9007199254740993}` {
+											t.Fatal("gateway changed tool identity or arguments", node)
+										}
+									}
+									for _, metadata := range node.Metadata {
+										if metadata.Name == "annotations" {
+											citations++
+										}
+									}
+								}
+							}
+							if tools != 1 || citations != 1 {
+								t.Fatal("gateway lost tool or citation", tools, citations)
+							}
+						}
 					})
 				}
 			}

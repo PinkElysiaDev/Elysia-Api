@@ -315,6 +315,12 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	}
 	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: wireSpec.operations, operationSchemas: wireSpec.operationSchemas, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
 	expressions := newExpressionCompiler(limits, mapping.Expressions)
+	expressions.streamDispositions = make(map[string]bool)
+	for _, rule := range mapping.ConversionDefaults {
+		if rule.StreamDisposition != nil {
+			expressions.streamDispositions[rule.ID] = true
+		}
+	}
 	for _, direction := range sortedKeys(mapping.Directions) {
 		if !slices.Contains(DirectionCatalog(), direction) {
 			return nil, fmt.Errorf("/mapping/directions/%s: unsupported package direction", direction)

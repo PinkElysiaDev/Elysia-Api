@@ -55,6 +55,7 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	defer func() { record.appendConversionIssues(options.Diagnostics.Issues()) }()
 	route := candidate.conversionContext(plan.ingress, true).WithOperation(operationOptions)
 	route.Delivery = protocol.NewDeliveryState()
+	options = options.WithConversion(candidate.conversion, route)
 	eventState := protocol.NewConversionEventState(candidate.conversion, route)
 	var carriers *builtin.ContinuationStream
 	var collector *protocol.ResponseCollector

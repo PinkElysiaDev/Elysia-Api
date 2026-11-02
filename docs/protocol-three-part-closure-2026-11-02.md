@@ -321,3 +321,22 @@ Chat Mapping 使用 utf16_length 度量 track_text 返回的新后缀，原生 o
 `e7e6e802 / dev.126` 的源码、四包、已有验证记录和匹配的 Windows amd64 产物已归档至忽略目录 `.tmp-dev/protocol-three-part-closure-2026-11-02/dev126/`。`manifest.json` 记录 42 个文件的 SHA256、构建信息和参考 A 的六目标哈希核验结果；`closure-dev126-build` 通过。参考 A 仍为 `b2844846 / dev.101`，六目标产物全部与原清单一致。恢复点不视作功能完整版本 B。
 
 当前新链使用 package 编译、声明式映射和流事务；生产默认仍经 `relay/protocol_module.go` 注册旧 `builtin.Modules()`，`server/protocol_refresh.go` 加载旧定义并修复绑定，`storage/protocol_recovery.go` 保留旧预置恢复。这些路径在最终候选切换批次删除。下一功能批次接通流事务内的显式损失授权及 Chat 复杂流；四包配置限额和既有测试结论不变。
+
+## 闭合计划批次 1：流式布局授权与 Chat 复杂流（dev.127）
+
+新增 `conversionDefaults[].streamDisposition`、`require_disposition` 和宿主 `WithConversion`。声明固定目标事件程序指纹；原语只在目标 program／observe／finalize 可用，不能进入来源解码或只读效果检查。表达式在现有事务登记实际损失，输出计划构造后、编码前只查询请求的规则并按有效顺序处理。兼容降级的诊断随成功事务提交；strict、禁用、替换动作、未匹配、目标不一致和缺少绑定均拒绝，不提交状态或成功诊断。原生 observer 同样执行授权，不新增引擎或全策略逐帧扫描。
+
+Chat `event-layout / 310` 接管多个 message、同类内容块及 message 与独立工具项的边界损失。原有 targetItems 与通道索引继续持有身份；已完成的通道仍保留最后身份，不缓存正文。首次边界变化请求授权，delta 不重复登记。父子关联、容器 metadata／缓存／资源及独立候选的拒绝边界保留。网关、组合验证、流预览和 Agent 收集上下文固定已解析策略；Agent 继续直接收集核心内容，不做无必要的目标重建。
+
+新 Responses 夹具组合两个 message、同 message 两 part、工具插入、emoji、晚到引用、logprobs 快照和 usage。组件直接断言发送顺序 `😀 → lookup → 参数 → hi → !`，引用 0..2 → 2..4、概率顺序、一次工具及终态；strict／禁用在第一次实际损失拒绝，并验证同一状态可在失败后重新接受该工具开始。真实网关在隔离测试数据库中完整消费同一夹具，只调用上游一次。初次网关失败来自测试模型和模型组未启用工具能力，补齐声明后通过，未放宽运行授权。最初 logprobs 夹具缺少已注册子集合的最终快照，按真实合同补齐，未放宽 Spec。
+
+| 检查 | 结果 |
+|---|---|
+| closure-stream-layout-core-all | protocol 全量 5.908 秒、builtin 全量 38.168 秒，通过 |
+| closure-stream-layout-all | 处置、Chat、真实四协议 JSON／SSE 矩阵通过；server 10.109 秒 |
+| closure-stream-layout-race | 核心事务／区间、Chat Native 与复杂流、网关交付失败及 Agent 续轮：protocol 4.266 秒、builtin 32.348 秒、server 194.657 秒，通过 |
+| closure-stream-layout-vet | protocol 全树和 server 通过 |
+| closure-stream-layout-staticcheck | v0.8.2：24 主诊断＋1 关联位置；与 dev.126 去行列后的多重集一致，无新增／消失，退出 1 |
+| closure-stream-layout-types／lint | 前端类型与编辑器 ESLint 通过 |
+
+原语目录、反射 schema、编辑器帮助及合同说明同步。Chat 两源包装后的原始 JSON token 为 99,097，解码成包结构再序列化为 97,081；配置限额仍为 100,000／64，没有扩容。其他三包源未变。检查记录在忽略目录 checks；没有正式性能结论。其余目标复杂流、最终 wire 文本改写与引用证明、全入口所有权、版本 B／C、生产切换及旧链退役仍未完成。

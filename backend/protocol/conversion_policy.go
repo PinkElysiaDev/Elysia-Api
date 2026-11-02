@@ -111,6 +111,7 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	streamDispositions    map[string]ConversionRule
 	recovery              map[ConversionPhase][]ConversionRule
 	needsFrameUsage       bool
 	phases                map[ConversionPhase][]ConversionRule
@@ -248,7 +249,13 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if err := action.validate(r); err != nil {
 			return nil, err
 		}
-		if r.Action == "control_event" {
+		if r.Action == "stream_disposition" {
+			option, err := compileStreamDispositionOption(r)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "control_event" {
 			option, err := compileControlEventOption(r)
 			if err != nil {
 				return nil, err
@@ -338,6 +345,13 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 	}
 	for _, rule := range c.Policy.Rules {
 		if !rule.Enabled {
+			continue
+		}
+		if rule.Action == "stream_disposition" {
+			if c.streamDispositions == nil {
+				c.streamDispositions = make(map[string]ConversionRule)
+			}
+			c.streamDispositions[rule.ID] = rule
 			continue
 		}
 		c.phases[rule.Phase] = append(c.phases[rule.Phase], rule)

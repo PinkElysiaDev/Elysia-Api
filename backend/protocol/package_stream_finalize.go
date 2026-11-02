@@ -62,16 +62,20 @@ func (compiled *Compiled) finishPackageEvents(ctx context.Context, direction Dir
 	}
 	_, limits, work := compiled.mappingLimits(ctx, direction)
 	state := evaluation{ctx: ctx, context: contextValue, runtime: runtime, streamSlots: retained.slots,
-		streamTransaction: &packageStreamTransaction{owner: options.State, key: key, scope: options.Scope, previous: retained, plan: compiled.mappings[direction].streamState},
+		streamTransaction: &packageStreamTransaction{owner: options.State, key: key, scope: options.Scope, previous: retained, plan: compiled.mappings[direction].streamState, conversion: options.conversion, diagnostics: options.Diagnostics},
 		budget:            &evaluationBudget{limits: work, stepLimit: compiled.limits.Nodes}}
 	output, err := finalizer.build(state)
 	if err != nil {
+		return nil, compiled.mappingError(direction, err)
+	}
+	if err := state.streamTransaction.resolveDispositions(); err != nil {
 		return nil, compiled.mappingError(direction, err)
 	}
 	frames, err := compiled.encodePackageFrameOutput(ctx, direction, output, limits)
 	if err != nil {
 		return nil, compiled.mappingError(direction, fmt.Errorf("event finalization: %w", err))
 	}
+	state.streamTransaction.commitDiagnostics()
 	return frames, nil
 }
 

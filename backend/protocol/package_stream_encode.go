@@ -15,6 +15,9 @@ func encodePlannedEventFrames(ctx context.Context, compiled *Compiled, direction
 	if err != nil {
 		return fail(err)
 	}
+	if err := options.packageTransaction.resolveDispositions(); err != nil {
+		return fail(err)
+	}
 	frames, err := compiled.encodePackageFrameOutput(ctx, direction, output, limits)
 	if err != nil {
 		return fail(err)

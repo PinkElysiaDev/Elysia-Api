@@ -17,6 +17,7 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 // EvaluationContext contains gateway-owned metadata. Scope is supplied by the
 // selected model/account binding and cannot be changed by a mapping expression.
 type EvaluationContext struct {
+	conversion          *streamConversionBinding
 	observedNativeFrame Value
 	InterleavedThinking bool
 	ClientOutput        *ClientOutput
@@ -867,7 +868,14 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 		}
 		output, err = instance.Convert(ctx, direction, input, options)
 	case mapping.outputPlan != nil:
-		output, err = mapping.outputPlan.evaluate(state)
+		var planned plannedOutput
+		planned, err = mapping.outputPlan.build(state)
+		if err == nil {
+			err = options.packageTransaction.resolveDispositions()
+		}
+		if err == nil {
+			output, err = planned.materialize(ctx)
+		}
 	default:
 		output, err = evaluateEventRules(mapping, state)
 	}

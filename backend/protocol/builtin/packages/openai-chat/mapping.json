@@ -25843,12 +25843,28 @@
             "value": true
           },
           "otherwise": {
-            "op": "reject",
-            "path": "/parentId",
-            "reason": "Chat requires an explicit policy to combine message-owned and independent output",
-            "diagnostic": {
-              "code": "unsupported_capability",
-              "stage": "wire"
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "item.started"
+                }
+              ]
+            },
+            "then": {
+              "op": "require_disposition",
+              "name": "event-layout",
+              "source": {
+                "op": "literal",
+                "value": "/parentId"
+              }
             }
           }
         }
@@ -26051,26 +26067,43 @@
                   "source": {
                     "op": "if",
                     "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "exists",
-                        "source": {
-                          "op": "ref",
-                          "ref": "chat-message-owner"
+                      "op": "all",
+                      "items": [
+                        {
+                          "op": "not",
+                          "source": {
+                            "op": "exists",
+                            "source": {
+                              "op": "ref",
+                              "ref": "chat-message-owner"
+                            }
+                          }
+                        },
+                        {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "index_size",
+                              "name": "targetItems"
+                            },
+                            {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          ]
                         }
-                      }
+                      ]
                     },
                     "then": {
                       "op": "literal",
                       "value": true
                     },
                     "otherwise": {
-                      "op": "reject",
-                      "path": "/itemId",
-                      "reason": "Chat requires an explicit policy to combine independent output messages",
-                      "diagnostic": {
-                        "code": "unsupported_capability",
-                        "stage": "wire"
+                      "op": "require_disposition",
+                      "name": "event-layout",
+                      "source": {
+                        "op": "literal",
+                        "value": "/itemId"
                       }
                     }
                   },
@@ -27169,40 +27202,40 @@
         ]
       },
       "then": {
-        "op": "let",
-        "name": "channel",
-        "source": {
-          "op": "join",
+        "op": "if",
+        "when": {
+          "op": "equal",
           "items": [
             {
-              "op": "literal",
-              "value": "channel:"
+              "op": "read",
+              "from": "input",
+              "path": "/type"
             },
             {
-              "op": "read",
-              "from": "binding",
-              "path": "/kind",
-              "name": "node"
+              "op": "literal",
+              "value": "item.started"
             }
           ]
         },
-        "body": {
-          "op": "if",
-          "when": {
-            "op": "equal",
+        "then": {
+          "op": "let",
+          "name": "channel",
+          "source": {
+            "op": "join",
             "items": [
               {
-                "op": "read",
-                "from": "input",
-                "path": "/type"
+                "op": "literal",
+                "value": "channel:"
               },
               {
-                "op": "literal",
-                "value": "item.started"
+                "op": "read",
+                "from": "binding",
+                "path": "/kind",
+                "name": "node"
               }
             ]
           },
-          "then": {
+          "body": {
             "op": "let",
             "name": "owner",
             "source": {
@@ -27211,39 +27244,67 @@
               "source": {
                 "op": "read",
                 "from": "binding",
-                "path": "",
-                "name": "channel"
+                "name": "channel",
+                "path": ""
               },
               "policy": "omit"
             },
             "body": {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/key",
-                  "name": "owner"
+              "op": "let",
+              "name": "layout",
+              "source": {
+                "op": "if",
+                "when": {
+                  "op": "all",
+                  "items": [
+                    {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "owner",
+                        "path": "/key"
+                      }
+                    },
+                    {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "owner",
+                            "path": "/key"
+                          },
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "identity",
+                            "path": "/key"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "then": {
+                  "op": "require_disposition",
+                  "name": "event-layout",
+                  "source": {
+                    "op": "literal",
+                    "value": "/itemId"
+                  }
                 }
               },
-              "then": {
-                "op": "reject",
-                "path": "/itemId",
-                "reason": "Chat cannot interleave independent items on one text channel",
-                "diagnostic": {
-                  "code": "unsupported_capability",
-                  "stage": "wire"
-                }
-              },
-              "otherwise": {
+              "body": {
                 "op": "remember",
                 "name": "terminalContext",
                 "source": {
                   "op": "read",
                   "from": "binding",
-                  "path": "",
-                  "name": "channel"
+                  "name": "channel",
+                  "path": ""
                 },
                 "body": {
                   "op": "object",
@@ -27251,42 +27312,11 @@
                     "key": {
                       "op": "read",
                       "from": "binding",
-                      "path": "/key",
-                      "name": "identity"
+                      "name": "identity",
+                      "path": "/key"
                     }
                   }
                 }
-              }
-            }
-          },
-          "otherwise": {
-            "op": "if",
-            "when": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/type"
-                },
-                {
-                  "op": "literal",
-                  "value": "item.finished"
-                }
-              ]
-            },
-            "then": {
-              "op": "remember",
-              "name": "terminalContext",
-              "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "channel"
-              },
-              "body": {
-                "op": "object",
-                "fields": {}
               }
             }
           }
@@ -52952,6 +52982,17 @@
           }
         }
       ]
+    },
+    {
+      "id": "event-layout",
+      "order": 310,
+      "enabled": true,
+      "phase": "event",
+      "streamDisposition": {
+        "kind": "degrade",
+        "path": "/itemId",
+        "reason": "Combine message and same-channel item boundaries in arrival order while retaining tool associations and semantic channels."
+      }
     }
   ],
   "continuation": {

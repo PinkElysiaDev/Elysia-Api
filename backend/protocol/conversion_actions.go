@@ -19,6 +19,7 @@ type conversionAction struct {
 // Build fresh editor schemas so callers cannot mutate compiler constraints.
 func conversionActionCatalog() []conversionAction {
 	return []conversionAction{
+		{name: "stream_disposition", phases: []ConversionPhase{ConversionEvent}, isWholeValue: true, description: "Authorize a loss explicitly requested by the pinned target event program, before encoding and transaction commit; strict mode rejects degradation."},
 		{name: "continuation_recovery", phases: []ConversionPhase{ConversionRequest, ConversionResponse, ConversionEvent}, isWholeValue: true, description: "Project declared protected resources using host-authenticated recovery evidence and the target's explicit disposition."},
 		{name: "control_event", phases: []ConversionPhase{ConversionEvent}, isWholeValue: true, description: "Apply a declared target disposition only to explicitly named, source-validated control kinds."},
 		{name: "auxiliary_event", phases: []ConversionPhase{ConversionEvent}, isWholeValue: true, description: "Apply the target's declared disposition to a privately validated auxiliary source frame."},

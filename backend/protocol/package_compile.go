@@ -238,6 +238,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/finalize: requires a frame-batch event encoder", path)
 		}
 		finalizerScope := scope
+		finalizerScope.canRequireDisposition = direction == EncodeEvent
 		finalizerScope.canWriteStreamIndexes = true
 		finalizer, err = compiler.compilePlan(*mapping.Finalize, path+"/finalize", finalizerScope, 1)
 		if err != nil {
@@ -259,6 +260,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 			return compiledMapping{}, nil, fmt.Errorf("%s/observe: requires an event encoder", path)
 		}
 		observerScope := scope
+		observerScope.canRequireDisposition = direction == EncodeEvent
 		observerScope.canWriteStreamIndexes, observerScope.canReadNativeFrame, observerScope.canReadNative = true, true, true
 		observer, err = compiler.compilePlan(*mapping.Observe, path+"/observe", observerScope, 1)
 		if err != nil {
@@ -266,6 +268,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		}
 	}
 	programScope := scope
+	programScope.canRequireDisposition = direction == EncodeEvent
 	programScope.canWriteStreamIndexes = true
 	programScope.wireCapture = isDecode
 	programScope.canSelectCarrier = direction == DecodeRequest

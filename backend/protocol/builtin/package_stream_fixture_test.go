@@ -46,11 +46,17 @@ func decodePackageStream(t *testing.T, compiled *p.Compiled, raws []string, scop
 
 func encodePackageStream(t *testing.T, compiled *p.Compiled, frames []*p.EventFrame, scope p.Scope, preserve bool) []string {
 	t.Helper()
-	validation, err := compiled.NewWireStreamValidation(scope)
+	return encodePackageStreamWithOptions(t, compiled, frames, p.EvaluationContext{Scope: scope}, preserve)
+}
+
+func encodePackageStreamWithOptions(t *testing.T, compiled *p.Compiled, frames []*p.EventFrame, options p.EvaluationContext, preserve bool) []string {
+	t.Helper()
+	validation, err := compiled.NewWireStreamValidation(options.Scope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := (p.EvaluationContext{Scope: scope, State: p.NewEvaluationState()}).WithOutputStream(validation)
+	options.State = p.NewEvaluationState()
+	options = options.WithOutputStream(validation)
 	options, err = options.WithOperation("fixture-execution", 1)
 	if err != nil {
 		t.Fatal(err)

@@ -65,7 +65,14 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 	}
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	mapping := compiled.mappings[direction]
-	output, err := mapping.outputPlan.evaluate(state)
+	planned, err := mapping.outputPlan.build(state)
+	if err != nil {
+		return fail(err)
+	}
+	if err := options.packageTransaction.resolveDispositions(); err != nil {
+		return fail(err)
+	}
+	output, err := planned.materialize(ctx)
 	if err != nil {
 		return fail(err)
 	}
@@ -129,6 +136,9 @@ func (compiled *Compiled) checkNativeEventEffects(ctx context.Context, direction
 		if err := checkPlannedOutputLimits(output, inputLimits, "mapping_observe"); err != nil {
 			return fail(err)
 		}
+	}
+	if err := options.packageTransaction.resolveDispositions(); err != nil {
+		return fail(err)
 	}
 	return options.packageTransaction.stage(state, false)
 }

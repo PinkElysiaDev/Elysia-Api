@@ -79,6 +79,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	options.InterleavedThinking, options.Scope = protocol.OperationInterleavedThinking(candidate.operation), candidate.scope
 	options.State, options.Diagnostics = protocol.NewEvaluationState(), &protocol.DiagnosticSink{}
 	options.ClientOutput = request.ClientOutput
+	options = options.WithConversion(candidate.conversion, candidate.conversionContext(candidate.compiled, true).WithOperation(options))
 	defer options.State.Release()
 	defer func() {
 		if record != nil {

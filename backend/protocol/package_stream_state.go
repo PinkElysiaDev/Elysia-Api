@@ -36,6 +36,10 @@ type packageStreamState struct {
 // Updates are staged separately from retained state. The outer event boundary
 // commits only after decoding, provenance and native reconciliation succeed.
 type packageStreamTransaction struct {
+	conversion                     *streamConversionBinding
+	dispositions                   []streamDispositionRequest
+	diagnostics                    *DiagnosticSink
+	pendingDiagnostics             DiagnosticSink
 	trackChannels                  map[string]int
 	bufferUpdates                  map[streamTrackKey]*pendingStreamBuffer
 	bufferByteDelta                int
@@ -151,7 +155,7 @@ func (compiled *Compiled) beginPackageTransaction(direction Direction, options E
 	if previous == nil && len(options.State.packageStates)+len(options.State.modules)+len(options.State.initialized) >= compiled.limits.StateItems {
 		return options, nil, resourceFailure("stream", "state_instances", compiled.limits.StateItems, len(options.State.packageStates)+len(options.State.modules)+len(options.State.initialized)+1)
 	}
-	transaction := &packageStreamTransaction{owner: options.State, key: key, plan: plan, scope: options.Scope, previous: previous}
+	transaction := &packageStreamTransaction{owner: options.State, key: key, plan: plan, scope: options.Scope, previous: previous, conversion: options.conversion, diagnostics: options.Diagnostics}
 	if previous != nil {
 		transaction.hasRendered, transaction.hasTerminal = previous.hasRendered, previous.hasTerminal
 	}
@@ -303,6 +307,7 @@ func (transaction *packageStreamTransaction) finish(err error) {
 		bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal,
 	}
 	transaction.owner.packageStateBytes += transaction.bytes
+	transaction.commitDiagnostics()
 	transaction.next = nil
 }
 

@@ -436,6 +436,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 }
 
 func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frames []*EventFrame, options EvaluationContext, conversion *CompiledConversion, route ConversionContext) ([]Event, error) {
+	options = options.WithConversion(conversion, route)
 	var pending []Value
 	if compiled.packagePlan == nil {
 		// Legacy evidence preserves its encode-before-validation error order.

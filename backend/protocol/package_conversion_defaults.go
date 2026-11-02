@@ -8,18 +8,19 @@ import (
 // ProtocolConversionDefault declares one complete overridable target rule.
 type ProtocolConversionDefault struct {
 	// Use binds a declared request program instead of local control steps.
-	Use        string                        `json:"use,omitempty" jsonschema:"enum=request_projection,enum=model_policy"`
-	Recovery   *ProtocolRecoveryDisposition  `json:"recovery,omitempty"`
-	ID         string                        `json:"id"`
-	Order      int                           `json:"order"`
-	Enabled    bool                          `json:"enabled"`
-	Phase      ConversionPhase               `json:"phase"`
-	Match      ConversionMatch               `json:"match,omitempty"`
-	Steps      []ProtocolControlStep         `json:"steps,omitempty"`
-	Auxiliary  *ProtocolAuxiliaryDisposition `json:"auxiliary,omitempty"`
-	Control    *ProtocolControlDisposition   `json:"control,omitempty"`
-	Collection bool                          `json:"collection,omitempty"`
-	FrameUsage bool                          `json:"frameUsage,omitempty"`
+	Use               string                        `json:"use,omitempty" jsonschema:"enum=request_projection,enum=model_policy"`
+	Recovery          *ProtocolRecoveryDisposition  `json:"recovery,omitempty"`
+	StreamDisposition *ProtocolStreamDisposition    `json:"streamDisposition,omitempty"`
+	ID                string                        `json:"id"`
+	Order             int                           `json:"order"`
+	Enabled           bool                          `json:"enabled"`
+	Phase             ConversionPhase               `json:"phase"`
+	Match             ConversionMatch               `json:"match,omitempty"`
+	Steps             []ProtocolControlStep         `json:"steps,omitempty"`
+	Auxiliary         *ProtocolAuxiliaryDisposition `json:"auxiliary,omitempty"`
+	Control           *ProtocolControlDisposition   `json:"control,omitempty"`
+	Collection        bool                          `json:"collection,omitempty"`
+	FrameUsage        bool                          `json:"frameUsage,omitempty"`
 }
 
 type coreControlOptions struct {
@@ -63,6 +64,14 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 			return fmt.Errorf("%s/order: ambiguous rule order", path)
 		}
 		orders[order] = declaration.Enabled || orders[order]
+		if declaration.StreamDisposition != nil {
+			rule, err := compiled.compileStreamDisposition(declaration)
+			if err != nil {
+				return locateMappingError(path, err)
+			}
+			compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
+			continue
+		}
 		if declaration.Use != "" {
 			rule, err := compiled.bindConversionDefault(declaration)
 			if err != nil {

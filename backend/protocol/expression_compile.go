@@ -51,15 +51,16 @@ func (expression *compiledExpression) isInputIdentity() bool {
 }
 
 type expressionCompiler struct {
-	maximumDepth      int
-	instances         map[referenceContext][]compiledReference
-	limits            Limits
-	nodes             int
-	references        map[string]Expression
-	resolving         map[string]bool
-	used              map[string]bool
-	mappingReferences map[string]Expression
-	constraints       *wireConstraintCompiler
+	streamDispositions map[string]bool
+	maximumDepth       int
+	instances          map[referenceContext][]compiledReference
+	limits             Limits
+	nodes              int
+	references         map[string]Expression
+	resolving          map[string]bool
+	used               map[string]bool
+	mappingReferences  map[string]Expression
+	constraints        *wireConstraintCompiler
 }
 
 func newExpressionCompiler(limits Limits, references map[string]Expression) *expressionCompiler {
@@ -67,6 +68,7 @@ func newExpressionCompiler(limits Limits, references map[string]Expression) *exp
 }
 
 type expressionScope struct {
+	canRequireDisposition  bool
 	isWireContract         bool
 	canReadNativeFrame     bool
 	trackerChannels        map[string]bool
@@ -297,6 +299,13 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			return nil, fmt.Errorf("%s/namespace: namespace is not declared by the final wire contract", path)
 		}
 		compiled.streamNamespace = expression.Namespace
+	}
+	if compiled.op == "require_disposition" {
+		if !scope.canRequireDisposition || !compiler.streamDispositions[expression.Name] {
+			return nil, fmt.Errorf("%s/name: requires a declared stream disposition in a target event program", path)
+		}
+		compiled.literalText = expression.Name
+		*scope.streamPrimitiveUsed = true
 	}
 	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_position" || compiled.op == "project_range" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
@@ -542,6 +551,10 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "track_array":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ArrayType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
 			return fail("track_array requires a string key, array body and explicit delta or snapshot policy")
+		}
+	case "require_disposition":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("require_disposition requires a diagnostic path string")
 		}
 	case "track_position":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, IntegerType) {
