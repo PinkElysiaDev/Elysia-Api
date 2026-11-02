@@ -122,7 +122,7 @@ func TestGatewayResponsesNullReasoningHistory(t *testing.T) {
 				}
 				history[40] = strings.Replace(nullReasoningHistory, `"content":null`, `"content":{}`, 1)
 				failure := call(history, http.StatusBadRequest)
-				if calls.Load() != 2 || !bytes.Contains(failure, []byte("/input/40/content")) || !bytes.Contains(failure, []byte("decode_request")) || bytes.Contains(failure, []byte("synthetic-private-state")) {
+				if calls.Load() != 2 || !bytes.Contains(failure, []byte("/input/40/content")) || !bytes.Contains(failure, []byte("invalid_request_error")) || bytes.Contains(failure, []byte("synthetic-private-state")) {
 					t.Fatal("local rejection sent upstream or lost safe diagnostics", calls.Load(), string(failure))
 				}
 				checkNullHistoryRecords(t, s)
@@ -166,7 +166,7 @@ func checkNullHistoryRecords(t *testing.T, s *Server) {
 			totalTokens += record.ProtocolUsage.Total.Count
 		} else {
 			failures++
-			if record.StatusCode != http.StatusBadRequest || record.UpstreamHTTPStatus != 0 || len(record.ConversionIssues) != 1 || record.ConversionIssues[0].Stage != "decode_request" {
+			if record.StatusCode != http.StatusBadRequest || record.UpstreamHTTPStatus != 0 || len(record.ConversionIssues) != 1 || record.ConversionIssues[0].Stage != "decode_request" || record.ConversionIssues[0].Direction != protocol.DecodeRequest || record.ConversionIssues[0].Path != "/input/40/content" {
 				t.Fatal("incorrect local decode attribution", record.StatusCode, record.ConversionIssues)
 			}
 		}

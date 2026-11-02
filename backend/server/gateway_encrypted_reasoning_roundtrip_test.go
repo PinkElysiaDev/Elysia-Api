@@ -194,11 +194,15 @@ func testGatewayEncryptedReasoningContinuation(t *testing.T, isPackage bool) {
 				if rejected.Code != http.StatusBadRequest || calls != 2 || !strings.Contains(rejected.Body.String(), "continuation") {
 					t.Fatal("unauthenticated carrier reached the provider", rejected.Code, calls, rejected.Body.String())
 				}
-				policy := protocol.DefaultConversionPolicy(ingress, upstream)
-				for i := range policy.Rules {
-					if policy.Rules[i].ID == "request-signatures" {
-						policy.Rules[i].Enabled = false
+				policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "disable-request-recovery"}
+				for _, rule := range protocol.DefaultConversionPolicy(ingress, upstream).Rules {
+					if rule.ID == "request-signatures" {
+						rule.Enabled = false
+						policy.Rules = []protocol.ConversionRule{rule}
 					}
+				}
+				if len(policy.Rules) != 1 {
+					t.Fatal("request recovery rule is missing")
 				}
 				bindings, err := s.store.ListProtocolBindings(t.Context())
 				if err != nil {

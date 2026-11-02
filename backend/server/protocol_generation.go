@@ -111,7 +111,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, limits.BufferBytes)
 		if err != nil {
-			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
+			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		if record != nil {
 			record.ProviderResponse = record.sanitizeBody(body)

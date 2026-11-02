@@ -49,7 +49,7 @@ func TestHTTPFailureKeepsStatusAndSafePrimaryCause(t *testing.T) {
 		for _, targetID := range []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID} {
 			target, _ := service.Pin(targetID)
 			for _, fixture := range []struct{ body, message string }{
-				{`{"cloudflare_error":true,"status":524,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游源站响应超时"},
+				{`{"cloudflare_error":true,"status":524,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游请求失败"},
 				{`{"cloudflare_error":true,"status":523,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游请求失败"},
 				{`{"cloudflare_error":true,"status":"524","error_name":"origin_response_timeout"}`, "上游请求失败"},
 				{`<html>must-not-leak</html>`, "上游请求失败"},

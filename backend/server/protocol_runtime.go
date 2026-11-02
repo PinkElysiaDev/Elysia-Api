@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
-
-	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
@@ -145,12 +142,4 @@ func (s *Server) protocolRuntimeError() error {
 		return gatewayIssue(protocol.Identity{}, protocol.VerificationRequired, "/runtime", "protocol runtime verification requires repair; verify definitions and reload the registry")
 	}
 	return nil
-}
-
-func (s *Server) requireProtocolRuntime(ctx context.Context, c *app.RequestContext) bool {
-	if err := s.protocolRuntimeError(); err != nil {
-		respondFail(ctx, c, http.StatusServiceUnavailable, "protocol_runtime_unavailable", err.Error())
-		return false
-	}
-	return true
 }

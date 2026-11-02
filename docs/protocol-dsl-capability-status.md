@@ -1,4 +1,4 @@
-# DSL 能力状态（dev.130）
+# DSL 能力状态（dev.131）
 
 本表替代 dev.100／101 的过期迁移状态；旧调查可从 Git 历史读取。最新实施记录见[剩余闭合记录](protocol-three-part-closure-2026-11-02.md)。本轮从 a20f63ce 继续；四包已可独立编译和执行，但默认生产加载器仍为旧定义。
 
@@ -13,6 +13,7 @@
 | 历史与多根输出 | 消息父容器、关联、reasoning 集合和 UTF-16 文本位置 | dev.121—125 JSON 布局；dev.126 流式区间；dev.127 Chat event-layout／310；四目标代表性复杂 SSE 实际调用，含多 message、工具、引用、logprobs、双 thinking 签名及 Gemini 有序 parts；根 Native 删除重建 | 最终 wire 文本改写证明及完整原生／重建／交付失败组合；代表性组合不等于任意组合均支持 |
 | 缓存 | CacheIntent 与资源 Scope；cache_intents 通用执行 | dev.118 四份目标显式处置；dev.120 默认缓存对象聚合证明、Native 编辑与重建 | 一般布局与复杂缓存组合；不扩大未声明策略 |
 | metadata／错误 | Spec 外部类型；核心通用载体与 logprobs 约束 | dev.114 处置前类型检查；dev.117 output_text；dev.119 受限错误选择、已知细节目标处置和真实 HTTP 失败 | 未声明错误扩展继续拒绝；缓存／布局中的附属字段归属 |
+| 早期错误与入口快照 | 端点注册选择协议；宿主通用类别和 HTTP 状态；Spec 最终错误合同 | dev.131 鉴权前固定 ingress；四包 public／gateway 鉴权、未知模型、资源拒绝；自定义字段切换与在途快照、HTTP 524 网关及 Agent | 模型目录成功输出、任务／会话等全部入口仍需逐项闭合；配置不可用或编码失败使用固定网关错误格式 |
 | 请求外部字段与目标规则 | Spec safety／上下文／追踪合同；参数及 reasoning 叶子 | dev.112 显式默认规则；dev.113／115 通用有限值与字段投影；dev.116 外部合同；dev.120 按核心声明类型编译对象聚合 | 动态数组成员聚合及一般布局仍有能力边界 |
 | 管理／CLI／模型／任务／会话 | 整包编译、修订、快照与已有 task/session 合同 | 两源编辑器、CLI、Agent 与模型发现已有接线 | 所有入口统一、资源所有权及最终页面验收 |
 | 生产和性能 | 包 4、DSL 2、核心 2、策略 2 | 独立包测试、Go 全量／相关 race／vet 已通过 | 默认加载切换、旧链删除、A/B/C 正式性能与最终构建 |
@@ -26,6 +27,7 @@
 - 新核心版本不再调用共享 Go 的 Gemini／Responses 外部类型校验或普通 metadata 白名单；默认 Spec／Mapping 接管它们。核心 logprobs、工具、reasoning 结构、关联和资源检查保留。
 - 旧核心版本仍使用外部类型校验和 metadata 白名单；旧 codec 的 Responses output_text 专用检查暂留。新包的来源、目标投影、重建和最终输出均由声明检查 output_text，不调用旧拼接检查。
 - 仅旧 codec 自动策略：DefaultConversionPolicy 中依赖 Codec 的供应商动作；新包 Codec 为空，不能误称它们全部被新包调用。待旧链退役时删除。
+- 新网关错误出口不再通过 URL 后缀猜供应商或调用旧 renderer；非法上游错误体不再嗅探 Cloudflare 专用字段。旧 renderer 及模块源码尚待生产退役批次按调用关系删除。
 - 通用宿主职责：权限、Scope、Seal/Open、I/O、计量、取消和实际交付确认继续保留，不能因供应商配置化而删除。
 
 无调用者的函数按实际引用逐项确认后删除，不以文件名或供应商字符串搜索作为唯一依据。staticcheck v0.8.2 当前有 24 条存量诊断，未宣称静态检查全净。

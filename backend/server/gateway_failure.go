@@ -36,22 +36,13 @@ func decodeUpstreamHTTPFailure(ctx context.Context, status int, body []byte, com
 	if err == nil {
 		return response, nil
 	}
-	response = fallbackHTTPFailure(status, body)
+	response = fallbackHTTPFailure(status)
 	response.SchemaVersion = compiled.CoreVersion()
 	return response, err
 }
 
-func fallbackHTTPFailure(status int, body []byte) *protocol.Response {
+func fallbackHTTPFailure(status int) *protocol.Response {
 	message := fmt.Sprintf("上游请求失败（HTTP %d）", status)
-	if status == 524 {
-		wire, parseErr := protocol.ParseValue(body)
-		fields, objectErr := wire.ReadObject()
-		var hasCloudflareError bool
-		var bodyStatus int
-		if parseErr == nil && objectErr == nil && fields["cloudflare_error"].Decode(&hasCloudflareError) == nil && hasCloudflareError && fields["status"].Decode(&bodyStatus) == nil && bodyStatus == status && fields["error_name"].IsString("origin_response_timeout") {
-			message = "上游源站响应超时（HTTP 524）"
-		}
-	}
 	payload, _ := protocol.EncodeValue(protocol.Object{"category": protocol.StringValue(string(builtin.ClassFromStatus(status))), "message": protocol.StringValue(message)})
 	return &protocol.Response{SchemaVersion: 1, Error: payload}
 }
@@ -116,7 +107,7 @@ func encodeGatewayFailure(ctx context.Context, status int, response *protocol.Re
 		return &gatewayFailure{status, err}
 	}
 	options.Values = protocol.Object{"httpStatus": statusValue}
-	encoded, err := ingress.EncodeResponse(ctx, response, options)
+	encoded, err := encodeFailureResponse(ctx, ingress, response, options)
 	if err != nil {
 		// Preserve the readable provider cause without serializing its whole
 		// error object (which may contain opaque details or private data).
@@ -130,5 +121,5 @@ func encodeGatewayFailure(ctx context.Context, status int, response *protocol.Re
 		}
 		return &gatewayFailure{status, err}
 	}
-	return &gatewayFailure{status, &upstreamFailure{cause: protocol.CheckGenerationOutcome(response), body: encoded}}
+	return &gatewayFailure{status, &upstreamFailure{cause: protocol.CheckGenerationOutcome(response), body: encoded.Bytes()}}
 }

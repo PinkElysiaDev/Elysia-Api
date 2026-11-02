@@ -24,12 +24,12 @@ func (s *Server) pinProtocolBudget(ctx context.Context) (context.Context, error)
 }
 
 func (s *Server) pinProtocolRequest(ctx context.Context, c *app.RequestContext) (context.Context, bool) {
-	ctx, err := s.pinProtocolBudget(ctx)
+	pinned, err := s.pinProtocolBudget(ctx)
 	if err != nil {
-		respondFail(ctx, c, http.StatusInternalServerError, "invalid_resource_config", err.Error())
+		s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassServer, Message: err.Error()})
 		return ctx, false
 	}
-	return ctx, true
+	return pinned, true
 }
 
 // Preview envelopes contain semantic snapshots as well as wire input. Their

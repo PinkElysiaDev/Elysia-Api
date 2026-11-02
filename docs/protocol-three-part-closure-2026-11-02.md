@@ -454,3 +454,39 @@ race 之后新增的编译期“必须有最终 stream 合同”约束由最终�
 初次检查暴露的 Responses reasoning part 误读身份已通过配置过滤修复；测试中的模型修改按整流身份
 约束同时修改起始帧，未放宽合同。中间失败日志一并保留。这里没有正式 A／B／C 性能结论，
 也未重复运行尚未到最终候选阶段的六平台和真实客户端验收。
+
+## 最终闭合批次 3A：早期错误配置化（dev.131）
+
+public 路由注册和入口选择共用显式协议 ID 表；通用 gateway 读取路由中的协议 ID。鉴权前固定
+RegistryView 和 ingress 编译修订，后续正文处理、资源拒绝及失败编码共用这一快照。请求中不解析
+配置，也不通过 URL 后缀或 Family 判断错误字段含义。无调用者的旧 requireProtocolRuntime 已删除。
+
+本地错误以通用类别、消息及 HTTP 状态进入所选核心版本的 Response，经 Mapping encode_response
+和 ValidateResponseOutput 输出。上游 HTTP 错误复用相同最终边界。配置不可用或错误映射失败时
+只输出固定网关错误格式，原主因与状态不变，编码失败作为次因记录；不调用旧 renderer 或另一协议。
+非法上游错误体不再嗅探 Cloudflare 专用字段，只保留真实 HTTP 状态与安全的通用描述。
+
+自定义 local-errors 包只修改 Spec／Mapping，将 problem 字段改为 failure；真实路由测试在鉴权前
+激活新修订，确认在途请求保留旧字段、下一请求使用新字段。四默认包的 public／gateway 鉴权错误、
+未知模型和资源拒绝均使用声明形状。鉴权夹具带非法 JSON 正文，确认未提前读取或解码。
+
+初次 server 全量发现两项旧测试要求供应商错误正文附带内部 issues；现将完整 Stage／Direction／Path
+断言保留到结算记录，客户端继续断言错误合同、具体字段位置及不泄露私密数据。续传禁用夹具原先
+把整套目标默认策略作为覆盖层，造成跨目标规则顺序冲突；现只整条覆盖 request-signatures，未放宽
+顺序检查或恢复权限。中间失败日志保留在忽略目录。
+
+检查日志均在 `.tmp-dev/protocol-three-part-2026-10-31/checks/`：
+
+| 检查 | 结果 |
+|---|---|
+| closure-ingress-errors-regression | 自定义及默认包早期错误、非法历史／模型、认证续传定向回归通过；server 12.898 秒 |
+| closure-ingress-errors-server-final | server 全量通过；215.818 秒 |
+| closure-ingress-errors-race | 入口热更新、四包错误、32 场景矩阵、HTTP 524 网关／Agent、认证续传及正文读取前拒绝通过；298.412 秒 |
+| closure-ingress-errors-vet | server 通过 |
+| closure-ingress-errors-staticcheck | v0.8.2：24 主诊断＋1 关联位置，与 dev.130 去行列后的多重集完全相同；新增 0、消失 0，退出 1 |
+
+未改动的 DSL 状态与前端沿用 dev.130 记录，不重复全量；本批默认包错误合同由实际入口覆盖。
+
+本切片仅闭合早期错误与普通生成入口的快照选择。任务控制等宿主合同、所有入口与所有权、语义事件
+引用证明、静态 wire 影响路径和完整 Native 组合仍需继续。当前默认仍为旧链，未形成 B／C，未作
+正式性能结论；新包 public 使用 Spec 完整路径，旧核心前缀适配将在退役批次删除。

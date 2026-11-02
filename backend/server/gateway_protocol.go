@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/common/utils"
 
 	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
@@ -40,28 +38,19 @@ func gatewayIssue(identity protocol.Identity, code protocol.IssueCode, path, rea
 }
 
 func (s *Server) gatewayProtocol(ctx context.Context, c *app.RequestContext) {
-	if !s.requireProtocolRuntime(ctx, c) {
+	selection, ok := s.requireIngress(c)
+	if !ok {
 		return
 	}
-	service, err := s.protocolService()
-	if err != nil {
-		respondProtocolError(ctx, c, err)
-		return
-	}
-	view := service.View()
-	ingress, exists := view.Pin(c.Param("protocolId"))
-	if !exists {
-		respondFail(ctx, c, http.StatusNotFound, "inactive_protocol", "protocol has no verified active revision")
-		return
-	}
+	service, view, ingress := selection.service, selection.view, selection.compiled
 	if s.serveGatewayJobControl(ctx, c, service, ingress) {
 		return
 	}
-	path := "/" + strings.TrimPrefix(c.Param("path"), "/")
+	path := selection.path
 	if operation, exists := gatewaySessionOperation(ingress, string(c.Method()), path); exists {
 		handshake, err := readSessionHandshake(c, operation)
 		if err != nil {
-			respondProtocolError(ctx, c, err)
+			s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 			return
 		}
 		s.serveGatewaySession(ctx, c, view, ingress, path, handshake.Bytes())
@@ -250,7 +239,7 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 		if err != nil {
-			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
+			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		record.ProviderResponse = record.sanitizeBody(body)
 		return mapGatewayHTTPFailure(ctx, record, response.StatusCode, body, plan.ingress, candidate, options)
@@ -278,6 +267,10 @@ func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record 
 		record.ErrorKind = "preparation_overloaded"
 	}
 	class := generationFailureClass(err)
+	var wireError *builtin.GatewayError
+	if errors.As(err, &wireError) && class == "" {
+		class = wireError.Class
+	}
 	if class != "" {
 		record.ErrorKind = string(class)
 		if failure == nil && status != statusClientClosedRequest {
@@ -298,16 +291,18 @@ func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record 
 		c.Data(status, "application/json", upstream.body)
 		return
 	}
-	if !strings.HasPrefix(string(c.Path()), "/gateway/") {
-		var wireError *builtin.GatewayError
-		if !errors.As(err, &wireError) {
-			wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Status: status, Message: err.Error()}
-			if class != "" {
-				wireError.Class = class
-			}
+	if wireError == nil {
+		wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Message: err.Error()}
+		if class != "" {
+			wireError.Class = class
 		}
-		writeProtocolError(ctx, c, inputFormatFromPath(string(c.Path())), wireError)
-		return
 	}
-	c.JSON(status, utils.H{"error": utils.H{"code": "protocol_gateway_error", "message": err.Error(), "issues": record.ConversionIssues}})
+	local := *wireError
+	local.Status = status
+	if secondary := s.writeIngressError(ctx, c, &local); secondary != nil {
+		var conversion *protocol.ConversionError
+		if errors.As(secondary, &conversion) {
+			record.appendConversionIssues(conversion.Issues)
+		}
+	}
 }

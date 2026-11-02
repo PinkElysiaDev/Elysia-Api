@@ -29,24 +29,14 @@ func (s *Server) setupRoutes() {
 			c.Next(ctx)
 		})
 	}
-	v1 := s.engine.Group("/v1")
-	v1.Use(s.authMiddleware())
-	{
-		v1.POST("/chat/completions", s.chatCompletions)
-		v1.POST("/responses", s.responses)               // OpenAI Responses API 入口
-		v1.POST("/messages", s.chatCompletions)          // Claude 原生格式入口
-		v1.POST("/messages/count_tokens", s.countTokens) // Claude 兼容 token 统计端点
-		v1.GET("/models", s.listModels)
+	handlers := [...]app.HandlerFunc{
+		ingressGeneration:      s.chatCompletions,
+		ingressTokenCount:      s.countTokens,
+		ingressModelList:       s.listModels,
+		ingressGeminiModelList: s.listGeminiModels,
 	}
-
-	// Gemini 原生 API 兼容路由
-	// /v1beta/models/MODEL:generateContent 和 /v1beta/models/MODEL:streamGenerateContent
-	// 使用通配符保留模型名和动作后缀的完整路径
-	v1beta := s.engine.Group("/v1beta")
-	v1beta.Use(s.authMiddleware())
-	{
-		v1beta.GET("/models", s.listGeminiModels)
-		v1beta.POST("/models/*action", s.chatCompletions)
+	for _, endpoint := range publicIngressEndpoints {
+		s.engine.Handle(endpoint.method, endpoint.path, s.authMiddleware(), handlers[endpoint.handler])
 	}
 	s.engine.Any("/gateway/:protocolId/*path", s.authMiddleware(), s.gatewayProtocol)
 
@@ -276,27 +266,19 @@ func (s *Server) listGeminiModels(ctx context.Context, c *app.RequestContext) {
 }
 
 func (s *Server) countTokens(ctx context.Context, c *app.RequestContext) {
-	if !s.requireProtocolRuntime(ctx, c) {
+	selection, ok := s.requireIngress(c)
+	if !ok {
 		return
 	}
-	service, err := s.protocolService()
-	if err != nil {
-		respondProtocolError(ctx, c, err)
-		return
-	}
-	compiled, exists := service.View().Pin(publicProtocolIDs[builtin.FormatClaude])
-	if !exists {
-		respondFail(ctx, c, http.StatusServiceUnavailable, "inactive_protocol", "Anthropic protocol is not enabled")
-		return
-	}
+	compiled := selection.compiled
 	body, err := protocol.ReadBoundedBody(requestBody(c), compiled.RequestLimits(ctx).BufferBytes)
 	if err != nil {
-		writeProtocolError(ctx, c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
+		s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 		return
 	}
 	request, err := compiled.DecodeRequest(ctx, body, protocol.EvaluationContext{})
 	if err != nil {
-		writeProtocolError(ctx, c, builtin.FormatClaude, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
+		s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, utils.H{"input_tokens": s.estimateProtocolInputTokens(request)})
