@@ -315,3 +315,9 @@ Chat Mapping 使用 utf16_length 度量 track_text 返回的新后缀，原生 o
 | closure-stream-positions-types／lint | 前端类型和编辑器 ESLint 通过 |
 
 操作目录、生成 schema、原语说明和编辑器帮助同步，修正前批合同说明中的文本编码损坏。Chat 整包 token 99,040，其他三包不变，限额未提高。没有正式性能结论。本切片修正已有顺序 item 输出；交错 item、独立 message 的布局损失授权、复杂 thinking／工具、最终交付失败组合和全入口所有权仍待实施。版本 B 尚未形成，默认预置、旧链退役和 A／B／C 验收未完成。
+
+## 闭合计划批次 0：dev.126 恢复点
+
+`e7e6e802 / dev.126` 的源码、四包、已有验证记录和匹配的 Windows amd64 产物已归档至忽略目录 `.tmp-dev/protocol-three-part-closure-2026-11-02/dev126/`。`manifest.json` 记录 42 个文件的 SHA256、构建信息和参考 A 的六目标哈希核验结果；`closure-dev126-build` 通过。参考 A 仍为 `b2844846 / dev.101`，六目标产物全部与原清单一致。恢复点不视作功能完整版本 B。
+
+当前新链使用 package 编译、声明式映射和流事务；生产默认仍经 `relay/protocol_module.go` 注册旧 `builtin.Modules()`，`server/protocol_refresh.go` 加载旧定义并修复绑定，`storage/protocol_recovery.go` 保留旧预置恢复。这些路径在最终候选切换批次删除。下一功能批次接通流事务内的显式损失授权及 Chat 复杂流；四包配置限额和既有测试结论不变。
