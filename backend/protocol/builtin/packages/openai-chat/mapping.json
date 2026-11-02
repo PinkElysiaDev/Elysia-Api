@@ -1461,31 +1461,8 @@
                   ]
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               }
             }
@@ -1493,31 +1470,8 @@
         ]
       },
       "body": {
-        "op": "if",
-        "when": {
-          "op": "not",
-          "source": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "selected"
-              },
-              {
-                "op": "literal",
-                "value": {}
-              }
-            ]
-          }
-        },
-        "then": {
-          "op": "read",
-          "from": "binding",
-          "path": "",
-          "name": "selected"
-        }
+        "op": "ref",
+        "ref": "retain-selected-fields"
       }
     },
     "decode-reasoning": {
@@ -1758,61 +1712,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -1853,61 +1761,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -1948,61 +1810,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -2043,61 +1859,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -2205,31 +1975,8 @@
                                       ]
                                     },
                                     "body": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "not",
-                                        "source": {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "",
-                                              "name": "selected"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": {}
-                                            }
-                                          ]
-                                        }
-                                      },
-                                      "then": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "selected"
-                                      }
+                                      "op": "ref",
+                                      "ref": "retain-selected-fields"
                                     }
                                   }
                                 }
@@ -2238,61 +1985,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -2424,31 +2125,8 @@
                                       ]
                                     },
                                     "body": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "not",
-                                        "source": {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "",
-                                              "name": "selected"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": {}
-                                            }
-                                          ]
-                                        }
-                                      },
-                                      "then": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "selected"
-                                      }
+                                      "op": "ref",
+                                      "ref": "retain-selected-fields"
                                     }
                                   }
                                 }
@@ -2457,61 +2135,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -2652,31 +2284,8 @@
                                       ]
                                     },
                                     "body": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "not",
-                                        "source": {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "",
-                                              "name": "selected"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": {}
-                                            }
-                                          ]
-                                        }
-                                      },
-                                      "then": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "selected"
-                                      }
+                                      "op": "ref",
+                                      "ref": "retain-selected-fields"
                                     }
                                   }
                                 }
@@ -2685,61 +2294,15 @@
                           ]
                         },
                         "body": {
-                          "op": "if",
-                          "when": {
-                            "op": "not",
-                            "source": {
-                              "op": "equal",
-                              "items": [
-                                {
-                                  "op": "read",
-                                  "from": "binding",
-                                  "path": "",
-                                  "name": "selected"
-                                },
-                                {
-                                  "op": "literal",
-                                  "value": {}
-                                }
-                              ]
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          }
+                          "op": "ref",
+                          "ref": "retain-selected-fields"
                         }
                       }
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -2775,61 +2338,15 @@
                         ]
                       },
                       "body": {
-                        "op": "if",
-                        "when": {
-                          "op": "not",
-                          "source": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              },
-                              {
-                                "op": "literal",
-                                "value": {}
-                              }
-                            ]
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        }
+                        "op": "ref",
+                        "ref": "retain-selected-fields"
                       }
                     }
                   }
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               }
             }
@@ -3050,31 +2567,8 @@
                               ]
                             },
                             "body": {
-                              "op": "if",
-                              "when": {
-                                "op": "not",
-                                "source": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "selected"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": {}
-                                    }
-                                  ]
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              }
+                              "op": "ref",
+                              "ref": "retain-selected-fields"
                             }
                           }
                         }
@@ -3083,61 +2577,15 @@
                   ]
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               }
             }
           },
           "body": {
-            "op": "if",
-            "when": {
-              "op": "not",
-              "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  },
-                  {
-                    "op": "literal",
-                    "value": {}
-                  }
-                ]
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
-            }
+            "op": "ref",
+            "ref": "retain-selected-fields"
           }
         }
       }
@@ -3338,61 +2786,15 @@
                         }
                       },
                       "body": {
-                        "op": "if",
-                        "when": {
-                          "op": "not",
-                          "source": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              },
-                              {
-                                "op": "literal",
-                                "value": {}
-                              }
-                            ]
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        }
+                        "op": "ref",
+                        "ref": "retain-selected-fields"
                       }
                     }
                   }
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               },
               "otherwise": {
@@ -3459,61 +2861,15 @@
                         }
                       },
                       "body": {
-                        "op": "if",
-                        "when": {
-                          "op": "not",
-                          "source": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              },
-                              {
-                                "op": "literal",
-                                "value": {}
-                              }
-                            ]
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        }
+                        "op": "ref",
+                        "ref": "retain-selected-fields"
                       }
                     }
                   }
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               }
             }
@@ -4019,31 +3375,8 @@
                                                 ]
                                               },
                                               "body": {
-                                                "op": "if",
-                                                "when": {
-                                                  "op": "not",
-                                                  "source": {
-                                                    "op": "equal",
-                                                    "items": [
-                                                      {
-                                                        "op": "read",
-                                                        "from": "binding",
-                                                        "path": "",
-                                                        "name": "selected"
-                                                      },
-                                                      {
-                                                        "op": "literal",
-                                                        "value": {}
-                                                      }
-                                                    ]
-                                                  }
-                                                },
-                                                "then": {
-                                                  "op": "read",
-                                                  "from": "binding",
-                                                  "path": "",
-                                                  "name": "selected"
-                                                }
+                                                "op": "ref",
+                                                "ref": "retain-selected-fields"
                                               }
                                             }
                                           }
@@ -4052,61 +3385,15 @@
                                     ]
                                   },
                                   "body": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "not",
-                                      "source": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "",
-                                            "name": "selected"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": {}
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "then": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "selected"
-                                    }
+                                    "op": "ref",
+                                    "ref": "retain-selected-fields"
                                   }
                                 }
                               }
                             },
                             "body": {
-                              "op": "if",
-                              "when": {
-                                "op": "not",
-                                "source": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "selected"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": {}
-                                    }
-                                  ]
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              }
+                              "op": "ref",
+                              "ref": "retain-selected-fields"
                             }
                           },
                           "body": {
@@ -4144,31 +3431,8 @@
                   ]
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               },
               "cache": {
@@ -6278,31 +5542,8 @@
             }
           },
           "body": {
-            "op": "if",
-            "when": {
-              "op": "not",
-              "source": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  },
-                  {
-                    "op": "literal",
-                    "value": {}
-                  }
-                ]
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "binding",
-              "path": "",
-              "name": "selected"
-            }
+            "op": "ref",
+            "ref": "retain-selected-fields"
           }
         },
         "cache_control": {
@@ -7911,31 +7152,8 @@
                     }
                   },
                   "body": {
-                    "op": "if",
-                    "when": {
-                      "op": "not",
-                      "source": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "selected"
-                          },
-                          {
-                            "op": "literal",
-                            "value": {}
-                          }
-                        ]
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    }
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
                 }
               }
@@ -8006,31 +7224,8 @@
               }
             },
             "body": {
-              "op": "if",
-              "when": {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "selected"
-              }
+              "op": "ref",
+              "ref": "retain-selected-fields"
             }
           },
           "completion_tokens_details": {
@@ -8072,31 +7267,8 @@
               }
             },
             "body": {
-              "op": "if",
-              "when": {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "",
-                      "name": "selected"
-                    },
-                    {
-                      "op": "literal",
-                      "value": {}
-                    }
-                  ]
-                }
-              },
-              "then": {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "selected"
-              }
+              "op": "ref",
+              "ref": "retain-selected-fields"
             }
           }
         }
@@ -8248,61 +7420,15 @@
                         ]
                       },
                       "body": {
-                        "op": "if",
-                        "when": {
-                          "op": "not",
-                          "source": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              },
-                              {
-                                "op": "literal",
-                                "value": {}
-                              }
-                            ]
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        }
+                        "op": "ref",
+                        "ref": "retain-selected-fields"
                       }
                     }
                   }
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               },
               "otherwise": {
@@ -8336,61 +7462,15 @@
                         ]
                       },
                       "body": {
-                        "op": "if",
-                        "when": {
-                          "op": "not",
-                          "source": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "binding",
-                                "path": "",
-                                "name": "selected"
-                              },
-                              {
-                                "op": "literal",
-                                "value": {}
-                              }
-                            ]
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        }
+                        "op": "ref",
+                        "ref": "retain-selected-fields"
                       }
                     }
                   }
                 },
                 "body": {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "selected"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "binding",
-                    "path": "",
-                    "name": "selected"
-                  }
+                  "op": "ref",
+                  "ref": "retain-selected-fields"
                 }
               }
             }
@@ -12735,32 +11815,9 @@
         }
       },
       "body": {
-        "op": "if",
-        "when": {
-          "op": "not",
-          "source": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "read",
-                "from": "binding",
-                "path": "",
-                "name": "selected"
-              },
-              {
-                "op": "literal",
-                "value": {}
-              }
-            ]
+            "op": "ref",
+            "ref": "retain-selected-fields"
           }
-        },
-        "then": {
-          "op": "read",
-          "from": "binding",
-          "path": "",
-          "name": "selected"
-        }
-      }
     },
     "usage": {
       "op": "ref",
@@ -14908,32 +13965,9 @@
                 }
               },
               "body": {
-                "op": "if",
-                "when": {
-                  "op": "not",
-                  "source": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "selected"
-                      },
-                      {
-                        "op": "literal",
-                        "value": {}
-                      }
-                    ]
+                    "op": "ref",
+                    "ref": "retain-selected-fields"
                   }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "selected"
-                }
-              }
             }
           }
         }
@@ -18124,32 +17158,9 @@
           }
         },
         "body": {
-          "op": "if",
-          "when": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "selected"
-                },
-                {
-                  "op": "literal",
-                  "value": {}
-                }
-              ]
+              "op": "ref",
+              "ref": "retain-selected-fields"
             }
-          },
-          "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "selected"
-          }
-        }
       },
       "completion_tokens_details": {
         "op": "let",
@@ -18196,32 +17207,9 @@
           }
         },
         "body": {
-          "op": "if",
-          "when": {
-            "op": "not",
-            "source": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "",
-                  "name": "selected"
-                },
-                {
-                  "op": "literal",
-                  "value": {}
-                }
-              ]
+              "op": "ref",
+              "ref": "retain-selected-fields"
             }
-          },
-          "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "",
-            "name": "selected"
-          }
-        }
       }
     }
   }
@@ -26612,108 +25600,8 @@
     "read-chat-stream-metadata": {
       "op": "map",
       "source": {
-        "op": "concat",
-        "items": [
-          {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/metadata"
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "input",
-              "path": "/metadata"
-            },
-            "otherwise": {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "array",
-                  "items": []
-                }
-              },
-              "then": {
-                "op": "array",
-                "items": []
-              },
-              "otherwise": {
-                "op": "omit"
-              }
-            }
-          },
-          {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/response/metadata"
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "input",
-              "path": "/response/metadata"
-            },
-            "otherwise": {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "array",
-                  "items": []
-                }
-              },
-              "then": {
-                "op": "array",
-                "items": []
-              },
-              "otherwise": {
-                "op": "omit"
-              }
-            }
-          },
-          {
-            "op": "if",
-            "when": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/item/metadata"
-              }
-            },
-            "then": {
-              "op": "read",
-              "from": "input",
-              "path": "/item/metadata"
-            },
-            "otherwise": {
-              "op": "if",
-              "when": {
-                "op": "exists",
-                "source": {
-                  "op": "array",
-                  "items": []
-                }
-              },
-              "then": {
-                "op": "array",
-                "items": []
-              },
-              "otherwise": {
-                "op": "omit"
-              }
-            }
-          }
-        ]
+        "op": "ref",
+        "ref": "read-chat-event-metadata"
       },
       "body": {
         "op": "if",
@@ -29377,6 +28265,137 @@
           "path": ""
         }
       }
+    },
+    "retain-selected-fields": {
+      "op": "if",
+      "when": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "name": "selected",
+              "path": ""
+            },
+            {
+              "op": "literal",
+              "value": {}
+            }
+          ]
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "binding",
+        "name": "selected",
+        "path": ""
+      }
+    },
+    "read-chat-event-metadata": {
+      "op": "concat",
+      "items": [
+        {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/metadata"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/metadata"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "then": {
+              "op": "array",
+              "items": []
+            },
+            "otherwise": {
+              "op": "omit"
+            }
+          }
+        },
+        {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/response/metadata"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/response/metadata"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "then": {
+              "op": "array",
+              "items": []
+            },
+            "otherwise": {
+              "op": "omit"
+            }
+          }
+        },
+        {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/item/metadata"
+            }
+          },
+          "then": {
+            "op": "read",
+            "from": "input",
+            "path": "/item/metadata"
+          },
+          "otherwise": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "array",
+                "items": []
+              }
+            },
+            "then": {
+              "op": "array",
+              "items": []
+            },
+            "otherwise": {
+              "op": "omit"
+            }
+          }
+        }
+      ]
     }
   },
   "directions": {
@@ -34280,109 +33299,9 @@
                   "source": {
                     "op": "filter",
                     "source": {
-                      "op": "concat",
-                      "items": [
-                        {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/metadata"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/metadata"
-                          },
-                          "otherwise": {
-                            "op": "if",
-                            "when": {
-                              "op": "exists",
-                              "source": {
-                                "op": "array",
-                                "items": []
-                              }
-                            },
-                            "then": {
-                              "op": "array",
-                              "items": []
-                            },
-                            "otherwise": {
-                              "op": "omit"
-                            }
-                          }
+                          "op": "ref",
+                          "ref": "read-chat-event-metadata"
                         },
-                        {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/response/metadata"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/response/metadata"
-                          },
-                          "otherwise": {
-                            "op": "if",
-                            "when": {
-                              "op": "exists",
-                              "source": {
-                                "op": "array",
-                                "items": []
-                              }
-                            },
-                            "then": {
-                              "op": "array",
-                              "items": []
-                            },
-                            "otherwise": {
-                              "op": "omit"
-                            }
-                          }
-                        },
-                        {
-                          "op": "if",
-                          "when": {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/item/metadata"
-                            }
-                          },
-                          "then": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/item/metadata"
-                          },
-                          "otherwise": {
-                            "op": "if",
-                            "when": {
-                              "op": "exists",
-                              "source": {
-                                "op": "array",
-                                "items": []
-                              }
-                            },
-                            "then": {
-                              "op": "array",
-                              "items": []
-                            },
-                            "otherwise": {
-                              "op": "omit"
-                            }
-                          }
-                        }
-                      ]
-                    },
                     "when": {
                       "op": "any",
                       "items": [
@@ -34426,109 +33345,9 @@
                       {
                         "op": "filter",
                         "source": {
-                          "op": "concat",
-                          "items": [
-                            {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/metadata"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/metadata"
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                "then": {
-                                  "op": "array",
-                                  "items": []
-                                },
-                                "otherwise": {
-                                  "op": "omit"
-                                }
-                              }
+                              "op": "ref",
+                              "ref": "read-chat-event-metadata"
                             },
-                            {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/response/metadata"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/response/metadata"
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                "then": {
-                                  "op": "array",
-                                  "items": []
-                                },
-                                "otherwise": {
-                                  "op": "omit"
-                                }
-                              }
-                            },
-                            {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/item/metadata"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/item/metadata"
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                "then": {
-                                  "op": "array",
-                                  "items": []
-                                },
-                                "otherwise": {
-                                  "op": "omit"
-                                }
-                              }
-                            }
-                          ]
-                        },
                         "when": {
                           "op": "any",
                           "items": [
@@ -34578,109 +33397,9 @@
                       {
                         "op": "filter",
                         "source": {
-                          "op": "concat",
-                          "items": [
-                            {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/metadata"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/metadata"
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                "then": {
-                                  "op": "array",
-                                  "items": []
-                                },
-                                "otherwise": {
-                                  "op": "omit"
-                                }
-                              }
+                              "op": "ref",
+                              "ref": "read-chat-event-metadata"
                             },
-                            {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/response/metadata"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/response/metadata"
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                "then": {
-                                  "op": "array",
-                                  "items": []
-                                },
-                                "otherwise": {
-                                  "op": "omit"
-                                }
-                              }
-                            },
-                            {
-                              "op": "if",
-                              "when": {
-                                "op": "exists",
-                                "source": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/item/metadata"
-                                }
-                              },
-                              "then": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/item/metadata"
-                              },
-                              "otherwise": {
-                                "op": "if",
-                                "when": {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "array",
-                                    "items": []
-                                  }
-                                },
-                                "then": {
-                                  "op": "array",
-                                  "items": []
-                                },
-                                "otherwise": {
-                                  "op": "omit"
-                                }
-                              }
-                            }
-                          ]
-                        },
                         "when": {
                           "op": "any",
                           "items": [

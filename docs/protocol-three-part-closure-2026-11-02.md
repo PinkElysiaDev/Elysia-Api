@@ -340,3 +340,9 @@ Chat `event-layout / 310` 接管多个 message、同类内容块及 message 与�
 | closure-stream-layout-types／lint | 前端类型与编辑器 ESLint 通过 |
 
 原语目录、反射 schema、编辑器帮助及合同说明同步。Chat 两源包装后的原始 JSON token 为 99,097，解码成包结构再序列化为 97,081；配置限额仍为 100,000／64，没有扩容。其他三包源未变。检查记录在忽略目录 checks；没有正式性能结论。其余目标复杂流、最终 wire 文本改写与引用证明、全入口所有权、版本 B／C、生产切换及旧链退役仍未完成。
+
+## 配置空间整理（仍为 dev.127）
+
+Chat 共享 44 处相同的非空字段选择程序和 4 处事件 metadata 汇集程序；Responses 共享跨合同判断、当前 item 来源／Native 捕获、reasoning form 与 between-tools 判断。仅替换完全相同的表达式树，命名程序继续按静态作用域编译复用，不重新展开执行。Chat／Responses 原始整包 token 分别降为 96,909／99,653。
+
+初稿另提取 Responses 的 target-part 文本判断，编译发现最深引用达到 65／64；撤回这一项提取，没有提高深度限额。最终 `closure-stream-shared-programs-depth` 通过两个包编译、正式激活样例及 Chat 复杂流／Native 回归，2.271 秒。mapping 源 SHA256 前缀分别从 `4e13ed6d0c910e1a`／`4a5e566b1015f4de` 变为 `31135c6d43d035dd`／`a5c12f8df3481b07`，需使用新修订证据。没有 Go 执行语义变化，不升级编译器，也不重复未变化的全量检查。

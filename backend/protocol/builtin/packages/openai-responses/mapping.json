@@ -1928,11 +1928,8 @@
       "op": "let",
       "name": "native",
       "source": {
-        "op": "capture_native",
-        "source": {
-          "op": "ref",
-          "ref": "read-current-item"
-        }
+        "op": "ref",
+        "ref": "capture-current-item-native"
       },
       "body": {
         "op": "let",
@@ -1955,11 +1952,8 @@
             "path": "/source"
           },
           "otherwise": {
-            "op": "capture_source",
-            "source": {
-              "op": "ref",
-              "ref": "read-current-item"
-            }
+            "op": "ref",
+            "ref": "capture-current-item-source"
           }
         },
         "body": {
@@ -2053,11 +2047,8 @@
       "op": "let",
       "name": "native",
       "source": {
-        "op": "capture_native",
-        "source": {
-          "op": "ref",
-          "ref": "read-current-item"
-        }
+        "op": "ref",
+        "ref": "capture-current-item-native"
       },
       "body": {
         "op": "object",
@@ -2253,11 +2244,8 @@
             "op": "let",
             "name": "message-source",
             "source": {
-              "op": "capture_source",
-              "source": {
-                "op": "ref",
-                "ref": "read-current-item"
-              }
+              "op": "ref",
+              "ref": "capture-current-item-source"
             },
             "body": {
               "op": "let",
@@ -2402,11 +2390,8 @@
                 "ref": "read-item-status"
               },
               "native": {
-                "op": "capture_native",
-                "source": {
-                  "op": "ref",
-                  "ref": "read-current-item"
-                }
+                "op": "ref",
+                "ref": "capture-current-item-native"
               },
               "resources": {
                 "op": "if",
@@ -2633,11 +2618,8 @@
                 "op": "object",
                 "fields": {
                   "native": {
-                    "op": "capture_native",
-                    "source": {
-                      "op": "ref",
-                      "ref": "read-current-item"
-                    }
+                    "op": "ref",
+                    "ref": "capture-current-item-native"
                   },
                   "cache": {
                     "op": "if",
@@ -8754,17 +8736,8 @@
       "otherwise": {
         "op": "if",
         "when": {
-          "op": "equal",
-          "items": [
-            {
-              "op": "ref",
-              "ref": "reasoning-mode"
-            },
-            {
-              "op": "literal",
-              "value": "between_tools"
-            }
-          ]
+          "op": "ref",
+          "ref": "reasoning-between-tools"
         },
         "then": {
           "op": "ref",
@@ -9440,11 +9413,8 @@
       "op": "let",
       "name": "source",
       "source": {
-        "op": "capture_source",
-        "source": {
-          "op": "ref",
-          "ref": "read-current-item"
-        }
+        "op": "ref",
+        "ref": "capture-current-item-source"
       },
       "body": {
         "op": "object",
@@ -11306,11 +11276,8 @@
       "op": "let",
       "name": "reasoning-origin",
       "source": {
-        "op": "capture_source",
-        "source": {
-          "op": "ref",
-          "ref": "read-current-item"
-        }
+        "op": "ref",
+        "ref": "capture-current-item-source"
       },
       "body": {
         "op": "object",
@@ -13995,13 +13962,8 @@
                 "summary": {
                   "op": "if",
                   "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "binding",
-                      "path": "/node/reasoningForm",
-                      "name": "target-item"
-                    }
+                    "op": "ref",
+                    "ref": "target-has-reasoning-form"
                   },
                   "then": {
                     "op": "map",
@@ -14050,13 +14012,8 @@
                     "op": "all",
                     "items": [
                       {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/node/reasoningForm",
-                          "name": "target-item"
-                        }
+                        "op": "ref",
+                        "ref": "target-has-reasoning-form"
                       },
                       {
                         "op": "any",
@@ -14128,13 +14085,8 @@
                     "when": {
                       "op": "not",
                       "source": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "/node/reasoningForm",
-                          "name": "target-item"
-                        }
+                        "op": "ref",
+                        "ref": "target-has-reasoning-form"
                       }
                     },
                     "then": {
@@ -16622,11 +16574,8 @@
             }
           },
           "native": {
-            "op": "capture_native",
-            "source": {
-              "op": "ref",
-              "ref": "read-current-item"
-            }
+            "op": "ref",
+            "ref": "capture-current-item-native"
           },
           "cache": {
             "op": "ref",
@@ -16726,11 +16675,8 @@
             }
           },
           "native": {
-            "op": "capture_native",
-            "source": {
-              "op": "ref",
-              "ref": "read-current-item"
-            }
+            "op": "ref",
+            "ref": "capture-current-item-native"
           },
           "cache": {
             "op": "ref",
@@ -16807,11 +16753,8 @@
           "path": "/output"
         },
         "native": {
-          "op": "capture_native",
-          "source": {
-            "op": "ref",
-            "ref": "read-current-item"
-          }
+          "op": "ref",
+          "ref": "capture-current-item-native"
         },
         "cache": {
           "op": "ref",
@@ -16893,11 +16836,8 @@
           "path": "/output"
         },
         "native": {
-          "op": "capture_native",
-          "source": {
-            "op": "ref",
-            "ref": "read-current-item"
-          }
+          "op": "ref",
+          "ref": "capture-current-item-native"
         },
         "cache": {
           "op": "ref",
@@ -17350,13 +17290,8 @@
                                     {
                                       "op": "not",
                                       "source": {
-                                        "op": "present",
-                                        "source": {
-                                          "op": "read",
-                                          "from": "binding",
-                                          "path": "/node/reasoningForm",
-                                          "name": "target-item"
-                                        }
+                                        "op": "ref",
+                                        "ref": "target-has-reasoning-form"
                                       }
                                     },
                                     {
@@ -19527,11 +19462,8 @@
           }
         },
         "source": {
-          "op": "capture_source",
-          "source": {
-            "op": "ref",
-            "ref": "read-current-item"
-          }
+          "op": "ref",
+          "ref": "capture-current-item-source"
         }
       }
     },
@@ -19627,11 +19559,8 @@
               }
             },
             "source": {
-              "op": "capture_source",
-              "source": {
-                "op": "ref",
-                "ref": "read-current-item"
-              }
+              "op": "ref",
+              "ref": "capture-current-item-source"
             }
           }
         },
@@ -19686,11 +19615,8 @@
               }
             },
             "source": {
-              "op": "capture_source",
-              "source": {
-                "op": "ref",
-                "ref": "read-current-item"
-              }
+              "op": "ref",
+              "ref": "capture-current-item-source"
             }
           }
         }
@@ -19787,11 +19713,8 @@
               "ref": "read-item-status"
             },
             "source": {
-              "op": "capture_source",
-              "source": {
-                "op": "ref",
-                "ref": "read-current-item"
-              }
+              "op": "ref",
+              "ref": "capture-current-item-source"
             }
           }
         },
@@ -22585,13 +22508,8 @@
               ]
             },
             {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "binding",
-                "path": "/node/reasoningForm",
-                "name": "target-item"
-              }
+              "op": "ref",
+              "ref": "target-has-reasoning-form"
             }
           ]
         }
@@ -25826,6 +25744,49 @@
         "op": "object",
         "fields": {}
       }
+    },
+    "read-cross-wire": {
+      "op": "not",
+      "source": {
+        "op": "ref",
+        "ref": "read-same-wire"
+      }
+    },
+    "capture-current-item-source": {
+      "op": "capture_source",
+      "source": {
+        "op": "ref",
+        "ref": "read-current-item"
+      }
+    },
+    "capture-current-item-native": {
+      "op": "capture_native",
+      "source": {
+        "op": "ref",
+        "ref": "read-current-item"
+      }
+    },
+    "target-has-reasoning-form": {
+      "op": "present",
+      "source": {
+        "op": "read",
+        "from": "binding",
+        "name": "target-item",
+        "path": "/node/reasoningForm"
+      }
+    },
+    "reasoning-between-tools": {
+      "op": "equal",
+      "items": [
+        {
+          "op": "ref",
+          "ref": "reasoning-mode"
+        },
+        {
+          "op": "literal",
+          "value": "between_tools"
+        }
+      ]
     }
   },
   "directions": {
@@ -38182,11 +38143,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38218,11 +38176,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38253,11 +38208,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38289,11 +38241,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38325,11 +38274,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38374,11 +38320,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38424,11 +38367,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -38481,11 +38421,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "equal",
@@ -39015,17 +38952,8 @@
           "op": "all",
           "items": [
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "between_tools"
-                }
-              ]
+              "op": "ref",
+              "ref": "reasoning-between-tools"
             },
             {
               "op": "not",
@@ -39794,11 +39722,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "present",
@@ -39896,11 +39821,8 @@
           "op": "all",
           "items": [
             {
-              "op": "not",
-              "source": {
-                "op": "ref",
-                "ref": "read-same-wire"
-              }
+              "op": "ref",
+              "ref": "read-cross-wire"
             },
             {
               "op": "present",
@@ -40307,17 +40229,8 @@
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "between_tools"
-                }
-              ]
+              "op": "ref",
+              "ref": "reasoning-between-tools"
             },
             {
               "op": "equal",
@@ -40456,17 +40369,8 @@
               }
             },
             {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "ref",
-                  "ref": "reasoning-mode"
-                },
-                {
-                  "op": "literal",
-                  "value": "between_tools"
-                }
-              ]
+              "op": "ref",
+              "ref": "reasoning-between-tools"
             },
             {
               "op": "not",
@@ -45185,11 +45089,8 @@
                 }
               },
               "remove": {
-                "op": "capture_source",
-                "source": {
-                  "op": "ref",
-                  "ref": "read-current-item"
-                }
+                "op": "ref",
+                "ref": "capture-current-item-source"
               }
             }
           }
