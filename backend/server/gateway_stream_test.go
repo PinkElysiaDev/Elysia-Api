@@ -156,9 +156,11 @@ type deliveryCommitWriter struct {
 	flushError error
 	afterFlush func()
 	flushes    int
+	writes     int
 }
 
 func (writer *deliveryCommitWriter) Write(body []byte) (int, error) {
+	writer.writes++
 	if writer.writeError != nil {
 		return 0, writer.writeError
 	}
@@ -185,7 +187,7 @@ func (writer *deliveryCommitWriter) Flush() error {
 
 func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 	compiled := compileSourceStreamPackage(t, outputAwareStreamPackage(t))
-	for _, ending := range []string{"complete", "write-failure", "flush-failure", "cancel-after-flush"} {
+	for _, ending := range []string{"complete", "write-failure", "flush-failure", "cancel-after-flush", "second-write-failure"} {
 		t.Run(ending, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -233,7 +235,7 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 				t.Fatal("native source was not replayed exactly once", frames, err)
 			}
 			err = stream.emit(frames[0])
-			hasDelivered := ending == "complete" || ending == "cancel-after-flush"
+			hasDelivered := ending == "complete" || ending == "cancel-after-flush" || ending == "second-write-failure"
 			if hasDelivered && err != nil || !hasDelivered && !errors.Is(err, transportFailure) {
 				t.Fatal("output transport result changed", err)
 			}
@@ -242,6 +244,16 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			}
 			probe := protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, Type: protocol.OperationFailed, ResponseID: protocol.StringValue("probe"), Sequence: mustProtocolValue(t, "99"), Error: protocol.StringValue("probe")}
 			observed, err := compiled.EncodeEvent(t.Context(), probe, options)
+			if !hasDelivered {
+				if err == nil || validation.CommitDelivery() == nil || validation.Consume(t.Context(), raw) == nil {
+					t.Fatal("failed output retained a usable position or pending commit", observed, err)
+				}
+				writes, flushes := writer.writes, writer.flushes
+				if err := stream.emit(raw); !errors.Is(err, transportFailure) || writer.writes != writes || writer.flushes != flushes {
+					t.Fatal("failed output retried a write or replaced its cause", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -256,6 +268,22 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			}
 			if writer.flushes != wantFlushes {
 				t.Fatal("stream flush boundary changed", writer.flushes)
+			}
+			if ending == "second-write-failure" {
+				probe.ResponseID, probe.Sequence = protocol.StringValue("delivered-id"), mustProtocolValue(t, "42")
+				observed, err = compiled.EncodeEvent(ctx, probe, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writer.writeError = transportFailure
+				if err := stream.emit(observed); !errors.Is(err, transportFailure) || validation.CommitDelivery() == nil {
+					t.Fatal("second output failure advanced delivery", err)
+				}
+				writes := writer.writes
+				if err := stream.emit(observed); !errors.Is(err, transportFailure) || writer.writes != writes || writer.flushes != 1 {
+					t.Fatal("failed second output was sent again", err, writer.flushes)
+				}
+				return
 			}
 			if ending != "complete" {
 				return // An uncertain write/flush is not a reusable stream.

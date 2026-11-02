@@ -38,6 +38,7 @@ type gatewayStream struct {
 	wireValidation     protocol.EvaluationContext
 	finalValidation    *protocol.WireStreamValidation
 	terminalFailure    error
+	deliveryFailure    error
 	isFailureDelivered bool
 	acceptedScratch    []protocol.Event
 }
@@ -103,6 +104,9 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 }
 
 func (stream *gatewayStream) emit(value protocol.Value) error {
+	if stream.deliveryFailure != nil {
+		return stream.deliveryFailure
+	}
 	if stream.record.FirstByteMs == 0 {
 		stream.record.FirstByteMs = time.Since(stream.record.StartedAt).Milliseconds()
 	}
@@ -150,14 +154,14 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 			return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
 		}
 		if err := protocol.WriteFrame(stream.writer, stream.plan.operation, frame); err != nil {
-			return err
+			return stream.abortDelivery(err, deliveryWrite)
 		}
 	}
 	if len(frames) == 0 {
 		return nil
 	}
 	if err := stream.writer.Flush(); err != nil {
-		return err
+		return stream.abortDelivery(err, deliveryFlush)
 	}
 	if stream.plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
 		if err := stream.finalValidation.CommitDelivery(); err != nil {
@@ -168,6 +172,15 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		}
 	}
 	return nil
+}
+
+func (stream *gatewayStream) abortDelivery(err error, phase string) error {
+	stream.deliveryFailure = wrapDownstreamError(err, phase)
+	stream.finalValidation.AbortDelivery()
+	if continuation := stream.candidate.continuation; continuation != nil && continuation.isPackage {
+		continuation.binding.AbortDelivery()
+	}
+	return stream.deliveryFailure
 }
 
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
@@ -357,13 +370,16 @@ func (stream *gatewayStream) finish(err error) error {
 		marker := stream.plan.operation.Framing.Done[0]
 		if stream.plan.operation.Transport == protocol.SSE {
 			if err := eventstream.Write(stream.writer, "", marker); err != nil {
-				return err
+				return stream.abortDelivery(err, deliveryWrite)
 			}
 		} else if _, err := fmt.Fprintln(stream.writer, marker); err != nil {
-			return err
+			return stream.abortDelivery(err, deliveryWrite)
 		}
 	}
-	return stream.writer.Flush()
+	if err := stream.writer.Flush(); err != nil {
+		return stream.abortDelivery(err, deliveryFlush)
+	}
+	return nil
 }
 
 // emitFailureEvent surfaces a late mapping failure after the response headers

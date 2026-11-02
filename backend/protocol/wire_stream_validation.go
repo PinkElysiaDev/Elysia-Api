@@ -27,12 +27,13 @@ type TypedObjectEventModule interface {
 // carrier insertion. Its contract is independent of a user-authored decode
 // mapping that could hide a malformed wire frame.
 type WireStreamValidation struct {
-	compiled      *Compiled
-	direction     Direction
-	packageStream *packageStreamValidation
-	decoder       Module
-	replay        *EventReplay
-	options       EvaluationContext
+	compiled        *Compiled
+	direction       Direction
+	packageStream   *packageStreamValidation
+	decoder         Module
+	replay          *EventReplay
+	options         EvaluationContext
+	deliveryAborted bool
 }
 
 // NewWireStreamValidation checks final event bytes against their output contract.
@@ -104,6 +105,9 @@ func (v *WireStreamValidation) decodeFrame(ctx context.Context, frame Value, opt
 }
 
 func (v *WireStreamValidation) consume(ctx context.Context, frame Value, view *inputView) error {
+	if v.deliveryAborted {
+		return v.compiled.runtimeError(v.direction, operationMetadataError("/delivery", "aborted output cannot accept another frame"))
+	}
 	if v.packageStream != nil {
 		v.packageStream.hasPendingDelivery = false
 	}
@@ -219,6 +223,9 @@ func (v *WireStreamValidation) rejectPackageFrame(err error) error {
 }
 
 func (v *WireStreamValidation) Finish() error {
+	if v.deliveryAborted {
+		return operationMetadataError("/delivery", "aborted output cannot finish successfully")
+	}
 	if v.packageStream != nil {
 		err := v.packageStream.finish()
 		if err != nil {

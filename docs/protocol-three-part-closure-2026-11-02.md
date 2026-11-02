@@ -398,3 +398,13 @@ node scripts/benchmark-performance.mjs --execution=packages --expect-commit=<完
 | closure-response-delivery-ranges-types／lint | 前端类型及编辑器 ESLint 通过 |
 
 这只是批次 1 的连续可构建切片。仍需 `ConsumeTransformed`、SSE 区间预算与交付提交、可信语义事件修改事实、静态 wire 影响路径、Native／交付失败组合、早期错误配置化和全入口所有权。没有正式性能结论，未形成 B，未切换默认或删除旧链。
+
+## 最终闭合交付切片：失败后关闭输出（dev.129）
+
+为后续 SSE 引用提交先闭合已确认的交付缺口：原实现 Write／Flush 失败后未提交位置，但仍保留可提交的暂存状态。现在 wire validator 与认证续传 binding 均有宿主 `AbortDelivery`；失败关闭后拒绝消费、恢复及提交，原成功批次的位置和持久化事实保留。网关记录首次类型化传输失败，后续 emit 不再次写入或 Flush；终止标记和最后一次 Flush 也使用相同边界。没有改变发送粒度，没有引入局部 recover 或失败后重编码。
+
+沿用已有交付测试增加第二批写失败、失败后重复 emit／Commit／Consume 拒绝，并保留 Flush 后取消仍提交的直接断言。核心另验证前一批成功位置不会被后一批失败覆盖；续传复用已有认证夹具，验证第二批失败不覆盖第一批交付或落库事实。首次检查发现既有无续传调用允许 nil binding，补回该既有接口语义；第二批测试最初错误使用了不同 responseId，按真实关联修正夹具后通过，未放宽外部合同。
+
+`closure-delivery-abort-final` 通过组件、Native／重建、断流、storage 和 32 场景网关矩阵：protocol 0.378 秒、builtin 0.799 秒、server 13.616 秒。`closure-delivery-abort-race-final` 通过状态、续传及网关失败检查：protocol 4.092 秒、server 5.728 秒。相关 vet 通过；固定 staticcheck v0.8.2 保留 24 主诊断＋1 关联位置，新增 0、消失 0。此前 dev.128 的全量与前端结果继续复用；前端未变，不重复执行。
+
+本切片不等于批次 2 已全部完成。多输出载体同一 Flush 批次中途失败、慢交付、完整 Native→重建→Native，以及 SSE 区间证明和可信事件修改仍待接通。生产默认、早期错误、旧链、B／C 与性能门槛均未宣称完成。

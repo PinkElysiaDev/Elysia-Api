@@ -48,6 +48,7 @@ type ContinuationBinding struct {
 	resources                             map[string]*SealedContinuation
 	bytes, committed, batchEnd, confirmed int
 	isRendering                           bool
+	deliveryAborted                       bool
 	emitted                               map[string]bool
 	tokenView                             plannedOutput
 }
@@ -67,6 +68,9 @@ func (compiled *Compiled) BindContinuation(direction Direction, source Identity,
 
 // Append adds a sealed entry only to its original source protocol and scope.
 func (binding *ContinuationBinding) Append(state *SealedContinuation) error {
+	if binding.deliveryAborted {
+		return operationMetadataError("/continuation", "aborted carrier output cannot accept another entry")
+	}
 	if state == nil || state.token == "" || state.source != binding.source || state.scope != binding.scope {
 		return operationMetadataError("/continuation", "sealed state belongs to a different source or scope")
 	}
@@ -110,6 +114,9 @@ func (binding *ContinuationBinding) HasPending() bool {
 
 // Finish rejects a successful termination that never delivered its planned carriers.
 func (binding *ContinuationBinding) Finish() error {
+	if binding != nil && binding.deliveryAborted {
+		return operationMetadataError("/continuation", "aborted carrier output cannot finish successfully")
+	}
 	if binding.HasPending() {
 		return operationMetadataError("/continuation", "stream ended before its continuation carriers were delivered")
 	}
@@ -118,6 +125,9 @@ func (binding *ContinuationBinding) Finish() error {
 
 // CommitDelivery consumes one confirmed batch only after the host's writes and flush succeed.
 func (binding *ContinuationBinding) CommitDelivery() error {
+	if binding != nil && binding.deliveryAborted {
+		return operationMetadataError("/continuation", "aborted carrier output cannot commit delivery")
+	}
 	if binding == nil || !binding.isRendering {
 		return nil
 	}
@@ -132,7 +142,20 @@ func (binding *ContinuationBinding) CommitDelivery() error {
 	return nil
 }
 
+// AbortDelivery revokes only the pending client delivery, preserving prior
+// delivery and persistence facts. The failed response cannot render again.
+func (binding *ContinuationBinding) AbortDelivery() {
+	binding.deliveryAborted = true
+	binding.isRendering = false
+	binding.confirmed = 0
+	binding.emitted = nil
+	binding.tokenView = plannedOutput{}
+}
+
 func (binding *ContinuationBinding) check(compiled *Compiled, direction Direction, scope Scope) error {
+	if binding.deliveryAborted {
+		return operationMetadataError("/continuation", "aborted carrier output cannot resume")
+	}
 	if binding.compiled != compiled || binding.direction != direction || binding.scope != scope {
 		return operationMetadataError("/continuation", "carrier plan belongs to another revision, direction or scope")
 	}

@@ -82,6 +82,39 @@ func TestOutputStreamReadsDeliveredWirePosition(t *testing.T) {
 	}
 }
 
+func TestOutputStreamAbortPreservesOnlyCommittedFacts(t *testing.T) {
+	compiled := compilePackageForTest(t, outputPositionPackage(t))
+	validation, err := compiled.NewWireStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := (EvaluationContext{}).WithOutputStream(validation)
+	start := Event{SchemaVersion: ProtocolCoreVersion, Type: ResponseStarted, ResponseID: StringValue("delivered"), Sequence: fixtureValue(t, 0)}
+	wire, err := compiled.EncodeEvent(t.Context(), start, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validation.Consume(t.Context(), wire); err != nil {
+		t.Fatal(err)
+	}
+	if err := validation.CommitDelivery(); err != nil {
+		t.Fatal(err)
+	}
+	committed := validation.packageStream.delivered
+	failed := Event{SchemaVersion: ProtocolCoreVersion, Type: OperationFailed, Error: StringValue("synthetic")}
+	wire, err = compiled.EncodeEvent(t.Context(), failed, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validation.Consume(t.Context(), wire); err != nil {
+		t.Fatal(err)
+	}
+	validation.AbortDelivery()
+	if validation.packageStream.delivered != committed || validation.packageStream.hasPendingDelivery || validation.CommitDelivery() == nil || validation.Consume(t.Context(), wire) == nil || validation.Finish() == nil {
+		t.Fatal("abort rewrote committed facts or retained staged delivery")
+	}
+}
+
 func TestOutputStreamBindingAndLazyReads(t *testing.T) {
 	document := outputPositionPackage(t)
 	compiled := compilePackageForTest(t, document)

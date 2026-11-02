@@ -29,9 +29,23 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 	return nil
 }
 
+// AbortDelivery closes this output after an uncertain Write or Flush. Previously
+// committed positions remain facts; the staged batch can never be committed or
+// resumed. The host keeps the original transport error as the failure cause.
+func (validation *WireStreamValidation) AbortDelivery() {
+	validation.deliveryAborted = true
+	if state := validation.packageStream; state != nil {
+		state.hasPendingDelivery = false
+		state.hasRejectedFrame = true
+	}
+}
+
 func (runtime evaluationRuntime) readOutputStream(field string) (plannedOutput, error) {
 	if runtime.outputStream == nil {
 		return plannedOutput{}, fmt.Errorf("output stream metadata is not bound to this mapping and scope")
+	}
+	if runtime.outputStream.hasRejectedFrame {
+		return plannedOutput{}, operationMetadataError("/delivery", "rejected output cannot resume from a delivery position")
 	}
 	position := runtime.outputStream.delivered
 	switch field {

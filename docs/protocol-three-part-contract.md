@@ -258,3 +258,14 @@ Chat 和 Responses 使用 `utf16_length`，供应商字段及引用索引路径�
 本切片仅接通完整 JSON 响应。`encode_event` 暂不接受该声明，避免配置看似有效却没有运行接线。
 SSE 晚到引用、snapshot、实际交付提交以及语义事件修改事实在后续切片完成；不能据此宣称全部
 文本改写边界或功能完整版本 B 已完成。
+
+## 失败交付关闭（dev.129）
+
+`WireStreamValidation.AbortDelivery` 和 `ContinuationBinding.AbortDelivery` 由宿主在 Write／Flush
+失败时调用，撤销本批待提交状态，关闭后续消费、恢复和提交。已成功提交的前序位置与认证资源
+持久化事实不回滚。网关保留首次传输失败，再次 emit 直接返回同一失败，不再次调用写入或 Flush。
+终止标记的写入及最终 Flush 同样进入这一边界；不增加发送或 Flush 次数。
+
+Flush 成功后先提交交付事实，即使随后观察到取消也不撤销。失败关闭不替代最终检查；调用者
+仍必须按既有顺序验证、发送、Flush、CommitDelivery。源失败、交付失败及后续结算错误继续
+使用各自分类和已有主次因处理。完整多帧载体批次和 Native 接续组合仍待后续验收。

@@ -145,5 +145,24 @@ func TestPackageContinuationDeliveryProof(t *testing.T) {
 		if err != nil || unchanged != wire {
 			t.Fatal("committed carrier was rendered twice", err)
 		}
+		// A later carrier batch must not undo earlier delivery or acquire
+		// delivery from validation when its transport fails.
+		if err := binding.Append(sealed); err != nil {
+			t.Fatal(err)
+		}
+		wire, err = compiled.EncodeContinuationResponse(t.Context(), fixtureValue(t, map[string]string{"reply": "next"}), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := compiled.ValidateContinuationResponse(t.Context(), wire, options); err != nil {
+			t.Fatal(err)
+		}
+		binding.AbortDelivery()
+		if binding.committed != 1 || !sealed.persisted || binding.CommitDelivery() == nil || binding.Finish() == nil || binding.Append(sealed) == nil {
+			t.Fatal("failed carrier batch changed prior facts or remained reusable")
+		}
+		if _, err := compiled.EncodeContinuationResponse(t.Context(), wire, options); err == nil {
+			t.Fatal("failed carrier batch rendered again")
+		}
 	}
 }
