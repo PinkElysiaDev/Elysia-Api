@@ -252,6 +252,9 @@
               },
               "code": "upstream_contract_violation",
               "reason": "response message audio does not match its declared output shape"
+            },
+            {
+              "ref": "response-annotations"
             }
           ]
         }
@@ -674,6 +677,9 @@
                 "code": "conversion_rejected",
                 "stage": "wire.output"
               }
+            },
+            {
+              "ref": "response-annotations"
             }
           ],
           "when": {
@@ -6308,6 +6314,49 @@
           "nullable": true
         },
         "reason": "user must be a string or null"
+      }
+    ],
+    "response-annotations": [
+      {
+        "path": "/message/annotations",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/message/annotations"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "nullable": true
+        },
+        "reason": "message annotations must be an array or null"
+      },
+      {
+        "path": "/message/annotations",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/message/annotations"
+          }
+        },
+        "schema": {
+          "type": "array"
+        },
+        "reason": "message annotations must be an array or null",
+        "each": [
+          {
+            "path": "",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "reason": "annotation must be an object"
+          }
+        ]
       }
     ]
   }

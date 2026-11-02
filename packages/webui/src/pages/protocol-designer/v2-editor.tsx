@@ -515,6 +515,8 @@ export function ProtocolV2Editor({
                     each.select: error 可读取当前错误并更新 message、code、param、details、providerType；分类和终态不可写。
                     aggregate.layout 通过 remainder、fields、labels 声明请求对象拆分；核心路径、成员类型和无覆盖重建在编译时检查。
                     steps.layout 使用 stable_partition、combine_children 或 group_runs 处理请求或完整响应的 /content；group_runs 通过 role 声明相邻根的消息角色，保留叶子及顺序，并明确诊断容器边界变化。
+                    unfold_children 通过 childWhen 展开选中子节点，保留其余内容的消息角色和顺序。
+                    merge_text 处理 /content/*/children；text.measure 声明长度口径（如 utf16_length），offsetBinding、lengthBinding 为 metadata 表达式提供原文偏移，across 显式允许跨越未选中节点。
                   </p>
                 )}
                 <label className="block space-y-1.5 text-xs font-medium text-foreground">

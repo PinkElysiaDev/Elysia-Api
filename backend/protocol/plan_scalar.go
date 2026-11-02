@@ -179,6 +179,12 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 		}
 		value, err := castValue(source.output.value, expression.to)
 		return plannedLeaf(value), err
+	case "utf16_length":
+		text, err := readComparisonText(source.output)
+		if err != nil {
+			return plannedOutput{}, err
+		}
+		return plannedLeaf(coreInteger(int64(utf16TextLength(text)))), nil
 	case "enum":
 		key, err := readPlannedString(source.output)
 		if err != nil {

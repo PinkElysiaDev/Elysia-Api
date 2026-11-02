@@ -9,7 +9,10 @@ import (
 func TestChatPackageChoiceMetadataWithoutNative(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "openai-chat")
 	for _, raw := range []string{
-		`{"id":"r","created":1,"model":"m","choices":[{"index":2,"message":{"role":"assistant","content":"first"},"finish_reason":"stop","logprobs":{"content":[{"token":"first","logprob":-1}]},"native_finish_reason":"provider_stop","vendor_choice":{"n":9007199254740993}},{"index":4,"message":{"role":"assistant","content":null,"refusal":"denied"},"finish_reason":"length","logprobs":{"refusal":[{"token":"denied","logprob":-2}]},"native_finish_reason":null,"vendor_choice":"two"}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"","annotations":[],"tool_calls":[{"id":"call","type":"function","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":null,"annotations":null},"finish_reason":"stop"}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"first","annotations":[{"type":"url_citation","url_citation":{"url":"https://example.test","title":"reference","start_index":0,"end_index":5}}]},"finish_reason":"stop"}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":2,"message":{"role":"assistant","content":"first"},"finish_reason":"stop","logprobs":{"content":[{"token":"first","logprob":-1}]},"native_finish_reason":"provider_stop","vendor_choice":{"n":9007199254740993}},{"index":4,"message":{"role":"assistant","content":null,"refusal":"denied","annotations":null},"finish_reason":"length","logprobs":{"refusal":[{"token":"denied","logprob":-2}]},"native_finish_reason":null,"vendor_choice":"two"}]}`,
 		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop","logprobs":{"content":[{"token":"OK","logprob":-1}],"future":{"n":9007199254740993}}}]}`,
 	} {
 		response, err := compiled.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})

@@ -1,4 +1,4 @@
-# DSL 能力状态（dev.124）
+# DSL 能力状态（dev.125）
 
 本表替代 dev.100／101 的过期迁移状态；旧调查可从 Git 历史读取。最新实施记录见[剩余闭合记录](protocol-three-part-closure-2026-11-02.md)。本轮从 a20f63ce 继续；四包已可独立编译和执行，但默认生产加载器仍为旧定义。
 
@@ -10,7 +10,7 @@
 | 签名／加密续传 | 来源资源及 Scope；宿主认证证明 | dev.109 continuation、恢复规则、实际两轮与载体交付 | 多段 reasoning 与一般布局 |
 | 工具选项 | Spec strict／streaming；Tool.Options | dev.110 tool-options／145；Agent 实际出站 | 不扩大不支持的工具 API |
 | 工具结果 | Spec 内容块／对象；ToolResult payload／children／status，具名 result_envelope | dev.111 tool-results／150；dev.122 混合包络与扩展重建，四目标真实 JSON／SSE、Agent 两轮 | 一般混合布局及复杂媒体组合 |
-| 历史与多根输出 | 已有消息父容器、关联及 reasoning 集合 | dev.121 指令布局；dev.123 Anthropic 相邻助手历史；dev.124 Anthropic／Gemini JSON 多根分组与单候选边界，真实网关和严格／禁用回归 | Chat 混合历史／多根响应、复杂 SSE 多段 reasoning、文本与引用偏移 |
+| 历史与多根输出 | 消息父容器、关联、reasoning 集合和 UTF-16 文本位置 | dev.121 指令布局；dev.123 Anthropic 相邻助手历史；dev.124 Anthropic／Gemini JSON 多根；dev.125 Chat 混合历史、多根文本与引用／logprobs 聚合，真实网关和严格／禁用回归 | 复杂 SSE 多段 reasoning、跨 item 引用位置和原生／重建接续 |
 | 缓存 | CacheIntent 与资源 Scope；cache_intents 通用执行 | dev.118 四份目标显式处置；dev.120 默认缓存对象聚合证明、Native 编辑与重建 | 一般布局与复杂缓存组合；不扩大未声明策略 |
 | metadata／错误 | Spec 外部类型；核心通用载体与 logprobs 约束 | dev.114 处置前类型检查；dev.117 output_text；dev.119 受限错误选择、已知细节目标处置和真实 HTTP 失败 | 未声明错误扩展继续拒绝；缓存／布局中的附属字段归属 |
 | 请求外部字段与目标规则 | Spec safety／上下文／追踪合同；参数及 reasoning 叶子 | dev.112 显式默认规则；dev.113／115 通用有限值与字段投影；dev.116 外部合同；dev.120 按核心声明类型编译对象聚合 | 动态数组成员聚合及一般布局仍有能力边界 |

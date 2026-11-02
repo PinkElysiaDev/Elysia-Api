@@ -56,6 +56,19 @@ func TestContentLayoutCompileBoundary(t *testing.T) {
 			layout.Operation = "combine_children"
 			layout.Steps = []ProtocolControlStep{{Set: map[string]Expression{"/role": literalExpression("user")}}}
 		}},
+		{"unfold-child-selection", ConversionRequest, func(layout *ProtocolContentLayout) {
+			layout.Operation = "unfold_children"
+		}},
+		{"text-boundary", ConversionResponse, func(layout *ProtocolContentLayout) {
+			layout.Operation, layout.Path = "merge_text", "/content/*/children"
+			layout.Text = &ProtocolTextLayout{Measure: literalExpression(0)}
+		}},
+		{"text-selection-offset", ConversionResponse, func(layout *ProtocolContentLayout) {
+			layout.Operation, layout.Path = "merge_text", "/content/*/children"
+			layout.When = Expression{Op: "equal", Items: []Expression{{Op: "read", From: "binding", Name: "offset"}, literalExpression(0)}}
+			layout.Text = &ProtocolTextLayout{Measure: literalExpression(0), OffsetBinding: "offset"}
+			layout.Steps = []ProtocolControlStep{{Diagnostic: &ProtocolControlDiagnostic{Kind: "degrade", Reason: literalExpression("merge boundaries")}}}
+		}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			document := eventProtocolPackage(t)

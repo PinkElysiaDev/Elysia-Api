@@ -233,7 +233,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						ingress := packages[ingressName]
 						path := strings.ReplaceAll(ingress.Operations()[operationName].Path, "{model}", "group")
 						body := buildPackageGatewayRequest(ingressName, isStream)
-						expectsMultipleRoots.Store(upstreamName == "openai-responses" && (ingressName == "anthropic" || ingressName == "google-generate-content"))
+						expectsMultipleRoots.Store(upstreamName == "openai-responses" && (ingressName == "openai-chat" || ingressName == "anthropic" || ingressName == "google-generate-content"))
 						hasInstructions := ingressName == "openai-chat" && (upstreamName == "anthropic" || upstreamName == "google-generate-content")
 						expectsInstructions.Store(hasInstructions)
 						if hasInstructions {

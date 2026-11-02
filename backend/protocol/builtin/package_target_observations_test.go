@@ -21,14 +21,23 @@ func TestChatPackageBareHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	policy := declaredRulePolicy(t, compiled, compiled, "assistant-history", "compatible")
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := compiled.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := compiled.ValidateWireOutput(p.EncodeRequest, testValue(t, string(wire))); err != nil {
 		t.Fatal(err)
 	}
-	sameJSON(t, wire, `{"model":"m","messages":[{"role":"user","content":"hi"},{"role":"assistant","tool_calls":[{"type":"function","id":"c","function":{"name":"lookup","arguments":"{\"n\":9007199254740993}"}}]},{"role":"tool","tool_call_id":"c","content":"ok"},{"role":"assistant","content":"answer"},{"role":"assistant","content":[{"type":"text","text":"last"}],"reasoning_content":"think"}]}`)
+	sameJSON(t, wire, `{"model":"m","messages":[{"role":"user","content":"hi"},{"role":"assistant","tool_calls":[{"type":"function","id":"c","function":{"name":"lookup","arguments":"{\"n\":9007199254740993}"}}]},{"role":"tool","tool_call_id":"c","content":"ok"},{"role":"assistant","content":[{"type":"text","text":"answer"},{"type":"text","text":"last"}],"reasoning_content":"think"}]}`)
 	after, err := p.EncodeValue(request)
 	if err != nil || before != after {
 		t.Fatal("grouping changed its source", err)

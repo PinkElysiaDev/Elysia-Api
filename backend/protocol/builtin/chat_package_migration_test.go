@@ -191,7 +191,13 @@ func checkChatCacheUsage(t *testing.T, legacy, draft *p.Compiled) {
 }
 
 func TestChatPackageResponseGroups(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
+	draft := compileBuiltinPackage(t, "openai-chat")
+	policy := declaredRulePolicy(t, draft, draft, "response-layout", "compatible")
+	policy.Rules = append(policy.Rules, declaredRulePolicy(t, draft, draft, "response-text", "compatible").Rules...)
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
 	text := p.Node{Kind: p.TextNode, Payload: p.StringValue("text")}
 	message := p.Node{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{text}}
 	annotated := message
@@ -203,33 +209,41 @@ func TestChatPackageResponseGroups(t *testing.T) {
 		name       string
 		content    []p.Node
 		isRejected bool
+		choices    string
 	}{
-		{"empty", nil, false},
-		{"standalone", []p.Node{text}, false},
-		{"messages", []p.Node{message, message}, false},
-		{"mixed", []p.Node{message, {Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}, false},
-		{"choices", []p.Node{firstChoice, secondChoice}, false},
-		{"annotated-message", []p.Node{annotated, text}, true},
+		{"empty", nil, false, `[{"finish_reason":"stop","index":0,"message":{"role":"assistant"}}]`},
+		{"standalone", []p.Node{text}, false, `[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"text"}}]`},
+		{"messages", []p.Node{message, message}, false, `[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"texttext"}}]`},
+		{"mixed", []p.Node{message, {Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}, false, `[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"text","tool_calls":[{"type":"function","id":"c","function":{"name":"lookup","arguments":"{\"n\":9007199254740993}"}}]}}]`},
+		{"choices", []p.Node{firstChoice, secondChoice}, false, `[{"finish_reason":"length","index":3,"message":{"role":"assistant","content":"text"}},{"finish_reason":"stop","index":7,"message":{"role":"assistant","content":"text"}}]`},
+		{"annotated-message", []p.Node{annotated, text}, true, ""},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			response := &p.Response{SchemaVersion: legacy.CoreVersion(), ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed"), Content: fixture.content, Attributes: p.Object{"finishReason": p.StringValue("stop")}}
-			want, oldErr := legacy.EncodeResponse(t.Context(), response, p.EvaluationContext{})
-			response.SchemaVersion = draft.CoreVersion()
-			got, newErr := draft.EncodeResponse(t.Context(), response, p.EvaluationContext{})
-			if !fixture.isRejected {
-				if oldErr != nil || newErr != nil || !bytes.Equal(want, got) {
-					t.Fatalf("response grouping changed: old=%s new=%s errors=%v / %v", want, got, oldErr, newErr)
+			response := &p.Response{SchemaVersion: draft.CoreVersion(), ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed"), Content: fixture.content, Attributes: p.Object{"finishReason": p.StringValue("stop"), "created_at": testValue(t, "1")}}
+			projected, err := conversion.Response(t.Context(), response, p.ConversionContext{Source: draft.Identity(), Target: draft.Identity()}, nil)
+			if fixture.isRejected {
+				var failure *p.ConversionError
+				if !errors.As(err, &failure) || failure.Issues[0].Code != p.UnsupportedCapability {
+					t.Fatal("independent container identity was discarded", err)
 				}
 				return
 			}
-			var before, after *p.ConversionError
-			if !errors.As(oldErr, &before) || !errors.As(newErr, &after) || len(before.Issues) != 1 || len(after.Issues) != 1 {
-				t.Fatal("annotated output was silently combined", oldErr, newErr)
+			if err != nil {
+				t.Fatal(err)
 			}
-			left, right := before.Issues[0], after.Issues[0]
-			if left.Code != right.Code || left.Path != right.Path || left.Stage != right.Stage || left.Reason != right.Reason {
-				t.Fatal("grouping rejection lost its classification", left, right)
+			wire, err := draft.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
 			}
+			value := testValue(t, string(wire))
+			if err := draft.ValidateWireOutput(p.EncodeResponse, value); err != nil {
+				t.Fatal(err)
+			}
+			fields, err := value.ReadObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			sameJSON(t, fields["choices"].Bytes(), fixture.choices)
 		})
 	}
 }

@@ -8,17 +8,18 @@ import (
 	"strconv"
 )
 
-// ProtocolContentLayout rearranges existing root nodes without replacing their
-// payloads or granting provenance. Combining children requires plain containers;
-// local steps may change the selected role.
+// ProtocolContentLayout rearranges roots or merges selected message text.
+// Container operations preserve leaf payloads and never grant provenance.
 type ProtocolContentLayout struct {
-	Operation    string                `json:"operation" jsonschema:"enum=stable_partition,enum=combine_children,enum=group_runs"`
-	Path         string                `json:"path" jsonschema:"enum=/content"`
+	Operation    string                `json:"operation" jsonschema:"enum=stable_partition,enum=combine_children,enum=group_runs,enum=merge_text,enum=unfold_children"`
+	Path         string                `json:"path" jsonschema:"enum=/content,enum=/content/*/children"`
 	Role         string                `json:"role,omitempty"`
 	When         Expression            `json:"when"`
 	PathBinding  string                `json:"pathBinding,omitempty"`
 	MovedBinding string                `json:"movedBinding,omitempty"`
 	Steps        []ProtocolControlStep `json:"steps,omitempty"`
+	Text         *ProtocolTextLayout   `json:"text,omitempty"`
+	ChildWhen    *Expression           `json:"childWhen,omitempty"`
 }
 
 type compiledContentLayout struct {
@@ -28,14 +29,25 @@ type compiledContentLayout struct {
 	steps               []compiledControlStep
 	pathSlot, movedSlot int
 	bindingSlots        int
+	text                *compiledTextLayout
+	childWhen           *compiledOutputPlan
 }
 
 func compileContentLayout(declaration ProtocolContentLayout, compiler *expressionCompiler, path string, outer controlCompileScope, count *int) (*compiledContentLayout, error) {
-	if !slices.Contains([]string{"stable_partition", "combine_children", "group_runs"}, declaration.Operation) || declaration.Path != "/content" || outer.whole != reflect.TypeFor[Request]() && outer.whole != reflect.TypeFor[Response]() {
+	if declaration.Operation == "merge_text" {
+		return compileTextLayout(declaration, compiler, path, outer, count)
+	}
+	if declaration.Text != nil {
+		return nil, fmt.Errorf("%s/text: only merge_text accepts text options", path)
+	}
+	if !slices.Contains([]string{"stable_partition", "combine_children", "group_runs", "unfold_children"}, declaration.Operation) || declaration.Path != "/content" || outer.whole != reflect.TypeFor[Request]() && outer.whole != reflect.TypeFor[Response]() {
 		return nil, fmt.Errorf("%s: content layout requires request or complete response content", path)
 	}
 	if (declaration.Operation == "group_runs") != (declaration.Role != "") {
 		return nil, fmt.Errorf("%s/role: only group_runs requires a container role", path)
+	}
+	if (declaration.Operation == "unfold_children") != (declaration.ChildWhen != nil) {
+		return nil, fmt.Errorf("%s/childWhen: only unfold_children requires a child selector", path)
 	}
 	local := controlCompileScope{whole: outer.whole, isLayout: true, expression: outer.expression}
 	local.expression.coreRoot, local.expression.coreInput = outer.whole, reflect.TypeFor[Node]()
@@ -44,30 +56,13 @@ func compileContentLayout(declaration ProtocolContentLayout, compiler *expressio
 	if declaration.Role != "" {
 		plan.role = StringValue(declaration.Role)
 	}
-	local.expression.bindings = maps.Clone(outer.expression.bindings)
-	if local.expression.bindings == nil {
-		local.expression.bindings = make(map[string]expressionBinding)
-	}
-	for _, binding := range []struct {
-		name string
-		kind JSONType
-		slot *int
-	}{{declaration.PathBinding, StringType, &plan.pathSlot}, {declaration.MovedBinding, BooleanType, &plan.movedSlot}} {
-		if binding.name == "" {
-			continue
-		}
-		if !definitionIdentifier.MatchString(binding.name) {
-			return nil, fmt.Errorf("%s: layout bindings require identifiers", path)
-		}
-		if _, exists := local.expression.bindings[binding.name]; exists {
-			return nil, fmt.Errorf("%s: layout binding %s is already declared", path, binding.name)
-		}
-		*binding.slot = local.expression.bindingDepth
-		local.expression.bindingDepth++
-		local.expression.bindings[binding.name] = expressionBinding{slot: *binding.slot, result: binding.kind}
+	if err := bindLayoutVariables(&local.expression, path, []layoutBinding{
+		{declaration.PathBinding, StringType, &plan.pathSlot}, {declaration.MovedBinding, BooleanType, &plan.movedSlot},
+	}); err != nil {
+		return nil, err
 	}
 	var err error
-	if declaration.Operation == "combine_children" || declaration.Operation == "group_runs" {
+	if declaration.Operation == "combine_children" || declaration.Operation == "group_runs" || declaration.Operation == "unfold_children" {
 		if len(declaration.Steps) == 0 || declaration.Steps[0].When != nil || declaration.Steps[0].Diagnostic == nil || (declaration.Steps[0].Diagnostic.Kind != "degrade" && declaration.Steps[0].Diagnostic.Kind != "reject") {
 			return nil, fmt.Errorf("%s/steps: container layout requires an unconditional boundary-loss diagnostic first", path)
 		}
@@ -85,8 +80,49 @@ func compileContentLayout(declaration ProtocolContentLayout, compiler *expressio
 		return nil, fmt.Errorf("%s/when: layout selection must produce a boolean", path)
 	}
 	plan.steps, err = compileScopedControlSteps(declaration.Steps, compiler, path+"/steps", false, local, count)
+	if err != nil {
+		return nil, err
+	}
 	plan.bindingSlots = max(local.expression.bindingDepth, plan.when.bindingSlots, controlBindingSlots(plan.steps))
+	if declaration.ChildWhen != nil {
+		plan.childWhen, err = compiler.compilePlan(*declaration.ChildWhen, path+"/childWhen", local.expression, 1)
+		if err != nil {
+			return nil, err
+		}
+		if !isAssignable(plan.childWhen.expression.result, BooleanType) {
+			return nil, fmt.Errorf("%s/childWhen: child selection must produce a boolean", path)
+		}
+		plan.bindingSlots = max(plan.bindingSlots, plan.childWhen.bindingSlots)
+	}
 	return plan, err
+}
+
+type layoutBinding struct {
+	name string
+	kind JSONType
+	slot *int
+}
+
+func bindLayoutVariables(scope *expressionScope, path string, bindings []layoutBinding) error {
+	scope.bindings = maps.Clone(scope.bindings)
+	if scope.bindings == nil {
+		scope.bindings = make(map[string]expressionBinding)
+	}
+	for _, binding := range bindings {
+		if binding.name == "" {
+			continue
+		}
+		if !definitionIdentifier.MatchString(binding.name) {
+			return fmt.Errorf("%s: layout bindings require identifiers", path)
+		}
+		if _, exists := scope.bindings[binding.name]; exists {
+			return fmt.Errorf("%s: layout binding %s is already declared", path, binding.name)
+		}
+		*binding.slot = scope.bindingDepth
+		scope.bindingDepth++
+		scope.bindings[binding.name] = expressionBinding{slot: *binding.slot, result: binding.kind}
+	}
+	return nil
 }
 
 func (plan *compiledContentLayout) apply(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, owner *coreControlOptions) (bool, error) {
@@ -100,8 +136,14 @@ func (plan *compiledContentLayout) apply(state evaluation, conversion *CompiledC
 	default:
 		panic("compiled content layout received a different core type")
 	}
+	if plan.text != nil {
+		return plan.mergeText(state, conversion, content, native, route, rule, sink, owner)
+	}
 	if plan.operation == "group_runs" {
 		return plan.groupRuns(state, conversion, content, native, route, rule, sink, owner)
+	}
+	if plan.operation == "unfold_children" {
+		return plan.unfoldChildren(state, conversion, content, native, route, rule, sink, owner)
 	}
 	input := *content
 	var selected []bool

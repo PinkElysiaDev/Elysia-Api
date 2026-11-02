@@ -265,10 +265,32 @@ Gemini Spec 新增 single-candidate 具名约束，同时检查来源与最终�
 
 token：Anthropic 95,920、Gemini 77,634、Chat 99,569、Responses 99,841，限额保持。前端本批未变。复杂 SSE、Chat 多根／混合布局、UTF-16、全部入口所有权与 A/B/C 性能仍待完成，未切换生产默认。
 
-## ???? 0?dev.124 ????????
+## 新计划批次 0：dev.124 恢复点与配置复用
 
-dev.124 ?????????????????? Windows amd64 ????????????? dev124????? SHA256????? A ??????????????? b2844846 / dev.101?????????? B ??????
+dev.124 源码、四包、已有检查和匹配的 Windows amd64 可运行产物归档在忽略目录 dev124，清单保存 SHA256。性能参考 A 的六目标哈希重新核验通过，仍为 b2844846 / dev.101；恢复点不替代 A，也不是功能完整版本 B。
 
-Chat ???????????????? reasoning ??????????????????Responses ???? item ?????????????????????????????????? relay ? builtin.Modules ???server ??????? storage ?????????????????????
+Chat 提取重复响应身份、终态批次、reasoning 模式和模型能力程序；Responses 共享目标 item 扩展程序。命名程序保持编译复用，未提高配置限额。生产调用关系仍为 relay 注册 builtin.Modules、server 加载旧默认定义和 storage 预置修复；独立新包尚未替代这些入口。
 
-closure-dev124-build-final ?????closure-dev124-shared-programs-final ????????????????3.044 ????????????????????????
+closure-dev124-build-final 构建通过；closure-dev124-shared-programs-final 两个受影响包的编译和正式激活样例通过，3.044 秒。仅配置整理，编译器版本未递增。
+
+## 新计划批次 1：Chat 文本、引用与混合历史（dev.125）
+
+受限布局新增 merge_text 和 unfold_children。前者只处理 message.children，预先计量后一次分配拼接；无命中和单节点不复制正文。后者按声明展开工具结果，保留其余连续内容的角色和顺序。容器身份、状态、资源、缓存、未知属性和未声明 metadata 不默认取第一项或丢弃。utf16_length 直接遍历字符串，引用偏移使用累计长度，不创建 rune／UTF-16 数组或重复拼接前缀。编译绑定作用域、写权限和上下文依赖；新增能力已进入默认配置、schema、操作文档和编辑器帮助。
+
+Chat Mapping 明确声明 tool-result-history／235、assistant-history／240、history-text／250，以及 response-layout／240、response-text／250；它们在 metadata、资源和形状处置后运行。删除编码器的隐式分组、flatten、reasoning 文本 join 和首个 refusal 选择。JSON 多候选保持独立，空响应仍输出一个空 assistant choice。多块正文输出字符串；同类 reasoning／refusal 独立合并。annotations 的来源位置、null／空数组、文本及消息所有者均进入核心，引用按 UTF-16 累计偏移，logprobs 保持所属通道与顺序。实际块边界损失由规则诊断，严格或禁用相应规则时拒绝；删除根 Native 后仍可重建。
+
+已有真实网关矩阵的 Responses→Chat JSON 使用两个消息根 h／i，客户端完整消费 hi。工具历史夹具增加相邻助手文本／调用及 user 容器中的结果／文本，实际模拟上游断言三条消息、关联及恰好一次调用。组件补充 emoji 引用、logprobs、空内容、多候选、输入隔离与未处理资源拒绝。原先要求隐式分组或非法响应数组的测试改为显式运行目标规则和手写合法预期；没有刷新快照或放宽关联断言。
+
+| 检查 | 结果 |
+|---|---|
+| closure-chat-layout-all-final | protocol 全量 3.258 秒、builtin 全量 54.690 秒，通过 |
+| closure-chat-layout-contracts | 正式合同及真实网关／工具／Agent 续轮通过，server 82.578 秒 |
+| closure-chat-layout-race-final | 最终源码 protocol 4.277 秒、builtin 16.693 秒、server 406.267 秒，通过，无竞争报告 |
+| closure-chat-layout-evidence-final | 最后配置共享与顺序调整后的 Chat 正式激活证据通过，1.143 秒 |
+| closure-chat-layout-vet | protocol 全树及 server 通过 |
+| closure-chat-layout-staticcheck | 固定 v0.8.2：24 主诊断及 1 关联位置，与 dev.124 去行列后的多重集相同；退出 1 |
+| closure-chat-layout-types／lint | 本地前端类型和编辑器 ESLint 通过 |
+
+初次 server race 使用 2 核／1GiB 时在组合验证中达到默认 10 分钟超时；日志保留，不列为通过。最终按常规 4 核／2GiB、20 分钟超时运行通过，没有修改 DSL 资源上限。全量测试后的调整由最终相关 race 和正式证据复核。上述耗时均为功能检查，不作为正式性能结论。
+
+Chat 继续共享真实重复的 metadata 聚合程序，整包 token 为 98,724；Responses 为 99,815，Anthropic 95,920，Gemini 77,634。100,000 token／64 depth 限额不变。已修正上一条恢复点记录的文本编码损坏。复杂 SSE 的跨 item 位置及 Native 接续、全入口所有权、版本 B／C、正式性能和旧链退役仍未完成，生产默认尚未切换。

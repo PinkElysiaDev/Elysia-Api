@@ -276,8 +276,19 @@ func controlsReadContext(steps []compiledControlStep) bool {
 		return false
 	}
 	for _, step := range steps {
-		if step.layout != nil && (reads(step.layout.when) || controlsReadContext(step.layout.steps)) {
+		if step.layout != nil && (reads(step.layout.when) || reads(step.layout.childWhen) || controlsReadContext(step.layout.steps)) {
 			return true
+		}
+		if step.layout != nil && step.layout.text != nil {
+			text := step.layout.text
+			if reads(text.messageWhen) || reads(text.measure) {
+				return true
+			}
+			for _, program := range text.metadata {
+				if reads(program) {
+					return true
+				}
+			}
 		}
 		if step.each != nil && controlsReadContext(step.each.steps) {
 			return true

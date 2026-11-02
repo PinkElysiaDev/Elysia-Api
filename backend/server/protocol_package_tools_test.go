@@ -58,7 +58,7 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 				}
 				switch name {
 				case "openai-chat":
-					if len(wire.Messages) != 2 || wire.Messages[1].Role != "tool" || !wire.Messages[1].Content.IsString("[Tool error] result-body") || wire.Messages[1].CallID != "call" {
+					if len(wire.Messages) != 3 || wire.Messages[1].Role != "tool" || !wire.Messages[1].Content.IsString("[Tool error] result-body") || wire.Messages[1].CallID != "call" || wire.Messages[2].Role != "user" || !wire.Messages[2].Content.IsString("continue") {
 						t.Error("wrong Chat result", string(body))
 					}
 				case "openai-responses":
@@ -109,6 +109,9 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 				}
 				t.Run(operation, func(t *testing.T) {
 					body := fmt.Sprintf(`{"model":"group","max_tokens":32,"stream":%t,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call","content":"result-body","is_error":true}]}]}`, isStream)
+					if name == "openai-chat" {
+						body = fmt.Sprintf(`{"model":"group","max_tokens":32,"stream":%t,"messages":[{"role":"assistant","content":[{"type":"text","text":"before tool"}]},{"role":"assistant","content":[{"type":"tool_use","id":"call","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call","content":"result-body","is_error":true},{"type":"text","text":"continue"}]}]}`, isStream)
+					}
 					if name == "anthropic" {
 						body = `{"contents":[{"role":"model","parts":[{"text":"plan","thought":true},{"text":"before tool"}]},{"role":"model","parts":[{"functionCall":{"id":"call","name":"f","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"call","name":"f","response":{"error":{"message":"partial"},"output":{"value":1},"trace":null}}}]}],"generationConfig":{"maxOutputTokens":32}}`
 					}

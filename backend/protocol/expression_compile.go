@@ -631,7 +631,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail(expression.op + " requires a literal string and a string source")
 		}
 		expression.literalText = text
-	case "lower", "quote_string", "has_control":
+	case "lower", "quote_string", "has_control", "utf16_length":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " source must produce a string")
 		}

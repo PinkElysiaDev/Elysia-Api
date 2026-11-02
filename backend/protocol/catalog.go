@@ -39,6 +39,7 @@ var expressionOperations = []OperationInfo{
 	{"check_fields", []string{"source", "keys", "prefixes", "policy", "onUnknown"}, []string{"source", "keys", "policy", "onUnknown"}, ObjectType, "Keep an object unchanged after checking its declared member names and prefixes; reject the first unknown member or its first object leaf using a static diagnostic base."},
 	{"array", []string{"items"}, nil, ArrayType, "Construct an ordered array."},
 	{"length", []string{"source"}, []string{"source"}, IntegerType, "Count array members without encoding them; missing, null and non-array values are errors."},
+	{"utf16_length", []string{"source"}, []string{"source"}, IntegerType, "Count UTF-16 code units in a string without constructing a character array."},
 	{"map", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map each array element in original order."},
 	{"walk", []string{"source", "body"}, []string{"source", "body"}, ArrayType, "Map an array with a bounded recursive body; recurse only through explicitly selected child arrays."},
 	{"visit", []string{"source", "body"}, []string{"source", "body"}, AnyType, "Apply a bounded recursive body to one selected value at its original location; recur selects child arrays explicitly."},

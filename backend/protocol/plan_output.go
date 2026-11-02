@@ -57,7 +57,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	switch expression.op {
 	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "forget", "index_size", "index", "capture_native", "capture_source", "is_carrier", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "merge_usage", "check_usage", "check_links", "resolve_item", "track_text", "track_array", "json_digest", "track_tool", "buffer_text", "buffer_array", "read_delivered_item", "resume_text", "resume_tool", "pointer_join", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
-		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs":
+		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs", "utf16_length":
 	default:
 		return nil, false
 	}
@@ -282,7 +282,7 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		return plan.buildKeyedArray(state)
 	case "parse_json", "stringify_json":
 		return plan.buildJSONScalar(state)
-	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains", "has_control":
+	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains", "has_control", "utf16_length":
 		return plan.buildScalar(state)
 	case "type", "is_integer":
 		return plan.buildTypeQuery(state)

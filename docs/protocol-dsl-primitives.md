@@ -426,3 +426,32 @@ group_runs 为每段相邻选中根构造 role 声明的 message 容器。选中
 无移动时不分配结果切片。结构变化清除根 Native，只有实际更新的容器清除自身 Native，
 叶子的资源和来源保留。多个根的 children 合并仅复制节点切片。规则需在 Mapping 中声明角色、作用位置及边界变化的诊断；DSL
 不识别 system、developer 或供应商。默认 Anthropic／Gemini 已使用此操作。
+
+## 消息内容展开与文本合并
+
+unfold_children 作用于 /content，when 选择消息，childWhen 选择需要成为根的子节点。
+选中子节点按顺序展开；相邻未选中子节点保留在原角色的消息中，不跨其他根。
+没有选中子节点时不修改输入；真正展开时要求普通容器，身份、metadata、缓存、资源或
+未知属性须先由明确规则处理。steps 首项必须声明无条件边界损失诊断，不能更新字段。
+Chat tool-result-history 使用它将混合用户历史中的工具结果拆为独立消息。
+
+merge_text 只作用于请求或完整响应的 /content/*/children。text.messageWhen 可选择消息；
+when 选择其子节点，选中的同类 text、refusal 或无附属状态的 reasoning 叶子合成一个载荷。
+结果占据首个选中节点的位置；其他节点相对顺序不变。默认不允许跨越未选中节点，
+text.across:true 明确允许交错布局变化；steps 声明损失，严格模式拒绝。
+
+text.measure 是非负整数表达式，定义当前位置计量口径。utf16_length(source) 统计 JSON
+字符串的 UTF-16 code unit 数，空字符串为零，补充平面字符占两个单位，不构造字符数组。
+measure 不读取偏移绑定；offsetBinding、lengthBinding 只提供给诊断及 metadata 处置，
+分别表示当前片段在合并文本中的起点和长度。长度不能超过原文 UTF-8 字节数的两倍。
+pathBinding 保留原核心位置。messageWhen、when、measure 不读取偏移绑定，避免选择结果
+依赖尚未进行的合并。
+
+text.metadata 按已声明名称选择表达式，input 是原 metadata，root 仍为完整核心对象。
+表达式仅改变 Value，不能伪造来源或资源；未声明条目及隐式 omit 拒绝。条目按原顺序保留，
+目标编码按声明聚合它们。引用字段结构和偏移运算由 Mapping 给出，Go 不识别引用字段名。
+
+无命中或单块不读取、拼接正文，不产生合并诊断；只有实际合并才计量、分配正文和节点切片。
+一次预先计量后顺序写入，不逐项复制完整前缀。改变的文本和消息清除 Native，其余叶子保留。
+Chat response-text 显式合并文本、refusal、可见 reasoning，修正 URL 引用的 UTF-16 偏移，
+保留 logprobs 的原顺序；禁用后编码拒绝多块，不自行重新拼接。
