@@ -360,3 +360,19 @@ Chat 共享 44 处相同的非空字段选择程序和 4 处事件 metadata 汇�
 `closure-complex-stream-evidence` 通过组件及完整 32 场景网关矩阵，builtin 0.819 秒、server 11.350 秒。`closure-complex-stream-evidence-race` 通过新增重建、签名及三个上游的真实网关，builtin 12.326 秒、server 123.901 秒。相关 vet 通过；固定 staticcheck v0.8.2 仍为 24 主诊断＋1 关联位置，与前批完全相同，无新增／消失。前端和生产 Go 执行代码未变，不重复其全量检查。
 
 本切片不等于批次 2 全部完成：最终 wire 实际改写文本后的旧引用失效证明、其余 Native／交付失败组合仍需闭合。特别是 Chat 没有全文终态快照，不能仅凭最终索引仍在长度范围内就接受对已改写文本的旧引用。版本 B 尚未归档；全部入口及所有权、正式 A／B／C 性能、生产默认切换、旧链删除和最终平台检查仍待实施。
+
+## 最终闭合批次 0：dev.127 恢复点与采集入口
+
+`90767d7e / dev.127` 恢复点位于忽略目录 `dev127/`，清单记录源码、四包、已有检查及匹配 Windows amd64 产物共 58 个文件的 SHA256。`closure-dev127-build` 通过；参考 A 的六目标产物重新核验全部一致。恢复点不等于功能完整版本 B。
+
+采集器要求显式选择 `legacy`、`packages` 或 `production`。`packages` 在隔离数据库激活四包并重新验证测试绑定，客户端和模拟上游经 `CompileSources` 读取两源；`production` 不安装测试包，实际默认仍为 codec 时启动失败。活动四包、绑定修订、转换策略和编译器在计时前检查并写入 `execution.json`。正式 runner 另要求完整 `--expect-commit`，将提交编入测试产物；legacy 仅允许参考 A 的提交。隔离 HTTP／取消循环改用 `reset-without-gc`，回收诊断仍单独记录。
+
+参考 A 用 Go test overlay 加入相同的采集身份检查，overlay 只覆盖两个测试文件，随证据保留；归档生产源码和原产物不变。A 的短 JSON／SSE 启动自检通过。四个新包的短 JSON／SSE 自检分别通过：Responses 9.098 秒、Gemini 8.058 秒、Chat 8.090 秒、Anthropic 9.308 秒；相关 `go vet` 通过。夹具现在使用所选核心版本、配置目标规则、宿主 operation 与实际交付确认；没有修改生产执行语义，编译器保持 dev.127。这些调用只验证采集接线，单次时间不形成性能结论。
+
+复现入口（使用新的空输出目录，A 另传归档 `--source`）：
+
+```powershell
+node scripts/benchmark-performance.mjs --execution=packages --expect-commit=<完整提交> --mode=measure --cases=chat-short,stream16 --requests=1 --repeats=1 --idle-ms=1 --output=.tmp-dev/<新目录>
+```
+
+当前仍需：改写引用的最终边界、交付失败组合、全入口和早期错误、所有权、B 归档、完整配对性能及生产 C。`packages` 只是显式选择新链，不自动把当前源码认定为 B；正式五对交替运行及性能门槛留到功能完整之后。

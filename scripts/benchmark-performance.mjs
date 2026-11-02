@@ -4,12 +4,13 @@ import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { arch, cpus, platform, totalmem } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { instrumentLegacyExecution } from './verification/conversion-execution.mjs'
 
 const args = process.argv.slice(2)
 const option = (name, fallback) => args.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback
 const root = resolve(option('source', resolve(dirname(fileURLToPath(import.meta.url)), '..')))
 if (args.includes('--help')) {
-  console.log('Usage: node scripts/benchmark-performance.mjs --output=NEW_DIRECTORY [--source=SOURCE_DIRECTORY] [--mode=all|micro|measure|profile] [--cases=chat-short,stream256,...] [--requests=32] [--repeats=3] [--idle-ms=1000] [--seconds=15] [--profiles=chat-short,stream256,image2]')
+  console.log('Usage: node scripts/benchmark-performance.mjs --execution=legacy|packages|production --expect-commit=FULL_COMMIT --output=NEW_DIRECTORY [--source=SOURCE_DIRECTORY] [--mode=all|micro|measure|profile] [--cases=chat-short,stream256,...] [--requests=32] [--repeats=3] [--idle-ms=1000] [--seconds=15] [--profiles=chat-short,stream256,image2]')
   process.exit(0)
 }
 const integer = (name, fallback, max) => {
@@ -19,6 +20,12 @@ const integer = (name, fallback, max) => {
 }
 const mode = option('mode', 'all')
 if (!['all', 'micro', 'measure', 'profile'].includes(mode)) throw new Error('Invalid mode')
+const execution = option('execution', '')
+if (!['legacy', 'packages', 'production'].includes(execution)) throw new Error('Explicit --execution is required')
+const expectedCommit = option('expect-commit', '')
+if (!/^[a-f0-9]{40}$/.test(expectedCommit)) throw new Error('--expect-commit must contain the full source commit')
+if (execution === 'legacy' && expectedCommit !== 'b2844846ca111492972264c508825e2f56cc4ff1') throw new Error('Legacy comparison must use the archived dev.101 source')
+if (execution !== 'legacy' && (mode === 'micro' || mode === 'all')) throw new Error('Package measurements require measure or profile; legacy microbenchmarks are not package evidence')
 const output = resolve(option('output', join(root, '.tmp-dev', `performance-${Date.now()}`)))
 const requests = integer('requests', 32, 10000)
 const repeats = integer('repeats', 3, 100)
@@ -58,6 +65,8 @@ const env = { ...process.env, GOMAXPROCS: process.env.GOMAXPROCS || '4', GOGC: p
 for (const key of Object.keys(env)) if (/^ELYSIA_(FLAME_|CONVERSION_HTTP_|LOG_MEMORY_BASELINE)/.test(key)) delete env[key]
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const text = (command, argv, cwd = root) => execFileSync(command, argv, { cwd, env, encoding: 'utf8', maxBuffer: 64 << 20 }).trim()
+if (text('git', ['rev-parse', 'HEAD']) !== expectedCommit) throw new Error('Source commit does not match --expect-commit')
+env.ELYSIA_CONVERSION_HTTP_EXECUTION = execution
 await mkdir(output, { recursive: true })
 if ((await readdir(output)).length) throw new Error('Use a new, empty output directory to preserve matching evidence')
 const binary = join(output, platform() === 'win32' ? 'server.test.exe' : 'server.test')
@@ -65,14 +74,15 @@ const module = await readFile(join(root, 'backend', 'go.mod'), 'utf8')
 const framework = module.includes('github.com/cloudwego/hertz ') ? 'hertz' : module.includes('github.com/gin-gonic/gin ') ? 'gin' : null
 if (!framework) throw new Error('Unsupported HTTP framework in source go.mod')
 const tags = framework === 'gin' ? ['sonic'] : []
-const buildFlags = ['-pgo=off', ...tags.map(tag => `-tags=${tag}`)]
+const buildFlags = ['-pgo=off', `-ldflags=-X github.com/elysia-api/backend/server.AppCommit=${expectedCommit}`, ...tags.map(tag => `-tags=${tag}`)]
+if (execution === 'legacy') buildFlags.push(`-overlay=${await instrumentLegacyExecution(root, output, resolve(dirname(fileURLToPath(import.meta.url)), '..'))}`)
 const report = {
   status: 'running', created: new Date().toISOString(),
   commit: text('git', ['rev-parse', 'HEAD']), worktree: text('git', ['status', '--porcelain']),
   go: text('go', ['version']), goEnvironment: JSON.parse(text('go', ['env', '-json', 'GOOS', 'GOARCH', 'GOAMD64', 'CGO_ENABLED', 'GOEXPERIMENT'])),
   cpu: cpus()[0]?.model, logicalCPUs: cpus().length, totalMemoryBytes: totalmem(), platform: platform(), architecture: arch(),
   runtime: { GOMAXPROCS: env.GOMAXPROCS, GOGC: env.GOGC, GOMEMLIMIT: env.GOMEMLIMIT, pgo: 'off', tags, httpFramework: framework, transport: framework === 'hertz' ? 'standard' : 'net/http' },
-  settings: { mode, selected, profiles, requests, repeats, idleMS, seconds, sampleIntervalMS: 20 }, steps: [], results: [],
+  settings: { mode, execution, selected, profiles, requests, repeats, idleMS, seconds, sampleIntervalMS: 20 }, steps: [], results: [],
 }
 await writeFile(join(output, 'source.patch'), text('git', ['diff', '--binary', 'HEAD']) + '\n')
 // Record untracked harness sources too; git diff alone does not include new files.
@@ -144,6 +154,8 @@ try {
       ELYSIA_CONVERSION_HTTP_CANDIDATES: String(c.candidates), ELYSIA_CONVERSION_HTTP_LOG: c.log,
     }
     await run(`${type}-${name}`, binary, ['-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=20m'], settings)
+    const identity = JSON.parse(await readFile(join(directory, 'execution.json')))
+    if (identity.Execution !== execution || identity.Commit !== expectedCommit || !identity.Compiler || !Object.keys(identity.Packages).length || !Object.keys(identity.Policies).length) throw new Error('Measured execution identity does not match the requested source and engine')
     const measurements = JSON.parse(await readFile(join(directory, 'measurements.json')))
     if (type === 'measure') {
       const samples = measurements.filter(m => m.Phase !== 'first-request')

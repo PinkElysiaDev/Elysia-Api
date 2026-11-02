@@ -152,6 +152,14 @@ func TestConversionFlamegraph(t *testing.T) {
 	}
 	provider := startConversionHTTPChild(t, "provider", "")
 	gateway := startConversionHTTPChild(t, "gateway", provider.URL)
+	proof, err := json.MarshalIndent(gateway.Execution, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "execution.json"), proof, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("execution: %s", proof)
 	client := &http.Client{Timeout: 5 * time.Minute}
 	t.Cleanup(client.CloseIdleConnections)
 	metrics := func(address, action string) conversionHTTPMetrics {

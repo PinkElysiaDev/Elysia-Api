@@ -30,6 +30,7 @@ import (
 type conversionHTTPAddress struct {
 	URL, Metrics string
 	PID          int
+	Execution    *conversionExecutionProof `json:",omitempty"`
 }
 
 type conversionHTTPMetrics struct {
@@ -96,7 +97,7 @@ func TestConversionHTTPIsolated(t *testing.T) {
 		for _, stream := range []bool{false, true} {
 			body := fmt.Sprintf(`{"model":"grp","stream":%t,"max_tokens":64,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"%s"}}]}]}]}`, stream, strings.Repeat("A", size<<20))
 			before := metrics(provider.Metrics, "")
-			metrics(gateway.Metrics, "reset")
+			metrics(gateway.Metrics, "reset-without-gc")
 			started := time.Now()
 
 			var group sync.WaitGroup
@@ -180,6 +181,9 @@ func startConversionHTTPChild(t *testing.T, role, upstream string) conversionHTT
 		if raw, err := os.ReadFile(ready); err == nil {
 			var address conversionHTTPAddress
 			if sonic.ConfigStd.Unmarshal(raw, &address) == nil {
+				if role == "gateway" && (address.Execution == nil || address.Execution.Execution != conversionExecution(t) || address.Execution.Commit != AppCommit) {
+					t.Fatal("gateway execution identity does not match the load generator")
+				}
 				return address
 			}
 		}
@@ -219,6 +223,8 @@ func TestConversionHTTPProcess(t *testing.T) {
 	var gatewayURL string
 	var closeGateway func()
 	var loggingReview *loggingReviewGateway
+	var execution *conversionExecutionProof
+	conversionExecution(t)
 	if role == "provider" {
 		var gateway *httptest.Server
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
@@ -297,6 +303,8 @@ func TestConversionHTTPProcess(t *testing.T) {
 		gatewayURL, closeGateway = gateway.URL, gateway.Close
 	} else if role == "gateway" {
 		group := config.ModelGroupConfig{ID: "g", Name: "grp", Enabled: true, Strategy: "round-robin", Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: os.Getenv("ELYSIA_CONVERSION_HTTP_UPSTREAM"), Platform: "claude", APIKey: "synthetic", ToolsCapable: true, VisionCapable: true}}}
+		enabled := true
+		group.ToolsCapable, group.VisionCapable = &enabled, &enabled
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
 			group.Models[0].Platform = "custom:" + targetID
 			group.Models[0].BaseURL = loadBase(group.Models[0].BaseURL, flameMatrixProtocol(t, targetID))
@@ -307,6 +315,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 			group.Models = append(group.Models, model)
 		}
 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
+		configureConversionExecution(t, server, []config.ModelGroupConfig{group})
 		// Include production request ownership and logging, not only the router.
 		server.engine.Use(server.requestLifecycle(), server.requestLogging())
 		loggingReview = configureLoggingReviewGateway(t, server)
@@ -391,6 +400,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 		} else {
 			server.engine.POST("/v1/messages", server.chatCompletions)
 		}
+		execution = conversionExecutionIdentity(t, server)
 		gateway := startTestServer(server.engine)
 		gatewayURL, closeGateway = gateway.URL, gateway.Close
 	} else {
@@ -506,7 +516,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 		sonic.ConfigStd.NewEncoder(w).Encode(result)
 	}))
 	defer metrics.Close()
-	address, _ := sonic.ConfigStd.Marshal(conversionHTTPAddress{URL: gatewayURL, Metrics: metrics.URL, PID: os.Getpid()})
+	address, _ := sonic.ConfigStd.Marshal(conversionHTTPAddress{URL: gatewayURL, Metrics: metrics.URL, PID: os.Getpid(), Execution: execution})
 	if err := os.WriteFile(os.Getenv("ELYSIA_CONVERSION_HTTP_READY"), address, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +562,7 @@ func TestConversionHTTPCancellationIsolated(t *testing.T) {
 	body := fmt.Sprintf(`{"model":"grp","stream":true,"max_tokens":64,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"%s"}}]}]}]}`, strings.Repeat("A", size<<20))
 	for batch := range 5 {
 		before := metrics(provider.Metrics, "")
-		metrics(gateway.Metrics, "reset")
+		metrics(gateway.Metrics, "reset-without-gc")
 		var group sync.WaitGroup
 		for range workers {
 			group.Go(func() {
