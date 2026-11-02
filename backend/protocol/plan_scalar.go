@@ -55,6 +55,11 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 		if !state.runtime.isBound {
 			return plannedOutput{}, fmt.Errorf("runtime metadata is not bound")
 		}
+		if expression.pointer[0] == "encoding" {
+			// The compiler installs a transaction for this read. This is an
+			// encoding fact, never a proof of successful network delivery.
+			return plannedLeaf(coreBoolean(state.streamTransaction.hasRendered)), nil
+		}
 		if expression.pointer[0] == "continuation" {
 			if state.runtime.continuation == nil {
 				return plannedLeaf(Value{raw: "[]"}), nil

@@ -318,6 +318,9 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						if hasThinkingLayout || hasPartsLayout {
 							clientScope = protocol.Scope{Provider: "gateway-fixture", Account: "client-fixture", Model: "group"}
 						}
+						if isStream && reply.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
+							t.Fatal("stream failed before collection", reply.Body.String(), latestUsageRecords(t, server))
+						}
 						collected := collectPackageGatewayReply(t, ingress, reply, isStream, clientScope)
 						checkPackageGatewayReply(t, collected, expectedText, inputTokens, outputTokens)
 						if hasPartsLayout {

@@ -4,6 +4,13 @@
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
+`encode_event.nativeWhen` 可只读 `runtime.clientOutput` 和 `/encoding/hasRendered`。后者沿用本方向
+既有编码状态，表示此前执行过语义编码；原生 observer 不设置它。Mapping 用它决定包含历史内容
+的聚合帧是否可以原样重放。它不证明 Write／Flush 成功、正文等价、引用有效或资源权限。
+编译器限制读取权限并隔离命名程序缓存；无状态程序使用这一事实时只安装固定编码状态，不计动态实体。
+Responses 在语义编码开始后重建 message 的 output_item.done 及完整响应终态，继续允许合法的独立增量原样重放。
+该选择在执行前完成，不以最终校验失败触发重试，也不缓存整轮原帧或额外正文。
+
 ## 构造与最终交付
 
 `encode_request`、`encode_response`、`encode_event` 可用 `finalDocument` 引用另一份 Spec 命名文档。原 `document` 仍约束

@@ -1,4 +1,4 @@
-# DSL 能力状态（dev.131）
+# DSL 能力状态（dev.132）
 
 本表替代 dev.100／101 的过期迁移状态；旧调查可从 Git 历史读取。最新实施记录见[剩余闭合记录](protocol-three-part-closure-2026-11-02.md)。本轮从 a20f63ce 继续；四包已可独立编译和执行，但默认生产加载器仍为旧定义。
 
@@ -21,6 +21,7 @@
 | 最终 JSON 引用证明 | Spec 外部形状；未改写 Unicode 区间 | dev.128 Chat／Responses deliveryRanges；ValidateResponseOutput、真实 Chat 网关、组合验证及 wire 预览；自定义字段合同组件通过 | 语义事件修改事实、静态修改路径分析仍待接线；当前不能声明所有文本改写已安全闭合 |
 | 最终 SSE 引用证明 | Spec 事件及生命周期；摘要、未改写 Unicode 区间和成功交付事实 | dev.130 Chat／Responses encode_event.deliveryRanges、ConsumeTransformed；真实跨协议 SSE、组合验证及 wire 事件预览；1,024 帧隐式区间和晚到引用 | 语义事件修改事实、静态影响路径分析和完整 Native 接续组合；性能仍待正式测量 |
 | 失败交付关闭 | 宿主 Write／Flush 事实；独立 wire 位置和认证续传 | dev.129 AbortDelivery；dev.130 同批多帧第二次写失败、Flush 失败、Flush 后取消；已提交位置和持久化事实保留，不重发部分批次 | 完整 Native→重建→Native 组合仍需验收 |
+| Native 与语义编码接续 | 原帧摘要、编码历史和最终外部生命周期分别检查 | dev.132 四协议实际正文改写后继续原生增量，完整消费、usage 和单次结算；Responses Mapping 使用 encoding.hasRendered 重建含子项正文的完成帧；原有复杂流矩阵复验 | 工具参数改写和慢交付等其余组合；语义引用证明不能用编码历史布尔值代替；正式性能待测 |
 
 ## Go 残留分类
 

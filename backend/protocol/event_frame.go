@@ -160,8 +160,9 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		if predicate := compiled.mappings[direction].nativeWhen; predicate != nil {
 			view := newInputView(frame.native.Value)
 			state := evaluation{ctx: ctx, input: view.value, root: view.value, valueReader: &view.borrowed, objectReader: view.objectReader(), inputView: view,
-				runtime: evaluationRuntime{isBound: true, clientOutput: options.ClientOutput},
-				budget:  &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
+				streamTransaction: options.packageTransaction,
+				runtime:           evaluationRuntime{isBound: true, clientOutput: options.ClientOutput},
+				budget:            &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
 			value, err := predicate.evaluate(state)
 			if err != nil {
 				return nil, compiled.mappingError(direction, err)

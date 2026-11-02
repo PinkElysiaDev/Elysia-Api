@@ -5,6 +5,51 @@ import (
 	"testing"
 )
 
+func TestPackageNativePredicateEncodingHistory(t *testing.T) {
+	document := eventProtocolPackage(t)
+	entry := document.Mapping.Directions[EncodeEvent]
+	entry.IsFrameBatch, entry.NativeReplay = true, "original_frame"
+	entry.Observe = &Expression{Op: "omit"}
+	entry.Program = Expression{Op: "array", Items: []Expression{entry.Program}}
+	entry.Effects[0].Target = "/0/response_id"
+	history := readExpression("runtime", "/encoding/hasRendered")
+	entry.NativeWhen = &Expression{Op: "any", Items: []Expression{
+		{Op: "not", Source: &history},
+		{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression(ItemDelta)}},
+	}}
+	document.Mapping.Directions[EncodeEvent] = entry
+	compiled := compilePackageForTest(t, document)
+	source, target := EvaluationContext{State: NewEvaluationState()}, EvaluationContext{State: NewEvaluationState()}
+	defer source.State.Release()
+	defer target.State.Release()
+	for index, fixture := range []struct {
+		kind          EventType
+		fields        string
+		edit, rebuild bool
+	}{
+		{ResponseStarted, "", false, false},
+		{ItemStarted, `,"item_id":"text"`, false, false},
+		{ItemDelta, `,"item_id":"text","text":"original"`, true, true},
+		{ItemDelta, `,"item_id":"text","text":"\u006eative"`, false, false},
+		{ItemFinished, `,"item_id":"text"`, false, true},
+		{ResponseFinished, "", false, true},
+	} {
+		wire := packageStreamFrame(fixture.kind, index, fixture.fields+`,"extension":9007199254740993`)
+		frame, err := compiled.DecodeFrame(t.Context(), wire, source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := append([]Event(nil), frame.Events...)
+		if fixture.edit {
+			events[0].Delta = StringValue("edited")
+		}
+		frames, err := compiled.EncodeConvertedFrame(t.Context(), frame, events, target)
+		if err != nil || len(frames) != 1 || (frames[0] != wire) != fixture.rebuild {
+			t.Fatal("replay selection lost the prior encoding fact", index, frames, err)
+		}
+	}
+}
+
 func TestPackageNativePredicateClientOutput(t *testing.T) {
 	document := eventProtocolPackage(t)
 	entry := document.Mapping.Directions[EncodeEvent]

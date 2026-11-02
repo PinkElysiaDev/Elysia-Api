@@ -11,7 +11,7 @@ type OperationInfo struct {
 }
 
 var expressionOperations = []OperationInfo{
-	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root, context or a named binding; preserve missing and null."},
+	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root, context or a named binding; preserve missing and null. Native replay predicates can also read runtime /encoding/hasRendered, a prior encoding fact, not a delivery proof."},
 	{"let", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Evaluate source once and bind its immutable value by name within body; nested bindings may shadow outer names."},
 	{"with_input", []string{"source", "body"}, []string{"source", "body"}, AnyType, "Evaluate body with the selected immutable input without encoding it; root remains the original document, and only original reads retain wire provenance."},
 	{"track_tool", []string{"name", "source", "body"}, []string{"name", "source", "body"}, StringType, "Stage bounded JSON/text tool arguments with explicit snapshot, done and emit flags; emit returns every previously withheld byte once."},

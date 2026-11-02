@@ -156,9 +156,11 @@ type ProtocolMapping struct {
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
-	NativeReplay string      `json:"nativeReplay,omitempty"`
-	NativeWhen   *Expression `json:"nativeWhen,omitempty"`
-	Document     string      `json:"document"`
+	NativeReplay string `json:"nativeReplay,omitempty"`
+	// NativeWhen selects replay using the wire, client intent and the read-only
+	// runtime.encoding.hasRendered fact. It cannot mutate encoding or delivery.
+	NativeWhen *Expression `json:"nativeWhen,omitempty"`
+	Document   string      `json:"document"`
 	// FinalDocument optionally selects a separate delivery contract for request,
 	// response or event output. The rendering document still validates its output.
 	// Document continues to constrain construction and native reconciliation.

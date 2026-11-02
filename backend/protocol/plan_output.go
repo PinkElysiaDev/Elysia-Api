@@ -26,6 +26,7 @@ type compiledOutputPlan struct {
 	hasSourceCapture       bool
 	hasNativeTarget        bool
 	hasOutputStreamRead    bool
+	hasEncodingStateRead   bool
 	hasRequestObjectSource bool
 }
 
@@ -80,6 +81,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan.hasSourceCapture = expression.op == "capture_source" || expression.op == "is_carrier"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
 	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && (expression.pointer[0] == "stream" || expression.pointer[0] == "emission")
+	plan.hasEncodingStateRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && expression.pointer[0] == "encoding"
 	if (expression.op == "keys" || expression.op == "type") && expression.source != nil && expression.source.op == "read" && (expression.source.from == "input" || expression.source.from == "root") {
 		plan.hasRequestObjectSource = isCoreRequestPointerObjectPath(expression.source.pointer)
 	}
@@ -151,6 +153,7 @@ func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan, has
 	plan.hasSourceCapture = plan.hasSourceCapture || child.hasSourceCapture
 	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
 	plan.hasOutputStreamRead = plan.hasOutputStreamRead || child.hasOutputStreamRead
+	plan.hasEncodingStateRead = plan.hasEncodingStateRead || child.hasEncodingStateRead
 }
 
 type plannedOutput struct {

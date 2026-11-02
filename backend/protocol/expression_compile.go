@@ -88,6 +88,7 @@ type expressionScope struct {
 	wireCapture            bool
 	canReadRuntime         bool
 	canReadClientOutput    bool
+	canReadEncodingState   bool
 	canReadContinuation    bool
 	canSelectCarrier       bool
 	canReadOperation       bool
@@ -201,12 +202,15 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			isContinuation := scope.canReadContinuation && len(pointer) == 2 && pointer[0] == "continuation" && pointer[1] == "tokens"
 			isOutputPosition := scope.canReadOutputStream && len(pointer) == 2 && (pointer[0] == "stream" || pointer[0] == "emission" || pointer[0] == "delivered")
 			isClientOutput := scope.canReadClientOutput && len(pointer) > 0 && pointer[0] == "clientOutput"
+			isEncodingState := scope.canReadEncodingState && len(pointer) == 2 && pointer[0] == "encoding" && pointer[1] == "hasRendered"
 			isFrameUsage := scope.canReadFrameUsage && len(pointer) >= 2 && pointer[0] == "frame" && pointer[1] == "usage"
 			isOperation := scope.canReadOperation && len(pointer) == 2 && pointer[0] == "operation" && (pointer[1] == "id" || pointer[1] == "startedAt")
-			if !scope.canReadRuntime && !isClientOutput && !isFrameUsage && !isOperation && !isContinuation && !isOutputPosition {
+			if !scope.canReadRuntime && !isClientOutput && !isEncodingState && !isFrameUsage && !isOperation && !isContinuation && !isOutputPosition {
 				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
 			}
 			switch {
+			case isEncodingState:
+				compiled.result = BooleanType
 			case isContinuation:
 				compiled.result = ArrayType
 			case isFrameUsage:

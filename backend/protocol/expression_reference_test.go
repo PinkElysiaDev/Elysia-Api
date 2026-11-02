@@ -72,16 +72,24 @@ func TestNamedProgramReusePreservesPermissionsAndDependencies(t *testing.T) {
 	}
 }
 
-func TestNamedProgramClientOutputPermissionIsIsolated(t *testing.T) {
-	compiler := newExpressionCompiler(DefaultLimits(), map[string]Expression{
-		"outer": {Op: "ref", Ref: "inner"},
-		"inner": readExpression("runtime", "/clientOutput/includeUsage"),
-	})
-	call := Expression{Op: "ref", Ref: "outer"}
-	if _, err := compiler.compilePlan(call, "/mapping/nativeWhen", expressionScope{isWireContract: true, canReadClientOutput: true}, 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := compiler.compilePlan(call, "/spec/check", expressionScope{isWireContract: true}, 1); err == nil {
-		t.Fatal("cached native predicate granted client output access to a wire check")
+func TestNamedProgramNativePermissionIsIsolated(t *testing.T) {
+	for _, fixture := range []struct {
+		path  string
+		scope expressionScope
+	}{
+		{"/clientOutput/includeUsage", expressionScope{isWireContract: true, canReadClientOutput: true}},
+		{"/encoding/hasRendered", expressionScope{isWireContract: true, canReadEncodingState: true}},
+	} {
+		compiler := newExpressionCompiler(DefaultLimits(), map[string]Expression{
+			"outer": {Op: "ref", Ref: "inner"},
+			"inner": readExpression("runtime", fixture.path),
+		})
+		call := Expression{Op: "ref", Ref: "outer"}
+		if _, err := compiler.compilePlan(call, "/mapping/nativeWhen", fixture.scope, 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := compiler.compilePlan(call, "/spec/check", expressionScope{isWireContract: true}, 1); err == nil {
+			t.Fatal("cached native predicate granted runtime access to a wire check", fixture.path)
+		}
 	}
 }

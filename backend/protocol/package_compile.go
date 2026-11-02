@@ -199,9 +199,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		if mapping.NativeReplay != "original_frame" {
 			return compiledMapping{}, nil, fmt.Errorf("%s/nativeWhen: requires original_frame replay", path)
 		}
-		// Replay selection may observe caller delivery preferences, without
-		// access to operation metadata, stream state or delivered positions.
-		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true, canReadClientOutput: true}, 1)
+		// Replay selection can read caller preferences and whether this encoder
+		// has rendered earlier events. It cannot change state or delivery facts.
+		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true, canReadClientOutput: true, canReadEncodingState: true}, 1)
 		if err != nil {
 			return compiledMapping{}, nil, err
 		}
@@ -238,6 +238,9 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	streamState, err := compilePackageState(mapping.State, indexes, direction, path+"/state", compiler, &scope)
 	if err != nil {
 		return compiledMapping{}, nil, err
+	}
+	if nativeWhen != nil && nativeWhen.hasEncodingStateRead && streamState == nil {
+		streamState = &compiledPackageState{initial: []Value{}}
 	}
 	var finalizer *compiledOutputPlan
 	if mapping.Finalize != nil {

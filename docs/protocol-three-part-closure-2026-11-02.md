@@ -490,3 +490,39 @@ RegistryView 和 ingress 编译修订，后续正文处理、资源拒绝及失�
 本切片仅闭合早期错误与普通生成入口的快照选择。任务控制等宿主合同、所有入口与所有权、语义事件
 引用证明、静态 wire 影响路径和完整 Native 组合仍需继续。当前默认仍为旧链，未形成 B／C，未作
 正式性能结论；新包 public 使用 Spec 完整路径，旧核心前缀适配将在退役批次删除。
+
+## 最终闭合批次 2A：原生、重建与再次原生（dev.132）
+
+四协议使用原有正式流样例，经真实本地网关执行语义正文改写后继续接收原帧。前后文本增量保留
+Unicode 转义，断言原生复合帧仅出现一次且顺序不变；重建段由显式转换规则改变，完整消费后断言
+正文、usage、终态、一次上游调用和一次结算。Responses 的完成快照也由测试策略明确改写为对应
+正文，未让编码器猜测变更或自动修复引用。初稿中的空白断言已按现有 WriteFrame 压缩 JSON 的合同
+修正，转义和完整帧字节断言保留；Gemini 路径按原夹具替换已声明的 model 参数。
+
+此检查暴露 Responses message 的 output_item.done 只产生父项结束事件，子项正文属于此前独立
+事件；当前 frame 的语义摘要相等无法证明其中重复的历史正文仍可重放。新增受限只读
+`runtime.encoding.hasRendered`，复用已有 packageStreamTransaction 状态。Mapping 在语义编码开始后
+重建 message 的 output_item.done 和完整响应终态，合法的后续增量仍可原样发送。源码不判断供应商
+或事件名称，不增加正文缓存、完整前缀复制、发送次数或 Flush 次数。
+
+初版选择了全部 output_item.done，复杂工具夹具因此重复产生 arguments.done，挤占后续原帧序号。
+规则已收窄到确有独立子项的 message；工具完成帧仍由当前语义摘要判断，未修改或放宽序号合同。
+32 场景及包含工具、引用、logprobs 的复杂 Responses 流随后通过。失败日志保留。
+
+新读取只允许 nativeWhen，命名程序缓存隔离对应权限；配置和正文不能写入该事实。没有显式状态的
+自定义包也能使用固定编码状态。该事实只说明发生过编码，不授予成功交付、资源、续传或引用证明。
+Responses 在非正文的先前编码之后也保守重建聚合完成帧；其绝对成本留到 B 的正式测量，不宣称无回退。
+操作目录、Go 字段说明、生成 schema 使用的同一 Expression 合同、原语文档和编辑器帮助同步更新。
+
+| 检查（同一忽略目录） | 结果 |
+|---|---|
+| closure-package-native-core | protocol／builtin 全量通过；4.908／35.908 秒 |
+| closure-package-native-config-final | 收窄聚合帧规则后，Responses 相关及默认包正式证据通过；6.434 秒 |
+| closure-package-native-complex-final | 四协议原生／重建接续、32 场景及复杂矩阵、引用、认证续传和流内失败通过；server 21.825 秒 |
+| closure-package-native-race | 核心权限与状态、四协议真实接续、32 场景及 Write／Flush 交付边界通过；protocol 2.637 秒、server 239.001 秒 |
+| closure-package-native-vet | protocol 全树及 server 通过 |
+| closure-package-native-staticcheck | v0.8.2：24 主诊断＋1 关联位置，与 dev.131 去行列后的多重集一致；新增 0、消失 0，退出 1 |
+| closure-package-native-types／editor-lint | 前端类型检查及受影响编辑器 lint 通过 |
+
+本切片不等于所有 Native／交付组合完成。工具参数改写、慢交付等其余组合和语义事件引用证明仍需
+验收；默认加载器、旧链退役、B／C 及正式性能检查均未完成。

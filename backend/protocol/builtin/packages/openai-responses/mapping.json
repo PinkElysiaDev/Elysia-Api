@@ -30335,6 +30335,59 @@
               "op": "literal",
               "value": true
             }
+          },
+          {
+            "op": "if",
+            "when": {
+              "op": "read",
+              "from": "runtime",
+              "path": "/encoding/hasRendered"
+            },
+            "then": {
+              "op": "choose",
+              "source": {
+                "op": "read",
+                "path": "/type"
+              },
+              "cases": {
+                "response.output_item.done": {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "path": "/item/type"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "message"
+                      }
+                    ]
+                  }
+                },
+                "response.completed": {
+                  "op": "literal",
+                  "value": false
+                },
+                "response.incomplete": {
+                  "op": "literal",
+                  "value": false
+                },
+                "response.failed": {
+                  "op": "literal",
+                  "value": false
+                }
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": true
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": true
+            }
           }
         ]
       },
