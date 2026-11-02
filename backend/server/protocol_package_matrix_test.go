@@ -67,18 +67,18 @@ func buildPackageGatewayReply(t *testing.T, compiled *protocol.Compiled, isStrea
 	return nil
 }
 
-func collectPackageGatewayReply(t *testing.T, compiled *protocol.Compiled, reply *httptest.ResponseRecorder, isStream bool) *protocol.Response {
+func collectPackageGatewayReply(t *testing.T, compiled *protocol.Compiled, reply *httptest.ResponseRecorder, isStream bool, scope protocol.Scope) *protocol.Response {
 	t.Helper()
 	if !isStream {
-		response, err := compiled.DecodeResponse(t.Context(), reply.Body.Bytes(), protocol.EvaluationContext{})
+		response, err := compiled.DecodeResponse(t.Context(), reply.Body.Bytes(), protocol.EvaluationContext{Scope: scope})
 		if err != nil {
 			t.Fatal(err, reply.Body.String())
 		}
 		return response
 	}
-	options := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+	options := protocol.EvaluationContext{Scope: scope, State: protocol.NewEvaluationState()}
 	defer options.State.Release()
-	collector, err := protocol.NewResponseCollector(compiled.Target(protocol.EncodeEvent, protocol.Scope{}), compiled.ResourceLimits())
+	collector, err := protocol.NewResponseCollector(compiled.Target(protocol.EncodeEvent, scope), compiled.ResourceLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func collectPackageGatewayReply(t *testing.T, compiled *protocol.Compiled, reply
 	return response
 }
 
-func checkPackageGatewayReply(t *testing.T, response *protocol.Response, expectedText string) {
+func checkPackageGatewayReply(t *testing.T, response *protocol.Response, expectedText string, inputTokens, outputTokens int64) {
 	t.Helper()
 	var text strings.Builder
 	var visit func([]protocol.Node)
@@ -125,7 +125,7 @@ func checkPackageGatewayReply(t *testing.T, response *protocol.Response, expecte
 		}
 	}
 	visit(response.Content)
-	if text.String() != expectedText || !response.Status.IsString("completed") || response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != 20 || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
+	if text.String() != expectedText || !response.Status.IsString("completed") || response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != inputTokens || response.Usage.Output == nil || response.Usage.Output.Count != outputTokens {
 		t.Fatal("full consumption lost content, terminal status or usage", text.String(), response.Status, response.Usage)
 	}
 }
@@ -138,9 +138,10 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			upstream := packages[upstreamName]
 			jsonReply, streamReply := buildPackageGatewayReply(t, upstream, false), buildPackageGatewayReply(t, upstream, true)
 			var multiRootReply []byte
-			var textRangeReply bytes.Buffer
-			if upstreamName == "openai-responses" {
-				fixture, err := os.ReadFile("../protocol/builtin/testdata/responses-stream-layout.json")
+			var layoutReply bytes.Buffer
+			fixtureName := map[string]string{"openai-responses": "responses-stream-layout.json", "anthropic": "anthropic-stream-layout.json", "google-generate-content": "gemini-stream-layout.json"}[upstreamName]
+			if fixtureName != "" {
+				fixture, err := os.ReadFile("../protocol/builtin/testdata/" + fixtureName)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -149,10 +150,12 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, frame := range frames {
-					if err := protocol.WriteFrame(&textRangeReply, upstream.Operations()["stream"], frame); err != nil {
+					if err := protocol.WriteFrame(&layoutReply, upstream.Operations()["stream"], frame); err != nil {
 						t.Fatal(err)
 					}
 				}
+			}
+			if upstreamName == "openai-responses" {
 				value, err := protocol.ParseValue(jsonReply)
 				if err != nil {
 					t.Fatal(err)
@@ -180,7 +183,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			var calls atomic.Int32
 			var expectsInstructions atomic.Bool
 			var expectsMultipleRoots atomic.Bool
-			var expectsTextRanges atomic.Bool
+			var expectsStreamLayout atomic.Bool
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)
 				body, err := io.ReadAll(request.Body)
@@ -227,8 +230,8 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 				if isStream {
 					writer.Header().Set("Content-Type", "text/event-stream")
 					response := streamReply
-					if expectsTextRanges.Load() {
-						response = textRangeReply.Bytes()
+					if expectsStreamLayout.Load() {
+						response = layoutReply.Bytes()
 					}
 					_, _ = writer.Write(response)
 				} else {
@@ -241,10 +244,14 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 				}
 			}))
 			defer provider.Close()
-			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, protocol.CapabilitySet{
+			capabilities := protocol.CapabilitySet{
 				protocol.TextCapability: true, protocol.UsageCapability: true, protocol.FunctionToolsCapability: true,
-			})
-			if upstreamName == "openai-responses" {
+			}
+			if upstreamName == "anthropic" || upstreamName == "google-generate-content" {
+				capabilities[protocol.ReasoningCapability], capabilities[protocol.SignaturesCapability] = true, true
+			}
+			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, capabilities)
+			if fixtureName != "" {
 				yes := true
 				if _, err := server.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{ToolsCapable: &yes}); err != nil {
 					t.Fatal(err)
@@ -265,10 +272,22 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						path := strings.ReplaceAll(ingress.Operations()[operationName].Path, "{model}", "group")
 						body := buildPackageGatewayRequest(ingressName, isStream)
 						expectsMultipleRoots.Store(upstreamName == "openai-responses" && (ingressName == "openai-chat" || ingressName == "anthropic" || ingressName == "google-generate-content"))
-						hasTextRanges := upstreamName == "openai-responses" && ingressName == "openai-chat" && isStream
-						expectsTextRanges.Store(hasTextRanges)
+						hasTextRanges := upstreamName == "openai-responses" && (ingressName == "openai-chat" || ingressName == "openai-responses") && isStream
+						hasThinkingLayout := upstreamName == "anthropic" && ingressName == "anthropic" && isStream
+						hasPartsLayout := upstreamName == "google-generate-content" && ingressName == "google-generate-content" && isStream
+						expectsStreamLayout.Store(hasTextRanges || hasThinkingLayout || hasPartsLayout)
 						if hasTextRanges {
-							body = strings.TrimSuffix(body, "}") + `,"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"n":{"type":"integer"}}}}}]}`
+							tools := `,"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"n":{"type":"integer"}}}}}]}`
+							if ingressName == "openai-responses" {
+								tools = `,"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"n":{"type":"integer"}}}}]}`
+							}
+							body = strings.TrimSuffix(body, "}") + tools
+						}
+						if hasThinkingLayout {
+							body = strings.TrimSuffix(body, "}") + `,"tools":[{"name":"lookup","input_schema":{"type":"object","properties":{"n":{"type":"integer"}}}}]}`
+						}
+						if hasPartsLayout {
+							body = strings.TrimSuffix(body, "}") + `,"tools":[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"object","properties":{"n":{"type":"integer"}}}}]}]}`
 						}
 						hasInstructions := ingressName == "openai-chat" && (upstreamName == "anthropic" || upstreamName == "google-generate-content")
 						expectsInstructions.Store(hasInstructions)
@@ -288,15 +307,42 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 							t.Fatal("generation failed or repeated", reply.Code, calls.Load()-before, reply.Body.String())
 						}
 						expectedText := "hi"
+						var inputTokens, outputTokens int64 = 20, 2
 						if hasTextRanges {
 							expectedText = "😀hi!"
 						}
-						collected := collectPackageGatewayReply(t, ingress, reply, isStream)
-						checkPackageGatewayReply(t, collected, expectedText)
+						if hasPartsLayout {
+							expectedText, inputTokens, outputTokens = "hello", 3, 3
+						}
+						clientScope := protocol.Scope{}
+						if hasThinkingLayout || hasPartsLayout {
+							clientScope = protocol.Scope{Provider: "gateway-fixture", Account: "client-fixture", Model: "group"}
+						}
+						collected := collectPackageGatewayReply(t, ingress, reply, isStream, clientScope)
+						checkPackageGatewayReply(t, collected, expectedText, inputTokens, outputTokens)
+						if hasPartsLayout {
+							if len(collected.Content) != 1 || len(collected.Content[0].Children) != 3 {
+								t.Fatal("gateway lost ordered parts", collected.Content)
+							}
+							items := collected.Content[0].Children
+							if !items[0].Payload.IsString("think") || !items[1].Payload.IsString("hello") || len(items[0].Resources) != 1 || !items[0].Resources[0].ID.IsString("sig-thought") || items[2].Kind != protocol.ToolCallNode || !items[2].CallID.IsString("call") || !items[2].Name.IsString("lookup") || items[2].Input == nil || items[2].Input.Value.JSONString() != `{"n":9007199254740993}` || len(items[2].Resources) != 1 || !items[2].Resources[0].ID.IsString("sig-tool") || collected.Usage.Total == nil || collected.Usage.Total.Count != 6 || collected.Usage.Details["output.reasoning_tokens"].Count != 1 {
+								t.Fatal("gateway changed part resources, tool association or reasoning accounting", items, collected.Usage)
+							}
+						}
+						if hasThinkingLayout {
+							if len(collected.Content) != 1 || len(collected.Content[0].Children) != 5 {
+								t.Fatal("gateway lost ordered thinking/tool blocks", collected.Content)
+							}
+							items := collected.Content[0].Children
+							if !items[0].Payload.IsString("plan-a") || !items[3].Payload.IsString("plan-b") || len(items[0].Resources) != 1 || len(items[3].Resources) != 1 || !items[0].Resources[0].ID.IsString("sig-a") || !items[3].Resources[0].ID.IsString("sig-b") || items[2].Kind != protocol.ToolCallNode || !items[2].CallID.IsString("call") || !items[2].Name.IsString("lookup") || items[2].Input == nil || items[2].Input.Value.JSONString() != `{"n":9007199254740993}` {
+								t.Fatal("gateway changed thinking resources or tool association", items)
+							}
+						}
 						if hasTextRanges {
-							tools, citations := 0, 0
-							for _, message := range collected.Content {
-								for _, node := range message.Children {
+							tools, citations, annotationOwners := 0, 0, 0
+							var visit func([]protocol.Node)
+							visit = func(nodes []protocol.Node) {
+								for _, node := range nodes {
 									if node.Kind == protocol.ToolCallNode {
 										tools++
 										if !node.CallID.IsString("call") || !node.Name.IsString("lookup") || node.Input == nil || node.Input.Value.JSONString() != `{"n":9007199254740993}` {
@@ -305,13 +351,24 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 									}
 									for _, metadata := range node.Metadata {
 										if metadata.Name == "annotations" {
-											citations++
+											annotationOwners++
+											var entries []protocol.Value
+											if err := metadata.Value.Decode(&entries); err != nil {
+												t.Fatal(err)
+											}
+											citations += len(entries)
 										}
 									}
+									visit(node.Children)
 								}
 							}
-							if tools != 1 || citations != 1 {
-								t.Fatal("gateway lost tool or citation", tools, citations)
+							visit(collected.Content)
+							expectedOwners := 1
+							if ingressName == "openai-responses" {
+								expectedOwners = 3
+							}
+							if tools != 1 || citations != 1 || annotationOwners != expectedOwners {
+								t.Fatal("gateway lost tool, citation or explicit empty annotations", tools, citations, annotationOwners)
 							}
 						}
 					})
@@ -381,7 +438,7 @@ func TestPackageChatUsageCollectionRespectsClientPreference(t *testing.T) {
 			if reply.Code != http.StatusOK || calls.Load() != 1 {
 				t.Fatal("generation failed or repeated", reply.Code, calls.Load(), reply.Body.String())
 			}
-			response := collectPackageGatewayReply(t, compiled, reply, true)
+			response := collectPackageGatewayReply(t, compiled, reply, true, protocol.Scope{})
 			if !response.Status.IsString("completed") || response.Usage != nil || len(response.Content) != 1 || len(response.Content[0].Children) != 1 || !response.Content[0].Children[0].Payload.IsString("hi") {
 				t.Fatal("client preference changed content, termination or exposed usage", response)
 			}

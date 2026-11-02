@@ -346,3 +346,17 @@ Chat `event-layout / 310` 接管多个 message、同类内容块及 message 与�
 Chat 共享 44 处相同的非空字段选择程序和 4 处事件 metadata 汇集程序；Responses 共享跨合同判断、当前 item 来源／Native 捕获、reasoning form 与 between-tools 判断。仅替换完全相同的表达式树，命名程序继续按静态作用域编译复用，不重新展开执行。Chat／Responses 原始整包 token 分别降为 96,909／99,653。
 
 初稿另提取 Responses 的 target-part 文本判断，编译发现最深引用达到 65／64；撤回这一项提取，没有提高深度限额。最终 `closure-stream-shared-programs-depth` 通过两个包编译、正式激活样例及 Chat 复杂流／Native 回归，2.271 秒。mapping 源 SHA256 前缀分别从 `4e13ed6d0c910e1a`／`4a5e566b1015f4de` 变为 `31135c6d43d035dd`／`a5c12f8df3481b07`，需使用新修订证据。没有 Go 执行语义变化，不升级编译器，也不重复未变化的全量检查。
+
+## 闭合计划批次 2A：其余目标的复杂流证据（仍为 dev.127）
+
+实际检查表明，下列组合已能由现有 Spec／Mapping 完成，因此本切片补真实调用缺口，不添加新的执行分支，也不升级编译器。
+
+- Anthropic 新夹具包含两个独立 thinking 块及各自签名、两个文本块、分段工具参数和尾部 usage。组件同时断言原帧不重复、删除事件根 Native 后的五块顺序、签名 Scope、精确工具参数及终态。相同夹具进入真实网关矩阵。
+- Responses 将 dev.127 的双 message／多 part／工具／引用／logprobs 夹具用于自身目标，复用现有逐节点重建检查；专门移除事件与 response 根 Native 后仍保持完整语义。真实网关分别检查 Chat 和 Responses 目标，保留一条实际引用；Responses 额外明确保留两个空 annotations 所有者。
+- Gemini 把已有 thinking→文本→工具及独立签名、复合帧和重复尾部 usage 夹具移到共享文件，原有重建及原帧字节断言保持。真实网关使用同一文件，检查正文、工具、两个签名资源、reasoning 分项及总量。
+
+三条真实调用均显式启用对应模型／模型组的工具能力，绑定声明 reasoning／signature 能力；测试客户端用自身 Scope 读取签名资源。初次 Anthropic 客户端收集因 Scope 为空拒绝，修正测试调用参数后通过，没有省略资源检查。首次 Responses 同目标检查暴露原断言把 metadata 容器数量当成引用数量；现分别断言三个所有者、一条引用和两个空数组，未忽略 metadata。
+
+`closure-complex-stream-evidence` 通过组件及完整 32 场景网关矩阵，builtin 0.819 秒、server 11.350 秒。`closure-complex-stream-evidence-race` 通过新增重建、签名及三个上游的真实网关，builtin 12.326 秒、server 123.901 秒。相关 vet 通过；固定 staticcheck v0.8.2 仍为 24 主诊断＋1 关联位置，与前批完全相同，无新增／消失。前端和生产 Go 执行代码未变，不重复其全量检查。
+
+本切片不等于批次 2 全部完成：最终 wire 实际改写文本后的旧引用失效证明、其余 Native／交付失败组合仍需闭合。特别是 Chat 没有全文终态快照，不能仅凭最终索引仍在长度范围内就接受对已改写文本的旧引用。版本 B 尚未归档；全部入口及所有权、正式 A／B／C 性能、生产默认切换、旧链删除和最终平台检查仍待实施。

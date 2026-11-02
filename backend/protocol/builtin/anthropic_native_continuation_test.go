@@ -1,10 +1,60 @@
 package builtin
 
 import (
+	"os"
+	"slices"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestAnthropicPackageMultipleThinkingToolBlocks(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "anthropic")
+	scope := p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}
+	raw, err := os.ReadFile("testdata/anthropic-stream-layout.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values []p.Value
+	if err := testValue(t, string(raw)).Decode(&values); err != nil {
+		t.Fatal(err)
+	}
+	raws := make([]string, len(values))
+	for i, value := range values {
+		raws[i] = value.JSONString()
+	}
+	frames, _ := decodePackageStream(t, compiled, raws, scope)
+	if native := encodePackageStream(t, compiled, frames, scope, true); !slices.Equal(native, raws) {
+		t.Fatal("native compound sequence changed or duplicated frames")
+	}
+	for _, frame := range frames {
+		for index := range frame.Events {
+			frame.Events[index].Native = nil
+		}
+	}
+	rebuilt := encodePackageStream(t, compiled, frames, scope, false)
+	_, response := decodePackageStream(t, compiled, rebuilt, scope)
+	items := messageLeaves(t, response)
+	if len(items) != 5 {
+		t.Fatal("lost ordered blocks", items)
+	}
+	for _, index := range []int{0, 3} {
+		text, signature := "plan-a", "sig-a"
+		if index == 3 {
+			text, signature = "plan-b", "sig-b"
+		}
+		if items[index].Kind != p.ReasoningNode || !items[index].Payload.IsString(text) || len(items[index].Resources) != 1 || !items[index].Resources[0].ID.IsString(signature) || items[index].Resources[0].Scope != scope {
+			t.Fatal("thinking was merged, relabeled or lost its resource owner", index, items[index])
+		}
+	}
+	if !items[1].Payload.IsString("h") || !items[4].Payload.IsString("i") || items[2].Kind != p.ToolCallNode || !items[2].CallID.IsString("call") || !items[2].Name.IsString("lookup") || items[2].Input == nil {
+		t.Fatal("text/tool block order or identity changed", items)
+	}
+	sameJSON(t, items[2].Input.Value.Bytes(), `{"n":9007199254740993}`)
+	if !response.Status.IsString("completed") || response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != 20 || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
+		t.Fatal("multiple blocks changed usage or terminal", response)
+	}
+}
 
 func TestAnthropicPackageNativeToolAndThinkingContinuation(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "anthropic")

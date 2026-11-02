@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"os"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -9,6 +10,18 @@ import (
 func TestResponsesPackageStreamRebuildAndNativeDelivery(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "openai-responses")
 	scope := p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}
+	layoutRaw, err := os.ReadFile("testdata/responses-stream-layout.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var layoutValues []p.Value
+	if err := testValue(t, string(layoutRaw)).Decode(&layoutValues); err != nil {
+		t.Fatal(err)
+	}
+	layout := make([]string, len(layoutValues))
+	for index, value := range layoutValues {
+		layout[index] = value.JSONString()
+	}
 	reasoning := responsesCompletedStream(structuredReasoningFinal, structuredReasoningSequence()...)
 	var toolValues []p.Value
 	if err := responsesToolStreamSample(t).Input.Decode(&toolValues); err != nil {
@@ -41,7 +54,7 @@ func TestResponsesPackageStreamRebuildAndNativeDelivery(t *testing.T) {
 		`{"type":"response.custom_tool_call_input.delta","output_index":0,"item_id":"custom","delta":"hello"}`,
 		`{"type":"response.custom_tool_call_input.done","output_index":0,"item_id":"custom","input":"echo hello"}`,
 		`{"type":"response.output_item.done","output_index":0,"item":`+custom+`}`)
-	for name, source := range map[string][]string{"reasoning collections": reasoning, "message phases": text, "function arguments": tool, "incremental metadata": arrays, "text tool": textTool, "hosted tool usage": hostedUsageStreamFrames()} {
+	for name, source := range map[string][]string{"reasoning collections": reasoning, "message phases": text, "function arguments": tool, "incremental metadata": arrays, "text tool": textTool, "hosted tool usage": hostedUsageStreamFrames(), "mixed item layout": layout} {
 		t.Run(name, func(t *testing.T) {
 			// Native delivery uses complete client-valid frames. Separate source
 			// fixtures continue to exercise missing-sequence compatibility.
@@ -61,7 +74,23 @@ func TestResponsesPackageStreamRebuildAndNativeDelivery(t *testing.T) {
 				source[index] = frame.JSONString()
 			}
 			frames, response := decodePackageStream(t, compiled, source, scope)
-			rebuilt := encodePackageStream(t, compiled, frames, scope, false)
+			rebuildFrames := frames
+			if name == "mixed item layout" {
+				rebuildFrames = make([]*p.EventFrame, len(frames))
+				for index, frame := range frames {
+					events := append([]p.Event(nil), frame.Events...)
+					for i := range events {
+						events[i].Native = nil
+						if events[i].Response != nil {
+							copy := *events[i].Response
+							copy.Native = nil
+							events[i].Response = &copy
+						}
+					}
+					rebuildFrames[index] = &p.EventFrame{Events: events}
+				}
+			}
+			rebuilt := encodePackageStream(t, compiled, rebuildFrames, scope, false)
 			_, output := decodePackageStream(t, compiled, rebuilt, scope)
 			if name == "hosted tool usage" {
 				terminal, err := testValue(t, rebuilt[len(rebuilt)-1]).ReadObject()

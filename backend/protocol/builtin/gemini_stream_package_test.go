@@ -3,17 +3,27 @@ package builtin
 import (
 	"bytes"
 	"errors"
+	"os"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
 
-func geminiPackageStreamFrames() []string {
-	return []string{
-		`{"responseId":"r","modelVersion":"m","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"think","thought":true},{"thoughtSignature":"sig-thought"},{"text":"hel"}]}}]}`,
-		`{"responseId":"r","modelVersion":"m","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"lo"},{"functionCall":{"id":"call","name":"lookup","args":{"n":9007199254740993}}},{"thoughtSignature":"sig-tool"}]}}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"thoughtsTokenCount":1,"totalTokenCount":6}}`,
-		`{"responseId":"r","modelVersion":"m","candidates":[{"index":0,"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"thoughtsTokenCount":1,"totalTokenCount":6}}`,
+func geminiPackageStreamFrames(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/gemini-stream-layout.json")
+	if err != nil {
+		t.Fatal(err)
 	}
+	var values []p.Value
+	if err := testValue(t, string(raw)).Decode(&values); err != nil {
+		t.Fatal(err)
+	}
+	frames := make([]string, len(values))
+	for index, value := range values {
+		frames[index] = value.JSONString()
+	}
+	return frames
 }
 
 func TestGeminiPackageStreamItemDisposition(t *testing.T) {
@@ -74,7 +84,8 @@ func TestGeminiPackageStreamItemDisposition(t *testing.T) {
 func TestGeminiPackageStreamSignaturesToolsAndUsage(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "google-generate-content")
 	scope := p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}
-	frames, response := decodePackageStream(t, compiled, geminiPackageStreamFrames(), scope)
+	source := geminiPackageStreamFrames(t)
+	frames, response := decodePackageStream(t, compiled, source, scope)
 	checkGeminiPackageStreamResult(t, response)
 	rendered := encodePackageStream(t, compiled, frames, scope, false)
 	_, rebuilt := decodePackageStream(t, compiled, rendered, scope)
@@ -85,10 +96,10 @@ func TestGeminiPackageStreamSignaturesToolsAndUsage(t *testing.T) {
 		}
 	}
 	native := encodePackageStream(t, compiled, frames, scope, true)
-	if len(native) != len(geminiPackageStreamFrames()) {
+	if len(native) != len(source) {
 		t.Fatal("native source frame was duplicated", len(native))
 	}
-	for index, expected := range geminiPackageStreamFrames() {
+	for index, expected := range source {
 		if native[index] != expected {
 			t.Fatal("same-wire frame bytes changed", index, native[index])
 		}
