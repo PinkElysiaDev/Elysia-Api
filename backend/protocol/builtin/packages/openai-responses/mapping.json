@@ -13813,26 +13813,8 @@
           "ref": "target-wire-metadata"
         },
         {
-          "op": "if",
-          "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/node/attributes/wire:openai_responses",
-              "name": "target-item"
-            }
-          },
-          "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "/node/attributes/wire:openai_responses",
-            "name": "target-item"
-          },
-          "otherwise": {
-            "op": "object",
-            "fields": {}
-          }
+          "op": "ref",
+          "ref": "read-target-item-extensions"
         }
       ]
     },
@@ -14396,26 +14378,8 @@
           "ref": "target-wire-metadata"
         },
         {
-          "op": "if",
-          "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "binding",
-              "path": "/node/attributes/wire:openai_responses",
-              "name": "target-item"
-            }
-          },
-          "then": {
-            "op": "read",
-            "from": "binding",
-            "path": "/node/attributes/wire:openai_responses",
-            "name": "target-item"
-          },
-          "otherwise": {
-            "op": "object",
-            "fields": {}
-          }
+          "op": "ref",
+          "ref": "read-target-item-extensions"
         }
       ]
     },
@@ -25839,6 +25803,28 @@
           ],
           "op": "equal"
         }
+      }
+    },
+    "read-target-item-extensions": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "binding",
+          "path": "/node/attributes/wire:openai_responses",
+          "name": "target-item"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "binding",
+        "path": "/node/attributes/wire:openai_responses",
+        "name": "target-item"
+      },
+      "otherwise": {
+        "op": "object",
+        "fields": {}
       }
     }
   },

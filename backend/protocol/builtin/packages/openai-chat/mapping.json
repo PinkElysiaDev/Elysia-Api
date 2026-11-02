@@ -9567,25 +9567,9 @@
           "op": "equal",
           "items": [
             {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/mode"
-                }
+                "op": "ref",
+                "ref": "read-reasoning-mode"
               },
-              "then": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/mode"
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": ""
-              }
-            },
             {
               "op": "literal",
               "value": "disabled"
@@ -9652,25 +9636,9 @@
         "op": "equal",
         "items": [
           {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/reasoning/mode"
-              }
+              "op": "ref",
+              "ref": "read-reasoning-mode"
             },
-            "then": {
-              "op": "read",
-              "from": "input",
-              "path": "/reasoning/mode"
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": ""
-            }
-          },
           {
             "op": "literal",
             "value": "between_tools"
@@ -13885,25 +13853,9 @@
             "op": "equal",
             "items": [
               {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
-                "then": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/reasoning/mode"
-                },
-                "otherwise": {
-                  "op": "literal",
-                  "value": ""
-                }
-              },
               {
                 "op": "literal",
                 "value": ""
@@ -26758,38 +26710,8 @@
                       "value": "item.started"
                     },
                     "responseId": {
-                      "op": "if",
-                      "when": {
-                        "op": "all",
-                        "items": [
-                          {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/choices/0"
-                            }
-                          },
-                          {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/id"
-                            }
-                          }
-                        ]
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/id"
-                      },
-                      "otherwise": {
-                        "op": "read",
-                        "from": "state",
-                        "path": "/response"
-                      }
+                      "op": "ref",
+                      "ref": "stream-response-identity"
                     },
                     "itemId": {
                       "op": "literal",
@@ -26864,38 +26786,8 @@
                 "value": "item.finished"
               },
               "responseId": {
-                "op": "if",
-                "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/choices/0"
-                      }
-                    },
-                    {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/id"
-                      }
-                    }
-                  ]
-                },
-                "then": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/id"
-                },
-                "otherwise": {
-                  "op": "read",
-                  "from": "state",
-                  "path": "/response"
-                }
+                "op": "ref",
+                "ref": "stream-response-identity"
               },
               "itemId": {
                 "op": "read",
@@ -26941,38 +26833,8 @@
                     "value": "item.finished"
                   },
                   "responseId": {
-                    "op": "if",
-                    "when": {
-                      "op": "all",
-                      "items": [
-                        {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/choices/0"
-                          }
-                        },
-                        {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/id"
-                          }
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/id"
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "state",
-                      "path": "/response"
-                    }
+                    "op": "ref",
+                    "ref": "stream-response-identity"
                   },
                   "itemId": {
                     "op": "literal",
@@ -28497,6 +28359,387 @@
           ]
         }
       ]
+    },
+    "read-reasoning-mode": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/reasoning/mode"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/reasoning/mode"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    "stream-response-identity": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/choices/0"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/id"
+            }
+          }
+        ]
+      },
+      "then": {
+        "op": "read",
+        "from": "input",
+        "path": "/id"
+      },
+      "otherwise": {
+        "op": "read",
+        "from": "state",
+        "path": "/response"
+      }
+    },
+    "encode-terminal-batch": {
+      "op": "concat",
+      "items": [
+        {
+          "op": "if",
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "recall",
+                "name": "terminalContext",
+                "source": {
+                  "op": "literal",
+                  "value": "native-terminal"
+                },
+                "policy": "omit"
+              }
+            }
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "id": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/response"
+                  },
+                  "model": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/model"
+                  },
+                  "created": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/attributes/created_at"
+                  },
+                  "object": {
+                    "op": "literal",
+                    "value": "chat.completion.chunk"
+                  },
+                  "choices": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "object",
+                        "fields": {
+                          "index": {
+                            "op": "literal",
+                            "value": 0
+                          },
+                          "delta": {
+                            "op": "object",
+                            "fields": {}
+                          },
+                          "finish_reason": {
+                            "op": "let",
+                            "name": "finish",
+                            "source": {
+                              "op": "if",
+                              "when": {
+                                "op": "exists",
+                                "source": {
+                                  "op": "read",
+                                  "from": "state",
+                                  "path": "/attributes/finishReason"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "state",
+                                "path": "/attributes/finishReason"
+                              },
+                              "otherwise": {
+                                "op": "if",
+                                "when": {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "equal",
+                                      "items": [
+                                        {
+                                          "op": "read",
+                                          "from": "state",
+                                          "path": "/terminal"
+                                        },
+                                        {
+                                          "op": "literal",
+                                          "value": "completed"
+                                        }
+                                      ]
+                                    },
+                                    "then": {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "read",
+                                        "from": "state",
+                                        "path": "/hasTools"
+                                      },
+                                      "then": {
+                                        "op": "literal",
+                                        "value": "tool_calls"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": "stop"
+                                      }
+                                    },
+                                    "otherwise": {
+                                      "op": "omit"
+                                    }
+                                  }
+                                },
+                                "then": {
+                                  "op": "if",
+                                  "when": {
+                                    "op": "equal",
+                                    "items": [
+                                      {
+                                        "op": "read",
+                                        "from": "state",
+                                        "path": "/terminal"
+                                      },
+                                      {
+                                        "op": "literal",
+                                        "value": "completed"
+                                      }
+                                    ]
+                                  },
+                                  "then": {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "read",
+                                      "from": "state",
+                                      "path": "/hasTools"
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "tool_calls"
+                                    },
+                                    "otherwise": {
+                                      "op": "literal",
+                                      "value": "stop"
+                                    }
+                                  },
+                                  "otherwise": {
+                                    "op": "omit"
+                                  }
+                                },
+                                "otherwise": {
+                                  "op": "omit"
+                                }
+                              }
+                            },
+                            "body": {
+                              "op": "choose",
+                              "source": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "",
+                                "name": "finish"
+                              },
+                              "cases": {
+                                "stop": {
+                                  "op": "literal",
+                                  "value": "stop"
+                                },
+                                "length": {
+                                  "op": "literal",
+                                  "value": "length"
+                                },
+                                "tool_calls": {
+                                  "op": "literal",
+                                  "value": "tool_calls"
+                                },
+                                "content_filter": {
+                                  "op": "literal",
+                                  "value": "content_filter"
+                                },
+                                "recitation": {
+                                  "op": "literal",
+                                  "value": "content_filter"
+                                },
+                                "other": {
+                                  "op": "literal",
+                                  "value": "stop"
+                                }
+                              },
+                              "otherwise": {
+                                "op": "if",
+                                "when": {
+                                  "op": "has_prefix",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "finish"
+                                  },
+                                  "value": "openai-chat:"
+                                },
+                                "then": {
+                                  "op": "strip_prefix",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "finish"
+                                  },
+                                  "value": "openai-chat:"
+                                },
+                                "otherwise": {
+                                  "op": "reject",
+                                  "path": "/finishReason",
+                                  "reason": "target cannot express this terminal reason",
+                                  "diagnostic": {
+                                    "code": "unsupported_capability",
+                                    "stage": "wire",
+                                    "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "array",
+            "items": []
+          }
+        },
+        {
+          "op": "if",
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "binding",
+                  "path": "",
+                  "name": "final-usage"
+                }
+              },
+              {
+                "op": "ref",
+                "ref": "client-includes-usage"
+              }
+            ]
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "id": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/response"
+                  },
+                  "model": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/model"
+                  },
+                  "created": {
+                    "op": "read",
+                    "from": "state",
+                    "path": "/attributes/created_at"
+                  },
+                  "object": {
+                    "op": "literal",
+                    "value": "chat.completion.chunk"
+                  },
+                  "choices": {
+                    "op": "array",
+                    "items": []
+                  },
+                  "usage": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "final-usage"
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "array",
+            "items": []
+          }
+        }
+      ]
+    },
+    "read-model-capability": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "context",
+          "path": "/capability/kind"
+        }
+      },
+      "then": {
+        "op": "read",
+        "from": "context",
+        "path": "/capability/kind"
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": "unknown"
+      }
     }
   },
   "directions": {
@@ -29297,39 +29540,9 @@
         "type": "string"
       },
       "update": {
-        "op": "if",
-        "when": {
-          "op": "all",
-          "items": [
-            {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/choices/0"
-              }
-            },
-            {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/id"
-              }
-            }
-          ]
-        },
-        "then": {
-          "op": "read",
-          "from": "input",
-          "path": "/id"
-        },
-        "otherwise": {
-          "op": "read",
-          "from": "state",
-          "path": "/response"
-        }
-      }
+            "op": "ref",
+            "ref": "stream-response-identity"
+          }
     },
     "model": {
       "schema": {
@@ -29512,39 +29725,9 @@
                       "value": "operation.failed"
                     },
                     "responseId": {
-                      "op": "if",
-                      "when": {
-                        "op": "all",
-                        "items": [
-                          {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/choices/0"
-                            }
-                          },
-                          {
-                            "op": "exists",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/id"
-                            }
-                          }
-                        ]
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/id"
-                      },
-                      "otherwise": {
-                        "op": "read",
-                        "from": "state",
-                        "path": "/response"
-                      }
-                    },
+                          "op": "ref",
+                          "ref": "stream-response-identity"
+                        },
                     "error": {
                       "op": "ref",
                       "ref": "decode-failure"
@@ -29594,39 +29777,9 @@
                             "value": "response.started"
                           },
                           "responseId": {
-                            "op": "if",
-                            "when": {
-                              "op": "all",
-                              "items": [
-                                {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/choices/0"
-                                  }
-                                },
-                                {
-                                  "op": "exists",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/id"
-                                  }
-                                }
-                              ]
-                            },
-                            "then": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/id"
-                            },
-                            "otherwise": {
-                              "op": "read",
-                              "from": "state",
-                              "path": "/response"
-                            }
-                          },
+                                "op": "ref",
+                                "ref": "stream-response-identity"
+                              },
                           "response": {
                             "op": "object",
                             "fields": {
@@ -29635,39 +29788,9 @@
                                 "value": 2
                               },
                               "id": {
-                                "op": "if",
-                                "when": {
-                                  "op": "all",
-                                  "items": [
-                                    {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "input",
-                                        "path": "/choices/0"
-                                      }
-                                    },
-                                    {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "input",
-                                        "path": "/id"
-                                      }
-                                    }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "read",
-                                  "from": "input",
-                                  "path": "/id"
-                                },
-                                "otherwise": {
-                                  "op": "read",
-                                  "from": "state",
-                                  "path": "/response"
-                                }
-                              },
+                                    "op": "ref",
+                                    "ref": "stream-response-identity"
+                                  },
                               "model": {
                                 "op": "if",
                                 "when": {
@@ -30034,39 +30157,9 @@
                                                     "value": "item.started"
                                                   },
                                                   "responseId": {
-                                                    "op": "if",
-                                                    "when": {
-                                                      "op": "all",
-                                                      "items": [
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/choices/0"
-                                                          }
-                                                        },
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/id"
-                                                          }
-                                                        }
-                                                      ]
+                                                      "op": "ref",
+                                                      "ref": "stream-response-identity"
                                                     },
-                                                    "then": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/id"
-                                                    },
-                                                    "otherwise": {
-                                                      "op": "read",
-                                                      "from": "state",
-                                                      "path": "/response"
-                                                    }
-                                                  },
                                                   "itemId": {
                                                     "op": "literal",
                                                     "value": "reasoning"
@@ -30111,39 +30204,9 @@
                                                   "value": "item.delta"
                                                 },
                                                 "responseId": {
-                                                  "op": "if",
-                                                  "when": {
-                                                    "op": "all",
-                                                    "items": [
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/choices/0"
-                                                        }
-                                                      },
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/id"
-                                                        }
-                                                      }
-                                                    ]
+                                                    "op": "ref",
+                                                    "ref": "stream-response-identity"
                                                   },
-                                                  "then": {
-                                                    "op": "read",
-                                                    "from": "input",
-                                                    "path": "/id"
-                                                  },
-                                                  "otherwise": {
-                                                    "op": "read",
-                                                    "from": "state",
-                                                    "path": "/response"
-                                                  }
-                                                },
                                                 "itemId": {
                                                   "op": "literal",
                                                   "value": "reasoning"
@@ -30441,39 +30504,9 @@
                                                     "value": "item.started"
                                                   },
                                                   "responseId": {
-                                                    "op": "if",
-                                                    "when": {
-                                                      "op": "all",
-                                                      "items": [
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/choices/0"
-                                                          }
-                                                        },
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/id"
-                                                          }
-                                                        }
-                                                      ]
+                                                      "op": "ref",
+                                                      "ref": "stream-response-identity"
                                                     },
-                                                    "then": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/id"
-                                                    },
-                                                    "otherwise": {
-                                                      "op": "read",
-                                                      "from": "state",
-                                                      "path": "/response"
-                                                    }
-                                                  },
                                                   "itemId": {
                                                     "op": "literal",
                                                     "value": "text"
@@ -30518,39 +30551,9 @@
                                                   "value": "item.delta"
                                                 },
                                                 "responseId": {
-                                                  "op": "if",
-                                                  "when": {
-                                                    "op": "all",
-                                                    "items": [
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/choices/0"
-                                                        }
-                                                      },
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/id"
-                                                        }
-                                                      }
-                                                    ]
+                                                    "op": "ref",
+                                                    "ref": "stream-response-identity"
                                                   },
-                                                  "then": {
-                                                    "op": "read",
-                                                    "from": "input",
-                                                    "path": "/id"
-                                                  },
-                                                  "otherwise": {
-                                                    "op": "read",
-                                                    "from": "state",
-                                                    "path": "/response"
-                                                  }
-                                                },
                                                 "itemId": {
                                                   "op": "literal",
                                                   "value": "text"
@@ -30909,39 +30912,9 @@
                                                     "value": "item.started"
                                                   },
                                                   "responseId": {
-                                                    "op": "if",
-                                                    "when": {
-                                                      "op": "all",
-                                                      "items": [
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/choices/0"
-                                                          }
-                                                        },
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/id"
-                                                          }
-                                                        }
-                                                      ]
+                                                      "op": "ref",
+                                                      "ref": "stream-response-identity"
                                                     },
-                                                    "then": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/id"
-                                                    },
-                                                    "otherwise": {
-                                                      "op": "read",
-                                                      "from": "state",
-                                                      "path": "/response"
-                                                    }
-                                                  },
                                                   "itemId": {
                                                     "op": "literal",
                                                     "value": "refusal"
@@ -30986,39 +30959,9 @@
                                                   "value": "item.delta"
                                                 },
                                                 "responseId": {
-                                                  "op": "if",
-                                                  "when": {
-                                                    "op": "all",
-                                                    "items": [
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/choices/0"
-                                                        }
-                                                      },
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/id"
-                                                        }
-                                                      }
-                                                    ]
+                                                    "op": "ref",
+                                                    "ref": "stream-response-identity"
                                                   },
-                                                  "then": {
-                                                    "op": "read",
-                                                    "from": "input",
-                                                    "path": "/id"
-                                                  },
-                                                  "otherwise": {
-                                                    "op": "read",
-                                                    "from": "state",
-                                                    "path": "/response"
-                                                  }
-                                                },
                                                 "itemId": {
                                                   "op": "literal",
                                                   "value": "refusal"
@@ -31435,39 +31378,9 @@
                                                     }
                                                   },
                                                   "responseId": {
-                                                    "op": "if",
-                                                    "when": {
-                                                      "op": "all",
-                                                      "items": [
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/choices/0"
-                                                          }
-                                                        },
-                                                        {
-                                                          "op": "exists",
-                                                          "source": {
-                                                            "op": "read",
-                                                            "from": "input",
-                                                            "path": "/id"
-                                                          }
-                                                        }
-                                                      ]
-                                                    },
-                                                    "then": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/id"
-                                                    },
-                                                    "otherwise": {
-                                                      "op": "read",
-                                                      "from": "state",
-                                                      "path": "/response"
-                                                    }
-                                                  },
+                                                        "op": "ref",
+                                                        "ref": "stream-response-identity"
+                                                      },
                                                   "itemId": {
                                                     "op": "read",
                                                     "from": "binding",
@@ -31549,39 +31462,9 @@
                                                       "value": "item.delta"
                                                     },
                                                     "responseId": {
-                                                      "op": "if",
-                                                      "when": {
-                                                        "op": "all",
-                                                        "items": [
-                                                          {
-                                                            "op": "exists",
-                                                            "source": {
-                                                              "op": "read",
-                                                              "from": "input",
-                                                              "path": "/choices/0"
-                                                            }
-                                                          },
-                                                          {
-                                                            "op": "exists",
-                                                            "source": {
-                                                              "op": "read",
-                                                              "from": "input",
-                                                              "path": "/id"
-                                                            }
-                                                          }
-                                                        ]
-                                                      },
-                                                      "then": {
-                                                        "op": "read",
-                                                        "from": "input",
-                                                        "path": "/id"
-                                                      },
-                                                      "otherwise": {
-                                                        "op": "read",
-                                                        "from": "state",
-                                                        "path": "/response"
-                                                      }
-                                                    },
+                                                          "op": "ref",
+                                                          "ref": "stream-response-identity"
+                                                        },
                                                     "itemId": {
                                                       "op": "read",
                                                       "from": "binding",
@@ -31651,39 +31534,9 @@
                                               "value": "response.finished"
                                             },
                                             "responseId": {
-                                              "op": "if",
-                                              "when": {
-                                                "op": "all",
-                                                "items": [
-                                                  {
-                                                    "op": "exists",
-                                                    "source": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/choices/0"
-                                                    }
-                                                  },
-                                                  {
-                                                    "op": "exists",
-                                                    "source": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/id"
-                                                    }
-                                                  }
-                                                ]
+                                                "op": "ref",
+                                                "ref": "stream-response-identity"
                                               },
-                                              "then": {
-                                                "op": "read",
-                                                "from": "input",
-                                                "path": "/id"
-                                              },
-                                              "otherwise": {
-                                                "op": "read",
-                                                "from": "state",
-                                                "path": "/response"
-                                              }
-                                            },
                                             "response": {
                                               "op": "object",
                                               "fields": {
@@ -31692,39 +31545,9 @@
                                                   "value": 2
                                                 },
                                                 "id": {
-                                                  "op": "if",
-                                                  "when": {
-                                                    "op": "all",
-                                                    "items": [
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/choices/0"
-                                                        }
-                                                      },
-                                                      {
-                                                        "op": "exists",
-                                                        "source": {
-                                                          "op": "read",
-                                                          "from": "input",
-                                                          "path": "/id"
-                                                        }
-                                                      }
-                                                    ]
+                                                    "op": "ref",
+                                                    "ref": "stream-response-identity"
                                                   },
-                                                  "then": {
-                                                    "op": "read",
-                                                    "from": "input",
-                                                    "path": "/id"
-                                                  },
-                                                  "otherwise": {
-                                                    "op": "read",
-                                                    "from": "state",
-                                                    "path": "/response"
-                                                  }
-                                                },
                                                 "model": {
                                                   "op": "if",
                                                   "when": {
@@ -31928,39 +31751,9 @@
                                       "value": "usage.updated"
                                     },
                                     "responseId": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "all",
-                                        "items": [
-                                          {
-                                            "op": "exists",
-                                            "source": {
-                                              "op": "read",
-                                              "from": "input",
-                                              "path": "/choices/0"
-                                            }
-                                          },
-                                          {
-                                            "op": "exists",
-                                            "source": {
-                                              "op": "read",
-                                              "from": "input",
-                                              "path": "/id"
-                                            }
-                                          }
-                                        ]
-                                      },
-                                      "then": {
-                                        "op": "read",
-                                        "from": "input",
-                                        "path": "/id"
-                                      },
-                                      "otherwise": {
-                                        "op": "read",
-                                        "from": "state",
-                                        "path": "/response"
-                                      }
-                                    },
+                                          "op": "ref",
+                                          "ref": "stream-response-identity"
+                                        },
                                     "usage": {
                                       "op": "merge_usage",
                                       "items": [
@@ -32487,39 +32280,9 @@
                                   "value": "metadata.updated"
                                 },
                                 "responseId": {
-                                  "op": "if",
-                                  "when": {
-                                    "op": "all",
-                                    "items": [
-                                      {
-                                        "op": "exists",
-                                        "source": {
-                                          "op": "read",
-                                          "from": "input",
-                                          "path": "/choices/0"
-                                        }
-                                      },
-                                      {
-                                        "op": "exists",
-                                        "source": {
-                                          "op": "read",
-                                          "from": "input",
-                                          "path": "/id"
-                                        }
-                                      }
-                                    ]
-                                  },
-                                  "then": {
-                                    "op": "read",
-                                    "from": "input",
-                                    "path": "/id"
-                                  },
-                                  "otherwise": {
-                                    "op": "read",
-                                    "from": "state",
-                                    "path": "/response"
-                                  }
-                                }
+                                      "op": "ref",
+                                      "ref": "stream-response-identity"
+                                    }
                               }
                             }
                           ]
@@ -32656,39 +32419,9 @@
                                     "value": "metadata.updated"
                                   },
                                   "responseId": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "all",
-                                      "items": [
-                                        {
-                                          "op": "exists",
-                                          "source": {
-                                            "op": "read",
-                                            "from": "input",
-                                            "path": "/choices/0"
-                                          }
-                                        },
-                                        {
-                                          "op": "exists",
-                                          "source": {
-                                            "op": "read",
-                                            "from": "input",
-                                            "path": "/id"
-                                          }
-                                        }
-                                      ]
-                                    },
-                                    "then": {
-                                      "op": "read",
-                                      "from": "input",
-                                      "path": "/id"
-                                    },
-                                    "otherwise": {
-                                      "op": "read",
-                                      "from": "state",
-                                      "path": "/response"
-                                    }
-                                  }
+                                        "op": "ref",
+                                        "ref": "stream-response-identity"
+                                      }
                                 }
                               }
                             ]
@@ -33051,39 +32784,9 @@
                                                 "value": "item.snapshot"
                                               },
                                               "responseId": {
-                                                "op": "if",
-                                                "when": {
-                                                  "op": "all",
-                                                  "items": [
-                                                    {
-                                                      "op": "exists",
-                                                      "source": {
-                                                        "op": "read",
-                                                        "from": "input",
-                                                        "path": "/choices/0"
-                                                      }
-                                                    },
-                                                    {
-                                                      "op": "exists",
-                                                      "source": {
-                                                        "op": "read",
-                                                        "from": "input",
-                                                        "path": "/id"
-                                                      }
-                                                    }
-                                                  ]
-                                                },
-                                                "then": {
-                                                  "op": "read",
-                                                  "from": "input",
-                                                  "path": "/id"
-                                                },
-                                                "otherwise": {
-                                                  "op": "read",
-                                                  "from": "state",
-                                                  "path": "/response"
-                                                }
-                                              },
+                                                    "op": "ref",
+                                                    "ref": "stream-response-identity"
+                                                  },
                                               "itemId": {
                                                 "op": "literal",
                                                 "value": "text"
@@ -33160,39 +32863,9 @@
                                                 "value": "item.snapshot"
                                               },
                                               "responseId": {
-                                                "op": "if",
-                                                "when": {
-                                                  "op": "all",
-                                                  "items": [
-                                                    {
-                                                      "op": "exists",
-                                                      "source": {
-                                                        "op": "read",
-                                                        "from": "input",
-                                                        "path": "/choices/0"
-                                                      }
-                                                    },
-                                                    {
-                                                      "op": "exists",
-                                                      "source": {
-                                                        "op": "read",
-                                                        "from": "input",
-                                                        "path": "/id"
-                                                      }
-                                                    }
-                                                  ]
-                                                },
-                                                "then": {
-                                                  "op": "read",
-                                                  "from": "input",
-                                                  "path": "/id"
-                                                },
-                                                "otherwise": {
-                                                  "op": "read",
-                                                  "from": "state",
-                                                  "path": "/response"
-                                                }
-                                              },
+                                                    "op": "ref",
+                                                    "ref": "stream-response-identity"
+                                                  },
                                               "itemId": {
                                                 "op": "literal",
                                                 "value": "text"
@@ -33283,39 +32956,9 @@
                                               "value": "metadata.updated"
                                             },
                                             "responseId": {
-                                              "op": "if",
-                                              "when": {
-                                                "op": "all",
-                                                "items": [
-                                                  {
-                                                    "op": "exists",
-                                                    "source": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/choices/0"
-                                                    }
-                                                  },
-                                                  {
-                                                    "op": "exists",
-                                                    "source": {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/id"
-                                                    }
-                                                  }
-                                                ]
-                                              },
-                                              "then": {
-                                                "op": "read",
-                                                "from": "input",
-                                                "path": "/id"
-                                              },
-                                              "otherwise": {
-                                                "op": "read",
-                                                "from": "state",
-                                                "path": "/response"
-                                              }
-                                            }
+                                                  "op": "ref",
+                                                  "ref": "stream-response-identity"
+                                                }
                                           }
                                         }
                                       ]
@@ -33487,39 +33130,9 @@
                     "value": "native"
                   },
                   "responseId": {
-                    "op": "if",
-                    "when": {
-                      "op": "all",
-                      "items": [
-                        {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/choices/0"
-                          }
-                        },
-                        {
-                          "op": "exists",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/id"
-                          }
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/id"
-                    },
-                    "otherwise": {
-                      "op": "read",
-                      "from": "state",
-                      "path": "/response"
-                    }
-                  },
+                        "op": "ref",
+                        "ref": "stream-response-identity"
+                      },
                   "unmapped": {
                     "op": "read",
                     "from": "binding",
@@ -35204,312 +34817,9 @@
             "op": "let",
             "name": "base-frames",
             "source": {
-              "op": "concat",
-              "items": [
-                {
-                  "op": "if",
-                  "when": {
-                    "op": "not",
-                    "source": {
-                      "op": "exists",
-                      "source": {
-                        "op": "recall",
-                        "name": "terminalContext",
-                        "source": {
-                          "op": "literal",
-                          "value": "native-terminal"
-                        },
-                        "policy": "omit"
-                      }
-                    }
-                  },
-                  "then": {
-                  "op": "array",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "id": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        },
-                        "model": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/model"
-                        },
-                        "created": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/attributes/created_at"
-                        },
-                        "object": {
-                          "op": "literal",
-                          "value": "chat.completion.chunk"
-                        },
-                        "choices": {
-                          "op": "array",
-                          "items": [
-                            {
-                              "op": "object",
-                              "fields": {
-                                "index": {
-                                  "op": "literal",
-                                  "value": 0
-                                },
-                                "delta": {
-                                  "op": "object",
-                                  "fields": {}
-                                },
-                                "finish_reason": {
-                                  "op": "let",
-                                  "name": "finish",
-                                  "source": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "state",
-                                        "path": "/attributes/finishReason"
-                                      }
-                                    },
-                                    "then": {
-                                      "op": "read",
-                                      "from": "state",
-                                      "path": "/attributes/finishReason"
-                                    },
-                                    "otherwise": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "exists",
-                                        "source": {
-                                          "op": "if",
-                                          "when": {
-                                            "op": "equal",
-                                            "items": [
-                                              {
-                                                "op": "read",
-                                                "from": "state",
-                                                "path": "/terminal"
-                                              },
-                                              {
-                                                "op": "literal",
-                                                "value": "completed"
-                                              }
-                                            ]
-                                          },
-                                          "then": {
-                                            "op": "if",
-                                            "when": {
-                                              "op": "read",
-                                              "from": "state",
-                                              "path": "/hasTools"
-                                            },
-                                            "then": {
-                                              "op": "literal",
-                                              "value": "tool_calls"
-                                            },
-                                            "otherwise": {
-                                              "op": "literal",
-                                              "value": "stop"
-                                            }
-                                          },
-                                          "otherwise": {
-                                            "op": "omit"
-                                          }
-                                        }
-                                      },
-                                      "then": {
-                                        "op": "if",
-                                        "when": {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "state",
-                                              "path": "/terminal"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": "completed"
-                                            }
-                                          ]
-                                        },
-                                        "then": {
-                                          "op": "if",
-                                          "when": {
-                                            "op": "read",
-                                            "from": "state",
-                                            "path": "/hasTools"
-                                          },
-                                          "then": {
-                                            "op": "literal",
-                                            "value": "tool_calls"
-                                          },
-                                          "otherwise": {
-                                            "op": "literal",
-                                            "value": "stop"
-                                          }
-                                        },
-                                        "otherwise": {
-                                          "op": "omit"
-                                        }
-                                      },
-                                      "otherwise": {
-                                        "op": "omit"
-                                      }
-                                    }
-                                  },
-                                  "body": {
-                                    "op": "choose",
-                                    "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "finish"
-                                    },
-                                    "cases": {
-                                      "stop": {
-                                        "op": "literal",
-                                        "value": "stop"
-                                      },
-                                      "length": {
-                                        "op": "literal",
-                                        "value": "length"
-                                      },
-                                      "tool_calls": {
-                                        "op": "literal",
-                                        "value": "tool_calls"
-                                      },
-                                      "content_filter": {
-                                        "op": "literal",
-                                        "value": "content_filter"
-                                      },
-                                      "recitation": {
-                                        "op": "literal",
-                                        "value": "content_filter"
-                                      },
-                                      "other": {
-                                        "op": "literal",
-                                        "value": "stop"
-                                      }
-                                    },
-                                    "otherwise": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "has_prefix",
-                                        "source": {
-                                          "op": "read",
-                                          "from": "binding",
-                                          "path": "",
-                                          "name": "finish"
-                                        },
-                                        "value": "openai-chat:"
-                                      },
-                                      "then": {
-                                        "op": "strip_prefix",
-                                        "source": {
-                                          "op": "read",
-                                          "from": "binding",
-                                          "path": "",
-                                          "name": "finish"
-                                        },
-                                        "value": "openai-chat:"
-                                      },
-                                      "otherwise": {
-                                        "op": "reject",
-                                        "path": "/finishReason",
-                                        "reason": "target cannot express this terminal reason",
-                                        "diagnostic": {
-                                          "code": "unsupported_capability",
-                                          "stage": "wire",
-                                          "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          ]
-                        }
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "encode-terminal-batch"
                 },
-                  "otherwise": {
-                    "op": "array",
-                    "items": []
-                  }
-                },
-                {
-                  "op": "if",
-                  "when": {
-                    "op": "all",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "final-usage"
-                        }
-                      },
-                      {
-                        "op": "ref",
-                        "ref": "client-includes-usage"
-                      }
-                    ]
-                  },
-                  "then": {
-                    "op": "array",
-                    "items": [
-                      {
-                        "op": "object",
-                        "fields": {
-                          "id": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/response"
-                          },
-                          "model": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/model"
-                          },
-                          "created": {
-                            "op": "read",
-                            "from": "state",
-                            "path": "/attributes/created_at"
-                          },
-                          "object": {
-                            "op": "literal",
-                            "value": "chat.completion.chunk"
-                          },
-                          "choices": {
-                            "op": "array",
-                            "items": []
-                          },
-                          "usage": {
-                            "op": "read",
-                            "from": "binding",
-                            "path": "",
-                            "name": "final-usage"
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  "otherwise": {
-                    "op": "array",
-                    "items": []
-                  }
-                }
-              ]
-            },
             "body": {
               "op": "let",
               "name": "metadata-records",
@@ -35694,312 +35004,9 @@
             }
           },
           "otherwise": {
-            "op": "concat",
-            "items": [
-              {
-                "op": "if",
-                "when": {
-                  "op": "not",
-                  "source": {
-                    "op": "exists",
-                    "source": {
-                      "op": "recall",
-                      "name": "terminalContext",
-                      "source": {
-                        "op": "literal",
-                        "value": "native-terminal"
-                      },
-                      "policy": "omit"
-                    }
-                  }
-                },
-                "then": {
-                "op": "array",
-                "items": [
-                  {
-                    "op": "object",
-                    "fields": {
-                      "id": {
-                        "op": "read",
-                        "from": "state",
-                        "path": "/response"
-                      },
-                      "model": {
-                        "op": "read",
-                        "from": "state",
-                        "path": "/model"
-                      },
-                      "created": {
-                        "op": "read",
-                        "from": "state",
-                        "path": "/attributes/created_at"
-                      },
-                      "object": {
-                        "op": "literal",
-                        "value": "chat.completion.chunk"
-                      },
-                      "choices": {
-                        "op": "array",
-                        "items": [
-                          {
-                            "op": "object",
-                            "fields": {
-                              "index": {
-                                "op": "literal",
-                                "value": 0
-                              },
-                              "delta": {
-                                "op": "object",
-                                "fields": {}
-                              },
-                              "finish_reason": {
-                                "op": "let",
-                                "name": "finish",
-                                "source": {
-                                  "op": "if",
-                                  "when": {
-                                    "op": "exists",
-                                    "source": {
-                                      "op": "read",
-                                      "from": "state",
-                                      "path": "/attributes/finishReason"
-                                    }
-                                  },
-                                  "then": {
-                                    "op": "read",
-                                    "from": "state",
-                                    "path": "/attributes/finishReason"
-                                  },
-                                  "otherwise": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "exists",
-                                      "source": {
-                                        "op": "if",
-                                        "when": {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "state",
-                                              "path": "/terminal"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": "completed"
-                                            }
-                                          ]
-                                        },
-                                        "then": {
-                                          "op": "if",
-                                          "when": {
-                                            "op": "read",
-                                            "from": "state",
-                                            "path": "/hasTools"
-                                          },
-                                          "then": {
-                                            "op": "literal",
-                                            "value": "tool_calls"
-                                          },
-                                          "otherwise": {
-                                            "op": "literal",
-                                            "value": "stop"
-                                          }
-                                        },
-                                        "otherwise": {
-                                          "op": "omit"
-                                        }
-                                      }
-                                    },
-                                    "then": {
-                                      "op": "if",
-                                      "when": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "state",
-                                            "path": "/terminal"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": "completed"
-                                          }
-                                        ]
-                                      },
-                                      "then": {
-                                        "op": "if",
-                                        "when": {
-                                          "op": "read",
-                                          "from": "state",
-                                          "path": "/hasTools"
-                                        },
-                                        "then": {
-                                          "op": "literal",
-                                          "value": "tool_calls"
-                                        },
-                                        "otherwise": {
-                                          "op": "literal",
-                                          "value": "stop"
-                                        }
-                                      },
-                                      "otherwise": {
-                                        "op": "omit"
-                                      }
-                                    },
-                                    "otherwise": {
-                                      "op": "omit"
-                                    }
-                                  }
-                                },
-                                "body": {
-                                  "op": "choose",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "",
-                                    "name": "finish"
-                                  },
-                                  "cases": {
-                                    "stop": {
-                                      "op": "literal",
-                                      "value": "stop"
-                                    },
-                                    "length": {
-                                      "op": "literal",
-                                      "value": "length"
-                                    },
-                                    "tool_calls": {
-                                      "op": "literal",
-                                      "value": "tool_calls"
-                                    },
-                                    "content_filter": {
-                                      "op": "literal",
-                                      "value": "content_filter"
-                                    },
-                                    "recitation": {
-                                      "op": "literal",
-                                      "value": "content_filter"
-                                    },
-                                    "other": {
-                                      "op": "literal",
-                                      "value": "stop"
-                                    }
-                                  },
-                                  "otherwise": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "has_prefix",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "finish"
-                                      },
-                                      "value": "openai-chat:"
-                                    },
-                                    "then": {
-                                      "op": "strip_prefix",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "finish"
-                                      },
-                                      "value": "openai-chat:"
-                                    },
-                                    "otherwise": {
-                                      "op": "reject",
-                                      "path": "/finishReason",
-                                      "reason": "target cannot express this terminal reason",
-                                      "diagnostic": {
-                                        "code": "unsupported_capability",
-                                        "stage": "wire",
-                                        "suggestion": "Use a target with an equivalent declared mapping; preserve the original capability."
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  }
-                ]
-              },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
-                }
-              },
-              {
-                "op": "if",
-                "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "binding",
-                        "path": "",
-                        "name": "final-usage"
-                      }
-                    },
-                    {
-                      "op": "ref",
-                      "ref": "client-includes-usage"
-                    }
-                  ]
-                },
-                "then": {
-                  "op": "array",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "id": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/response"
-                        },
-                        "model": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/model"
-                        },
-                        "created": {
-                          "op": "read",
-                          "from": "state",
-                          "path": "/attributes/created_at"
-                        },
-                        "object": {
-                          "op": "literal",
-                          "value": "chat.completion.chunk"
-                        },
-                        "choices": {
-                          "op": "array",
-                          "items": []
-                        },
-                        "usage": {
-                          "op": "read",
-                          "from": "binding",
-                          "path": "",
-                          "name": "final-usage"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "otherwise": {
-                  "op": "array",
-                  "items": []
-                }
+                "op": "ref",
+                "ref": "encode-terminal-batch"
               }
-            ]
-          }
         }
       }
     }
@@ -41593,24 +40600,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/kind"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
+                  "op": "ref",
+                  "ref": "read-model-capability"
                 },
                 {
                   "op": "literal",
@@ -41638,24 +40629,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -41669,24 +40644,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
+                    "op": "ref",
+                    "ref": "read-model-capability"
                   },
                   {
                     "op": "literal",
@@ -41702,24 +40661,8 @@
                   "op": "equal",
                   "items": [
                     {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "context",
-                          "path": "/capability/kind"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": "unknown"
-                      }
+                      "op": "ref",
+                      "ref": "read-model-capability"
                     },
                     {
                       "op": "literal",
@@ -41788,24 +40731,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/kind"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
+                  "op": "ref",
+                  "ref": "read-model-capability"
                 },
                 {
                   "op": "literal",
@@ -41817,24 +40744,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -41982,24 +40893,8 @@
                   "op": "equal",
                   "items": [
                     {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "context",
-                          "path": "/capability/kind"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": "unknown"
-                      }
+                      "op": "ref",
+                      "ref": "read-model-capability"
                     },
                     {
                       "op": "literal",
@@ -42011,24 +40906,8 @@
                   "op": "equal",
                   "items": [
                     {
-                      "op": "if",
-                      "when": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "context",
-                          "path": "/capability/kind"
-                        }
-                      },
-                      "then": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": "unknown"
-                      }
+                      "op": "ref",
+                      "ref": "read-model-capability"
                     },
                     {
                       "op": "literal",
@@ -42047,24 +40926,8 @@
                     "op": "equal",
                     "items": [
                       {
-                        "op": "if",
-                        "when": {
-                          "op": "present",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/reasoning/mode"
-                          }
-                        },
-                        "then": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/reasoning/mode"
-                        },
-                        "otherwise": {
-                          "op": "literal",
-                          "value": ""
-                        }
+                        "op": "ref",
+                        "ref": "read-reasoning-mode"
                       },
                       {
                         "op": "literal",
@@ -42160,24 +41023,8 @@
                 "value": " has "
               },
               {
-                "op": "if",
-                "when": {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/kind"
-                  }
-                },
-                "then": {
-                  "op": "read",
-                  "from": "context",
-                  "path": "/capability/kind"
-                },
-                "otherwise": {
-                  "op": "literal",
-                  "value": "unknown"
-                }
+                "op": "ref",
+                "ref": "read-model-capability"
               },
               {
                 "op": "literal",
@@ -42378,24 +41225,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -42857,24 +41688,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -42948,24 +41763,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -43020,24 +41819,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -43079,24 +41862,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -43388,24 +42155,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/kind"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
+                  "op": "ref",
+                  "ref": "read-model-capability"
                 },
                 {
                   "op": "literal",
@@ -43417,24 +42168,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -43538,24 +42273,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/kind"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
+                  "op": "ref",
+                  "ref": "read-model-capability"
                 },
                 {
                   "op": "literal",
@@ -43647,24 +42366,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "context",
-                    "path": "/capability/kind"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": "unknown"
-                  }
+                  "op": "ref",
+                  "ref": "read-model-capability"
                 },
                 {
                   "op": "literal",
@@ -43687,24 +42390,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -44027,24 +42714,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -44339,24 +43010,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
+                    "op": "ref",
+                    "ref": "read-model-capability"
                   },
                   {
                     "op": "literal",
@@ -44508,24 +43163,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
+                    "op": "ref",
+                    "ref": "read-model-capability"
                   },
                   {
                     "op": "literal",
@@ -44538,24 +43177,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -44616,24 +43239,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
+                    "op": "ref",
+                    "ref": "read-model-capability"
                   },
                   {
                     "op": "literal",
@@ -44646,24 +43253,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -44858,24 +43449,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
+                    "op": "ref",
+                    "ref": "read-model-capability"
                   },
                   {
                     "op": "literal",
@@ -44888,24 +43463,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
@@ -45068,24 +43627,8 @@
                 "op": "equal",
                 "items": [
                   {
-                    "op": "if",
-                    "when": {
-                      "op": "present",
-                      "source": {
-                        "op": "read",
-                        "from": "context",
-                        "path": "/capability/kind"
-                      }
-                    },
-                    "then": {
-                      "op": "read",
-                      "from": "context",
-                      "path": "/capability/kind"
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": "unknown"
-                    }
+                    "op": "ref",
+                    "ref": "read-model-capability"
                   },
                   {
                     "op": "literal",
@@ -45098,24 +43641,8 @@
               "op": "equal",
               "items": [
                 {
-                  "op": "if",
-                  "when": {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/reasoning/mode"
-                    }
-                  },
-                  "then": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/reasoning/mode"
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": ""
-                  }
+                  "op": "ref",
+                  "ref": "read-reasoning-mode"
                 },
                 {
                   "op": "literal",
