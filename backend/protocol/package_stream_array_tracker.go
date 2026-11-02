@@ -1,7 +1,5 @@
 package protocol
 
-import "strings"
-
 func (plan *compiledOutputPlan) trackStreamArray(state evaluation) (plannedOutput, error) {
 	keyOutput, err := plan.source.build(state)
 	if err != nil {
@@ -54,9 +52,7 @@ func (transaction *packageStreamTransaction) commitArrays(base *packageStreamPri
 		base.arrays = make(map[streamTrackKey]streamArrayTracker)
 	}
 	for key, tracker := range transaction.arrayUpdates {
-		if _, exists := base.arrays[key]; !exists {
-			key.item = strings.Clone(key.item)
-		}
+		key.item = base.trackedItems[key.item].key
 		base.arrays[key] = tracker
 	}
 }

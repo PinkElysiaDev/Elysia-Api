@@ -252,10 +252,7 @@ func (transaction *packageStreamTransaction) commitTools(base *packageStreamPrim
 	}
 	for key, pending := range transaction.toolUpdates {
 		tool := pending.tool
-		isNew := base.tools[key] == nil
-		if isNew {
-			key.item = strings.Clone(key.item)
-		}
+		key.item = base.trackedItems[key.item].key
 		if pending.retainedBytes == 0 {
 			tool.input.Reset()
 			tool.bufferStart = tool.text.Length() + pending.deltaBytes

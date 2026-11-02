@@ -253,7 +253,7 @@ func (pending *pendingStreamBuffer) read(state evaluation) (plannedOutput, error
 
 func (transaction *packageStreamTransaction) releaseTrackChannel(key string) {
 	base := transaction.primitives()
-	remaining := base.trackedItems[key] + transaction.trackChannels[key] - 1
+	remaining := base.trackedItems[key].channels + transaction.trackChannels[key] - 1
 	if remaining < 0 {
 		panic("release of an unregistered tracker channel")
 	}
@@ -282,8 +282,8 @@ func (transaction *packageStreamTransaction) commitBuffers(base *packageStreamPr
 		buffer := pending.previous
 		if buffer == nil {
 			buffer = &streamBuffer{}
-			key.item = strings.Clone(key.item)
 		}
+		key.item = base.trackedItems[key.item].key
 		if pending.isText && !pending.snapshot.IsZero() {
 			buffer.fragments = []Value{pending.snapshot.value}
 			buffer.textTail.Reset()

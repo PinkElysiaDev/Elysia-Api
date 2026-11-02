@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -106,7 +107,7 @@ func collectPackageGatewayReply(t *testing.T, compiled *protocol.Compiled, reply
 	return response
 }
 
-func checkPackageGatewayReply(t *testing.T, response *protocol.Response) {
+func checkPackageGatewayReply(t *testing.T, response *protocol.Response, expectedText string) {
 	t.Helper()
 	var text strings.Builder
 	var visit func([]protocol.Node)
@@ -123,7 +124,7 @@ func checkPackageGatewayReply(t *testing.T, response *protocol.Response) {
 		}
 	}
 	visit(response.Content)
-	if text.String() != "hi" || !response.Status.IsString("completed") || response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != 20 || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
+	if text.String() != expectedText || !response.Status.IsString("completed") || response.Usage == nil || response.Usage.Input == nil || response.Usage.Input.Count != 20 || response.Usage.Output == nil || response.Usage.Output.Count != 2 {
 		t.Fatal("full consumption lost content, terminal status or usage", text.String(), response.Status, response.Usage)
 	}
 }
@@ -136,7 +137,21 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			upstream := packages[upstreamName]
 			jsonReply, streamReply := buildPackageGatewayReply(t, upstream, false), buildPackageGatewayReply(t, upstream, true)
 			var multiRootReply []byte
+			var textRangeReply bytes.Buffer
 			if upstreamName == "openai-responses" {
+				fixture, err := os.ReadFile("../protocol/builtin/testdata/responses-text-ranges.json")
+				if err != nil {
+					t.Fatal(err)
+				}
+				var frames []protocol.Value
+				if err := sonic.ConfigStd.Unmarshal(fixture, &frames); err != nil {
+					t.Fatal(err)
+				}
+				for _, frame := range frames {
+					if err := protocol.WriteFrame(&textRangeReply, upstream.Operations()["stream"], frame); err != nil {
+						t.Fatal(err)
+					}
+				}
 				value, err := protocol.ParseValue(jsonReply)
 				if err != nil {
 					t.Fatal(err)
@@ -164,6 +179,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 			var calls atomic.Int32
 			var expectsInstructions atomic.Bool
 			var expectsMultipleRoots atomic.Bool
+			var expectsTextRanges atomic.Bool
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)
 				body, err := io.ReadAll(request.Body)
@@ -209,7 +225,11 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 				isStream := control.Stream || request.URL.Query().Get("alt") == "sse"
 				if isStream {
 					writer.Header().Set("Content-Type", "text/event-stream")
-					_, _ = writer.Write(streamReply)
+					response := streamReply
+					if expectsTextRanges.Load() {
+						response = textRangeReply.Bytes()
+					}
+					_, _ = writer.Write(response)
 				} else {
 					writer.Header().Set("Content-Type", "application/json")
 					response := jsonReply
@@ -234,6 +254,8 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						path := strings.ReplaceAll(ingress.Operations()[operationName].Path, "{model}", "group")
 						body := buildPackageGatewayRequest(ingressName, isStream)
 						expectsMultipleRoots.Store(upstreamName == "openai-responses" && (ingressName == "openai-chat" || ingressName == "anthropic" || ingressName == "google-generate-content"))
+						hasTextRanges := upstreamName == "openai-responses" && ingressName == "openai-chat" && isStream
+						expectsTextRanges.Store(hasTextRanges)
 						hasInstructions := ingressName == "openai-chat" && (upstreamName == "anthropic" || upstreamName == "google-generate-content")
 						expectsInstructions.Store(hasInstructions)
 						if hasInstructions {
@@ -251,7 +273,11 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 						if reply.Code != http.StatusOK || calls.Load() != before+1 {
 							t.Fatal("generation failed or repeated", reply.Code, calls.Load()-before, reply.Body.String())
 						}
-						checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream))
+						expectedText := "hi"
+						if hasTextRanges {
+							expectedText = "😀hi"
+						}
+						checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream), expectedText)
 					})
 				}
 			}

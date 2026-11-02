@@ -17136,280 +17136,8 @@
                               "op": "let",
                               "name": "suffix",
                               "source": {
-                                "op": "if",
-                                "when": {
-                                  "op": "equal",
-                                  "items": [
-                                    {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "/kind",
-                                      "name": "node"
-                                    },
-                                    {
-                                      "op": "literal",
-                                      "value": "tool_call"
-                                    }
-                                  ]
-                                },
-                                "then": {
-                                  "op": "track_tool",
-                                  "name": "arguments",
-                                  "source": {
-                                    "op": "read",
-                                    "from": "binding",
-                                    "path": "/key",
-                                    "name": "identity"
-                                  },
-                                  "body": {
-                                    "op": "object",
-                                    "fields": {
-                                      "kind": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/inputKind",
-                                        "name": "node"
-                                      },
-                                      "callId": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/callId",
-                                        "name": "node"
-                                      },
-                                      "text": {
-                                        "op": "if",
-                                        "when": {
-                                          "op": "exists",
-                                          "source": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "",
-                                            "name": "payload"
-                                          }
-                                        },
-                                        "then": {
-                                          "op": "if",
-                                          "when": {
-                                            "op": "all",
-                                            "items": [
-                                              {
-                                                "op": "not",
-                                                "source": {
-                                                  "op": "equal",
-                                                  "items": [
-                                                    {
-                                                      "op": "read",
-                                                      "from": "input",
-                                                      "path": "/type"
-                                                    },
-                                                    {
-                                                      "op": "literal",
-                                                      "value": "item.delta"
-                                                    }
-                                                  ]
-                                                }
-                                              },
-                                              {
-                                                "op": "equal",
-                                                "items": [
-                                                  {
-                                                    "op": "read",
-                                                    "from": "binding",
-                                                    "path": "/inputKind",
-                                                    "name": "node"
-                                                  },
-                                                  {
-                                                    "op": "literal",
-                                                    "value": "json"
-                                                  }
-                                                ]
-                                              }
-                                            ]
-                                          },
-                                          "then": {
-                                            "op": "stringify_json",
-                                            "source": {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "path": "",
-                                              "name": "payload"
-                                            }
-                                          },
-                                          "otherwise": {
-                                            "op": "read",
-                                            "from": "binding",
-                                            "path": "",
-                                            "name": "payload"
-                                          }
-                                        },
-                                        "otherwise": {
-                                          "op": "omit"
-                                        }
-                                      },
-                                      "snapshot": {
-                                        "op": "not",
-                                        "source": {
-                                          "op": "equal",
-                                          "items": [
-                                            {
-                                              "op": "read",
-                                              "from": "input",
-                                              "path": "/type"
-                                            },
-                                            {
-                                              "op": "literal",
-                                              "value": "item.delta"
-                                            }
-                                          ]
-                                        }
-                                      },
-                                      "done": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "input",
-                                            "path": "/type"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": "item.finished"
-                                          }
-                                        ]
-                                      },
-                                      "emit": {
-                                        "op": "any",
-                                        "items": [
-                                          {
-                                            "op": "not",
-                                            "source": {
-                                              "op": "read",
-                                              "from": "binding",
-                                              "name": "should-render-item",
-                                              "path": ""
-                                            }
-                                          },
-                                          {
-                                            "op": "any",
-                                            "items": [
-                                              {
-                                                "op": "not",
-                                                "source": {
-                                                  "op": "equal",
-                                                  "items": [
-                                                    {
-                                                      "op": "read",
-                                                      "from": "binding",
-                                                      "path": "/kind",
-                                                      "name": "node"
-                                                    },
-                                                    {
-                                                      "op": "literal",
-                                                      "value": "tool_call"
-                                                    }
-                                                  ]
-                                                }
-                                              },
-                                              {
-                                                "op": "all",
-                                                "items": [
-                                                  {
-                                                    "op": "exists",
-                                                    "source": {
-                                                      "op": "read",
-                                                      "from": "binding",
-                                                      "path": "/name",
-                                                      "name": "node"
-                                                    }
-                                                  },
-                                                  {
-                                                    "op": "exists",
-                                                    "source": {
-                                                      "op": "read",
-                                                      "from": "binding",
-                                                      "path": "/callId",
-                                                      "name": "node"
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  }
-                                },
-                                "otherwise": {
-                                  "op": "if",
-                                  "when": {
-                                    "op": "exists",
-                                    "source": {
-                                      "op": "read",
-                                      "from": "binding",
-                                      "path": "",
-                                      "name": "payload"
-                                    }
-                                  },
-                                  "then": {
-                                    "op": "if",
-                                    "when": {
-                                      "op": "not",
-                                      "source": {
-                                        "op": "equal",
-                                        "items": [
-                                          {
-                                            "op": "read",
-                                            "from": "input",
-                                            "path": "/type"
-                                          },
-                                          {
-                                            "op": "literal",
-                                            "value": "item.delta"
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "then": {
-                                      "op": "track_text",
-                                      "name": "body",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/key",
-                                        "name": "identity"
-                                      },
-                                      "body": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "payload"
-                                      },
-                                      "policy": "snapshot"
-                                    },
-                                    "otherwise": {
-                                      "op": "track_text",
-                                      "name": "body",
-                                      "source": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "/key",
-                                        "name": "identity"
-                                      },
-                                      "body": {
-                                        "op": "read",
-                                        "from": "binding",
-                                        "path": "",
-                                        "name": "payload"
-                                      },
-                                      "policy": "delta"
-                                    }
-                                  },
-                                  "otherwise": {
-                                    "op": "literal",
-                                    "value": ""
-                                  }
-                                }
+                                "op": "ref",
+                                "ref": "track-chat-stream-suffix"
                               },
                               "body": {
                                 "op": "let",
@@ -19472,14 +19200,9 @@
                                                                               "name": "metadata"
                                                                             },
                                                                             "value": {
-                                                                              "op": "parse_json",
-                                                                              "source": {
-                                                                                "op": "read",
-                                                                                "from": "binding",
-                                                                                "path": "/text",
-                                                                                "name": "metadata"
-                                                                              }
-                                                                            }
+                                                                                  "op": "ref",
+                                                                                  "ref": "project-chat-stream-annotations"
+                                                                                }
                                                                           }
                                                                         }
                                                                       ]
@@ -19549,14 +19272,9 @@
                                                                                       "name": "metadata"
                                                                                     },
                                                                                     "value": {
-                                                                                      "op": "parse_json",
-                                                                                      "source": {
-                                                                                        "op": "read",
-                                                                                        "from": "binding",
-                                                                                        "path": "/text",
-                                                                                        "name": "metadata"
-                                                                                      }
-                                                                                    }
+                                                                                          "op": "ref",
+                                                                                          "ref": "project-chat-stream-annotations"
+                                                                                        }
                                                                                   }
                                                                                 }
                                                                               ]
@@ -19697,14 +19415,9 @@
                                                                                     "name": "metadata"
                                                                                   },
                                                                                   "value": {
-                                                                                    "op": "parse_json",
-                                                                                    "source": {
-                                                                                      "op": "read",
-                                                                                      "from": "binding",
-                                                                                      "path": "/text",
-                                                                                      "name": "metadata"
-                                                                                    }
-                                                                                  }
+                                                                                        "op": "ref",
+                                                                                        "ref": "project-chat-stream-annotations"
+                                                                                      }
                                                                                 }
                                                                               }
                                                                             ]
@@ -19775,14 +19488,9 @@
                                                                                             "name": "metadata"
                                                                                           },
                                                                                           "value": {
-                                                                                            "op": "parse_json",
-                                                                                            "source": {
-                                                                                              "op": "read",
-                                                                                              "from": "binding",
-                                                                                              "path": "/text",
-                                                                                              "name": "metadata"
-                                                                                            }
-                                                                                          }
+                                                                                                "op": "ref",
+                                                                                                "ref": "project-chat-stream-annotations"
+                                                                                              }
                                                                                         }
                                                                                       }
                                                                                     ]
@@ -29158,6 +28866,485 @@
         "diagnostic": {
           "code": "unsupported_capability",
           "stage": "wire"
+        }
+      }
+    },
+    "project-chat-stream-annotations": {
+      "op": "let",
+      "name": "annotations",
+      "source": {
+        "op": "parse_json",
+        "source": {
+          "op": "read",
+          "from": "binding",
+          "path": "/text",
+          "name": "metadata"
+        }
+      },
+      "body": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "annotations"
+          }
+        },
+        "then": {
+          "op": "map",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "",
+            "name": "annotations"
+          },
+          "body": {
+            "op": "let",
+            "name": "range",
+            "source": {
+              "op": "project_range",
+              "name": "content",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "metadata-item-key"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "start": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/url_citation/start_index"
+                  },
+                  "end": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/url_citation/end_index"
+                  }
+                }
+              }
+            },
+            "body": {
+              "op": "if",
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "range",
+                    "path": "/start"
+                  },
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/url_citation/start_index"
+                  }
+                ]
+              },
+              "then": {
+                "op": "read",
+                "from": "item",
+                "path": ""
+              },
+              "otherwise": {
+                "op": "merge",
+                "policy": "reject",
+                "items": [
+                  {
+                    "op": "project",
+                    "source": {
+                      "op": "read",
+                      "from": "item",
+                      "path": ""
+                    },
+                    "policy": "exclude",
+                    "keys": [
+                      "url_citation"
+                    ]
+                  },
+                  {
+                    "op": "object",
+                    "fields": {
+                      "url_citation": {
+                        "op": "merge",
+                        "policy": "reject",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "item",
+                              "path": "/url_citation"
+                            },
+                            "policy": "exclude",
+                            "keys": [
+                              "start_index",
+                              "end_index"
+                            ]
+                          },
+                          {
+                            "op": "object",
+                            "fields": {
+                              "start_index": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/start",
+                                "name": "range"
+                              },
+                              "end_index": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/end",
+                                "name": "range"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "otherwise": {
+          "op": "read",
+          "from": "binding",
+          "path": "",
+          "name": "annotations"
+        }
+      }
+    },
+    "track-chat-stream-suffix": {
+      "op": "let",
+      "name": "suffix",
+      "source": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "binding",
+              "path": "/kind",
+              "name": "node"
+            },
+            {
+              "op": "literal",
+              "value": "tool_call"
+            }
+          ]
+        },
+        "then": {
+          "op": "track_tool",
+          "name": "arguments",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "/key",
+            "name": "identity"
+          },
+          "body": {
+            "op": "object",
+            "fields": {
+              "kind": {
+                "op": "read",
+                "from": "binding",
+                "path": "/inputKind",
+                "name": "node"
+              },
+              "callId": {
+                "op": "read",
+                "from": "binding",
+                "path": "/callId",
+                "name": "node"
+              },
+              "text": {
+                "op": "if",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "payload"
+                  }
+                },
+                "then": {
+                  "op": "if",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/type"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "item.delta"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "/inputKind",
+                            "name": "node"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "json"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "stringify_json",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "payload"
+                    }
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "",
+                    "name": "payload"
+                  }
+                },
+                "otherwise": {
+                  "op": "omit"
+                }
+              },
+              "snapshot": {
+                "op": "not",
+                "source": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "item.delta"
+                    }
+                  ]
+                }
+              },
+              "done": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.finished"
+                  }
+                ]
+              },
+              "emit": {
+                "op": "any",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "should-render-item",
+                      "path": ""
+                    }
+                  },
+                  {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/kind",
+                              "name": "node"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "tool_call"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/name",
+                              "name": "node"
+                            }
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "binding",
+                              "path": "/callId",
+                              "name": "node"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "",
+              "name": "payload"
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "item.delta"
+                  }
+                ]
+              }
+            },
+            "then": {
+              "op": "track_text",
+              "name": "body",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "/key",
+                "name": "identity"
+              },
+              "body": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "payload"
+              },
+              "policy": "snapshot"
+            },
+            "otherwise": {
+              "op": "track_text",
+              "name": "body",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "/key",
+                "name": "identity"
+              },
+              "body": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "payload"
+              },
+              "policy": "delta"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": ""
+          }
+        }
+      },
+      "body": {
+        "op": "let",
+        "name": "position-observed",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "binding",
+                "path": "/kind",
+                "name": "node"
+              },
+              {
+                "op": "literal",
+                "value": "text"
+              }
+            ]
+          },
+          "then": {
+            "op": "track_position",
+            "name": "content",
+            "source": {
+              "op": "read",
+              "from": "binding",
+              "path": "/key",
+              "name": "identity"
+            },
+            "body": {
+              "op": "utf16_length",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "",
+                "name": "suffix"
+              }
+            }
+          }
+        },
+        "body": {
+          "op": "read",
+          "from": "binding",
+          "name": "suffix",
+          "path": ""
         }
       }
     }

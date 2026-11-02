@@ -90,7 +90,7 @@ func TestPackageGatewayStorageDelivery(t *testing.T) {
 						t.Fatal("client response retained the provider storage decision", reply.Body.String(), err)
 					}
 				}
-				checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream))
+				checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream), "hi")
 			}
 			server.stopUsageWriter()
 			if records := latestUsageRecords(t, server); len(records) != 2 || records[0].Error != "" || records[1].Error != "" {

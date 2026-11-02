@@ -1,10 +1,57 @@
 package builtin
 
 import (
+	"os"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
+
+func TestChatPackageStreamTextRanges(t *testing.T) {
+	source, target := compileBuiltinPackage(t, "openai-responses"), compileBuiltinPackage(t, "openai-chat")
+	raw, err := os.ReadFile("testdata/responses-text-ranges.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values []p.Value
+	if err := testValue(t, string(raw)).Decode(&values); err != nil {
+		t.Fatal(err)
+	}
+	raws := make([]string, len(values))
+	for index, value := range values {
+		raws[index] = value.JSONString()
+	}
+	frames, _ := decodePackageStream(t, source, raws, p.Scope{})
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(target, source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Transport: p.SSE}
+	for _, frame := range frames {
+		for index, event := range frame.Events {
+			frame.Events[index], err = conversion.Event(t.Context(), event, route, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	wire := encodePackageStream(t, target, frames, p.Scope{}, false)
+	_, response := decodePackageStream(t, target, wire, p.Scope{})
+	if len(response.Content) != 1 || len(response.Content[0].Children) != 1 || !response.Content[0].Children[0].Payload.IsString("😀hi") {
+		t.Fatal("sequential text owners changed output order", response.Content)
+	}
+	annotations := 0
+	for _, metadata := range response.Content[0].Children[0].Metadata {
+		if metadata.Name != "annotations" {
+			continue
+		}
+		annotations++
+		sameJSON(t, metadata.Value.Bytes(), `[{"type":"url_citation","url_citation":{"url":"https://example.test","title":"reference","start_index":2,"end_index":4}}]`)
+	}
+	if annotations != 1 || !response.Status.IsString("completed") || response.Usage == nil || response.Usage.Total == nil || response.Usage.Total.Count != 22 {
+		t.Fatal("citation, terminal or usage was lost", annotations, response)
+	}
+}
 
 func TestChatPackageMessageStream(t *testing.T) {
 	source, target := compileBuiltinPackage(t, "openai-responses"), compileBuiltinPackage(t, "openai-chat")

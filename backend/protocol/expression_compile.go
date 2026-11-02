@@ -298,17 +298,19 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.streamNamespace = expression.Namespace
 	}
-	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
+	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_position" || compiled.op == "project_range" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
 			return nil, fmt.Errorf("%s: stream primitives require an event program", path)
 		}
 		*scope.streamPrimitiveUsed = true
-		if compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
+		if compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_position" || compiled.op == "project_range" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
 			if !definitionIdentifier.MatchString(expression.Name) {
 				return nil, fmt.Errorf("%s/name: expected a fixed tracker channel identifier", path)
 			}
 			channel := compiled.op + ":" + expression.Name
-			if compiled.op == "resume_text" {
+			if compiled.op == "project_range" {
+				channel = "track_position:" + expression.Name
+			} else if compiled.op == "resume_text" {
 				channel = "track_text:" + expression.Name
 			} else if compiled.op == "resume_tool" {
 				channel = "track_tool:" + expression.Name
@@ -540,6 +542,14 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "track_array":
 		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ArrayType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
 			return fail("track_array requires a string key, array body and explicit delta or snapshot policy")
+		}
+	case "track_position":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, IntegerType) {
+			return fail("track_position requires a string key and an integer length")
+		}
+	case "project_range":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
+			return fail("project_range requires a string key and a range object")
 		}
 	case "resolve_item":
 		if !isAssignable(expression.source.result, ObjectType) {

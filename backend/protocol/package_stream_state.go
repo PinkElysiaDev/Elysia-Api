@@ -45,6 +45,9 @@ type packageStreamTransaction struct {
 	toolBufferDelta                int
 	textUpdates                    map[streamTrackKey]*pendingStreamText
 	arrayUpdates                   map[streamTrackKey]streamArrayTracker
+	positionUpdates                map[streamTrackKey]*pendingStreamPositions
+	positionEnds                   map[string]int64
+	positionItems                  int
 	primitiveBase                  *packageStreamPrimitives
 	aliasUpdates                   map[string]string
 	aliasBytes                     int

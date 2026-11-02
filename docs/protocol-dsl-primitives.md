@@ -455,3 +455,19 @@ text.metadata 按已声明名称选择表达式，input 是原 metadata，root �
 一次预先计量后顺序写入，不逐项复制完整前缀。改变的文本和消息清除 Native，其余叶子保留。
 Chat response-text 显式合并文本、refusal、可见 reasoning，修正 URL 引用的 UTF-16 偏移，
 保留 logprobs 的原顺序；禁用后编码拒绝多块，不自行重新拼接。
+
+## 流式位置区间
+
+track_position 的 name 是固定输出通道，source 是稳定 item key，body 是本次追加的非负整数
+长度，返回通道的新末尾位置。project_range 使用同一 name／source，body 为 start／end
+对象，返回换算后的 start／end。Mapping 选择长度单位：Chat 将 track_text 的新后缀交给
+utf16_length，避免重新读取或拼接完整前缀。原语只允许在流程序中使用。
+
+每个 item 保留自己的局部长度和位置区间。连续来源和输出区间合并；一次查询用二分定位，
+跨其他 item 插入内容或超出已观察范围时拒绝，不扩大范围。空 item 首次观察记录空区间，
+后续空更新不移动其起点。固定通道不计为动态实体，动态身份与实际区间占用 StateItems。
+字符串身份由现有 tracker 表独立持有一次，各通道引用相同 key；区间不保存正文。
+
+新末尾和新增区间在现有事件事务中暂存，失败不会改写已提交区间；提交只追加新段或扩大
+最后一个连续段，不复制历史区间数组。网络交付位置另由原有成功发送边界推进。
+默认 Chat 流已接入：原生观察和重建使用同一后缀程序，引用去重先于位置换算。

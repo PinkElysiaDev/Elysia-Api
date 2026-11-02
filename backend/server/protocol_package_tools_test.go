@@ -125,7 +125,7 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 					if reply.Code != http.StatusOK || calls.Load() != before+1 {
 						t.Fatal("tool history failed or repeated upstream", reply.Code, calls.Load()-before, reply.Body.String())
 					}
-					checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream))
+					checkPackageGatewayReply(t, collectPackageGatewayReply(t, ingress, reply, isStream), "hi")
 				})
 			}
 		})

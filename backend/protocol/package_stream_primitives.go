@@ -9,9 +9,10 @@ const streamTrackersPerItem = 8
 
 func (transaction *packageStreamTransaction) reserveTrackChannel(item string, limits Limits) error {
 	base := transaction.primitives()
-	channels := base.trackedItems[item] + transaction.trackChannels[item]
-	if channels == 0 && len(base.trackedItems)+transaction.trackItems >= limits.StateItems {
-		return resourceFailure("stream", "tracked_items", limits.StateItems, len(base.trackedItems)+transaction.trackItems+1)
+	channels := base.trackedItems[item].channels + transaction.trackChannels[item]
+	items := len(base.trackedItems) + transaction.trackItems + base.positionItems + transaction.positionItems
+	if channels == 0 && items >= limits.StateItems {
+		return resourceFailure("stream", "tracked_items", limits.StateItems, items+1)
 	}
 	if channels == 0 {
 		if err := transaction.checkRetainedBytes(len(item)); err != nil {
@@ -29,8 +30,15 @@ func (transaction *packageStreamTransaction) reserveTrackChannel(item string, li
 	return nil
 }
 
+// A dynamic tracker identity owns one detached string. Fixed channels refer to
+// that same key instead of retaining another copy or the current input frame.
+type streamTrackedItem struct {
+	key      string
+	channels int
+}
+
 type packageStreamPrimitives struct {
-	trackedItems  map[string]int
+	trackedItems  map[string]streamTrackedItem
 	buffers       map[streamTrackKey]*streamBuffer
 	buffered      int
 	tools         map[streamTrackKey]*streamTrackedTool
@@ -38,6 +46,9 @@ type packageStreamPrimitives struct {
 	toolBuffered  int
 	texts         map[streamTrackKey]*TextTracker
 	arrays        map[streamTrackKey]streamArrayTracker
+	positions     map[streamTrackKey]*streamPositionTracker
+	positionEnds  map[string]int64
+	positionItems int
 	identities    *ItemIdentities
 	aliasBytes    int
 	trackedBytes  int
@@ -138,14 +149,19 @@ func (transaction *packageStreamTransaction) commitPrimitives() *packageStreamPr
 	base.trackedBytes += transaction.trackedBytes
 	base.toolCallBytes += transaction.toolCallBytes
 	if len(transaction.trackChannels) != 0 && base.trackedItems == nil {
-		base.trackedItems = make(map[string]int)
+		base.trackedItems = make(map[string]streamTrackedItem)
 	}
 	for item, count := range transaction.trackChannels {
 		if count == 0 {
 			continue
 		}
-		if remaining := base.trackedItems[item] + count; remaining != 0 {
-			base.trackedItems[strings.Clone(item)] = remaining
+		owned, exists := base.trackedItems[item]
+		if !exists {
+			owned.key = strings.Clone(item)
+		}
+		owned.channels += count
+		if owned.channels != 0 {
+			base.trackedItems[owned.key] = owned
 		} else {
 			delete(base.trackedItems, item)
 		}
@@ -154,13 +170,12 @@ func (transaction *packageStreamTransaction) commitPrimitives() *packageStreamPr
 	transaction.commitBuffers(base)
 	transaction.commitTools(base)
 	transaction.commitArrays(base)
+	transaction.commitPositions(base)
 	if len(transaction.textUpdates) != 0 && base.texts == nil {
 		base.texts = make(map[streamTrackKey]*TextTracker)
 	}
 	for key, pending := range transaction.textUpdates {
-		if base.texts[key] == nil {
-			key.item = strings.Clone(key.item)
-		}
+		key.item = base.trackedItems[key.item].key
 		for _, delta := range pending.deltas {
 			pending.tracker.Append(delta)
 		}

@@ -294,3 +294,24 @@ Chat Mapping 明确声明 tool-result-history／235、assistant-history／240、
 初次 server race 使用 2 核／1GiB 时在组合验证中达到默认 10 分钟超时；日志保留，不列为通过。最终按常规 4 核／2GiB、20 分钟超时运行通过，没有修改 DSL 资源上限。全量测试后的调整由最终相关 race 和正式证据复核。上述耗时均为功能检查，不作为正式性能结论。
 
 Chat 继续共享真实重复的 metadata 聚合程序，整包 token 为 98,724；Responses 为 99,815，Anthropic 95,920，Gemini 77,634。100,000 token／64 depth 限额不变。已修正上一条恢复点记录的文本编码损坏。复杂 SSE 的跨 item 位置及 Native 接续、全入口所有权、版本 B／C、正式性能和旧链退役仍未完成，生产默认尚未切换。
+
+## 新计划批次 2A：增量位置区间与顺序引用（dev.126）
+
+新增 track_position／project_range，复用现有流编译通道、事务和 StateItems 预算。前者按声明长度追加来源到输出区间，后者以二分查找换算范围；不识别供应商、引用字段或字符单位。连续区间合并，失败事务不修改已提交末尾；提交只扩大尾段或追加新段，不复制完整区间前缀。动态身份与实际区间分别计量，零长度首次观察保留空区间，后续空观察不移动起点。范围跨其他 item 输出或超过已观察正文时拒绝。
+
+Chat Mapping 使用 utf16_length 度量 track_text 返回的新后缀，原生 observer 与重建共用同一程序。引用字段与换算后的写回均由配置指定。初次接线将换算放在去重之前，现有 Native 回归发现重复输出；修正为先按原 metadata 去重，再为实际输出换算。偏移不变的引用保留原条目表示。没有放宽混合流的直接断言或重写旧期望。
+
+现有 tracker 身份表增加独立持有的 key，文本、数组、工具、缓冲及区间状态共同引用；每次提交均使用该 key，避免更新时重新持有当前大帧中的小字符串。固定通道不新增语义实体。保留已有缓冲释放及分类预算，不另建所有权框架；其他状态及日志所有权仍待整体闭合。
+
+同一 Responses 双 content-part 夹具同时用于组件和真实网关：😀＋hi，第二段引用从 0..2 换算为 2..4。组件检查完整引用、终态和 usage；真实网关复用原矩阵，完整消费正文、计量及恰好一次上游调用。定向区间测试覆盖失败回滚、跨 item 拒绝、非法范围、空区间、资源限额，以及连续 1,024 次追加不增加区间或逻辑保留量。
+
+| 检查 | 结果 |
+|---|---|
+| closure-stream-positions-all-owned | 最终核心全量 6.685 秒、builtin 全量 41.389 秒，通过 |
+| closure-stream-positions-gateway | 位置／Native 组件及 Responses 真实网关方向通过，server 4.462 秒 |
+| closure-stream-positions-race | 最终核心状态、默认流和真实网关：protocol 3.827 秒、builtin 13.927 秒、server 59.954 秒，通过 |
+| closure-stream-positions-vet | protocol 全树及 server 通过 |
+| closure-stream-positions-staticcheck | 固定 v0.8.2：24 主诊断及 1 关联位置，与前批多重集相同；退出 1 |
+| closure-stream-positions-types／lint | 前端类型和编辑器 ESLint 通过 |
+
+操作目录、生成 schema、原语说明和编辑器帮助同步，修正前批合同说明中的文本编码损坏。Chat 整包 token 99,040，其他三包不变，限额未提高。没有正式性能结论。本切片修正已有顺序 item 输出；交错 item、独立 message 的布局损失授权、复杂 thinking／工具、最终交付失败组合和全入口所有权仍待实施。版本 B 尚未形成，默认预置、旧链退役和 A／B／C 验收未完成。
