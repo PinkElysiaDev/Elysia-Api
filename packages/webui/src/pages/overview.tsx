@@ -29,8 +29,7 @@ import {
   useMinuteTick,
   POLL,
 } from '@/lib/hooks'
-import type { UsageStats,
- ModelSource } from '@/lib/types'
+import type { UsageStats, UsageModelStat, ModelSource } from '@/lib/types'
 import { bucketedTimeISO, cn, compactNumber, formatDateTime, formatHitRate, formatNumber, percent, startOfRange, USAGE_BUCKET_MS } from '@/lib/utils'
 import type { RangeKey } from '@/components/usage-filter-bar'
 import { setOverviewKpiRange, useOverviewKpiRange, type OverviewKpiRange } from './overview-kpi-range'
@@ -77,6 +76,9 @@ const HEALTH_COLUMNS = [
   { key: 'status', label: '状态', width: '24%', align: 'right' },
 ] as const
 
+const MIN_SCROLL_SECONDS = 14
+const SCROLL_SECONDS_PER_ROW = 3.05
+
 function HealthColGroup() {
   return (
     <colgroup>
@@ -103,11 +105,11 @@ function SourceHealthScroller({
   const contentRef = useRef<HTMLDivElement>(null)
   // 仅当内容真实超出可用高度（由同排最高的相邻卡片决定）时才滚动，否则静态
   // 展示全部行。ResizeObserver 兜底容器/行高变化（字体加载、响应式重排）。
-  const [scrolling, setScrolling] = useState(false)
-  const rows = sources.map((source) => {
+  const [isScrolling, setScrolling] = useState(false)
+  const rows = useMemo(() => sources.map((source) => {
     const stats = modelStatsBySource.get(source.id) ?? { total: 0, available: 0 }
     return { source, stats, health: summarizeSourceHealth(source.enabled, stats.total, stats.available) }
-  })
+  }), [sources, modelStatsBySource])
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current
@@ -115,7 +117,7 @@ function SourceHealthScroller({
     if (!viewport || !content) return
     const measure = () => {
       // 静态态比较单份内容高度；滚动态内容为双份，取一半高度比较，判定单调稳定。
-      const contentHeight = content.scrollHeight / (scrolling ? 2 : 1)
+      const contentHeight = content.scrollHeight / (isScrolling ? 2 : 1)
       setScrolling(contentHeight > viewport.clientHeight + 1)
     }
     measure()
@@ -123,10 +125,10 @@ function SourceHealthScroller({
     observer.observe(viewport)
     observer.observe(content)
     return () => observer.disconnect()
-  }, [rows.length, scrolling])
+  }, [rows.length, isScrolling])
 
   // 滚动时长按行数缩放（每行约 3.05s，比初版放慢 15%），观感均匀。
-  const durationSeconds = Math.max(14, Math.round(rows.length * 3.05))
+  const durationSeconds = Math.max(MIN_SCROLL_SECONDS, Math.round(rows.length * SCROLL_SECONDS_PER_ROW))
   const renderRow = ({ source, stats, health }: (typeof rows)[number], keyPrefix: string) => {
     const refreshing = !!source.refreshState?.refreshing
     return (
@@ -193,19 +195,19 @@ function SourceHealthScroller({
       <div
         ref={viewportRef}
         className="group/scroller relative min-h-0 flex-1 overflow-hidden"
-        title={scrolling ? '悬停暂停滚动' : undefined}
+        title={isScrolling ? '悬停暂停滚动' : undefined}
       >
         <div
           ref={contentRef}
-          className={cn(scrolling && 'animate-source-marquee group-hover/scroller:[animation-play-state:paused]')}
-          style={scrolling ? { animationDuration: `${durationSeconds}s` } : undefined}
+          className={cn(isScrolling && 'animate-source-marquee group-hover/scroller:[animation-play-state:paused]')}
+          style={isScrolling ? { animationDuration: `${durationSeconds}s` } : undefined}
         >
           <table className="w-full table-fixed text-xs">
             <HealthColGroup />
             <tbody>
-              {rows.map((row) => renderRow(row, scrolling ? 'a' : 'static'))}
+              {rows.map((row) => renderRow(row, isScrolling ? 'a' : 'static'))}
               {/* 滚动态复制一份内容实现无缝循环（keys 加前缀避免重复）。 */}
-              {scrolling && rows.map((row) => renderRow(row, 'b'))}
+              {isScrolling && rows.map((row) => renderRow(row, 'b'))}
             </tbody>
           </table>
         </div>
@@ -261,6 +263,14 @@ function heroDelta(
 
 const TOP_MODELS = 5
 const RECENT_FAILURES = 3
+
+function summarizeTopModels(models: readonly UsageModelStat[]) {
+  const top = models.slice(0, TOP_MODELS).map((row) => ({ name: row.model || '—', count: row.requests, muted: false }))
+  const remaining = models.slice(TOP_MODELS).reduce((sum, row) => sum + row.requests, 0)
+  if (remaining > 0) top.push({ name: `其他 ${models.length - TOP_MODELS} 个模型`, count: remaining, muted: true })
+  const maximum = top[0]?.count || 1
+  return top.map((model) => ({ ...model, ratio: model.count / maximum }))
+}
 
 export function OverviewPage() {
   const minuteTick = useMinuteTick()
@@ -349,14 +359,7 @@ export function OverviewPage() {
     mutate: retryByModel,
   } = useUsageByModel(topModelsParams)
 
-  const topModels = useMemo(() => {
-    const sorted = byModel ?? []
-    const top = sorted.slice(0, TOP_MODELS).map((row) => ({ name: row.model || '—', count: row.requests, muted: false }))
-    const rest = sorted.slice(5).reduce((sum, row) => sum + row.requests, 0)
-    if (rest > 0) top.push({ name: `其他 ${sorted.length - TOP_MODELS} 个模型`, count: rest, muted: true })
-    const max = top[0]?.count || 1
-    return top.map((model) => ({ ...model, ratio: model.count / max }))
-  }, [byModel])
+  const topModels = useMemo(() => summarizeTopModels(byModel ?? []), [byModel])
 
   // 最近失败（最新 3 条，今日窗口；to 取下一 5 分钟边界）
   const failuresParams = useMemo(() => {

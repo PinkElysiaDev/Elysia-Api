@@ -201,6 +201,7 @@ export const revalidate = {
   models: () => globalMutate('models'),
   groups: () => globalMutate('model-groups'),
   runtimeConfig: () => globalMutate('runtime-config'),
+  usageStorage: () => globalMutate('usage-storage'),
   modelCatalogStatus: () => globalMutate('model-catalog-status'),
   usage: () =>
     globalMutate(

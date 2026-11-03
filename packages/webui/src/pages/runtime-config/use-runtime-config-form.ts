@@ -21,6 +21,9 @@ export type RuntimeConfigForm = Omit<
 
 /** 工具循环上限表单默认（与后端 defaultAgentToolLoopLimit 一致）。 */
 const defaultToolLoopLimit = 30
+const defaultUsageBodyMaxKB = 1024
+
+export type RuntimeConfigActions = ReturnType<typeof useRuntimeConfigForm>
 
 /**
  * 运行配置表单：数据入口一次性补默认块并快照 pristine 基线；更新走三个
@@ -31,7 +34,7 @@ const defaultToolLoopLimit = 30
 export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
   const [form, setForm] = useState<RuntimeConfigForm | null>(null)
   const pristineRef = useRef<RuntimeConfigForm | null>(null)
-  const lastBodyMaxKB = useRef(1024)
+  const lastBodyMaxKB = useRef(defaultUsageBodyMaxKB)
 
   const reset = useCallback((saved: RuntimeConfig) => {
     const normalized: RuntimeConfigForm = {
@@ -46,7 +49,7 @@ export function useRuntimeConfigForm(data: RuntimeConfig | undefined) {
       },
       agent: { toolLoopLimit: saved.agent?.toolLoopLimit ?? defaultToolLoopLimit },
     }
-    lastBodyMaxKB.current = saved.usageLog.bodyMaxKB > 0 ? saved.usageLog.bodyMaxKB : 1024
+    lastBodyMaxKB.current = saved.usageLog.bodyMaxKB > 0 ? saved.usageLog.bodyMaxKB : defaultUsageBodyMaxKB
     pristineRef.current = normalized
     setForm(normalized)
   }, [])
