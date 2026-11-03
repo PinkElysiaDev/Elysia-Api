@@ -227,3 +227,21 @@ profile 所指的读取、调用边界和身份所有权已审阅；所有读取
 logprobs 耗时 -5.33%、分配字节 -29.76%、次数 -37.06%。身份、基线 overlay、改动快照及数据在
 collector-performance/string-*；两项局部回退已消除。仍需正式 A/B/C、真实 HTTP、其他场景及
 生产入口验收，不能据此声称全链路无性能回退。
+
+## 批次 6a：真实浏览器包工作流
+
+Agent 编辑与协议设计器的真实后端夹具改用独立 Spec/Mapping 文本包；精确数值放在合法的
+样例 context 中，保留空值、顺序及大整数。实际服务暴露了覆盖诊断的旧路径：方向与能力声明
+现分别定位 /mapping/directions 与 /mapping/capabilities，操作输入定位 /spec/operations。
+修复诊断后，编辑器可跳到真正的配置片段。
+
+隔离 runner 从 WebUI 自身依赖解析 Vite/Playwright，避免工作区存在两个测试器实例时无法
+收集测试；进程所有权与退出清理仍由原 runner 管理。Chrome 11 项通过（9.1 秒），包括之前
+跳过的四项真实后端工作流、保存—验证—激活—回滚、Agent 草稿精确打开，以及 Anthropic/Gemini
+各四方向的真实计数预览。计数请求没有生成预算，9007199254740993 在结果中保持精确。
+
+协议验证定向测试通过（0.428 秒），TypeScript 与相关 ESLint 通过。已精读 runner、修改的
+浏览器测试、验证及诊断定位调用者，新增文本包按已有 verifiedTextPackage 合同审阅。数据留在
+runner 创建的独立临时目录，现有数据库和日志未修改；此前 Playwright 实例冲突与诊断路径失败
+不计通过。日志为 .tmp-dev/browser-package-fixture/e2e-count.log。任务、会话、探测等剩余入口、
+组合资源所有权及正式性能尚未完成，未冻结 B/C、未切换生产预置。

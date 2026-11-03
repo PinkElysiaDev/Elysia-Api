@@ -4,6 +4,18 @@ import { resolve } from 'node:path'
 import { ProtocolDocument } from '../src/lib/protocol-document'
 import { protocolIdentityPrefix } from '../src/lib/protocol-v2'
 
+function readProtocolPackage(directory: string) {
+  const readPart = (part: string) => JSON.parse(readFileSync(resolve(`../../backend/protocol/${directory}/${part}.json`), 'utf8'))
+  return { schemaVersion: 4, spec: readPart('spec'), mapping: readPart('mapping') }
+}
+
+function readTextPackage(id: string) {
+  const fixture = readProtocolPackage('testdata/packages/text-alpha')
+  fixture.spec.id = id
+  fixture.spec.family = id
+  return fixture
+}
+
 test('designer renders the published listing contract without migration metadata', async ({ page }) => {
   const errors: string[] = []
   const activeHash = 'a'.repeat(64)
@@ -47,17 +59,15 @@ test('designer renders the published listing contract without migration metadata
   expect(errors).toEqual([])
 })
 
-test('Agent edit session opens exact v2 draft in the editor', async ({ page, request }) => {
+test('Agent edit session opens exact package draft in the editor', async ({ page, request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires an isolated real backend')
   const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-protocol-e2e'
-  const fixture = JSON.parse(readFileSync(resolve('../../backend/protocol/testdata/text-alpha.json'), 'utf8'))
-  fixture.id = `agent-browser-${Date.now()}`
-  fixture.family = fixture.id
-  const source = new ProtocolDocument(JSON.stringify(fixture)).set('/extensions', '{"long":900719925474099312345}')
-  const saved = await request.put(`${process.env.PROTOCOL_E2E_URL}/api/admin/protocols/${fixture.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, data: source })
+  const fixture = readTextPackage(`agent-browser-${Date.now()}`)
+  const source = new ProtocolDocument(JSON.stringify(fixture)).set('/mapping/samples/0/context', '{"long":900719925474099312345}')
+  const saved = await request.put(`${process.env.PROTOCOL_E2E_URL}/api/admin/protocols/${fixture.spec.id}/draft`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, data: source })
   expect(saved.ok()).toBeTruthy()
   await page.addInitScript((value) => localStorage.setItem('elysia-webui.panel-token', value), token)
-  await page.goto(`/#/agent?mode=edit&protocol=${fixture.id}`)
+  await page.goto(`/#/agent?mode=edit&protocol=${fixture.spec.id}`)
   await page.getByRole('button', { name: '协议草稿', exact: true }).click()
   await page.getByRole('button', { name: '在协议设计器中打开' }).click()
   await page.getByRole('tab', { name: '完整 JSON', exact: true }).click()
@@ -196,12 +206,10 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   test.skip(!process.env.PROTOCOL_E2E_URL, 'Requires an isolated local backend and ELYSIA_DEV_PROXY')
   const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-protocol-e2e'
   const id = `browser-${Date.now()}`
-  const fixture = JSON.parse(readFileSync(resolve('../../backend/protocol/testdata/text-alpha.json'), 'utf8'))
-  fixture.id = id
-  fixture.name = 'Browser draft'
-  fixture.family = id
+  const fixture = readTextPackage(id)
+  fixture.spec.name = 'Browser draft'
   let source = JSON.stringify(fixture, null, 2)
-  source = new ProtocolDocument(source).set('/extensions', '{"long":900719925474099312345,"values":[null,false,0,{},[]],"custom":{"nested":"preserve"}}')
+  source = new ProtocolDocument(source).set('/mapping/samples/0/context', '{"long":900719925474099312345,"values":[null,false,0,{},[]],"custom":{"nested":"preserve"}}')
   await page.addInitScript((value) => localStorage.setItem('elysia-webui.panel-token', value), token)
   await page.goto('/#/protocols')
   await page.getByRole('button', { name: '新建协议', exact: true }).click()
@@ -209,15 +217,15 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   await page.getByRole('textbox', { name: '完整协议 JSON', exact: true }).fill(source)
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
   await page.getByRole('textbox', { name: '名称', exact: true }).fill('Edited by form')
-  await page.getByRole('tab', { name: '扩展元数据', exact: true }).click()
-  const extension = page.getByRole('textbox', { name: '扩展元数据 JSON', exact: true })
-  const original = await extension.inputValue()
-  await extension.fill('{"invalid":')
+  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  const mapping = page.getByRole('textbox', { name: '转换说明 mapping.json JSON', exact: true })
+  const original = await mapping.inputValue()
+  await mapping.fill('{"invalid":')
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled()
-  await page.getByRole('tab', { name: '扩展元数据', exact: true }).click()
-  await expect(extension).toHaveValue('{"invalid":')
-  await extension.fill(original)
+  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  await expect(mapping).toHaveValue('{"invalid":')
+  await mapping.fill(original)
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
   await expect(page.getByRole('button', { name: '离线验证', exact: true })).toBeEnabled()
   const saved = await request.get(`${process.env.PROTOCOL_E2E_URL}/api/admin/protocols/${id}/draft`, { headers: { Authorization: `Bearer ${token}` } })
@@ -228,7 +236,7 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   await expect(page.getByText(/启用版本 [a-f0-9]{12}/)).toBeVisible()
 
   await page.getByRole('tab', { name: '转换预览', exact: true }).click()
-  await page.getByRole('textbox', { name: '预览输入 JSON', exact: true }).fill(JSON.stringify(fixture.samples[0].input))
+  await page.getByRole('textbox', { name: '预览输入 JSON', exact: true }).fill(JSON.stringify(fixture.mapping.samples[0].input))
   await page.getByRole('button', { name: '运行转换预览', exact: true }).click()
   await expect(page.getByLabel('转换链路结果')).toContainText('hello')
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
@@ -238,7 +246,7 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   await expect(page.getByLabel('协议诊断')).toContainText('incomplete_coverage')
   await expect(page.getByRole('button', { name: '启用版本', exact: true })).toBeDisabled()
   await page.getByLabel('协议诊断').getByRole('button').first().click()
-  await expect(page.getByRole('tab', { name: '完整 JSON', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: '转换说明 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
 
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
   await page.getByRole('checkbox', { name: 'tools.function', exact: true }).uncheck()
@@ -252,10 +260,49 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   expect(choices.length).toBe(4)
   const revisionResponse = await request.get(`${process.env.PROTOCOL_E2E_URL}/api/admin/protocols/${id}/revisions`, { headers: { Authorization: `Bearer ${token}` } })
   const revisions = (await revisionResponse.json()).data.items
-  const first = revisions.find((revision: { definition: { version: string; capabilities: Record<string, boolean> } }) => revision.definition.version === '1' && !revision.definition.capabilities['tools.function'])
+  const first = revisions.find((revision: { definition: { spec: { version: string }; mapping: { capabilities: Record<string, boolean> } } }) => revision.definition.spec.version === '1' && !revision.definition.mapping.capabilities['tools.function'])
   await page.getByRole('combobox', { name: '选择修订', exact: true }).selectOption(first.hash)
   await page.getByRole('button', { name: '比较启用版本', exact: true }).click()
-  await expect(page.getByText('"/version"', { exact: false })).toBeVisible()
+  await expect(page.getByText('"/spec/version"', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: '验证并回滚至所选修订', exact: true }).click()
   await expect(page.getByText(new RegExp(`启用版本 ${first.hash.slice(0, 12)}`))).toBeVisible()
 })
+
+for (const provider of [
+  { name: 'anthropic', request: { model: 'count-model', messages: [{ role: 'user', content: 'hello' }] }, countField: 'input_tokens' },
+  { name: 'google-generate-content', request: { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] }, countField: 'totalTokens' },
+]) {
+  test(`real ${provider.name} package previews all token-count directions without generation`, async ({ page }) => {
+    test.skip(!process.env.PROTOCOL_E2E_URL, 'requires an isolated real backend')
+    await page.addInitScript((token) => localStorage.setItem('elysia-webui.panel-token', token), process.env.PROTOCOL_E2E_TOKEN!)
+    const fixture = readProtocolPackage(`builtin/packages/${provider.name}`)
+    fixture.spec.id = `count-browser-${provider.name}`
+    await page.goto('/#/protocols')
+    await page.getByRole('button', { name: '新建协议', exact: true }).click()
+    await page.getByRole('tab', { name: '完整 JSON', exact: true }).click()
+    await page.getByRole('textbox', { name: '完整协议 JSON', exact: true }).fill(JSON.stringify(fixture))
+    await page.getByRole('tab', { name: '转换预览', exact: true }).click()
+    await page.getByLabel('预览类型', { exact: true }).selectOption('count_tokens')
+    await page.getByRole('textbox', { name: '计数操作名（独立请求与结果映射）', exact: true }).fill('count_tokens')
+    await page.getByRole('textbox', { name: '端点模型名（协议路径含模型时填写）', exact: true }).fill('count-model')
+    const preview = async (direction: string, input: string) => {
+      await page.getByLabel('转换方向', { exact: true }).selectOption(direction)
+      await page.getByRole('textbox', { name: '预览输入 JSON', exact: true }).fill(input)
+      const response = page.waitForResponse((response) => response.url().endsWith('/api/admin/protocols/preview'))
+      await page.getByRole('button', { name: '运行转换预览', exact: true }).click()
+      const result = await (await response).json()
+      expect(result.ok).toBe(true)
+      expect(result.data.issues).toEqual([])
+      return result.data.output
+    }
+    const request = await preview('decode_request', JSON.stringify(provider.request))
+    expect(request.model).toBe('count-model')
+    const wire = await preview('encode_request', JSON.stringify(request))
+    expect(JSON.stringify(wire)).toContain('hello')
+    expect(JSON.stringify(wire)).not.toMatch(/max_tokens|maxOutputTokens/)
+    await preview('decode_response', `{"${provider.countField}":9007199254740993}`)
+    await expect(page.getByLabel('转换链路结果')).toContainText('"inputTokens":9007199254740993')
+    await preview('encode_response', '{"inputTokens":9007199254740993}')
+    await expect(page.getByLabel('转换链路结果')).toContainText(`"${provider.countField}":9007199254740993`)
+  })
+}

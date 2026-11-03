@@ -709,6 +709,8 @@
     "backend/protocol/testdata/history/responses.json",
     "backend/protocol/testdata/job-alpha.json",
     "backend/protocol/testdata/job-beta.json",
+    "backend/protocol/testdata/packages/text-alpha/mapping.json",
+    "backend/protocol/testdata/packages/text-alpha/spec.json",
     "backend/protocol/testdata/session-alpha.json",
     "backend/protocol/testdata/session-beta.json",
     "backend/protocol/testdata/sessions/session-alpha/mapping.json",

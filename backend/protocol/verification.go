@@ -26,10 +26,11 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	for _, direction := range DirectionCatalog() {
 		coverage[direction], hasLifecycle[direction] = CapabilitySet{}, map[Capability]bool{}
 	}
-	samplesPath := "/samples"
+	mappingPath, specPath := "", ""
 	if compiled.packagePlan != nil {
-		samplesPath = "/mapping/samples"
+		mappingPath, specPath = "/mapping", "/spec"
 	}
+	samplesPath := mappingPath + "/samples"
 	for index, sample := range compiled.verificationSamples() {
 		path := fmt.Sprintf("%s/%d", samplesPath, index)
 		check := VerificationCheck{SampleID: sample.ID, Direction: sample.Direction}
@@ -142,7 +143,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	}
 	for _, name := range sortedKeys(compiled.operations) {
 		if compiled.operations[name].Input != nil && !operationEvidence[name] {
-			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, "/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
+			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, specPath+"/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
 		}
 	}
 	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
@@ -154,7 +155,11 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if !compiled.Supports(direction) {
 			continue
 		}
-		path := "/directions/" + string(direction)
+		path := mappingPath + "/directions/" + string(direction)
+		capabilitiesPath := path + "/capabilities"
+		if compiled.packagePlan != nil {
+			capabilitiesPath = mappingPath + "/capabilities"
+		}
 		if !hasSample[direction] {
 			report.Issues = append(report.Issues, verificationIssue(compiled, direction, path, IncompleteCoverage, "implemented direction requires a passing positive fixture", ""))
 		}
@@ -166,12 +171,12 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 				continue
 			}
 			if !coverage[direction][capability] {
-				issue := verificationIssue(compiled, direction, path+"/capabilities", IncompleteCoverage, "declared capability lacks passing semantic evidence", "")
+				issue := verificationIssue(compiled, direction, capabilitiesPath, IncompleteCoverage, "declared capability lacks passing semantic evidence", "")
 				issue.Capability = capability
 				report.Issues = append(report.Issues, issue)
 			}
 			if (direction == DecodeRequest || direction == EncodeRequest || (isEventDirection(direction) && compiled.capabilities[SessionsCapability])) && (capability == FunctionToolsCapability || capability == FreeTextToolsCapability) && !hasLifecycle[direction][capability] {
-				issue := verificationIssue(compiled, direction, path+"/capabilities", IncompleteCoverage, "tool support requires a definition, associated call and result in a complete history fixture", "")
+				issue := verificationIssue(compiled, direction, capabilitiesPath, IncompleteCoverage, "tool support requires a definition, associated call and result in a complete history fixture", "")
 				issue.Capability = capability
 				report.Issues = append(report.Issues, issue)
 			}
@@ -188,7 +193,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if isCovered {
 			report.Covered = append(report.Covered, capability)
 		} else {
-			issue := verificationIssue(compiled, "", "/capabilities", IncompleteCoverage, "capability has no verified direction", "")
+			issue := verificationIssue(compiled, "", mappingPath+"/capabilities", IncompleteCoverage, "capability has no verified direction", "")
 			issue.Capability = capability
 			report.Issues = append(report.Issues, issue)
 		}

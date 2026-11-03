@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const web = join(root, 'packages/webui')
+const requireWeb = createRequire(join(web, 'package.json'))
 const runDirectory = await mkdtemp(join(tmpdir(), 'elysia-protocol-e2e-'))
 const binary = join(runDirectory, process.platform === 'win32' ? 'elysia.exe' : 'elysia')
 const backendPort = Number(process.env.PROTOCOL_E2E_PORT ?? 18769)
@@ -67,9 +69,9 @@ try {
   }), { mode: 0o600 })
   await run('go', ['build', '-o', binary, '.'], join(root, 'backend'))
   const backend = start(binary, ['-config', config], runDirectory)
-  const vite = start(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], web)
+  const vite = start(process.execPath, [join(dirname(requireWeb.resolve('vite/package.json')), 'bin/vite.js'), '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], web)
   await Promise.all([waitReady(backend, `${backendURL}/health`), waitReady(vite, webURL)])
-  await run(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'), 'test', ...(process.argv.length > 2 ? process.argv.slice(2) : ['protocol-v2.spec.ts', 'conversion-policy.spec.ts']), '--project=chromium', '--workers=1'], web)
+  await run(process.execPath, [requireWeb.resolve('@playwright/test/cli'), 'test', ...(process.argv.length > 2 ? process.argv.slice(2) : ['protocol-v2.spec.ts', 'conversion-policy.spec.ts']), '--project=chromium', '--workers=1'], web)
 } finally {
   // Close only children created by this runner. No port-based or name-based kills.
   for (const child of owned.reverse()) {

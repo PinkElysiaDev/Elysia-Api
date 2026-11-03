@@ -102,6 +102,20 @@ func TestPackageVerificationRejectsMissingOrIncorrectEvidence(t *testing.T) {
 			if tc.name == "negative-only" && (len(report.Checks) != 1 || !report.Checks[0].Passed) {
 				t.Fatal("expected diagnostic was not executed", report)
 			}
+			if tc.name == "unproved-tools" {
+				for _, issue := range report.Issues {
+					if issue.Capability == FunctionToolsCapability && issue.Path != "/mapping/capabilities" {
+						t.Fatal("package capability diagnostic did not locate its declaration", issue)
+					}
+				}
+			}
+			if tc.name == "empty" {
+				for _, issue := range report.Issues {
+					if issue.Direction != "" && !strings.HasPrefix(issue.Path, "/mapping/directions/") && issue.Path != "/mapping/capabilities" {
+						t.Fatal("package direction diagnostic used a legacy path", issue)
+					}
+				}
+			}
 			if tc.name == "wrong-expected" {
 				hasExpectedPath := false
 				for _, issue := range report.Issues {

@@ -1,0 +1,82 @@
+{
+  "id": "text-alpha",
+  "name": "text-alpha",
+  "version": "1",
+  "family": "text-alpha",
+  "wireVersion": "1",
+  "documents": {
+    "client-response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "reply"
+        ],
+        "properties": {
+          "reply": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "generation-request": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "provider-response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "reply"
+        ],
+        "properties": {
+          "reply": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "request": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/generate",
+      "transport": "http_json",
+      "request": "generation-request",
+      "response": "provider-response",
+      "auth": {
+        "location": "none"
+      }
+    }
+  }
+}
