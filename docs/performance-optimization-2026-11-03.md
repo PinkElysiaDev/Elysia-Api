@@ -5,6 +5,13 @@ All workloads use isolated databases and the fixed local provider. No supplier
 traffic or production preset switch is part of these changes. Results below
 are Windows amd64 evidence, not cross-platform acceptance.
 
+**Final result (2026-11-04):** the planned implementation is frozen at
+`951da69d77d0fb63af5b4bf15fae4041decd221b`. All six measured HTTP scenarios
+improve CPU and allocation cost against `ed73365a`. The fixed A baseline and
+compilation no-regression gates still fail, so production switching remains
+blocked. See [final acceptance](#7-final-acceptance-2026-11-04) and the local
+[flamegraph and evidence index](../.tmp-dev/optimization-acceptance-report/index.html).
+
 ## 1. Execution identity after reload — ac63f0cc
 
 The existing runner now recollects active protocol and policy revisions after
@@ -160,3 +167,218 @@ use the initialized bindings directly. Per-node cancellation, step accounting,
 diagnostic ordering and Native binding restoration are unchanged; there is no
 new interpreter. Protocol/builtin tests and binding/output-plan/Native targeted
 race pass. Final combined timing evidence follows below.
+
+## 7. Final acceptance, 2026-11-04
+
+### Frozen implementation and identities
+
+| Commit | Change |
+| --- | --- |
+| `ac63f0cc` | Reject execution identity drift after reload |
+| `a3767f36` | Reuse eligible package preflight encodings |
+| `7659a41d` | Reuse immutable normalization facts |
+| `cfd3f108` | Share scoped object field views |
+| `615cd423` | Avoid rebuilding canonical containers; generate fixed selectors |
+| `0bae64fa` | Release compile-only graph facts after proofs |
+| `4cb82171` | Initialize bindings at execution roots |
+| `84aac46f` | Add reference-rewrite and Native-continuation benchmarks |
+| `951da69d` | Simplify generated field-presence conditions |
+
+The final source was clean when frozen. The subsequent documentation commit
+does not change the measured implementation. The candidate build manifest is
+`.tmp-dev/optimization-acceptance-build/report.json`; it records source archive,
+binary, package/configuration hashes, commands and toolchain. Candidate binary
+SHA-256 is `9edf747ccba42a5e94173b39154904e89fb405fbac9556549060b329c72a78ea`.
+The same fixed local provider is used on both sides of every comparison.
+
+All formal measurements use Go 1.27.2, Windows amd64, Intel Core Ultra 7 270K
+Plus, `GOMAXPROCS=2`, `GOGC=100`, `GOMEMLIMIT=2GiB`, `CGO_ENABLED=0`, and PGO off.
+The limits and GC settings are not optimization variables. HTTP runs use
+isolated databases, disabled request logging and verified exact fixture output.
+Provider call counts equal completed workload counts. Execution identity is
+checked at startup and snapshot changes, not on each request.
+
+### Unprofiled HTTP comparisons
+
+Each scenario has five alternating baseline/candidate pairs. Per-sample counts
+are short 1,024; history 64; tools 128; four-worker burst 512; SSE 32; media 16.
+Both sides use identical counts. Media counts were increased from the earlier
+four-request exploratory runs; the final comparisons below are separate runs.
+CPU and allocated bytes are divided by completed requests. P50 is the median
+of each sample's request-latency median; throughput uses completed requests
+over the measured wall time. Startup is excluded from the steady-state table;
+cold-request and recovery observations remain in the raw files.
+
+Changes against the starting package version `ed73365a`:
+
+| Scenario | CPU/request | Bytes/request | P50 | Throughput |
+| --- | ---: | ---: | ---: | ---: |
+| Short request | -18.75% | -24.39% | -32.90% | +17.45% |
+| 256 KiB history | -23.08% | -14.22% | -17.50% | +25.07% |
+| 32 tools | -26.42% | -36.20% | -27.33% | +37.80% |
+| Four concurrent short requests | -11.36% | -24.40% | -17.03% | +20.65% |
+| 256-frame SSE | -22.08% | -37.93% | -19.77% | +24.54% |
+| 2 MiB media | -48.57% | -21.99% | -44.53% | +79.41% |
+
+All metrics in this table have 95% intervals on the improvement side. Across
+all recorded metrics in these six final scenarios, none is classified as a
+regression. Several peak/recovery heap comparisons are inconclusive; this is
+not complete memory acceptance. For example, short peak heap has a +13.52%
+point estimate but a 0.744–1.170 ratio interval. SSE recovery heap has a +3.93%
+point estimate with a 0.731–1.175 interval. They must not be reported as either
+proven improvements or stable regressions.
+
+Against fixed A `b2844846`, substantial stable regressions remain:
+
+| Scenario | CPU ratio C/A | CPU ratio 95% interval | Bytes ratio C/A |
+| --- | ---: | ---: | ---: |
+| Short request | 2.132 | 1.929–2.343 | 1.919 |
+| 256 KiB history | 1.938 | 1.722–2.214 | 1.008 |
+| 32 tools | 2.000 | 1.308–2.235 | 2.762 |
+| Four concurrent short requests | 2.235 | 2.118–2.533 | 1.913 |
+| 256-frame SSE | 4.500 | 3.900–5.083 | 2.718 |
+| 2 MiB media | 1.737 | 1.571–2.200 | 0.878 |
+
+The media allocation improvement does not offset its CPU regression. Peak heap,
+recovery heap and RSS also regress against A. A's binary was built with the
+same toolchain/settings and uses the same fixed provider. These six fixtures
+pass the runner's output checks on both versions; failed or incomplete legacy
+cases are not included. New upstream token counting is not compared with old
+local estimation.
+
+Raw samples, identities, per-metric intervals and failed-run handling are in
+`.tmp-dev/optimization-acceptance-vs-ed73365/report.json` and
+`.tmp-dev/optimization-acceptance-vs-a/report.json`. The existing comparator
+uses 10,000 seeded bootstrap resamples of independent medians, rather than
+paired resampling. Five pairs are limited evidence, not a claim about all
+deployments. The 5% flag only orders investigation; any stable regression
+still blocks switching. A report's `status: passed` means collection completed,
+not that its performance gate passed.
+
+### Additional semantic and compilation measurements
+
+Ten alternating microbenchmark pairs against `ed73365a` cover two additional
+paths. Reference layout rewriting uses 32 messages, approximately 128 KiB,
+emoji and UTF-16 reference relocation. Native continuation includes a native
+prefix, an edited/rebuilt thinking delta and subsequent native continuation.
+Correctness assertions remain enabled; setup/compilation is outside the timed
+loops. The baseline overlay adds the same benchmark and only changes fixture
+helper signatures to `testing.TB`; source/overlay hashes are recorded.
+
+| Benchmark | Time | Bytes | Allocations |
+| --- | ---: | ---: | ---: |
+| Reference layout rewrite | -8.14% | -1.60% | -3.38% |
+| Native thinking continuation | -10.16% | -13.86% | -20.30% |
+
+All six intervals indicate improvement. Evidence is in
+`.tmp-dev/optimization-semantic-micro/{report,samples,comparison}.json`.
+These are protocol benchmarks, not HTTP or complete Agent acceptance.
+
+The compilation tradeoff in section 6 remains unresolved. Ten pairs against
+the canonical-container snapshot show allocated bytes up 1.34–2.53%, Responses
+compile time up 2.26%, and allocation counts up 0.074–0.081% for three packages.
+These are stable regressions even below 5%. Other compilation times remain
+inconclusive. The final frozen short/SSE/media diagnostic processes start
+after GC with exact heap sizes of 63.686/63.680/64.989 MiB respectively
+(`measurements.json`, `Before.Heap`). This supports the retained-heap reduction
+but does not establish a pass for transient compilation or natural recovery.
+
+### Flamegraph findings
+
+There are 13 new standalone interactive graphs: short/SSE/media CPU, allocated
+bytes and retained bytes (nine), plus reference/Native CPU and allocated bytes
+(four). The original 131 graphs remain available. Profiles were collected in
+separate processes from the timed comparisons. HTTP allocation profiles subtract
+the pre-workload profile; semantic benchmark profiles include one-time fixture
+compilation and must not be interpreted as steady-state totals.
+
+| Evidence | Observation and implication |
+| --- | --- |
+| Media CPU | Normalization cumulative share falls from 39.83% to 13.41%. `EncodeRequestValue` is 26.89%, with preparation now the main encoding chain. Remaining `typedMeter.scanRaw` is 24.04%; GC drain is 18.18%. Immutable measurement reuse is the next candidate, subject to unchanged logical accounting. |
+| SSE allocated bytes | `stringslite.Clone` is 20.36%, `Value.readObjectFieldsWithin` 11.57%, `JSONOutput.encodeWithin` 3.83%, and `nativeCaptureState.forItem` 3.23%. Sonic object AST construction is no longer a leading site in this HTTP workload. These shares describe a smaller allocation total, not independent percentage savings. |
+| SSE CPU | `compiledOutputPlan.buildNode` is 7.47% flat and 40.16% cumulative; `buildScalar` is 17.53% cumulative. The remaining plan traversal and GC cost require profiling individual operands, not replacement of the interpreter. |
+| Short retained heap | Sampled `inuse_space` totals 68.12 MiB: compiler allocation sites account for 26.01 MiB, output plans 11.50 MiB, `decode_` 10 MiB and `Expression.UnmarshalJSON` 4.50 MiB. Allocation-site attribution does not prove that runtime plans or authored configuration can be removed. This sampled drained heap is distinct from exact starting HeapAlloc. |
+| Reference rewrite | `buildNode` is 46.79% cumulative; UTF-16 length calculation is 5.14% flat. Clone/Builder/byte construction dominate allocations. Range scans may only reuse facts for the same unchanged text and reference coordinate system. |
+| Native continuation | `buildNode` is 59.91% cumulative. Sonic `newLazyObject` still contributes 16.51% of allocated bytes in this separate path, alongside encoding and field maps. The SSE field-view change did not eliminate every AST construction path. |
+
+Cumulative percentages overlap and must not be added. Profiling infrastructure
+also appears in samples (for example, `runtime/pprof.allFrames`); it is not an
+application optimization target. The graph indices and raw top/cumulative
+tables are linked from `.tmp-dev/optimization-acceptance-report/index.html`.
+
+### Correctness and execution gates
+
+| Check | Result and evidence |
+| --- | --- |
+| `go test ./... -count=1 -timeout=8m` | Pass; `optimization-acceptance-go.log`. Includes the 16-direction JSON/SSE gateway matrix and complex protocol fixtures. |
+| `go vet ./...` | Pass; `optimization-acceptance-vet.log`. |
+| staticcheck v0.8.2 | Pass via `go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...`; `optimization-final-staticcheck-fixed.log`. Generator-produced double negations were fixed at source and regenerated. |
+| Related protocol/builtin race | Pass, 2.482s/9.466s; `optimization-root-batch-race.log`. Earlier stage-specific ownership, Native, reference and stream race results remain linked above. |
+| Related server race | Pass, 182.261s; `optimization-acceptance-server-race.log`. Covers prepared encoding, reload drift, full response and stream delivery ranges. |
+| Isolated cancellation | Five batches, four workers with 2 MiB bodies; zero active requests, queue depth and queued payload after both settlement and reclamation. `optimization-acceptance-boundaries/cancellation-*.json`. |
+| Production execution identity | **Blocked.** Actual defaults select legacy codecs. The production-mode probe rejects the mismatch before accepting measurements; `optimization-acceptance-boundaries/production/run.log`. It is not a successful package production run. |
+| Full builtin race | Earlier attempt timed out after eight minutes; not claimed as passed. See section 3. |
+
+Log paths in the table are under `.tmp-dev/`. The staticcheck executable was
+not on PATH; the initial command-not-found and pre-fix diagnostics remain in
+the evidence. Failed test/profile experiments and inconclusive comparisons
+have not been replaced with only their successful reruns.
+
+Review covered changed protocol/server files, generator output and callers,
+cache/ownership lifetimes, compilation proofs and release boundaries. Other
+references were statically scanned; this is not a whole-repository line-by-line
+review. Windows local fixtures do not establish all Agent, management API,
+WebUI, real supplier, cross-platform or production performance. Existing
+databases/logs and Swift were untouched. No remote push or publication occurred.
+
+### Remaining optimization order
+
+1. Remove the measured compile allocation/time regression. Profile transient
+   fact allocation and schema/output-plan construction against the container
+   snapshot. Keep proof ordering and graph release; do not restore retained
+   compile-only graphs or enlarge limits. Require ten matched compilation pairs
+   plus retained-heap evidence before closing this gate.
+2. Trace retained authored conversion-option declarations separately from
+   runtime plans. Inspect ownership and revision/snapshot lifetime before
+   removing any representation. Require reload, old-snapshot and Native proof
+   tests, plus exact post-GC and sampled heap comparisons. The current profile
+   identifies allocation sites, not proven removable owners.
+3. Reduce remaining field-map and small-string copies within existing immutable
+   execution scopes. Start with SSE and the independently identified Native
+   AST path. Keep detachment at Core/Native/state/diagnostic retention boundaries;
+   test repeated keys, precise numbers, escaping, invalid UTF-8 and partial
+   delivery. Do not introduce a global cache or pool with longer ownership.
+4. Investigate `typedMeter.scanRaw` reuse only where immutable identity, scope
+   and budget semantics match. Charge every logical occurrence; invalidate on
+   modification. Recheck media, reference rewrite, cancellation and limits
+   before claiming scan removal. Keep final wire and permission boundaries.
+5. Reprofile changed hotspots separately from measurements. Repeat the affected
+   ten-sample microbenchmarks and five-pair HTTP cases; investigate uncertain
+   memory results where changes affect them. Keep A and compilation gates
+   blocked until stable regressions are removed. Do not switch presets based
+   only on the improvements over `ed73365a`.
+
+### Reproduction
+
+Run from the repository root using the archived builds/provider and the same
+toolchain. Choose new output directories; collectors refuse to overwrite an
+existing run. Runner copies, commands, source/binary hashes and environments
+are retained inside each evidence directory. The one-off orchestration below
+reuses the tracked runner and comparator; `.tmp-dev` artifacts are local and
+must be retained alongside the checkout for exact reproduction.
+
+```powershell
+node .tmp-dev/run-profiling-optimization-pairs.mjs --baseline=.tmp-dev/profiling-ed73365-current --candidate=.tmp-dev/optimization-acceptance-build --image-requests=16 --output=.tmp-dev/recheck-vs-ed73365
+node .tmp-dev/run-profiling-optimization-pairs.mjs --baseline=.tmp-dev/fixed-http-a-build --candidate=.tmp-dev/optimization-acceptance-build --image-requests=16 --output=.tmp-dev/recheck-vs-a
+python .tmp-dev/profile-optimization-build.py --build=.tmp-dev/optimization-acceptance-build --output=.tmp-dev/recheck-profiles
+python .tmp-dev/render-optimization-flames.py --profiles=.tmp-dev/recheck-profiles --output=.tmp-dev/recheck-flames
+```
+
+Microbenchmark manifests record each command and alternating order. Their
+frozen test binaries can be rerun with `-test.run=^$`,
+`-test.bench=^Benchmark(ReferenceLayoutRewrite|NativeThinkingContinuation)$`,
+`-test.benchtime=300ms`, `-test.count=1` and `-test.benchmem`, using the recorded
+working directories and environment. For a rebuild, use the recorded overlay
+hashes; exact helper sources are in the frozen candidate source archive.
+Separate 10-second CPU/memory profile commands are in
+`.tmp-dev/optimization-semantic-profiles/report.json`.
