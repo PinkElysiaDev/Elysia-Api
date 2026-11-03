@@ -121,7 +121,7 @@ func TransportCatalog() []Transport { return []Transport{HTTPJSON, SSE, NDJSON, 
 
 // OperationKindCatalog describes declarative gateway operations.
 func OperationKindCatalog() []string {
-	return []string{"generate", "session", "submit", "status", "result", "cancel", "models"}
+	return []string{"generate", "session", "submit", "status", "result", "cancel", "models", "count_tokens"}
 }
 
 // EventCatalog lists the supported semantic event vocabulary.

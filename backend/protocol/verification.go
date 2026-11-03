@@ -149,6 +149,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 	verifyAgentSamples(ctx, compiled, &report)
 	verifyModelSamples(ctx, compiled, &report)
+	countCapabilities := verifyTokenCountSamples(ctx, compiled, &report)
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue
@@ -180,7 +181,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if !compiled.capabilities[capability] {
 			continue
 		}
-		isCovered := capability == AsyncJobsCapability && hasTaskEvidence
+		isCovered := countCapabilities[capability] || capability == AsyncJobsCapability && hasTaskEvidence
 		for _, direction := range DirectionCatalog() {
 			isCovered = isCovered || coverage[direction][capability]
 		}

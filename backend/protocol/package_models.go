@@ -12,7 +12,7 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 			continue
 		}
 		binding := mapping.Operations[name]
-		entry, err := compileModelProgram(name, "decodeModels", operation.Response, *binding.DecodeModels,
+		entry, err := compileOperationProgram(name, "decodeModels", operation.Response, *binding.DecodeModels,
 			wireSpec.resolvedDocuments[operation.Response].Schema, &modelPageSchema, wireSpec, expressions)
 		if err != nil {
 			return err
@@ -25,7 +25,7 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 		compiled.packagePlan.modelContracts[name] = wireSpec.documents[operation.Response]
 		if binding.EncodeModels != nil {
 			document := operation.Models.ClientDocument
-			entry, err := compileModelProgram(name, "encodeModels", document, *binding.EncodeModels,
+			entry, err := compileOperationProgram(name, "encodeModels", document, *binding.EncodeModels,
 				&modelPageSchema, wireSpec.resolvedDocuments[document].Schema, wireSpec, expressions)
 			if err != nil {
 				return err
@@ -44,7 +44,7 @@ func (compiled *Compiled) compilePackageModelMappings(spec ProtocolSpec, mapping
 	return nil
 }
 
-func compileModelProgram(operation, field, document string, program Expression, input, output *ValueSchema, wireSpec compiledProtocolSpec, expressions *expressionCompiler) (compiledMapping, error) {
+func compileOperationProgram(operation, field, document string, program Expression, input, output *ValueSchema, wireSpec compiledProtocolSpec, expressions *expressionCompiler) (compiledMapping, error) {
 	path := "/mapping/operations/" + escapePointer(operation) + "/" + field
 	references := map[string]Expression{}
 	expressions.mappingReferences = references

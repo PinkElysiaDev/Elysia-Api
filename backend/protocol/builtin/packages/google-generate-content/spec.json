@@ -47,6 +47,18 @@
       "query": {
         "alt": "sse"
       }
+    },
+    "count_tokens": {
+      "method": "POST",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "kind": "count_tokens",
+      "path": "/v1beta/models/{model}:countTokens",
+      "request": "count-request",
+      "response": "count-response"
     }
   },
   "documents": {
@@ -104,231 +116,7 @@
       },
       "assertions": [
         {
-          "path": "/generationConfig/thinkingConfig",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "code": "invalid_input",
-          "reason": "thinking controls must be an object or null",
-          "when": {
-            "op": "present",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/generationConfig/thinkingConfig"
-            }
-          }
-        },
-        {
-          "path": "/generationConfig/thinkingConfig",
-          "schema": {
-            "type": "any"
-          },
-          "code": "invalid_input",
-          "reason": "thinkingLevel and thinkingBudget cannot coexist",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig"
-              }
-            },
-            "then": {
-              "op": "all",
-              "items": [
-                {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/generationConfig/thinkingConfig/thinkingLevel"
-                  }
-                },
-                {
-                  "op": "present",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/generationConfig/thinkingConfig/thinkingBudget"
-                  }
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "literal",
-            "value": false
-          }
-        },
-        {
-          "path": "/generationConfig/thinkingConfig/includeThoughts",
-          "schema": {
-            "type": "boolean"
-          },
-          "code": "invalid_input",
-          "reason": "includeThoughts must be a boolean",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig"
-              }
-            },
-            "then": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig/includeThoughts"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/generationConfig/thinkingConfig/thinkingLevel",
-          "schema": {
-            "type": "string",
-            "enum": [
-              "minimal",
-              "low",
-              "medium",
-              "high"
-            ]
-          },
-          "code": "invalid_input",
-          "reason": "invalid thinking level",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig"
-              }
-            },
-            "then": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig/thinkingLevel"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/generationConfig/thinkingConfig/thinkingBudget",
-          "schema": {
-            "type": "any"
-          },
-          "code": "invalid_input",
-          "reason": "budget must be an integer >= -1 without overflow",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig"
-              }
-            },
-            "then": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/generationConfig/thinkingConfig/thinkingBudget"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": -1
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "",
-          "code": "invalid_association",
-          "reason": "tool history links are inconsistent",
-          "diagnostic": {
-            "code": "invalid_association",
-            "stage": "wire"
-          },
-          "check": {
-            "op": "ref",
-            "ref": "request-tool-links"
-          },
-          "when": {
-            "op": "equal",
-            "items": [
-              {
-                "op": "type",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/contents"
-                }
-              },
-              {
-                "op": "literal",
-                "value": "array"
-              }
-            ]
-          }
-        },
-        {
-          "ref": "request-safety"
+          "ref": "request-input"
         }
       ]
     },
@@ -4944,6 +4732,126 @@
           ]
         }
       }
+    },
+    "count-response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "totalTokens"
+        ],
+        "properties": {
+          "totalTokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "count-request": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "contents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "generateContentRequest": {
+            "type": "object",
+            "required": [
+              "model",
+              "contents"
+            ],
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "contents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "allowUnknown": true
+                }
+              }
+            },
+            "allowUnknown": true
+          }
+        },
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "",
+          "code": "invalid_input",
+          "reason": "unknown count request member",
+          "check": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "check_fields",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                "keys": [
+                  "contents",
+                  "generateContentRequest"
+                ],
+                "policy": "member",
+                "onUnknown": {
+                  "code": "invalid_input",
+                  "stage": "wire",
+                  "reason": "counting requires contents or generateContentRequest"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "path": "",
+          "code": "invalid_input",
+          "reason": "counting requires exactly one of contents and generateContentRequest",
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/contents"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/generateContentRequest"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ref": "request-input"
+        },
+        {
+          "ref": "request-input",
+          "path": "/generateContentRequest"
+        }
+      ]
     }
   },
   "expressions": {
@@ -5385,6 +5293,235 @@
           }
         },
         "reason": "this protocol package supports one response candidate"
+      }
+    ],
+    "request-input": [
+      {
+        "path": "/generationConfig/thinkingConfig",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "code": "invalid_input",
+        "reason": "thinking controls must be an object or null",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/generationConfig/thinkingConfig"
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig",
+        "schema": {
+          "type": "any"
+        },
+        "code": "invalid_input",
+        "reason": "thinkingLevel and thinkingBudget cannot coexist",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "all",
+            "items": [
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                }
+              },
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "check": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig/includeThoughts",
+        "schema": {
+          "type": "boolean"
+        },
+        "code": "invalid_input",
+        "reason": "includeThoughts must be a boolean",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/includeThoughts"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig/thinkingLevel",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "code": "invalid_input",
+        "reason": "invalid thinking level",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/thinkingLevel"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig/thinkingBudget",
+        "schema": {
+          "type": "any"
+        },
+        "code": "invalid_input",
+        "reason": "budget must be an integer >= -1 without overflow",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/thinkingBudget"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "check": {
+          "op": "if",
+          "when": {
+            "op": "is_integer",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": -1
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "",
+        "code": "invalid_association",
+        "reason": "tool history links are inconsistent",
+        "diagnostic": {
+          "code": "invalid_association",
+          "stage": "wire"
+        },
+        "check": {
+          "op": "ref",
+          "ref": "request-tool-links"
+        },
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/contents"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "array"
+            }
+          ]
+        }
+      },
+      {
+        "ref": "request-safety"
       }
     ]
   }

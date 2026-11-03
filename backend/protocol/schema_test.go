@@ -199,6 +199,7 @@ func describeUncachedSchema() SchemaCatalog {
 		"request": reflect.TypeFor[Request](), "response": reflect.TypeFor[Response](),
 		"event": reflect.TypeFor[Event](), "task": reflect.TypeFor[Task](),
 		"models": reflect.TypeFor[ModelPage](), "agent": reflect.TypeFor[AgentPreferences](),
+		"tokenCount": reflect.TypeFor[TokenCount](),
 	} {
 		schema := reflectUncachedSchema(kind)
 		for name, definition := range schema["$defs"].(map[string]any) {

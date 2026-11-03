@@ -47,11 +47,12 @@ type ProtocolModelDiscoverySpec struct {
 
 // ProtocolOperationMapping selects core adapters for an existing wire operation.
 type ProtocolOperationMapping struct {
-	Request      Direction            `json:"request,omitempty"`
-	Response     Direction            `json:"response,omitempty"`
-	DecodeModels *Expression          `json:"decodeModels,omitempty"`
-	EncodeModels *Expression          `json:"encodeModels,omitempty"`
-	Task         *ProtocolTaskMapping `json:"task,omitempty"`
+	Request      Direction                  `json:"request,omitempty"`
+	Response     Direction                  `json:"response,omitempty"`
+	DecodeModels *Expression                `json:"decodeModels,omitempty"`
+	EncodeModels *Expression                `json:"encodeModels,omitempty"`
+	Task         *ProtocolTaskMapping       `json:"task,omitempty"`
+	CountTokens  *ProtocolTokenCountMapping `json:"countTokens,omitempty"`
 }
 
 // ProtocolTaskFlowSpec links fixed wire operations, never executable mappings.
@@ -169,6 +170,9 @@ func (wire ProtocolOperationSpec) compile(name string, documents map[string]comp
 	if err := checkOperationEndpoint(name, operation, limits); err != nil {
 		return Operation{}, fmt.Errorf("%s: %w", path, err)
 	}
+	if wire.Kind == "count_tokens" && (wire.Method != "POST" || wire.Transport != HTTPJSON || wire.Request == "" || wire.Response == "" || wire.Input != nil) {
+		return Operation{}, fmt.Errorf("%s: token counting requires POST HTTP JSON and independent request/response documents", path)
+	}
 	if err := checkOperationFraming(name, operation); err != nil {
 		return Operation{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -204,6 +208,15 @@ func (compiled *Compiled) bindPackageOperations(spec ProtocolSpec, mapping Proto
 			return fmt.Errorf("%s: operation mapping is required", path)
 		}
 		wire, operation := spec.Operations[name], compiled.operations[name]
+		if operation.Kind == "count_tokens" {
+			if binding.CountTokens == nil || binding.Request != "" || binding.Response != "" || binding.DecodeModels != nil || binding.EncodeModels != nil || binding.Task != nil {
+				return fmt.Errorf("%s: token counting requires its own mapping programs", path)
+			}
+			continue
+		}
+		if binding.CountTokens != nil {
+			return fmt.Errorf("%s/countTokens: requires count_tokens operation kind", path)
+		}
 		if operation.Kind == "submit" || operation.Kind == "status" || operation.Kind == "result" || operation.Kind == "cancel" {
 			if binding.DecodeModels != nil || binding.EncodeModels != nil || binding.Request != "" || binding.Response != "" || (operation.Kind == "submit") != (binding.Task != nil) {
 				return fmt.Errorf("%s: task operations use their flow's declared programs", path)

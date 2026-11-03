@@ -158,6 +158,13 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		if err == nil {
 			output, err = EncodeValue(semantic)
 		}
+	case "count_tokens":
+		var result verificationResult
+		result, err = executeTokenCountSample(ctx, compiled, Sample{Operation: input.Operation, Direction: input.Direction, Input: input.Input, Scope: Scope{Model: input.ConversionContext.Model}})
+		output, semantic = result.output, result.semantic
+		if err == nil && input.Direction == DecodeRequest {
+			output, err = EncodeValue(semantic)
+		}
 	case "models":
 		if input.Direction == EncodeResponse {
 			semantic = input.Input

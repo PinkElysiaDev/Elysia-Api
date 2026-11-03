@@ -29,6 +29,24 @@ func TestAnthropicPackageNativeTextTransition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// This test bounds live stream state; activation fixture growth is tested
+	// independently with the shipped package's normal limits.
+	value, err := p.ParseValue(mapping)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields, err := value.ReadObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"samples", "modelSamples", "tokenCountSamples"} {
+		delete(fields, key)
+	}
+	value, err = p.EncodeValue(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping = value.Bytes()
 	compiler, err := p.NewCompiler(limits, nil, nil)
 	if err != nil {
 		t.Fatal(err)

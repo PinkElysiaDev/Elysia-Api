@@ -343,3 +343,24 @@ id／name／maxTokens 及分页信息），执行共享 operation plan，并在�
 本批保持既有目录成员策略，没有改变 token 的模型组过滤合同。只给现有 Chat／Gemini 客户端
 目录添加默认编码声明；Responses／Anthropic 继续只有已支持的上游发现。旧生产默认仍保留其
 既有目录 handler，按核心版本在执行前选择，待生产切换统一删除；新包失败不会回退到它。
+
+## 上游输入计数声明（dev.135）
+
+Spec 的 `count_tokens` 操作声明 POST、HTTP JSON、独立的 request/response 文档和完整路径。
+Mapping 的 `operations.<name>.countTokens` 包含 request 下的 decode_request／encode_request、
+decodeResponse／encodeResponse 及只用于请求的 conversionDefaults。请求复用核心 Request、表达式、
+语义效果证明和 Native 规则，但拥有独立映射指纹，不继承生成端点的预算或模型默认参数。
+结果为 `TokenCount { inputTokens: int64 }`，接受零，拒绝负数、非整数、缺失和溢出；它不是 Usage。
+
+Anthropic 声明 `/v1/messages/count_tokens`，不要求也不接受 max_tokens、stream 等生成字段。
+Gemini 声明 `/v1beta/models/{model}:countTokens`：输入在 contents 与 generateContentRequest
+中二选一；工具、系统指令等输入通过 generateContentRequest 保留，内部 model 必须匹配端点模型。
+Mapping 使用已有 with_input 及共享请求表达式，不添加供应商 Go 分支或提高配置限额。
+
+`tokenCountSamples` 必须明确 operation，分别证明四个请求／响应方向；请求样例还验证语义往返。
+修改样例、计数程序或合同会改变对应修订证据，生成样例不能替代计数证据。计数预览使用
+`mode: "count_tokens"`、operation、direction 和 input；路径中的模型通过公开的
+`conversionContext.model` 提供。CLI 对应 `--model`，宿主内部 Scope 不接受 JSON 伪造。
+
+本批仅完成编译、样例和离线预览。实际 HTTP 路由将在下一批接线：只选择声明计数操作的候选，
+不能回退本地估算，计数结果不能写入生成 token 账本。生产默认切换和正式性能验收尚未完成。

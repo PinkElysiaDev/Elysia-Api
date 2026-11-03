@@ -119,6 +119,7 @@ export function ProtocolV2Editor({
   const [isSequence, setSequence] = useState(false)
   const [previewMode, setPreviewMode] = useState('mapping')
   const [workflowSample, setWorkflowSample] = useState('')
+  const [countModel, setCountModel] = useState('')
   const [taskOperation, setTaskOperation] = useState('')
   const [taskKind, setTaskKind] = useState('decode')
   const [taskPurpose, setTaskPurpose] = useState('status')
@@ -230,7 +231,7 @@ export function ProtocolV2Editor({
   const locate = (issue: ConversionIssue) => {
     let path = issue.path
     if (issue.evidence) {
-      for (const section of ['samples', 'sessionSamples', 'taskSamples', 'modelSamples']) {
+      for (const section of ['samples', 'sessionSamples', 'taskSamples', 'modelSamples', 'tokenCountSamples']) {
         const entries = document?.locate(`${mappingPrefix}/${section}`)?.children
         for (const [index] of entries ?? []) {
           if (scalar(`${mappingPrefix}/${section}/${index}/id`) === issue.evidence) {
@@ -609,6 +610,7 @@ export function ProtocolV2Editor({
                   onChange={(event) => {
                     setPreviewMode(event.target.value)
                     if (event.target.value === 'models') setDirection('decode_response')
+                    if (event.target.value === 'count_tokens') setDirection('decode_request')
                   }}
                 >
                   <option value="mapping">请求 / 响应 / 事件</option>
@@ -616,6 +618,7 @@ export function ProtocolV2Editor({
                   <option value="task">任务操作</option>
                   <option value="agent">Agent settings</option>
                   <option value="models">模型目录</option>
+                  <option value="count_tokens">输入 Token 计数</option>
                 </select>
               </label>
               <label className="space-y-1 text-xs font-medium text-foreground">
@@ -626,7 +629,11 @@ export function ProtocolV2Editor({
                   value={direction}
                   onChange={(event) => setDirection(event.target.value)}
                 >
-                  {(previewMode === 'models' ? ['decode_response', 'encode_response'] : schema.directions).map((value) => (
+                  {(previewMode === 'models'
+                    ? ['decode_response', 'encode_response']
+                    : previewMode === 'count_tokens'
+                      ? ['decode_request', 'encode_request', 'decode_response', 'encode_response']
+                      : schema.directions).map((value) => (
                     <option key={value}>{value}</option>
                   ))}
                 </select>
@@ -642,9 +649,9 @@ export function ProtocolV2Editor({
               </label>
             </div>
 
-            {previewMode === 'models' && (
+            {(previewMode === 'models' || previewMode === 'count_tokens') && (
               <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                <span>目录操作名（decode_response 发现／encode_response 客户端输出）</span>
+                <span>{previewMode === 'models' ? '目录操作名（decode_response 发现／encode_response 客户端输出）' : '计数操作名（独立请求与结果映射）'}</span>
                 <Input
                   value={taskOperation}
                   onChange={(event) => setTaskOperation(event.target.value)}
@@ -658,6 +665,12 @@ export function ProtocolV2Editor({
                   value={workflowSample}
                   onChange={(event) => setWorkflowSample(event.target.value)}
                 />
+              </label>
+            )}
+            {previewMode === 'count_tokens' && (
+              <label className="block space-y-1.5 text-xs font-medium text-foreground">
+                <span>端点模型名（协议路径含模型时填写）</span>
+                <Input value={countModel} onChange={(event) => setCountModel(event.target.value)} />
               </label>
             )}
             {previewMode === 'task' && (
@@ -720,9 +733,10 @@ export function ProtocolV2Editor({
                               source,
                               {
                                 mode: previewMode,
-                                direction: previewMode === 'models' ? direction : undefined,
+                                direction: previewMode === 'models' || previewMode === 'count_tokens' ? direction : undefined,
                                 sample: workflowSample,
                                 operation: taskOperation,
+                                conversionContext: previewMode === 'count_tokens' ? { model: countModel } : undefined,
                                 kind: taskKind,
                                 purpose: taskPurpose,
                               },

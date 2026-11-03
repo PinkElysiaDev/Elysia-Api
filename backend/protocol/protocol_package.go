@@ -148,6 +148,7 @@ type ProtocolMapping struct {
 	Limits             *Limits                                `json:"limits,omitempty"`
 	Samples            []Sample                               `json:"samples"`
 	ModelSamples       []ModelSample                          `json:"modelSamples,omitempty"`
+	TokenCountSamples  []Sample                               `json:"tokenCountSamples,omitempty"`
 	TaskSamples        []TaskSample                           `json:"taskSamples,omitempty"`
 	SessionSamples     []SessionSample                        `json:"sessionSamples,omitempty"`
 	Agent              *ProtocolAgentMapping                  `json:"agent,omitempty"`
@@ -366,7 +367,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		if entry.FinalDocument != "" {
 			finalWire = wireSpec.resolvedDocuments[entry.FinalDocument]
 		}
-		program, effects, err := compileProtocolProgram(entry, direction, wire, finalWire, wireSpec.documentHashes, outputNamespaces, expressions, mapping.CoreVersion, mapping.DSLVersion)
+		program, effects, err := compileProtocolProgram("/mapping/directions/"+string(direction), entry, direction, wire, finalWire, wireSpec.documentHashes, outputNamespaces, expressions, mapping.CoreVersion, mapping.DSLVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -400,6 +401,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.compileConversionDefaults(mapping, expressions); err != nil {
 		return nil, err
 	}
+	if err := compiled.compileTokenCounting(document, wireSpec, expressions); err != nil {
+		return nil, err
+	}
 	for _, name := range sortedKeys(mapping.Expressions) {
 		if !expressions.used[name] {
 			return nil, fmt.Errorf("/mapping/expressions/%s: unreachable expression", name)
@@ -411,11 +415,14 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.bindPackageIdentity(document); err != nil {
 		return nil, err
 	}
+	for _, count := range compiled.packagePlan.tokenCounts {
+		count.request.hash, count.request.definition = compiled.hash, compiled.definition
+	}
 	return compiled, nil
 }
 
 func validateProtocolSamples(mapping ProtocolMapping, operations map[string]Operation, limits Limits) error {
-	count := len(mapping.Samples) + len(mapping.ModelSamples) + len(mapping.TaskSamples) + len(mapping.SessionSamples)
+	count := len(mapping.Samples) + len(mapping.ModelSamples) + len(mapping.TokenCountSamples) + len(mapping.TaskSamples) + len(mapping.SessionSamples)
 	if mapping.Agent != nil {
 		count += len(mapping.Agent.Samples)
 	}

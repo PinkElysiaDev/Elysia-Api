@@ -17,6 +17,7 @@ type compiledPackagePlan struct {
 	hasFieldProjection   bool
 	modelContracts       map[string]compiledWireContract
 	modelClientContracts map[string]compiledWireContract
+	tokenCounts          map[string]*compiledTokenCounting
 	taskContracts        map[string]map[string]packageTaskContracts
 	finalContracts       map[Direction]compiledWireContract
 	modelPolicy          *compiledModelPolicy
@@ -77,32 +78,47 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 			return nil, definitionIssues(compiled.identity, "/spec/operations", fmt.Errorf("WebSocket transport is not installed"))
 		}
 	}
+	if issues := compiler.checkPackagePrograms(document, compiled, "/mapping/directions"); len(issues) != 0 {
+		return nil, issues
+	}
+	for _, name := range sortedKeys(compiled.packagePlan.tokenCounts) {
+		count := compiled.packagePlan.tokenCounts[name]
+		countDocument := document
+		countDocument.Mapping.Directions = document.Mapping.Operations[name].CountTokens.Request
+		if issues := compiler.checkPackagePrograms(countDocument, count.request, "/mapping/operations/"+escapePointer(name)+"/countTokens/request"); len(issues) != 0 {
+			return nil, issues
+		}
+	}
+	return compiled, nil
+}
+
+func (compiler *Compiler) checkPackagePrograms(document ProtocolPackage, compiled *Compiled, pathPrefix string) []ConversionIssue {
 	for _, direction := range sortedKeys(compiled.packagePlan.effects) {
 		if isEventDirection(direction) && compiled.wireContracts[direction].packageStream == nil && !compiled.hasPackageSession() {
-			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction), fmt.Errorf("event programs require an independent wire stream contract"))
+			return definitionIssues(compiled.identity, pathPrefix+"/"+string(direction), fmt.Errorf("event programs require an independent wire stream contract"))
 		}
 		mapping := compiled.mappings[direction]
 		if document.Mapping.Native.Preserve && (direction == EncodeEvent || direction == EncodeUpstreamEvent) && mapping.outputPlan != nil && mapping.outputPlan.hasStreamWrites && mapping.streamObserver == nil {
-			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/observe", fmt.Errorf("native replay of stateful event programs requires an explicit observer"))
+			return definitionIssues(compiled.identity, pathPrefix+"/"+string(direction)+"/observe", fmt.Errorf("native replay of stateful event programs requires an explicit observer"))
 		}
 		if compiled.mappings[direction].outputPlan == nil {
-			return nil, definitionIssues(compiled.identity, "/mapping/directions/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
+			return definitionIssues(compiled.identity, pathPrefix+"/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
 		}
 		for index, effect := range compiled.packagePlan.effects[direction] {
 			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" && !isRequestProjectionScope(effect.scope) {
-				path := fmt.Sprintf("/mapping/directions/%s/effects/%d/kind", direction, index)
-				return nil, definitionIssues(compiled.identity, path, fmt.Errorf("semantic effect %q is not executable in this runtime", effect.kind))
+				path := fmt.Sprintf("%s/%s/effects/%d/kind", pathPrefix, direction, index)
+				return definitionIssues(compiled.identity, path, fmt.Errorf("semantic effect %q is not executable in this runtime", effect.kind))
 			}
 			if effect.kind == "aggregate" {
-				path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
+				path := fmt.Sprintf("%s/%s/effects/%d", pathPrefix, direction, index)
 				if effect.valueMapping != nil {
 					if !provesHistoryValueMapping(compiled.mappings[direction].outputPlan.expression, direction, effect, compiler.limits.Nodes) {
-						return nil, definitionIssues(compiled.identity, path, fmt.Errorf("value mapping requires a provable whole-value partition or reconstruction"))
+						return definitionIssues(compiled.identity, path, fmt.Errorf("value mapping requires a provable whole-value partition or reconstruction"))
 					}
 					continue
 				}
 				if !provesPackageAggregate(compiled.mappings[direction].outputPlan.expression, direction, effect, compiler.limits.Nodes) {
-					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("aggregate requires a provable object partition or reconstruction"))
+					return definitionIssues(compiled.identity, path, fmt.Errorf("aggregate requires a provable object partition or reconstruction"))
 				}
 			}
 			if effect.kind == "emit" {
@@ -121,13 +137,13 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 					}
 				}
 				if !hasProof {
-					path := fmt.Sprintf("/mapping/directions/%s/effects/%d", direction, index)
-					return nil, definitionIssues(compiled.identity, path, fmt.Errorf("emit effect %q requires a provable read of its declared input field", effect.id))
+					path := fmt.Sprintf("%s/%s/effects/%d", pathPrefix, direction, index)
+					return definitionIssues(compiled.identity, path, fmt.Errorf("emit effect %q requires a provable read of its declared input field", effect.id))
 				}
 			}
 		}
 	}
-	return compiled, nil
+	return nil
 }
 
 // Package returns an independent spec/mapping document. Legacy definitions return false.
@@ -155,14 +171,15 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	}
 	compiled.hash = hashValue(identity)
 	samples, err := EncodeValue(struct {
-		CoreVersion    int                   `json:"coreVersion"`
-		DSLVersion     int                   `json:"dslVersion"`
-		Samples        []Sample              `json:"samples"`
-		ModelSamples   []ModelSample         `json:"modelSamples,omitempty"`
-		TaskSamples    []TaskSample          `json:"taskSamples,omitempty"`
-		Agent          *ProtocolAgentMapping `json:"agent,omitempty"`
-		SessionSamples []SessionSample       `json:"sessionSamples,omitempty"`
-	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TaskSamples, document.Mapping.Agent, document.Mapping.SessionSamples})
+		CoreVersion       int                   `json:"coreVersion"`
+		DSLVersion        int                   `json:"dslVersion"`
+		Samples           []Sample              `json:"samples"`
+		ModelSamples      []ModelSample         `json:"modelSamples,omitempty"`
+		TokenCountSamples []Sample              `json:"tokenCountSamples,omitempty"`
+		TaskSamples       []TaskSample          `json:"taskSamples,omitempty"`
+		Agent             *ProtocolAgentMapping `json:"agent,omitempty"`
+		SessionSamples    []SessionSample       `json:"sessionSamples,omitempty"`
+	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TokenCountSamples, document.Mapping.TaskSamples, document.Mapping.Agent, document.Mapping.SessionSamples})
 	if err != nil {
 		return err
 	}
@@ -170,8 +187,7 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 	return nil
 }
 
-func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Direction, wire, finalWire WireContractSpec, documentHashes map[string]string, outputNamespaces map[string]int, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
-	path := "/mapping/directions/" + string(direction)
+func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direction Direction, wire, finalWire WireContractSpec, documentHashes map[string]string, outputNamespaces map[string]int, compiler *expressionCompiler, coreVersion, dslVersion int) (compiledMapping, []compiledSemanticEffect, error) {
 	if err := validateNativeReplayMode(mapping, direction, path); err != nil {
 		return compiledMapping{}, nil, err
 	}

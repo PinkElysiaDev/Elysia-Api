@@ -51,6 +51,1356 @@
     "stream": {
       "request": "encode_request",
       "response": "decode_event"
+    },
+    "count_tokens": {
+      "countTokens": {
+        "request": {
+          "decode_request": {
+            "document": "count-request",
+            "program": {
+              "op": "ref",
+              "ref": "decode-request-program"
+            },
+            "effects": [
+              {
+                "id": "model",
+                "kind": "emit",
+                "path": "/model",
+                "target": "/model",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/model"
+                  }
+                }
+              },
+              {
+                "id": "history-retention",
+                "kind": "aggregate",
+                "path": "/reasoning/historyRetention",
+                "target": "/context_management",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/context_management"
+                  }
+                },
+                "valueMapping": {
+                  "value": "all",
+                  "variants": [
+                    {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": "all"
+                        }
+                      ]
+                    },
+                    {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": {
+                            "type": "all"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "unmatched": "/parameters/wire:claude/context_management"
+                }
+              },
+              {
+                "id": "request-cache-object",
+                "kind": "aggregate",
+                "path": "/cache/0",
+                "target": "/cache_control",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/cache_control"
+                  }
+                },
+                "layout": {
+                  "remainder": "value",
+                  "fields": {
+                    "ttl": "ttl"
+                  },
+                  "labels": {
+                    "kind": "breakpoint",
+                    "location": "request"
+                  }
+                }
+              }
+            ],
+            "capabilities": {
+              "text": true,
+              "tools.function": true,
+              "native_extensions": true,
+              "cache.breakpoints": true,
+              "images": true,
+              "documents": true,
+              "tools.server": true,
+              "reasoning": true,
+              "reasoning.signatures": true,
+              "reasoning.encrypted": true,
+              "reasoning.history_retention": true
+            }
+          },
+          "encode_request": {
+            "document": "count-request",
+            "program": {
+              "op": "ref",
+              "ref": "encode-request-program"
+            },
+            "effects": [
+              {
+                "id": "invalid-request-metadata",
+                "kind": "reject",
+                "path": "/parameters/metadata",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "request-metadata-valid"
+                  }
+                },
+                "reason": "metadata must be an object of strings or null",
+                "diagnostic": {
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "id": "invalid-request-user",
+                "kind": "reject",
+                "path": "/parameters/user",
+                "when": {
+                  "op": "ref",
+                  "ref": "encode-request-invalid-request-user-when"
+                },
+                "reason": "user must be a string or null",
+                "diagnostic": {
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "id": "invalid-tracking-metadata",
+                "kind": "reject",
+                "path": "/parameters/anthropic_metadata",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "request-tracking-object-valid"
+                  }
+                },
+                "reason": "tracking metadata must be an object or null",
+                "diagnostic": {
+                  "code": "invalid_input",
+                  "stage": "evaluate"
+                }
+              },
+              {
+                "id": "request-resource-mapping",
+                "kind": "reject",
+                "path": "/resources",
+                "target": "/resources",
+                "when": {
+                  "op": "ref",
+                  "ref": "encode-request-request-resource-mapping-when"
+                },
+                "reason": "Anthropic has no equivalent request-level resource reference."
+              },
+              {
+                "id": "history-retention",
+                "kind": "aggregate",
+                "path": "/reasoning/historyRetention",
+                "target": "/context_management",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/historyRetention"
+                  }
+                },
+                "valueMapping": {
+                  "value": "all",
+                  "variants": [
+                    {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": "all"
+                        }
+                      ]
+                    },
+                    {
+                      "edits": [
+                        {
+                          "type": "clear_thinking_20251015",
+                          "keep": {
+                            "type": "all"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "unmatched": "/parameters/wire:claude/context_management"
+                }
+              },
+              {
+                "id": "foreign-wire-owner",
+                "kind": "reject",
+                "path": "/parameters",
+                "when": {
+                  "op": "ref",
+                  "ref": "has-foreign-wire-owner"
+                },
+                "reason": "foreign protocol-specific owner requires an explicit mapping"
+              },
+              {
+                "id": "response-storage-intent",
+                "kind": "reject",
+                "path": "/parameters/store",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/store"
+                  }
+                },
+                "reason": "legacy storage parameter has no mapping; use clientOutput.responsesStorage"
+              },
+              {
+                "id": "response-storage-effective",
+                "kind": "reject",
+                "path": "/clientOutput/responsesStorage",
+                "when": {
+                  "op": "ref",
+                  "ref": "encode-request-response-storage-effective-when"
+                },
+                "reason": "target requires a resolved response storage intent without response retrieval storage"
+              },
+              {
+                "id": "legacy-include-owner",
+                "kind": "reject",
+                "path": "/parameters/responses_include",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/responses_include"
+                  }
+                },
+                "reason": "include preferences belong to clientOutput.rawResponsesInclude"
+              },
+              {
+                "id": "unresolved-include-selection",
+                "kind": "reject",
+                "path": "/include",
+                "when": {
+                  "op": "ref",
+                  "ref": "encode-request-unresolved-include-selection-when"
+                },
+                "reason": "client output selection requires its declared target disposition"
+              },
+              {
+                "id": "cache-empty-default",
+                "kind": "default",
+                "scope": "cache_intents",
+                "default": null,
+                "when": {
+                  "op": "ref",
+                  "ref": "encode-request-cache-empty-default-when"
+                },
+                "reason": "an absent target cache hint equals the declared null source hint"
+              },
+              {
+                "id": "cache-unsupported-hint",
+                "kind": "drop",
+                "scope": "cache_intents",
+                "severity": "info",
+                "when": {
+                  "op": "ref",
+                  "ref": "cache-omittable-hint"
+                },
+                "reason": "target has no equivalent representation for this declared cache hint"
+              },
+              {
+                "id": "request-cache-object",
+                "kind": "aggregate",
+                "path": "/cache/0",
+                "target": "/cache_control",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/cache/0"
+                  }
+                },
+                "layout": {
+                  "remainder": "value",
+                  "fields": {
+                    "ttl": "ttl"
+                  },
+                  "labels": {
+                    "kind": "breakpoint",
+                    "location": "request"
+                  }
+                }
+              },
+              {
+                "id": "cache-wire-owner",
+                "kind": "reject",
+                "path": "/parameters/wire:claude/cache_control",
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude/cache_control"
+                  }
+                },
+                "reason": "cache policy has a semantic owner in cache; wire extensions cannot replace it"
+              },
+              {
+                "id": "system-layout-required",
+                "kind": "reject",
+                "path": "/content",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "request-system-layout-valid"
+                  }
+                },
+                "reason": "target requires the declared instruction layout before encoding"
+              },
+              {
+                "id": "assistant-layout-required",
+                "kind": "reject",
+                "path": "/content",
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "ref",
+                    "ref": "request-assistant-layout-valid"
+                  }
+                },
+                "reason": "target requires the declared assistant history grouping before encoding"
+              }
+            ],
+            "capabilities": {
+              "text": true,
+              "tools.function": true,
+              "native_extensions": true,
+              "cache.breakpoints": true,
+              "images": true,
+              "documents": true,
+              "tools.server": true,
+              "reasoning": true,
+              "reasoning.signatures": true,
+              "reasoning.encrypted": true,
+              "reasoning.history_retention": true
+            }
+          }
+        },
+        "decodeResponse": {
+          "op": "object",
+          "fields": {
+            "inputTokens": {
+              "op": "read",
+              "from": "input",
+              "path": "/input_tokens"
+            }
+          }
+        },
+        "encodeResponse": {
+          "op": "object",
+          "fields": {
+            "input_tokens": {
+              "op": "read",
+              "from": "input",
+              "path": "/inputTokens"
+            }
+          }
+        },
+        "conversionDefaults": [
+          {
+            "id": "responses-context",
+            "order": 185,
+            "enabled": true,
+            "phase": "request",
+            "match": {},
+            "steps": [
+              {
+                "when": {
+                  "op": "any",
+                  "items": [
+                    {
+                      "op": "ref",
+                      "ref": "conversion-has-session-resource"
+                    },
+                    {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/parameters/responses_previous_response_id"
+                      }
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "path": "/previous_response_id",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot resolve a previous response; complete history restoration is required before conversion"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/responses_truncation"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "path": "/truncation",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no verified equivalent context truncation behavior; this constraint cannot be omitted"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "type",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/parameters/responses_previous_response_id"
+                      }
+                    },
+                    {
+                      "op": "literal",
+                      "value": "null"
+                    }
+                  ]
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "path": "/previous_response_id",
+                  "reason": {
+                    "op": "literal",
+                    "value": "null previous response reference normalized to no history reference"
+                  }
+                },
+                "set": {
+                  "/parameters/responses_previous_response_id": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gemini-safety-settings",
+            "order": 170,
+            "enabled": true,
+            "phase": "request",
+            "match": {},
+            "steps": [
+              {
+                "when": {
+                  "op": "ref",
+                  "ref": "request-gemini-safety-settings-steps-1-when"
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "path": "/safetySettings",
+                  "reason": {
+                    "op": "literal",
+                    "value": "empty Gemini safety settings contain no category overrides"
+                  }
+                },
+                "set": {
+                  "/parameters/gemini_safety_settings": {
+                    "op": "omit"
+                  }
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parameters/gemini_safety_settings"
+                    }
+                  },
+                  "then": {
+                    "op": "ref",
+                    "ref": "conversion-check-cross-safety"
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "path": "/safetySettings",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no Gemini category filter controls; BLOCK_NONE/OFF cannot disable the target's own safety policy, which remains in force"
+                  }
+                },
+                "set": {
+                  "/parameters/gemini_safety_settings": {
+                    "op": "omit"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "history-response-metadata",
+            "order": 160,
+            "enabled": true,
+            "phase": "request",
+            "steps": [
+              {
+                "each": {
+                  "select": "metadata",
+                  "steps": [
+                    {
+                      "when": {
+                        "op": "not",
+                        "source": {
+                          "op": "ref",
+                          "ref": "conversion-metadata-valid"
+                        }
+                      },
+                      "diagnostic": {
+                        "kind": "invalid",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "code": "invalid_input",
+                        "stage": "conversion.metadata",
+                        "reason": {
+                          "op": "literal",
+                          "value": "metadata does not satisfy its declared disposition shape"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/codec"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "anthropic"
+                          }
+                        ]
+                      },
+                      "stop": true
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-3-when"
+                      },
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "normalize",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "verified output_text duplicates the ordered visible output; emitted once in target content"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-4-when"
+                      },
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "normalize",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "inactive source safety buffering carries no buffered content; target output remains unchanged"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-5-when"
+                      },
+                      "diagnostic": {
+                        "kind": "reject",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "active source safety buffering has no declared target mapping"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-6-when"
+                      },
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "source event padding cannot preserve payload-size obfuscation after protocol conversion"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-7-when"
+                      },
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "normalize",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "empty known response metadata normalized for target"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-8-when"
+                      },
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "target cannot express this recognized response metadata field"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "ref",
+                            "ref": "conversion-metadata-state"
+                          },
+                          {
+                            "op": "not",
+                            "source": {
+                              "op": "ref",
+                              "ref": "conversion-metadata-empty-special"
+                            }
+                          }
+                        ]
+                      },
+                      "diagnostic": {
+                        "kind": "reject",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "nonempty context/container state requires a scoped state mapping"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-history-response-metadata-steps-1-each-steps-10-when"
+                      },
+                      "diagnostic": {
+                        "kind": "reject",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "non-URL citation or grounding resources require an explicit scoped mapping"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "conversion-metadata-empty-special"
+                      },
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "normalize",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "empty known response metadata normalized for target"
+                        }
+                      }
+                    },
+                    {
+                      "omit": true,
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "target cannot express this recognized response metadata field"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "responses-storage",
+            "order": 190,
+            "enabled": true,
+            "phase": "request",
+            "steps": [
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/store"
+                  }
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "path": "/parameters/store",
+                  "reason": {
+                    "op": "literal",
+                    "value": "legacy storage parameter has no mapping; use clientOutput.responsesStorage"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "not",
+                  "source": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/clientOutput/responsesStorage"
+                    }
+                  }
+                },
+                "stop": true
+              },
+              {
+                "when": {
+                  "op": "ref",
+                  "ref": "request-responses-storage-steps-3-when"
+                },
+                "diagnostic": {
+                  "kind": "degrade",
+                  "path": "/clientOutput/responsesStorage",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target cannot provide the source API response retrieval contract; proceeding without response retrieval storage"
+                  }
+                },
+                "set": {
+                  "/clientOutput/responsesStorage/effective": {
+                    "op": "literal",
+                    "value": false
+                  },
+                  "/clientOutput/responsesStorage/effectiveUnknown": {
+                    "op": "literal",
+                    "value": false
+                  }
+                },
+                "stop": true
+              },
+              {
+                "set": {
+                  "/clientOutput/responsesStorage/effective": {
+                    "op": "literal",
+                    "value": false
+                  },
+                  "/clientOutput/responsesStorage/effectiveUnknown": {
+                    "op": "literal",
+                    "value": false
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "request-signatures",
+            "order": 200,
+            "enabled": true,
+            "phase": "request",
+            "recovery": {
+              "kinds": [
+                "signature",
+                "encrypted_content"
+              ],
+              "preserveWhen": {
+                "op": "ref",
+                "ref": "preserve-source-continuation"
+              },
+              "onUnavailable": "degrade"
+            }
+          },
+          {
+            "id": "responses-include",
+            "order": 180,
+            "phase": "request",
+            "enabled": true,
+            "steps": [
+              {
+                "when": {
+                  "op": "ref",
+                  "ref": "request-responses-include-steps-1-when"
+                },
+                "diagnostic": {
+                  "kind": "reject",
+                  "path": "/include",
+                  "reason": {
+                    "op": "literal",
+                    "value": "target has no declared mapping for this Responses include selector"
+                  }
+                }
+              },
+              {
+                "when": {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/clientOutput/rawResponsesInclude"
+                  }
+                },
+                "set": {
+                  "/clientOutput/responsesIncludeResolved": {
+                    "op": "literal",
+                    "value": true
+                  }
+                },
+                "diagnostic": {
+                  "kind": "normalize",
+                  "path": "/include",
+                  "reason": {
+                    "op": "literal",
+                    "value": "the gateway preserves the client continuation selection; it is not an upstream request field"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "tool-options",
+            "order": 145,
+            "enabled": true,
+            "phase": "request",
+            "steps": [
+              {
+                "each": {
+                  "select": "tool",
+                  "pathBinding": "tool-path",
+                  "steps": [
+                    {
+                      "when": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/kind"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "function"
+                            }
+                          ]
+                        }
+                      },
+                      "stop": true
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-tool-options-steps-1-each-steps-2-when"
+                      },
+                      "set": {
+                        "/options/strict": {
+                          "op": "omit"
+                        },
+                        "/options/strictDefault": {
+                          "op": "omit"
+                        }
+                      },
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "tool-path",
+                            "path": ""
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "options"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "strict"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "target has no equivalent automatic tool schema strictness default"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-tool-options-steps-1-each-steps-3-when"
+                      },
+                      "set": {
+                        "/options/eager_input_streaming": {
+                          "op": "omit"
+                        }
+                      },
+                      "diagnostic": {
+                        "kind": "normalize",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "tool-path",
+                            "path": ""
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "options"
+                            },
+                            {
+                              "op": "literal",
+                              "value": "eager_input_streaming"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "tool input streaming preference has no effect on this request"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "tool-results",
+            "order": 150,
+            "enabled": true,
+            "phase": "request",
+            "steps": [
+              {
+                "each": {
+                  "select": "tool_result",
+                  "pathBinding": "result-path",
+                  "steps": [
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-tool-results-steps-1-each-steps-1-when"
+                      },
+                      "set": {
+                        "/status": {
+                          "op": "object",
+                          "fields": {
+                            "isError": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/status/isError"
+                            }
+                          }
+                        }
+                      },
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "result-path"
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "status"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "result envelope retained as payload with a separate error flag; target envelope structure changes"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "ref",
+                        "ref": "request-tool-results-steps-1-each-steps-2-when"
+                      },
+                      "diagnostic": {
+                        "kind": "reject",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "result-path"
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "status"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "tool result status has undeclared fields"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "type",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/payload"
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": "object"
+                          }
+                        ]
+                      },
+                      "set": {
+                        "/payload": {
+                          "op": "stringify_json",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/payload"
+                          }
+                        }
+                      },
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "pointer_join",
+                          "source": {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "result-path"
+                          },
+                          "items": [
+                            {
+                              "op": "literal",
+                              "value": "payload"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "structured result serialized as JSON text; payload type changes"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "request-projection",
+            "order": 130,
+            "enabled": true,
+            "phase": "request",
+            "use": "request_projection"
+          },
+          {
+            "id": "system-instruction-hoist",
+            "order": 140,
+            "enabled": true,
+            "phase": "request",
+            "steps": [
+              {
+                "layout": {
+                  "operation": "stable_partition",
+                  "path": "/content",
+                  "when": {
+                    "op": "ref",
+                    "ref": "layout-system-node"
+                  },
+                  "pathBinding": "layout-path",
+                  "movedBinding": "layout-moved",
+                  "steps": [
+                    {
+                      "when": {
+                        "op": "not",
+                        "source": {
+                          "op": "ref",
+                          "ref": "layout-system-container-valid"
+                        }
+                      },
+                      "diagnostic": {
+                        "kind": "reject",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "layout-path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "top-level instruction layout requires explicit preservation of container fields"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "path": "",
+                            "name": "layout-moved"
+                          },
+                          {
+                            "op": "equal",
+                            "items": [
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/role"
+                              },
+                              {
+                                "op": "literal",
+                                "value": "developer"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "layout-path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "top-level instruction changes the original scope or role precedence"
+                        }
+                      }
+                    },
+                    {
+                      "when": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/role"
+                          },
+                          {
+                            "op": "literal",
+                            "value": "developer"
+                          }
+                        ]
+                      },
+                      "set": {
+                        "/role": {
+                          "op": "literal",
+                          "value": "system"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "layout": {
+                  "operation": "combine_children",
+                  "path": "/content",
+                  "when": {
+                    "op": "ref",
+                    "ref": "layout-system-node"
+                  },
+                  "pathBinding": "layout-path",
+                  "steps": [
+                    {
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "path": "",
+                          "name": "layout-path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "target combines separate instruction roots in one system envelope"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "assistant-history",
+            "order": 165,
+            "enabled": true,
+            "phase": "request",
+            "steps": [
+              {
+                "layout": {
+                  "operation": "group_runs",
+                  "path": "/content",
+                  "role": "assistant",
+                  "when": {
+                    "op": "ref",
+                    "ref": "layout-assistant-root"
+                  },
+                  "pathBinding": "history-path",
+                  "steps": [
+                    {
+                      "diagnostic": {
+                        "kind": "degrade",
+                        "source": {
+                          "op": "read",
+                          "from": "binding",
+                          "name": "history-path"
+                        },
+                        "reason": {
+                          "op": "literal",
+                          "value": "target places adjacent assistant roots in one message; root boundaries change"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
     }
   },
   "coreVersion": 2,
@@ -21478,56 +22828,963 @@
         "op": "literal",
         "value": true
       }
+    },
+    "decode-request-program": {
+      "op": "object",
+      "fields": {
+        "schemaVersion": {
+          "op": "literal",
+          "value": 2
+        },
+        "source": {
+          "op": "object",
+          "fields": {}
+        },
+        "model": {
+          "op": "read",
+          "from": "input",
+          "path": "/model"
+        },
+        "content": {
+          "op": "ref",
+          "ref": "decode-request-content"
+        },
+        "parameters": {
+          "op": "ref",
+          "ref": "decode-request-parameters"
+        },
+        "tools": {
+          "op": "ref",
+          "ref": "decode-tools"
+        },
+        "cache": {
+          "op": "ref",
+          "ref": "decode-request-cache"
+        },
+        "toolChoice": {
+          "op": "ref",
+          "ref": "decode-tool-choice"
+        },
+        "reasoning": {
+          "op": "ref",
+          "ref": "decode-request-reasoning"
+        },
+        "clientOutput": {
+          "op": "ref",
+          "ref": "decode-client-output"
+        }
+      }
+    },
+    "encode-request-program": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/parameters/wire:claude"
+        }
+      },
+      "then": {
+        "op": "merge_deep",
+        "items": [
+          {
+            "op": "ref",
+            "ref": "encode-request-base"
+          },
+          {
+            "op": "project",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/wire:claude"
+            },
+            "keys": [
+              "context_management",
+              "cache_control"
+            ],
+            "policy": "exclude"
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "ref",
+        "ref": "encode-request-base"
+      }
+    },
+    "request-gemini-safety-settings-steps-1-when": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/gemini_safety_settings"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "null"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/parameters/gemini_safety_settings"
+            },
+            {
+              "op": "literal",
+              "value": []
+            }
+          ]
+        }
+      ]
+    },
+    "request-history-response-metadata-steps-1-each-steps-3-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/codec"
+            },
+            {
+              "op": "literal",
+              "value": "responses"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/name"
+            },
+            {
+              "op": "literal",
+              "value": "output_text"
+            }
+          ]
+        }
+      ]
+    },
+    "request-history-response-metadata-steps-1-each-steps-4-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/codec"
+            },
+            {
+              "op": "literal",
+              "value": "responses"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/name"
+            },
+            {
+              "op": "literal",
+              "value": "safety_buffering"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/value"
+            },
+            {
+              "op": "literal",
+              "value": false
+            }
+          ]
+        }
+      ]
+    },
+    "request-history-response-metadata-steps-1-each-steps-5-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/codec"
+            },
+            {
+              "op": "literal",
+              "value": "responses"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/name"
+            },
+            {
+              "op": "literal",
+              "value": "safety_buffering"
+            }
+          ]
+        }
+      ]
+    },
+    "request-history-response-metadata-steps-1-each-steps-6-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/codec"
+            },
+            {
+              "op": "literal",
+              "value": "responses"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/name"
+            },
+            {
+              "op": "literal",
+              "value": "obfuscation"
+            }
+          ]
+        }
+      ]
+    },
+    "request-history-response-metadata-steps-1-each-steps-7-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "any",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/name"
+                },
+                {
+                  "op": "literal",
+                  "value": "annotations"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/name"
+                },
+                {
+                  "op": "literal",
+                  "value": "citations"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/name"
+                },
+                {
+                  "op": "literal",
+                  "value": "logprobs"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "ref",
+          "ref": "conversion-metadata-empty"
+        }
+      ]
+    },
+    "request-history-response-metadata-steps-1-each-steps-8-when": {
+      "op": "if",
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/name"
+              },
+              {
+                "op": "literal",
+                "value": "annotations"
+              }
+            ]
+          },
+          {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/codec"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "openai-chat"
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/codec"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "responses"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "op": "let",
+        "name": "checked-annotations",
+        "source": {
+          "op": "ref",
+          "ref": "conversion-public-annotations"
+        },
+        "body": {
+          "op": "literal",
+          "value": true
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "request-history-response-metadata-steps-1-each-steps-10-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "any",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/name"
+                },
+                {
+                  "op": "literal",
+                  "value": "citations"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/name"
+                },
+                {
+                  "op": "literal",
+                  "value": "citationMetadata"
+                }
+              ]
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/name"
+                },
+                {
+                  "op": "literal",
+                  "value": "groundingMetadata"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "ref",
+            "ref": "conversion-metadata-empty"
+          }
+        }
+      ]
+    },
+    "request-responses-storage-steps-3-when": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requestedUnknown"
+            },
+            {
+              "op": "literal",
+              "value": true
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/requested"
+            },
+            {
+              "op": "literal",
+              "value": true
+            }
+          ]
+        }
+      ]
+    },
+    "request-responses-include-steps-1-when": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "type",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/rawResponsesInclude"
+            }
+          },
+          {
+            "op": "literal",
+            "value": "array"
+          }
+        ]
+      },
+      "then": {
+        "op": "let",
+        "name": "selectors",
+        "source": {
+          "op": "filter",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/clientOutput/rawResponsesInclude"
+          },
+          "when": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "item",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": "reasoning.encrypted_content"
+                }
+              ]
+            }
+          }
+        },
+        "body": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "binding",
+            "path": "/0",
+            "name": "selectors"
+          }
+        }
+      },
+      "otherwise": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/clientOutput/rawResponsesInclude"
+        }
+      }
+    },
+    "request-tool-options-steps-1-each-steps-2-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "not",
+          "source": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/options/strict"
+            }
+          }
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/options/strictDefault"
+            },
+            {
+              "op": "literal",
+              "value": "automatic"
+            }
+          ]
+        }
+      ]
+    },
+    "request-tool-options-steps-1-each-steps-3-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/options/eager_input_streaming"
+          }
+        },
+        {
+          "op": "any",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "root",
+                    "path": "/parameters/stream"
+                  },
+                  {
+                    "op": "literal",
+                    "value": true
+                  }
+                ]
+              }
+            },
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/options/eager_input_streaming"
+                },
+                {
+                  "op": "literal",
+                  "value": null
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "request-tool-results-steps-1-each-steps-1-when": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "input",
+            "path": "/status/payloadForm"
+          },
+          {
+            "op": "literal",
+            "value": "result_envelope"
+          }
+        ]
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+              "keys": [
+                "isError",
+                "payloadForm"
+              ],
+              "policy": "exclude"
+            },
+            {
+              "op": "literal",
+              "value": {}
+            }
+          ]
+        },
+        "then": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/payload"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "object"
+              }
+            ]
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "any",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/payload/error"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/payload/output"
+                  }
+                }
+              ]
+            },
+            "then": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/status/isError"
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/payload/error"
+                  }
+                }
+              ]
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "request-tool-results-steps-1-each-steps-2-when": {
+      "op": "if",
+      "when": {
+        "op": "exists",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": "/status"
+        }
+      },
+      "then": {
+        "op": "not",
+        "source": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "project",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/status"
+              },
+              "keys": [
+                "isError"
+              ],
+              "policy": "exclude"
+            },
+            {
+              "op": "literal",
+              "value": {}
+            }
+          ]
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    "encode-request-invalid-request-user-when": {
+      "op": "not",
+      "source": {
+        "op": "if",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/parameters/user"
+          }
+        },
+        "then": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/parameters/user"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "string"
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "literal",
+          "value": true
+        }
+      }
+    },
+    "encode-request-request-resource-mapping-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/resources"
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/resources"
+              },
+              {
+                "op": "array",
+                "items": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "encode-request-response-storage-effective-when": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/effectiveUnknown"
+            },
+            {
+              "op": "literal",
+              "value": true
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/clientOutput/responsesStorage/effective"
+            },
+            {
+              "op": "literal",
+              "value": true
+            }
+          ]
+        }
+      ]
+    },
+    "encode-request-unresolved-include-selection-when": {
+      "op": "all",
+      "items": [
+        {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/clientOutput/rawResponsesInclude"
+          }
+        },
+        {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": "/clientOutput/responsesIncludeResolved"
+              },
+              {
+                "op": "literal",
+                "value": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "encode-request-cache-empty-default-when": {
+      "op": "any",
+      "items": [
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "key"
+            }
+          ]
+        },
+        {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/kind"
+            },
+            {
+              "op": "literal",
+              "value": "retention"
+            }
+          ]
+        }
+      ]
     }
   },
   "directions": {
     "decode_request": {
       "document": "request",
       "program": {
-        "op": "object",
-        "fields": {
-          "schemaVersion": {
-            "op": "literal",
-            "value": 2
-          },
-          "source": {
-            "op": "object",
-            "fields": {}
-          },
-          "model": {
-            "op": "read",
-            "from": "input",
-            "path": "/model"
-          },
-          "content": {
-            "op": "ref",
-            "ref": "decode-request-content"
-          },
-          "parameters": {
-            "op": "ref",
-            "ref": "decode-request-parameters"
-          },
-          "tools": {
-            "op": "ref",
-            "ref": "decode-tools"
-          },
-          "cache": {
-            "op": "ref",
-            "ref": "decode-request-cache"
-          },
-          "toolChoice": {
-            "op": "ref",
-            "ref": "decode-tool-choice"
-          },
-          "reasoning": {
-            "op": "ref",
-            "ref": "decode-request-reasoning"
-          },
-          "clientOutput": {
-            "op": "ref",
-            "ref": "decode-client-output"
-          }
-        }
+        "op": "ref",
+        "ref": "decode-request-program"
       },
       "effects": [
         {
@@ -21624,41 +23881,8 @@
     "encode_request": {
       "document": "generation-request",
       "program": {
-        "op": "if",
-        "when": {
-          "op": "exists",
-          "source": {
-            "op": "read",
-            "from": "input",
-            "path": "/parameters/wire:claude"
-          }
-        },
-        "then": {
-          "op": "merge_deep",
-          "items": [
-            {
-              "op": "ref",
-              "ref": "encode-request-base"
-            },
-            {
-              "op": "project",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/parameters/wire:claude"
-              },
-              "keys": [
-                "context_management",
-                "cache_control"
-              ],
-              "policy": "exclude"
-            }
-          ]
-        },
-        "otherwise": {
-          "op": "ref",
-          "ref": "encode-request-base"
-        }
+        "op": "ref",
+        "ref": "encode-request-program"
       },
       "effects": [
         {
@@ -21683,39 +23907,8 @@
           "kind": "reject",
           "path": "/parameters/user",
           "when": {
-            "op": "not",
-            "source": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/user"
-                }
-              },
-              "then": {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "type",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/parameters/user"
-                    }
-                  },
-                  {
-                    "op": "literal",
-                    "value": "string"
-                  }
-                ]
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": true
-              }
-            }
+            "op": "ref",
+            "ref": "encode-request-invalid-request-user-when"
           },
           "reason": "user must be a string or null",
           "diagnostic": {
@@ -21746,34 +23939,8 @@
           "path": "/resources",
           "target": "/resources",
           "when": {
-            "op": "all",
-            "items": [
-              {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/resources"
-                }
-              },
-              {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/resources"
-                    },
-                    {
-                      "op": "array",
-                      "items": []
-                    }
-                  ]
-                }
-              }
-            ]
+            "op": "ref",
+            "ref": "encode-request-request-resource-mapping-when"
           },
           "reason": "Anthropic has no equivalent request-level resource reference."
         },
@@ -21844,37 +24011,8 @@
           "kind": "reject",
           "path": "/clientOutput/responsesStorage",
           "when": {
-            "op": "any",
-            "items": [
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/clientOutput/responsesStorage/effectiveUnknown"
-                  },
-                  {
-                    "op": "literal",
-                    "value": true
-                  }
-                ]
-              },
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/clientOutput/responsesStorage/effective"
-                  },
-                  {
-                    "op": "literal",
-                    "value": true
-                  }
-                ]
-              }
-            ]
+            "op": "ref",
+            "ref": "encode-request-response-storage-effective-when"
           },
           "reason": "target requires a resolved response storage intent without response retrieval storage"
         },
@@ -21897,34 +24035,8 @@
           "kind": "reject",
           "path": "/include",
           "when": {
-            "op": "all",
-            "items": [
-              {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/clientOutput/rawResponsesInclude"
-                }
-              },
-              {
-                "op": "not",
-                "source": {
-                  "op": "equal",
-                  "items": [
-                    {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/clientOutput/responsesIncludeResolved"
-                    },
-                    {
-                      "op": "literal",
-                      "value": true
-                    }
-                  ]
-                }
-              }
-            ]
+            "op": "ref",
+            "ref": "encode-request-unresolved-include-selection-when"
           },
           "reason": "client output selection requires its declared target disposition"
         },
@@ -21934,37 +24046,8 @@
           "scope": "cache_intents",
           "default": null,
           "when": {
-            "op": "any",
-            "items": [
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "key"
-                  }
-                ]
-              },
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/kind"
-                  },
-                  {
-                    "op": "literal",
-                    "value": "retention"
-                  }
-                ]
-              }
-            ]
+            "op": "ref",
+            "ref": "encode-request-cache-empty-default-when"
           },
           "reason": "an absent target cache hint equals the declared null source hint"
         },
@@ -42160,40 +44243,8 @@
     "steps": [
       {
         "when": {
-          "op": "any",
-          "items": [
-            {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "type",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/parameters/gemini_safety_settings"
-                  }
-                },
-                {
-                  "op": "literal",
-                  "value": "null"
-                }
-              ]
-            },
-            {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/parameters/gemini_safety_settings"
-                },
-                {
-                  "op": "literal",
-                  "value": []
-                }
-              ]
-            }
-          ]
+          "op": "ref",
+          "ref": "request-gemini-safety-settings-steps-1-when"
         },
         "diagnostic": {
           "kind": "normalize",
@@ -42298,37 +44349,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/codec"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "responses"
-                        }
-                      ]
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/name"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "output_text"
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-3-when"
                 },
                 "omit": true,
                 "diagnostic": {
@@ -42346,51 +44368,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/codec"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "responses"
-                        }
-                      ]
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/name"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "safety_buffering"
-                        }
-                      ]
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/value"
-                        },
-                        {
-                          "op": "literal",
-                          "value": false
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-4-when"
                 },
                 "omit": true,
                 "diagnostic": {
@@ -42408,37 +44387,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/codec"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "responses"
-                        }
-                      ]
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/name"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "safety_buffering"
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-5-when"
                 },
                 "diagnostic": {
                   "kind": "reject",
@@ -42455,37 +44405,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/codec"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "responses"
-                        }
-                      ]
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/name"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "obfuscation"
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-6-when"
                 },
                 "omit": true,
                 "diagnostic": {
@@ -42503,60 +44424,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "any",
-                      "items": [
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "annotations"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "citations"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "logprobs"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "op": "ref",
-                      "ref": "conversion-metadata-empty"
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-7-when"
                 },
                 "omit": true,
                 "diagnostic": {
@@ -42574,75 +44443,8 @@
               },
               {
                 "when": {
-                  "op": "if",
-                  "when": {
-                    "op": "all",
-                    "items": [
-                      {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/name"
-                          },
-                          {
-                            "op": "literal",
-                            "value": "annotations"
-                          }
-                        ]
-                      },
-                      {
-                        "op": "any",
-                        "items": [
-                          {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/codec"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "openai-chat"
-                              }
-                            ]
-                          },
-                          {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/codec"
-                              },
-                              {
-                                "op": "literal",
-                                "value": "responses"
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  "then": {
-                    "op": "let",
-                    "name": "checked-annotations",
-                    "source": {
-                      "op": "ref",
-                      "ref": "conversion-public-annotations"
-                    },
-                    "body": {
-                      "op": "literal",
-                      "value": true
-                    }
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": false
-                  }
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-8-when"
                 },
                 "omit": true,
                 "diagnostic": {
@@ -42690,63 +44492,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "any",
-                      "items": [
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "citations"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "citationMetadata"
-                            }
-                          ]
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/name"
-                            },
-                            {
-                              "op": "literal",
-                              "value": "groundingMetadata"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "op": "not",
-                      "source": {
-                        "op": "ref",
-                        "ref": "conversion-metadata-empty"
-                      }
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-history-response-metadata-steps-1-each-steps-10-when"
                 },
                 "diagnostic": {
                   "kind": "reject",
@@ -48041,37 +49788,8 @@
         },
         {
           "when": {
-            "op": "any",
-            "items": [
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/clientOutput/responsesStorage/requestedUnknown"
-                  },
-                  {
-                    "op": "literal",
-                    "value": true
-                  }
-                ]
-              },
-              {
-                "op": "equal",
-                "items": [
-                  {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/clientOutput/responsesStorage/requested"
-                  },
-                  {
-                    "op": "literal",
-                    "value": true
-                  }
-                ]
-              }
-            ]
+            "op": "ref",
+            "ref": "request-responses-storage-steps-3-when"
           },
           "diagnostic": {
             "kind": "degrade",
@@ -48166,70 +49884,8 @@
       "steps": [
         {
           "when": {
-            "op": "if",
-            "when": {
-              "op": "equal",
-              "items": [
-                {
-                  "op": "type",
-                  "source": {
-                    "op": "read",
-                    "from": "input",
-                    "path": "/clientOutput/rawResponsesInclude"
-                  }
-                },
-                {
-                  "op": "literal",
-                  "value": "array"
-                }
-              ]
-            },
-            "then": {
-              "op": "let",
-              "name": "selectors",
-              "source": {
-                "op": "filter",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/clientOutput/rawResponsesInclude"
-                },
-                "when": {
-                  "op": "not",
-                  "source": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "item",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": "reasoning.encrypted_content"
-                      }
-                    ]
-                  }
-                }
-              },
-              "body": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "binding",
-                  "path": "/0",
-                  "name": "selectors"
-                }
-              }
-            },
-            "otherwise": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/clientOutput/rawResponsesInclude"
-              }
-            }
+            "op": "ref",
+            "ref": "request-responses-include-steps-1-when"
           },
           "diagnostic": {
             "kind": "reject",
@@ -48299,34 +49955,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "not",
-                      "source": {
-                        "op": "present",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/options/strict"
-                        }
-                      }
-                    },
-                    {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/options/strictDefault"
-                        },
-                        {
-                          "op": "literal",
-                          "value": "automatic"
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-tool-options-steps-1-each-steps-2-when"
                 },
                 "set": {
                   "/options/strict": {
@@ -48365,53 +49995,8 @@
               },
               {
                 "when": {
-                  "op": "all",
-                  "items": [
-                    {
-                      "op": "exists",
-                      "source": {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/options/eager_input_streaming"
-                      }
-                    },
-                    {
-                      "op": "any",
-                      "items": [
-                        {
-                          "op": "not",
-                          "source": {
-                            "op": "equal",
-                            "items": [
-                              {
-                                "op": "read",
-                                "from": "root",
-                                "path": "/parameters/stream"
-                              },
-                              {
-                        "op": "literal",
-                        "value": true
-                      }
-                            ]
-                          }
-                        },
-                        {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/options/eager_input_streaming"
-                            },
-                            {
-                          "op": "literal",
-                          "value": null
-                        }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
+                  "op": "ref",
+                  "ref": "request-tool-options-steps-1-each-steps-3-when"
                 },
                 "set": {
                   "/options/eager_input_streaming": {
@@ -48463,124 +50048,8 @@
             "steps": [
               {
                 "when": {
-                  "op": "if",
-                  "when": {
-                    "op": "equal",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": "/status/payloadForm"
-                      },
-                      {
-                        "op": "literal",
-                        "value": "result_envelope"
-                      }
-                    ]
-                  },
-                  "then": {
-                    "op": "if",
-                    "when": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "project",
-                          "source": {
-                            "op": "read",
-                            "from": "input",
-                            "path": "/status"
-                          },
-                          "keys": [
-                            "isError",
-                            "payloadForm"
-                          ],
-                          "policy": "exclude"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    },
-                    "then": {
-                      "op": "if",
-                      "when": {
-                        "op": "equal",
-                        "items": [
-                          {
-                            "op": "type",
-                            "source": {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/payload"
-                            }
-                          },
-                          {
-                            "op": "literal",
-                            "value": "object"
-                          }
-                        ]
-                      },
-                      "then": {
-                        "op": "if",
-                        "when": {
-                          "op": "any",
-                          "items": [
-                            {
-                              "op": "exists",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/payload/error"
-                              }
-                            },
-                            {
-                              "op": "exists",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/payload/output"
-                              }
-                            }
-                          ]
-                        },
-                        "then": {
-                          "op": "equal",
-                          "items": [
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/status/isError"
-                            },
-                            {
-                              "op": "exists",
-                              "source": {
-                                "op": "read",
-                                "from": "input",
-                                "path": "/payload/error"
-                              }
-                            }
-                          ]
-                        },
-                        "otherwise": {
-                          "op": "literal",
-                          "value": false
-                        }
-                      },
-                      "otherwise": {
-                        "op": "literal",
-                        "value": false
-                      }
-                    },
-                    "otherwise": {
-                      "op": "literal",
-                      "value": false
-                    }
-                  },
-                  "otherwise": {
-                    "op": "literal",
-                    "value": false
-                  }
+                  "op": "ref",
+                  "ref": "request-tool-results-steps-1-each-steps-1-when"
                 },
                 "set": {
                   "/status": {
@@ -48618,43 +50087,8 @@
               },
               {
                 "when": {
-                  "op": "if",
-                  "when": {
-            "op": "exists",
-            "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/status"
-              }
-          },
-                  "then": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "project",
-                          "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/status"
-              },
-                          "keys": [
-                            "isError"
-                          ],
-                          "policy": "exclude"
-                        },
-                        {
-                            "op": "literal",
-                            "value": {}
-                          }
-                      ]
-                    }
-                  },
-                  "otherwise": {
-                          "op": "literal",
-                          "value": false
-                        }
+                  "op": "ref",
+                  "ref": "request-tool-results-steps-1-each-steps-2-when"
                 },
                 "diagnostic": {
                   "kind": "reject",
@@ -50531,5 +51965,493 @@
         }
       }
     }
-  }
+  },
+  "tokenCountSamples": [
+    {
+      "id": "count-text-decode",
+      "direction": "decode_request",
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "operation": "count_tokens"
+    },
+    {
+      "id": "count-text-encode",
+      "direction": "encode_request",
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          }
+        ],
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "operation": "count_tokens"
+    },
+    {
+      "id": "count-history-decode",
+      "direction": "decode_request",
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "call",
+                "name": "lookup",
+                "input": {
+                  "n": 9007199254740993
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "call",
+                "content": "ok"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "name": "lookup",
+            "input_schema": {
+              "type": "object"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "tool_result",
+                "name": "lookup",
+                "callId": "call",
+                "payload": "ok"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            },
+            "options": {
+              "strictDefault": "disabled"
+            }
+          }
+        ],
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "operation": "count_tokens"
+    },
+    {
+      "id": "count-history-encode",
+      "direction": "encode_request",
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "text",
+                "payload": "hello"
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "assistant",
+            "children": [
+              {
+                "kind": "tool_call",
+                "name": "lookup",
+                "callId": "call",
+                "input": {
+                  "kind": "json",
+                  "value": {
+                    "n": 9007199254740993
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "tool_result",
+                "name": "lookup",
+                "callId": "call",
+                "payload": "ok"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "kind": "function",
+            "name": "lookup",
+            "inputSchema": {
+              "type": "object"
+            },
+            "options": {
+              "strictDefault": "disabled"
+            }
+          }
+        ],
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "call",
+                "name": "lookup",
+                "input": {
+                  "n": 9007199254740993
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "call",
+                "content": "ok"
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "name": "lookup",
+            "input_schema": {
+              "type": "object"
+            }
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "operation": "count_tokens"
+    },
+    {
+      "id": "count-image-decode",
+      "direction": "decode_request",
+      "input": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "mime": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "operation": "count_tokens"
+    },
+    {
+      "id": "count-image-encode",
+      "direction": "encode_request",
+      "input": {
+        "schemaVersion": 2,
+        "source": {},
+        "model": "m",
+        "content": [
+          {
+            "kind": "message",
+            "role": "user",
+            "children": [
+              {
+                "kind": "image",
+                "payload": {
+                  "mime": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ],
+        "clientOutput": {
+          "responsesStorage": {
+            "sourceCodec": "anthropic",
+            "requested": false,
+            "effective": false
+          }
+        }
+      },
+      "expected": {
+        "model": "m",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "AAAA"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "context": {
+        "model": "m"
+      },
+      "scope": {
+        "provider": "fixture",
+        "account": "fixture",
+        "model": "m"
+      },
+      "operation": "count_tokens"
+    },
+    {
+      "id": "count-result-decode",
+      "operation": "count_tokens",
+      "direction": "decode_response",
+      "input": {
+        "input_tokens": 42
+      },
+      "expected": {
+        "inputTokens": 42
+      }
+    },
+    {
+      "id": "count-result-encode",
+      "operation": "count_tokens",
+      "direction": "encode_response",
+      "input": {
+        "inputTokens": 42
+      },
+      "expected": {
+        "input_tokens": 42
+      }
+    }
+  ]
 }

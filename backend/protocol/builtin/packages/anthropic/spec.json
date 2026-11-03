@@ -78,6 +78,21 @@
         },
         "allowUnknown": true
       }
+    },
+    "count_tokens": {
+      "method": "POST",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-api-key"
+      },
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      },
+      "kind": "count_tokens",
+      "path": "/v1/messages/count_tokens",
+      "request": "count-request",
+      "response": "count-response"
     }
   },
   "documents": {
@@ -6814,6 +6829,64 @@
         },
         {
           "ref": "request-tracking"
+        }
+      ]
+    },
+    "count-response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "input_tokens"
+        ],
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "count-request": {
+      "base": "request",
+      "assertions": [
+        {
+          "path": "",
+          "code": "invalid_input",
+          "reason": "counting accepts input content and thinking controls, not generation parameters",
+          "check": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "check_fields",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                "keys": [
+                  "model",
+                  "messages",
+                  "system",
+                  "tools",
+                  "tool_choice",
+                  "thinking",
+                  "context_management",
+                  "cache_control"
+                ],
+                "policy": "member",
+                "onUnknown": {
+                  "code": "invalid_input",
+                  "reason": "field is not part of the token counting request",
+                  "stage": "wire"
+                }
+              }
+            ]
+          }
         }
       ]
     }

@@ -605,7 +605,7 @@ Use issue codes, directions, paths and suggestions to revise the draft.
 ### protocol preview
 
 ```text
-elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent] [--sample-id <id>] [--operation <name>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
+elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|count_tokens|agent] [--model <name>] [--sample-id <id>] [--operation <name>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
 ```
 
 Preview the working draft using the shared runtime, without saving or enabling:
@@ -615,9 +615,10 @@ Preview the working draft using the shared runtime, without saving or enabling:
 | `--sample` | Complete input JSON; event arrays for a sequence, semantic input for an encoder |
 | `--direction` | Independent mapping direction from the current schema; required in mapping mode |
 | `--sequence` | Replay the input as an ordered event sequence |
-| `--mode` | `mapping` by default; `session`, `task`, `models` and `agent` select workflow previews |
+| `--mode` | `mapping` by default; `session`, `task`, `models`, `count_tokens` and `agent` select workflow previews |
 | `--sample-id` | Declared session fixture ID; session mode uses this fixture instead of `--sample` |
-| `--operation` | Declared operation name for model/task previews |
+| `--operation` | Declared operation name for model/task/count previews |
+| `--model` | Endpoint model name for count previews whose protocol path contains a model |
 | `--kind` | Task mapping: `decode`, `encode` or `control` |
 | `--purpose` | Task phase: `submit`, `status`, `result` or `cancel` |
 
@@ -626,6 +627,8 @@ For `models`, supply the wire model-list response. For `agent`, supply semantic
 Model discovery requires declared model operations and `modelSamples`. Agent
 use requires tool result input type, parameter policies and thinking-mode
 fixtures. Results include output, semantic data and located issues.
+
+Counting uses a declared `count_tokens` operation, independent `countTokens` request/result mappings, and `tokenCountSamples` covering all four request/response directions. Preview with `--mode count_tokens --operation <name> --direction <direction> --model <endpoint-model>`. Counts report provider-observed input tokens, require no generation budget and are not generated usage. Gemini tool/system inputs use `generateContentRequest`.
 
 ### protocol test
 

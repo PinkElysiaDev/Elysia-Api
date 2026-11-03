@@ -1,4 +1,4 @@
-# DSL 能力状态（dev.134）
+# DSL 能力状态（dev.135）
 
 本表替代 dev.100／101 的过期迁移状态；旧调查可从 Git 历史读取。最新实施记录见[剩余闭合记录](protocol-three-part-closure-2026-11-02.md)。本轮从 a20f63ce 继续；四包已可独立编译和执行，但默认生产加载器仍为旧定义。
 
@@ -17,6 +17,7 @@
 | 请求外部字段与目标规则 | Spec safety／上下文／追踪合同；参数及 reasoning 叶子 | dev.112 显式默认规则；dev.113／115 通用有限值与字段投影；dev.116 外部合同；dev.120 按核心声明类型编译对象聚合 | 动态数组成员聚合及一般布局仍有能力边界 |
 | 管理／CLI／模型／任务／会话 | 整包编译、修订、快照与已有 task/session 合同 | 两源编辑器、CLI、Agent 与模型发现已有接线 | 所有入口统一、资源所有权及最终页面验收 |
 | 客户端模型目录 | Spec models.clientDocument；通用 ModelPage | dev.134 encodeModels、分方向 modelSamples 与 models 预览；Chat／Gemini public 和 gateway、自定义字段改名及在途快照真实调用 | 旧生产目录 handler 随默认切换删除；Responses／Anthropic 未增加客户端目录能力 |
+| 上游输入计数 | 独立 count_tokens request/response；TokenCount | dev.135 Anthropic/Gemini countTokens、四方向样例、四组合文本/工具/图片转换、管理/CLI 预览与编辑器入口 | 实际上游 HTTP 路由、权限/取消/账本回归及浏览器验收待完成；仍不宣称生产已切换 |
 | 生产和性能 | 包 4、DSL 2、核心 2、策略 2 | 独立包测试、Go 全量／相关 race／vet 已通过 | 默认加载切换、旧链删除、A/B/C 正式性能与最终构建 |
 | 采集入口身份 | 源码提交、编译器、四包修订及策略哈希 | 显式 legacy／packages／production；参考 A 和四包短 JSON／SSE 自检通过 | 当前不是 B；production 默认检查仍会拒绝旧 codec；正式配对与全部负载待验收 |
 | 最终 JSON 引用证明 | Spec 外部形状；未改写 Unicode 区间 | dev.128 Chat／Responses deliveryRanges；ValidateResponseOutput、真实 Chat 网关、组合验证及 wire 预览；自定义字段合同组件通过 | 语义事件修改事实、静态修改路径分析仍待接线；当前不能声明所有文本改写已安全闭合 |
