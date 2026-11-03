@@ -116,3 +116,22 @@ metrics are inconclusive with no stable regression. Protocol/builtin tests and
 targeted protocol race pass. Evidence: `deep-initial-{encoding/,escape.log,
 tests.log}`, `deep-initial-fixed-{encoding/,semantic/,race.log}`. The unsuccessful
 candidate remains archived. String-scan fusion has not been introduced.
+
+## Instruction metadata
+
+Cold Native, stream and diagnostic fields now share a single allocation with
+only the instructions that need them. Hot instructions shrink from 296 to
+224 bytes. Four-package-plus-sixteen-policy diagnostic heap is 65,449,000 bytes;
+the two retained graph types and cold metadata are counted separately. This is
+a diagnostic snapshot, not an HTTP memory claim.
+
+The enum-dispatch candidate was rejected: Native continuation time regressed
+1.77%, then 1.24% with a hotter field layout, and 1.68% with cold fields restored
+inline. CPU samples still locate substantial work in buildNode and its defer
+boundaries. Runtime operation/source/policy names therefore remain strings.
+Evidence and source are archived in `deep-instructions-{semantic/,reads/,
+hot-native/,inline-native/,rejected/}` and the parent/candidate Native profiles.
+
+Cold metadata alone passes ten pairs: compile bytes improve 1.99–3.20%; Native
+and reference metrics are inconclusive without stable regression. Evidence:
+`.tmp-dev/deep-cold-{semantic/,diagnostics.log,race.log}`.

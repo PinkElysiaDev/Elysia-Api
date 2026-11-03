@@ -24,29 +24,52 @@ type expressionCompileFacts struct {
 
 type compiledExpression struct {
 	*expressionCompileFacts
+	*expressionDetails
+	op            string
+	path          string
+	pointer       []string
+	from          string
+	bindingSlot   int
+	stateSlot     int
+	indexSlot     int
+	isStreamIndex bool
+	value         Value
+	literalText   string
+	keys          []string
+	values        map[string]Value
+	to            JSONType
+	policy        string
+	isRequired    bool
+	requestField  uint8
+}
+
+// Only operations that use these fields retain the cold metadata. The wrapper
+// shares one allocation with its instruction, without per-node indirection tables.
+type expressionDetails struct {
 	trackerName     string
 	streamNamespace string
-	op              string
 	operation       string
-	path            string
 	nativeLocation  *nativeLocationPattern
-	pointer         []string
-	from            string
-	bindingSlot     int
-	stateSlot       int
-	indexSlot       int
-	isStreamIndex   bool
-	value           Value
-	literalText     string
-	keys            []string
-	values          map[string]Value
-	to              JSONType
-	policy          string
 	onConflict      *MergeConflictDiagnostic
 	fieldCheck      *compiledObjectFieldCheck
 	rejection       *declaredRejectionError
-	isRequired      bool
-	requestField    uint8
+}
+
+func newCompiledExpression(op string) *compiledExpression {
+	switch op {
+	case "track_tool", "track_text", "track_array", "track_position", "project_range",
+		"buffer_text", "buffer_array", "read_delivered_item", "resume_text", "resume_tool",
+		"reject", "check_fields", "native_matches", "merge_deep", "from_entries", "integer":
+		storage := &struct {
+			compiledExpression
+			details expressionDetails
+		}{}
+		storage.expressionDetails = &storage.details
+		storage.op = op
+		return &storage.compiledExpression
+	default:
+		return &compiledExpression{op: op}
+	}
 }
 
 // isInputIdentity recognizes a compiled leaf, including an expanded reference.
@@ -181,7 +204,13 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if expression.Op == "ref" {
 		return compiler.compileReference(expression.Ref, path, scope, depth)
 	}
-	compiled := &compiledExpression{expressionCompileFacts: compiler.newCompileFacts(operation.Result), op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required}
+	compiled := newCompiledExpression(expression.Op)
+	compiled.expressionCompileFacts = compiler.newCompileFacts(operation.Result)
+	compiled.path, compiled.from, compiled.value = path, expression.From, expression.Value
+	compiled.to, compiled.policy, compiled.isRequired = expression.To, expression.Policy, expression.Required
+	if expression.Operation != "" {
+		compiled.operation = expression.Operation
+	}
 	compiler.compiledExpressions = append(compiler.compiledExpressions, compiled)
 	if scope.isWireContract && compiled.op == "check_usage" {
 		return nil, fmt.Errorf("%s: core usage checks belong to Mapping, not an external wire contract", path)

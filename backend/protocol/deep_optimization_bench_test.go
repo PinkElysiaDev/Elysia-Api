@@ -205,7 +205,7 @@ func inspectDeepGraph(root any) map[string]int {
 			}
 			seen[value.Pointer()] = true
 			kind := value.Type().Elem()
-			if kind == reflect.TypeFor[compiledExpression]() || kind == reflect.TypeFor[compiledOutputPlan]() || kind == reflect.TypeFor[expressionCompileFacts]() {
+			if kind == reflect.TypeFor[compiledExpression]() || kind == reflect.TypeFor[compiledOutputPlan]() || kind == reflect.TypeFor[expressionCompileFacts]() || kind == reflect.TypeFor[expressionDetails]() {
 				counts[kind.Name()]++
 				counts[kind.Name()+"-shallow-bytes"] += int(kind.Size())
 			}
