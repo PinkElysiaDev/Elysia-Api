@@ -189,7 +189,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if compiled.op == "is_carrier" && !scope.canSelectCarrier {
 		return nil, fmt.Errorf("%s: carrier selection requires a source request mapping", path)
 	}
-	if _, hasDiagnostic := expression.present["onConflict"]; hasDiagnostic || expression.OnConflict != nil {
+	if expression.present.has("onConflict") || expression.OnConflict != nil {
 		var err error
 		compiled.onConflict, err = compileMergeConflictDiagnostic(expression.OnConflict, path+"/onConflict")
 		if err != nil {
@@ -298,7 +298,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 				compiled.result = binding.result
 			}
 		}
-		_, hasName := expression.present["name"]
+		hasName := expression.present.has("name")
 		if compiled.from != "binding" && (expression.Name != "" || hasName) {
 			return nil, fmt.Errorf("%s/name: name requires the binding scope", path)
 		}
@@ -593,7 +593,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if source.Diagnostic == nil || strings.TrimSpace(source.Reason) == "" {
 			return fail("reject requires a static diagnostic and reason")
 		}
-		hasPath := source.Path != "" || source.present["path"]
+		hasPath := source.Path != "" || source.present.has("path")
 		if hasPath == (expression.source != nil) {
 			return fail("reject requires exactly one of path or source")
 		}
@@ -782,7 +782,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			}
 		}
 	case "join":
-		_, hasItems := source.present["items"]
+		hasItems := source.present.has("items")
 		hasItems = hasItems || source.Items != nil
 		if hasItems == (expression.source != nil) {
 			return fail("join requires exactly one of items or source")

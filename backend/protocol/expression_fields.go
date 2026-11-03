@@ -2,58 +2,86 @@ package protocol
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
-	"strings"
+	"math/bits"
 )
 
-type expressionField struct {
-	index               int
-	omitEmpty, omitZero bool
+type expressionFieldMask uint32
+
+var expressionFieldNames = [...]string{
+	"op", "operation", "name", "namespace", "keyMode", "from", "path", "value",
+	"fields", "items", "source", "body", "when", "then", "otherwise", "cases",
+	"values", "to", "key", "keys", "prefixes", "policy", "onConflict", "onUnknown",
+	"diagnostic", "reason", "ref", "required",
 }
 
-// Inspect only this expression's fields. Child programs are checked when the
-// compiler visits them; serializing them here repeats work at every ancestor.
-var expressionFields = func() map[string]expressionField {
-	fields := make(map[string]expressionField)
-	kind := reflect.TypeFor[Expression]()
-	for index := range kind.NumField() {
-		field := kind.Field(index)
-		if !field.IsExported() {
-			continue
-		}
-		tag := strings.Split(field.Tag.Get("json"), ",")
-		fields[tag[0]] = expressionField{index, slices.Contains(tag[1:], "omitempty"), slices.Contains(tag[1:], "omitzero")}
+var expressionFieldBits = func() map[string]expressionFieldMask {
+	fields := make(map[string]expressionFieldMask, len(expressionFieldNames))
+	for index, name := range expressionFieldNames {
+		fields[name] = 1 << index
 	}
 	return fields
 }()
 
-func (field expressionField) hasValue(expression reflect.Value) bool {
-	value := expression.Field(field.index)
-	return !(field.omitEmpty && isEmptyJSONField(value) || field.omitZero && value.IsZero())
+type expressionFieldContract struct{ allowed, required expressionFieldMask }
+
+var expressionFieldContracts = func() map[string]expressionFieldContract {
+	contracts := make(map[string]expressionFieldContract, len(expressionOperations))
+	for _, operation := range expressionOperations {
+		contract := expressionFieldContract{allowed: expressionFieldBits["op"]}
+		for _, name := range operation.Fields {
+			contract.allowed |= expressionFieldBits[name]
+		}
+		for _, name := range operation.Required {
+			contract.required |= expressionFieldBits[name]
+		}
+		contracts[operation.Name] = contract
+	}
+	return contracts
+}()
+
+func (fields expressionFieldMask) has(name string) bool { return fields&expressionFieldBits[name] != 0 }
+
+// Presence in JSON cannot stand in for the current Go value: callers can build
+// or edit expressions after decoding. Empty omitzero slices still count.
+func (expression *Expression) valueFields() expressionFieldMask {
+	values := [...]bool{
+		true, expression.Operation != "", expression.Name != "", expression.Namespace != "",
+		expression.KeyMode != "", expression.From != "", expression.Path != "", !expression.Value.IsZero(),
+		len(expression.Fields) != 0, len(expression.Items) != 0, expression.Source != nil, expression.Body != nil,
+		expression.When != nil, expression.Then != nil, expression.Otherwise != nil, len(expression.Cases) != 0,
+		len(expression.Values) != 0, expression.To != "", expression.Key != "", expression.Keys != nil,
+		expression.Prefixes != nil, expression.Policy != "", expression.OnConflict != nil, expression.OnUnknown != nil,
+		expression.Diagnostic != nil, expression.Reason != "", expression.Ref != "", expression.Required,
+	}
+	var fields expressionFieldMask
+	for index, hasValue := range values {
+		if hasValue {
+			fields |= 1 << index
+		}
+	}
+	return fields
 }
 
 func checkExpressionFields(expression Expression, operation OperationInfo, path string) error {
-	// The JSON decoder also accepts case-insensitive Go field matches. Retain
-	// the authored keys so those aliases cannot bypass the DSL's exact names.
-	for key := range expression.present {
-		if key != "op" && !slices.Contains(operation.Fields, key) {
+	if len(expression.unknownKeys) != 0 {
+		return fmt.Errorf("%s/%s: field is not allowed for %s", path, expression.unknownKeys[0], operation.Name)
+	}
+	contract := expressionFieldContracts[operation.Name]
+	value := expression.valueFields()
+	for _, fields := range [...]expressionFieldMask{expression.present, value} {
+		if forbidden := fields &^ contract.allowed; forbidden != 0 {
+			key := expressionFieldNames[bits.TrailingZeros32(uint32(forbidden))]
 			return fmt.Errorf("%s/%s: field is not allowed for %s", path, key, operation.Name)
 		}
 	}
-	value := reflect.ValueOf(expression)
-	for key, field := range expressionFields {
-		if key != "op" && field.hasValue(value) && !slices.Contains(operation.Fields, key) {
-			return fmt.Errorf("%s/%s: field is not allowed for %s", path, key, operation.Name)
+	if missing := contract.required &^ value; missing != 0 {
+		for _, key := range operation.Required {
+			if missing.has(key) {
+				return fmt.Errorf("%s/%s is required for %s", path, key, operation.Name)
+			}
 		}
 	}
-	for _, key := range operation.Required {
-		if !expressionFields[key].hasValue(value) {
-			return fmt.Errorf("%s/%s is required for %s", path, key, operation.Name)
-		}
-	}
-	// Value's zero denotes absence and cannot be a literal enum member. JSON
-	// input cannot construct it, but Go-authored expressions use this compiler too.
+	// A zero Value is Go-only absence, never a valid literal enum member.
 	for key, member := range expression.Values {
 		if member.IsZero() {
 			return fmt.Errorf("%s/values/%s: absent JSON value requires omission", path, escapePointer(key))

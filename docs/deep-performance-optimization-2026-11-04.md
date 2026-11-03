@@ -28,3 +28,20 @@ The benchmark smoke run passes. Baseline test binaries are
 working directory and failed before compilation; its log is retained. All
 protocol benchmark binaries must run from `backend/protocol` (builtin binaries
 from `backend/protocol/builtin`). No smoke/profile timing is acceptance data.
+
+## Expression decoding and field contracts
+
+Typed decoding now shares its input string with a key-only presence scan, rather
+than decoding a second RawMessage tree. Private field bits and catalog-derived
+allowed/required masks replace per-expression map/reflect membership checks.
+Actual Go values are checked independently; authored empty fields and nonstandard
+key spelling still participate. Public source serialization is unchanged.
+
+Protocol/builtin tests, related compiler race and a 15-second field-presence
+fuzz run (355,774 executions) pass. Ten alternating whole-package pairs versus
+C0 improve compilation time by 10.97%/23.67%/24.10%/23.22% for chat, Responses,
+Anthropic and Gemini; allocated bytes fall 27.69%/20.20%/32.07%/31.58%.
+All intervals indicate improvement. Nested-expression microbenchmarks have
+their own ten-pair report. Evidence: `.tmp-dev/deep-expression-{compilation,
+nested}/` and `deep-expression-{tests,race,fuzz}.log`. These are compilation
+results; final HTTP and historical-A gates remain open.

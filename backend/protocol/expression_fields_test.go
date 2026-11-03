@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,10 @@ func TestExpressionFieldPresence(t *testing.T) {
 		{"empty-keys", `{"op":"project","source":{"op":"read"},"keys":[],"policy":"include"}`, true},
 		{"null-keys", `{"op":"project","source":{"op":"read"},"keys":null,"policy":"include"}`, false},
 		{"mixed-case-fields", `{"op":"project","sourCe":{},"keYs":[],"poLiCY":"0"}`, false},
+		{"escaped-key", `{"op":"literal","v\u0061lue":9007199254740993}`, true},
+		{"duplicate-false", `{"op":"omit","required":true,"required":false}`, false},
+		{"duplicate-fields", `{"op":"object","fields":{"a":{"op":"literal","value":1}},"fields":{"b":{"op":"literal","value":2}}}`, true},
+		{"nested-key-not-presence", `{"op":"literal","value":{"required":false,"Source":null}}`, true},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			var expression Expression
@@ -73,7 +78,7 @@ func TestExpressionFieldsCheckGoAuthoredChanges(t *testing.T) {
 }
 
 // Keep the old codec round trip only as a test oracle for field omission rules.
-func encodedExpressionFieldsValid(expression Expression, operation OperationInfo) bool {
+func encodedExpressionFieldsValid(expression Expression, operation OperationInfo, authored []byte) bool {
 	raw, err := sonic.ConfigStd.Marshal(expression)
 	if err != nil {
 		return false
@@ -82,7 +87,11 @@ func encodedExpressionFieldsValid(expression Expression, operation OperationInfo
 	if err := sonic.ConfigStd.Unmarshal(raw, &fields); err != nil {
 		return false
 	}
-	for key := range expression.present {
+	var original map[string]json.RawMessage
+	if err := sonic.ConfigStd.Unmarshal(authored, &original); err != nil {
+		return false
+	}
+	for key := range original {
 		if _, exists := fields[key]; !exists {
 			fields[key] = nil
 		}
@@ -114,9 +123,44 @@ func FuzzExpressionFieldPresence(f *testing.F) {
 				continue
 			}
 			got := checkExpressionFields(expression, operation, "/program") == nil
-			if got != encodedExpressionFieldsValid(expression, operation) {
+			if got != encodedExpressionFieldsValid(expression, operation, []byte(raw)) {
 				t.Fatal("field presence differs from the codec contract", raw)
 			}
 		}
 	})
+}
+
+func TestExpressionValueFieldsMatchEncoding(t *testing.T) {
+	kind := reflect.TypeFor[Expression]()
+	for index := range kind.NumField() {
+		field := kind.Field(index)
+		if !field.IsExported() {
+			continue
+		}
+		key := strings.Split(field.Tag.Get("json"), ",")[0]
+		if expressionFieldBits[key] == 0 {
+			t.Fatal("expression field missing from contract", key)
+		}
+	}
+	for _, raw := range []string{`{}`, `{"op":"literal","value":null}`, `{"keys":[],"prefixes":[],"fields":{},"items":[]}`, `{"required":true,"onConflict":{},"source":{}}`} {
+		var expression Expression
+		if err := decodeContract([]byte(raw), &expression); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(expression)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			t.Fatal(err)
+		}
+		actual := expression.valueFields()
+		for _, name := range expressionFieldNames {
+			_, present := fields[name]
+			if actual.has(name) != present {
+				t.Fatal("value presence differs from JSON encoding", raw, name)
+			}
+		}
+	}
 }

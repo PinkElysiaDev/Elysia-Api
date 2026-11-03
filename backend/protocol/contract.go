@@ -27,7 +27,11 @@ func decodeRequestContract(raw []byte, coreVersion int) (*Request, error) {
 }
 
 func decodeContract(raw []byte, target any) error {
-	reader := decoder.NewDecoder(string(raw))
+	return decodeContractText(string(raw), target)
+}
+
+func decodeContractText(raw string, target any) error {
+	reader := decoder.NewDecoder(raw)
 	reader.DisallowUnknownFields()
 	reader.UseNumber()
 	reader.CopyString()
