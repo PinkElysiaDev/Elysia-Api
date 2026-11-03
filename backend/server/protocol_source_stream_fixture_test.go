@@ -35,7 +35,7 @@ func chatStartupFrames(t *testing.T, sample protocol.Sample, firstTime int) []pr
 
 // The wire keeps a sequence that the mapping deliberately omits, so source
 // validation must inspect the provider frame independently of semantic replay.
-func sourceStreamPackage(t *testing.T) protocol.ProtocolPackage {
+func sourceStreamPackage(t testing.TB) protocol.ProtocolPackage {
 	t.Helper()
 	read := func(path string) protocol.Expression {
 		return protocol.Expression{Op: "read", From: "input", Path: path}
@@ -97,7 +97,7 @@ func sourceStreamPackage(t *testing.T) protocol.ProtocolPackage {
 	}
 }
 
-func compileSourceStreamPackage(t *testing.T, document protocol.ProtocolPackage) *protocol.Compiled {
+func compileSourceStreamPackage(t testing.TB, document protocol.ProtocolPackage) *protocol.Compiled {
 	t.Helper()
 	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
 	if err != nil {
@@ -110,7 +110,7 @@ func compileSourceStreamPackage(t *testing.T, document protocol.ProtocolPackage)
 	return compiled
 }
 
-func outputAwareStreamPackage(t *testing.T) protocol.ProtocolPackage {
+func outputAwareStreamPackage(t testing.TB) protocol.ProtocolPackage {
 	t.Helper()
 	document := sourceStreamPackage(t)
 	document.Mapping.Native.Preserve = true

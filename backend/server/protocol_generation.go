@@ -183,6 +183,13 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err != nil {
 		return nil, err
 	}
+	if candidate.compiled.CoreVersion() == protocol.ProtocolCoreVersion {
+		budget := protocol.NewStreamBudget(limits)
+		if err := budget.Bind(options.State, source.wireValidation, source.replay, collector); err != nil {
+			source.release()
+			return nil, err
+		}
+	}
 	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, limits.BufferBytes, source.Push)
 	err = source.Finish(err)
 	if err != nil && source.terminalFailure != nil {

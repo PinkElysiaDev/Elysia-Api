@@ -221,7 +221,7 @@ func TestAgentProtocolV2AuthoringAndActivation(t *testing.T) {
 	}
 }
 
-func mustProtocolValue(t *testing.T, raw string) protocol.Value {
+func mustProtocolValue(t testing.TB, raw string) protocol.Value {
 	t.Helper()
 	value, err := protocol.ParseValue([]byte(raw))
 	if err != nil {
@@ -275,7 +275,7 @@ func TestAgentProtocolV2DiagnosticsAndProbe(t *testing.T) {
 	}
 }
 
-func mustEncodedProtocolValue(t *testing.T, value any) protocol.Value {
+func mustEncodedProtocolValue(t testing.TB, value any) protocol.Value {
 	t.Helper()
 	encoded, err := protocol.EncodeValue(value)
 	if err != nil {

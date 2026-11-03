@@ -106,8 +106,26 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	if err != nil {
 		return err
 	}
+	if err := stream.bindBudget(); err != nil {
+		stream.source.release()
+		return err
+	}
 	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, candidate.compiled.ResourceLimits().BufferBytes, stream.source.Push)
 	return stream.finish(err)
+}
+
+func (stream *gatewayStream) bindBudget() error {
+	if stream.plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion || stream.candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+		return nil
+	}
+	budget := protocol.NewStreamBudget(stream.limits)
+	if err := budget.Bind(stream.options.State, stream.source.wireValidation, stream.source.replay, stream.finalValidation, stream.replay, stream.eventState); err != nil {
+		return err
+	}
+	if stream.collector != nil {
+		return budget.Bind(stream.collector, stream.candidate.continuation.binding)
+	}
+	return nil
 }
 
 func (stream *gatewayStream) emit(value protocol.Value) error {

@@ -397,3 +397,26 @@ dev.144 将 EventReplay、ResponseCollector、ConversionEventState 和 Continuat
 （4.620/37.744 秒），定向 race 通过（3.731 秒），vet/staticcheck 通过，日志为
 .tmp-dev/shared-owner-budget-*.log。所有修改的持有者、计数更新、提交与释放路径已精读。
 宿主入口接线、其余证明元数据核对和正式性能仍需后续提交，本批不切换生产预置。
+
+## 批次 5i：Gateway 与生成收集入口接线
+
+当前包到当前包的 Gateway 在读取上游帧前，将 Mapping、源/目标 wire、语义 replay、转换
+缓冲及可选续传收集器绑定同一预算。Agent 与健康探测共用的生成收集入口也绑定源验证、
+Mapping 和 collector，组合超限在文本回调前拒绝。绑定失败释放已构造的源流；正常完成、
+失败和取消仍走原有释放边界，不重试已经发送的生成请求。
+
+新增低容量回归验证跨持有者超限、客户端不收到越界项目/成功终态、文本回调不发布内容，
+以及合法容量下完整结果不受释放影响。server 全量通过（189.260 秒），定向入口回归通过
+（65.908 秒），预算与交付边界 race 通过（3.170 秒），vet/staticcheck 通过。较重的续传
+race 组合在 4 分钟超时，栈停在 Gemini 用例的大型包编译；未发现 race 报告，该组合仍记为
+未通过，不能用拆出的定向结果替代。日志为 .tmp-dev/gateway-stream-budget*.log。
+
+以 3e56e3fc 宿主文件为局部基线、两边共用 dev.144 协议代码和同一夹具，固定 Go 1.27.2、
+GOMAXPROCS=2、GOGC=100、CGO=0，完成 Native/重建各 128/2048 帧的十对交替 300ms 微基准。
+四场景配对中位耗时差依次为 -0.49%、-0.17%、-0.18%、+0.14%，分配字节差均低于 0.09%；
+当前样本未显示稳定回退。每轮断言完整 delta 数与成功终态。身份、源码 overlay、二进制
+哈希及原始样本在 .tmp-dev/shared-stream-performance/；内存 transport 的 pipeline 微基准
+不替代真实 HTTP 或正式 A/B/C 验收。
+
+已审阅修改的 Gateway、源流、生成收集完整文件及续传/调用边界。续传宿主去重索引、收集器
+证明摘要和预览入口仍需核对共享计量，不能据此认定批次 5 或生产切换已经完成。
