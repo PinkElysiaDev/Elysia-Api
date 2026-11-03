@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func sessionTestContext(t *testing.T, scope Scope) EvaluationContext {
+func sessionTestContext(t testing.TB, scope Scope) EvaluationContext {
 	t.Helper()
 	options, err := (EvaluationContext{Scope: scope}).WithOperation("session-test-execution", 1)
 	if err != nil {

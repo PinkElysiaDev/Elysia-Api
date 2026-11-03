@@ -462,3 +462,27 @@ replay；预算错误保留 limit_exceeded 诊断。编辑器预览复用该边�
 此前超时的 TestPackageGatewayGeminiContinuationDelivery 已单独使用 8 分钟时限重跑 race，
 171.228 秒通过；其他原组合中的续传和交付用例已在批次 5i/5j 单独通过。保留原超时日志，
 补测日志为 .tmp-dev/gateway-gemini-continuation-race.log，不改业务限额或缩减用例内容。
+
+## 批次 5l：双向会话预算与结算后释放
+
+dev.147 将 SessionReplay 的响应、待启动计数、身份字节及双向序号历史与 Mapping 共用预算。
+会话已有汇总包含各响应 replay，不再重复绑定响应；工具结果标记复用既有项目身份。当前包
+SessionAdapter、会话样例和组合回放均绑定同一预算，超限不能继续转发或成功 Finish。
+
+会话 Release 释放历史及序号注册，外部已取得的响应/usage 快照不受影响。宿主把释放移到
+统一完成回调中、用量记录之后，覆盖失败升级和早期返回；结算只生成一次 Responses 快照。
+不增加锁、goroutine 或服务层，保留原有 transport 队列独立限额。
+
+新增回归验证 Mapping 与待响应/项目状态累计超限、两条 lane 共用字节历史、返回快照稳定、
+重复释放及禁止释放后 JSON/媒体转换。小限额专用包下调 queueItems 并去除无关样例，业务
+StateItems 始终为 1，未抬高限额。初次用例在编译时因队列/样例数量与该限额不一致失败，
+修正夹具后 protocol 全量通过（2.379 秒）；builtin/server 全量通过（33.480/146.143 秒），
+会话及 WebSocket race 通过（protocol 5.646、server 9.139 秒），相关 vet/staticcheck 通过。
+日志为 .tmp-dev/session-stream-budget-*.log，保留首次失败记录。
+
+已精读会话 replay、adapter、transport 调度、Gateway 完成/结算与样例/组合调用。十对交替
+300ms 完整会话微基准相对 2ef2f520 的 alpha/beta 耗时差为 +0.40%/+1.20%，各增加 2 次
+分配。单独 profile 中预算相关累计约 0.94%；对不确定的 beta 仅补十对 1s，耗时中位配对差
+降至 +0.28%（-1.11% 至 +2.38%），分配字节差 +0.12%。这些结果仍保留为小幅差异，不能
+认定正式性能门槛通过。身份、夹具、二进制、原始样本和 profile 在
+.tmp-dev/session-stream-performance/，未执行真实供应商或目标平台测试。

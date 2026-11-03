@@ -13,7 +13,7 @@ func loadTaskPackage(t *testing.T, name string) (*Compiler, ProtocolPackage, *Co
 	return loadTransportPackage(t, "tasks", name, featureAsyncTasks)
 }
 
-func loadTransportPackage(t *testing.T, kind, name string, features ...string) (*Compiler, ProtocolPackage, *Compiled) {
+func loadTransportPackage(t testing.TB, kind, name string, features ...string) (*Compiler, ProtocolPackage, *Compiled) {
 	t.Helper()
 	read := func(part string) []byte {
 		t.Helper()

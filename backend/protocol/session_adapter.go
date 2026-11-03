@@ -18,9 +18,13 @@ type SessionAdapter struct {
 	mediaSequence                      map[EventOrigin]int64
 }
 
-// Release discards translation state after both session lanes have stopped.
-// Completed replay accounting remains available to the owner's final record.
-func (adapter *SessionAdapter) Release() { adapter.options.State.Release() }
+// Release discards translation and replay state after the owner records the
+// stopped session's response snapshots.
+func (adapter *SessionAdapter) Release() {
+	adapter.options.State.Release()
+	adapter.replay.Release()
+	adapter.mediaSequence = nil
+}
 
 // NewSessionAdapter constructs the shared offline/live duplex translation path.
 // The caller supplies its already-authorized model group and upstream scope.
@@ -39,12 +43,22 @@ func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOpe
 	if err != nil {
 		return nil, err
 	}
+	if ingress.packagePlan != nil && upstream.packagePlan != nil {
+		if err := NewStreamBudget(limits).Bind(options.State, replay); err != nil {
+			options.State.Release()
+			replay.Release()
+			return nil, err
+		}
+	}
 	return &SessionAdapter{ingress: ingress, upstream: upstream, clientOperation: clientOperation, upstreamOperation: upstreamOperation, binding: binding, options: options, model: model, replay: replay, mediaSequence: map[EventOrigin]int64{}}, nil
 }
 
 // Convert retains binary bytes only for explicitly matched formats; JSON uses
 // the same compiled directions and model checks as offline verification.
 func (adapter *SessionAdapter) Convert(ctx context.Context, origin EventOrigin, frame SessionFrame) ([]SessionFrame, error) {
+	if adapter.replay.isReleased {
+		return nil, streamIssue(InvalidAssociation, "/session", "released session cannot resume")
+	}
 	if frame.IsBinary {
 		return adapter.convertMedia(origin, frame)
 	}
@@ -154,6 +168,9 @@ func (adapter *SessionAdapter) ResponseUsage() map[string]*Usage {
 // EncodeFailure exposes late conversion failures through the declared client
 // error event. A protocol without such an encoding still receives an error close.
 func (adapter *SessionAdapter) EncodeFailure(ctx context.Context, failure error) (SessionFrame, error) {
+	if adapter.replay.isReleased {
+		return SessionFrame{}, streamIssue(InvalidAssociation, "/session", "released session cannot resume")
+	}
 	errorValue, err := EncodeValue(map[string]string{"code": "protocol_session_error", "message": failure.Error()})
 	if err != nil {
 		return SessionFrame{}, err

@@ -85,6 +85,9 @@ func (s *Server) serveGatewaySession(ctx context.Context, c *app.RequestContext,
 			release()
 		}
 		s.recordGatewaySession(record, adapter)
+		if adapter != nil {
+			adapter.Release()
+		}
 		if releaseSession != nil {
 			releaseSession()
 		}
@@ -172,7 +175,6 @@ func (s *Server) serveGatewaySession(ctx context.Context, c *app.RequestContext,
 }
 
 func (s *Server) runGatewaySession(ctx context.Context, record *usageRecord, adapter *protocol.SessionAdapter, plan *gatewayPlan, candidate gatewayCandidate, client protocol.SessionConnection, upstreamRequest *http.Request) {
-	defer adapter.Release()
 	deadline, stop := context.WithTimeout(ctx, time.Duration(candidate.operation.Session.CloseMillis)*time.Millisecond)
 	upstream, err := s.protocolTransport.DialProtocolSession(deadline, upstreamRequest, *candidate.operation.Session)
 	stop()
@@ -204,11 +206,15 @@ func (s *Server) runGatewaySession(ctx context.Context, record *usageRecord, ada
 }
 
 func (s *Server) recordGatewaySession(record *usageRecord, adapter *protocol.SessionAdapter) {
-	if adapter == nil || len(adapter.Responses()) == 0 {
+	var responses []protocol.SessionResponse
+	if adapter != nil {
+		responses = adapter.Responses()
+	}
+	if len(responses) == 0 {
 		s.recordUsage(record)
 		return
 	}
-	for _, response := range adapter.Responses() {
+	for _, response := range responses {
 		entry := *record
 		digest := sha256.Sum256([]byte(record.RequestID + nulSeparator + response.ID))
 		entry.RequestID = record.RequestID + "_" + hex.EncodeToString(digest[:8])

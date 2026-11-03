@@ -27,6 +27,12 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 	if err != nil {
 		return result, err
 	}
+	defer replay.Release()
+	if compiled.packagePlan != nil {
+		if err := NewStreamBudget(compiled.limits).Bind(options.State, replay); err != nil {
+			return result, err
+		}
+	}
 	buffered := 0
 	for index, step := range sample.Steps {
 		fixture := Sample{ID: fmt.Sprintf("%s/steps/%d", sample.ID, index), Direction: step.Direction, Input: step.Input, Expected: step.Expected, Context: sample.Context, Scope: sample.Scope}

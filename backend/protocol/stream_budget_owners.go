@@ -99,8 +99,30 @@ func (state *ConversionEventState) setOpen(key string, isOpen bool) {
 
 func (replay *EventReplay) releaseRetention() {
 	if budget := replay.retention.budget; budget != nil {
-		index := slices.Index(budget.sequences, replay.sequence)
-		budget.sequences = slices.Delete(budget.sequences, index, index+1)
+		budget.removeSequence(replay.sequence)
 	}
 	replay.retention.release()
+}
+
+func (budget *StreamBudget) removeSequence(sequence *SequenceTracker) {
+	index := slices.Index(budget.sequences, sequence)
+	budget.sequences = slices.Delete(budget.sequences, index, index+1)
+}
+
+func (session *SessionReplay) bindStreamBudget(budget *StreamBudget) error {
+	if session.isReleased {
+		return operationMetadataError("/session", "released session cannot join a stream budget")
+	}
+	if session.retention.budget == budget {
+		return budget.Check()
+	}
+	budget.constrain(session.limits)
+	items, bytes := session.retainedState()
+	if err := session.retention.bind(budget, items, bytes); err != nil {
+		return err
+	}
+	// Per-response replays are already counted by the session; their sequence
+	// is cleared on input because deduplication belongs to these two lanes.
+	budget.sequences = append(budget.sequences, session.clientSequence, session.serverSequence)
+	return budget.Check()
 }
