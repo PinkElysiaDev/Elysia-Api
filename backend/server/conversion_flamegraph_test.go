@@ -88,6 +88,7 @@ type flameMeasurement struct {
 	SizeMiB, Workers, Repeat, Requests int
 	Stream                             bool
 	ElapsedMS                          float64
+	StartedUnixNS, FinishedUnixNS      int64
 	// Settlement includes the metrics round trip and confirmation that all
 	// completed requests have persisted; it is not the SQL commit timestamp.
 	SettledElapsedMS      float64 `json:",omitempty"`
@@ -103,6 +104,7 @@ type flameMeasurement struct {
 
 type flameCallMeasurement struct {
 	LatencyNS, FirstByteNS, FirstFrameNS int64
+	Frames                               int
 }
 
 type flameRecoverySample struct {
@@ -252,6 +254,12 @@ func TestConversionFlamegraph(t *testing.T) {
 			}
 			observation.LatencyNS = time.Since(started).Nanoseconds()
 			output := captured.Bytes()
+			if mode != "measure" && stream {
+				observation.Frames = bytes.Count(output, []byte("\ndata:"))
+				if bytes.HasPrefix(output, []byte("data:")) {
+					observation.Frames++
+				}
+			}
 			if matrixSource != nil {
 				if response.StatusCode != 200 || response.Trailer.Get(gatewayStreamErrorTrailer) != "" {
 					return observation, fmt.Errorf("matrix response %d: %.400s", response.StatusCode, output)
@@ -340,6 +348,11 @@ func TestConversionFlamegraph(t *testing.T) {
 					name, endpoint = "execution.trace", "trace"
 				}
 				go func() { profileDone <- saveProfile(name, fmt.Sprintf("%s?seconds=%d", endpoint, seconds)) }()
+				if os.Getenv("ELYSIA_FLAME_FIXED_CPU") == "1" {
+					// The archived profile timestamps must bracket the fixed workload;
+					// this delay only avoids dispatching before the profile HTTP call.
+					time.Sleep(100 * time.Millisecond)
+				}
 			} else if mode == "memory" {
 				if err := saveProfile("alloc-before.pprof", "allocs"); err != nil {
 					t.Fatal(err)
@@ -421,7 +434,7 @@ func TestConversionFlamegraph(t *testing.T) {
 				}
 				requests += len(batch)
 				observations = append(observations, batch...)
-				if mode != "cpu" || time.Since(started) >= time.Duration(seconds+1)*time.Second {
+				if mode != "cpu" || os.Getenv("ELYSIA_FLAME_FIXED_CPU") == "1" || time.Since(started) >= time.Duration(seconds+1)*time.Second {
 					break
 				}
 			}
@@ -452,6 +465,7 @@ func TestConversionFlamegraph(t *testing.T) {
 				t.Fatal("duplicate or missing generations")
 			}
 			measurement := flameMeasurement{UpstreamCalls: after.Calls - before.Calls, Mode: mode, Workload: workload, Phase: "steady", SizeMiB: size, Workers: workers, Repeat: repeat, Requests: requests, Stream: stream, ElapsedMS: float64(elapsed) / float64(time.Millisecond), Before: initial, Metrics: sample, Observations: observations}
+			measurement.StartedUnixNS, measurement.FinishedUnixNS = started.UnixNano(), started.Add(elapsed).UnixNano()
 			if mode == "measure" {
 				measurement.SettledElapsedMS = float64(settledElapsed) / float64(time.Millisecond)
 				measurement.SettlementWaitMS = float64(settlementWait) / float64(time.Millisecond)

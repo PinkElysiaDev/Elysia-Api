@@ -17,6 +17,7 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
+RUNNER_SOURCE = Path(__file__).read_bytes()
 EVIDENCE = ROOT / '.tmp-dev/three-version-2026-11-04'
 TOKEN = 'synthetic-local-profile'
 REVISIONS = {'R-build': '9b72829a', 'A': 'b2844846', 'C': 'd7e29817'}
@@ -92,7 +93,7 @@ def prepare():
                               collectorSHA256=digest(collector), build=command, testBuild=test_command)
         print('built', name, flush=True)
     driver = EVIDENCE / 'driver.test.exe'
-    execute(['go', 'test', '-c', '-pgo=off', '-o', str(driver), './server'], ROOT / 'backend', EVIDENCE / 'build-driver.log')
+    execute(['go', 'test', '-c', '-buildvcs=false', '-pgo=off', '-o', str(driver), './server'], ROOT / 'backend', EVIDENCE / 'build-driver.log')
     versions['driver'] = {'binary': str(driver), 'sha256': digest(driver)}
     for version in versions.values():
         version['buildInfo'] = subprocess.check_output(['go', 'version', '-m', version['binary']], text=True)
@@ -267,6 +268,14 @@ class ProcessMetrics:
                     self.peak = max(self.peak, working)
 
     def snapshot(self, action):
+        if action == 'reset':
+            # Diagnostic profiles settle the allocator before their baseline.
+            # Timed batches always use reset-without-gc.
+            for _ in range(2):
+                req = urllib.request.Request(self.gateway + '/debug/pprof/heap?gc=1',
+                                             headers={'Authorization': 'Bearer ' + TOKEN})
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    response.read()
         if action == 'settle':
             deadline = time.monotonic() + 30
             while True:
@@ -324,8 +333,13 @@ def run_case(version, scene, phase, mode, output, requests=None):
     output.mkdir(parents=True)
     builds = read_json(EVIDENCE / 'builds.json')['versions']
     variant = 'C' if version.startswith('C-') else version
-    binary = builds[variant]['instrumented' if phase == 'counters' else 'binary']
-    expected_sha = builds[variant]['instrumentedSHA256' if phase == 'counters' else 'sha256']
+    is_instrumented = phase != 'standalone'
+    binary = builds[variant]['instrumented' if is_instrumented else 'binary']
+    expected_sha = builds[variant]['instrumentedSHA256' if is_instrumented else 'sha256']
+    if phase == 'attribution':
+        assert variant == 'C', 'call-counter overlay is current-only'
+        binary = str(EVIDENCE / 'attribution-build/gateway.test.exe')
+        expected_sha = read_json(EVIDENCE / 'attribution-build/build.json')['binarySHA256']
     assert digest(binary) == expected_sha
     packages = version == 'C-package'
     scenario = SCENARIOS[scene]
@@ -337,6 +351,7 @@ def run_case(version, scene, phase, mode, output, requests=None):
                ELYSIA_FLAME_FRAMES='256', ELYSIA_FLAME_FRAME_BYTES='256', ELYSIA_FLAME_REQUESTS=str(requests or scenario['requests']),
                ELYSIA_FLAME_REPEATS='1', ELYSIA_FLAME_WARMUP='8' if scenario.get('image') or scenario.get('stream') else '32',
                ELYSIA_FLAME_SECONDS='15', ELYSIA_FLAME_VERIFY_EXACT='1', ELYSIA_FLAME_RECOVERY_MS='1000',
+               ELYSIA_FLAME_FIXED_CPU='1' if mode == 'cpu' else '',
                ELYSIA_CONVERSION_HTTP_MIB='2', ELYSIA_CONVERSION_HTTP_WORKERS=str(scenario.get('workers', 1)),
                ELYSIA_CONVERSION_HTTP_CANDIDATES='1', ELYSIA_CONVERSION_HTTP_LOG='off')
     source_id = 'anthropic-messages' if scenario.get('image') else 'openai-chat-completions'
@@ -348,9 +363,9 @@ def run_case(version, scene, phase, mode, output, requests=None):
                       'Allocated': phase == 'counters', 'Allocations': phase == 'counters',
                       'GCPauseNS': phase == 'counters', 'GCCPUSeconds': False, 'PeakHeap': False,
                       'Heap': 'boundary only', 'PeakWorkingSet': '20ms OS sampling'})
-    record['runnerSHA256'] = digest(__file__)
+    record['runnerSHA256'] = hashlib.sha256(RUNNER_SOURCE).hexdigest()
     record['driverSHA256'] = builds['driver']['sha256']
-    (output / 'runner.py').write_bytes(Path(__file__).read_bytes())
+    (output / 'runner.py').write_bytes(RUNNER_SOURCE)
     # Record task variables only; inherited machine credentials are never written.
     record['environment'] = {k: v for k, v in env.items() if k in RUNTIME or k.startswith('ELYSIA_')}
     save_json(output / 'run.json', record)
@@ -374,7 +389,7 @@ def run_case(version, scene, phase, mode, output, requests=None):
         save_json(config_path, config)
         gateway_env = environment() | {'ELYSIA_PARENT_STDIN': '1'}
         gateway_ready = output / 'gateway-ready.json'
-        if phase == 'counters':
+        if is_instrumented:
             gateway_env.update(ELYSIA_VERSIONED_CONFIG=str(config_path), ELYSIA_VERSIONED_READY=str(gateway_ready))
             command = [binary, '-test.run=^TestVersionedGatewayProcess$', '-test.timeout=20m']
         else:
@@ -389,7 +404,7 @@ def run_case(version, scene, phase, mode, output, requests=None):
         save_json(output / 'reloaded-identity.json', reloaded)
         assert reloaded == record['configuration'], 'reload changed active protocol/binding identity'
         record['gatewayCommand'] = command
-        counter_url = wait_file(gateway_ready, gateway)['Metrics'] if phase == 'counters' else None
+        counter_url = wait_file(gateway_ready, gateway)['Metrics'] if is_instrumented else None
         metrics = ProcessMetrics(gateway.pid, url, counter_url)
         proxy = serve_metrics(metrics)
         gateway_address = {'URL': url, 'Metrics': f'http://127.0.0.1:{proxy.server_port}', 'PID': gateway.pid,
@@ -403,6 +418,8 @@ def run_case(version, scene, phase, mode, output, requests=None):
         record['provider'] = {'binary': str(provider_binary), 'sha256': digest(provider_binary), 'identity': provider_address['Execution']}
         save_json(output / 'run.json', record)
         execute(command, ROOT / 'backend/server', output / 'driver.log', env)
+        if phase == 'attribution':
+            record['attribution'] = request(counter_url)['Attribution']
         after = {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')}
         assert after == record['configuration'], 'active protocol/binding identity drift'
         record['status'] = 'passed'
@@ -428,7 +445,7 @@ def run_case(version, scene, phase, mode, output, requests=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['prepare', 'run'])
-    parser.add_argument('--phase', choices=['standalone', 'counters'], default='standalone')
+    parser.add_argument('--phase', choices=['standalone', 'counters', 'attribution'], default='standalone')
     parser.add_argument('--versions', default='R-release,R-build,A,C-default,C-package')
     parser.add_argument('--scenes', default=','.join(SCENARIOS))
     parser.add_argument('--mode', choices=['measure', 'cpu', 'memory'], default='measure')
