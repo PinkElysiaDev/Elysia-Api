@@ -108,13 +108,14 @@ async function run(name, command, argv, overrides = {}) {
   console.log(`[${name}] ${command} ${argv.join(' ')}`)
   const started = Date.now()
   const chunks = []
-  const child = spawn(command, argv, { cwd: join(root, 'backend'), env: { ...env, ...overrides }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const cwd = command === binary ? join(root, 'backend', 'server') : join(root, 'backend')
+  const child = spawn(command, argv, { cwd, env: { ...env, ...overrides }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   child.stdout.on('data', data => chunks.push(data))
   child.stderr.on('data', data => chunks.push(data))
   const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve) })
   const log = Buffer.concat(chunks)
   await writeFile(join(output, `${name}.log`), log)
-  report.steps.push({ name, command, argv, environment: overrides, code, elapsedMS: Date.now() - started })
+  report.steps.push({ name, command, argv, cwd, environment: overrides, code, elapsedMS: Date.now() - started })
   await save()
   if (code !== 0) throw new Error(`${name} failed; see ${join(output, `${name}.log`)}\n${log.toString().slice(-6000)}`)
 }

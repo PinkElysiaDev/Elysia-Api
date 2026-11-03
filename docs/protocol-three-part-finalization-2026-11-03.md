@@ -505,3 +505,22 @@ protocol/builtin 复核通过（5.048/30.942 秒），组合/交付/续传相关
 .tmp-dev/combination-stream-budget-*.log。移动测试辅助函数时曾缺少 context 导入，补齐后
 重新编译并通过，失败日志保留。已精读修改的验证序列、事件组合、续传投影及相关调用文件；
 生产默认切换、正式性能和最终平台验收仍未完成。
+
+## 性能门槛预检：固定 A 与当前功能候选
+
+固定 A 为 b2844846/dev.101，当前包候选为 72fbc1ae/dev.148，Go 1.27.2、GOMAXPROCS=2、
+GOGC=100、GOMEMLIMIT=2GiB、CGO=0、PGO=off。A 位于独立 detached worktree；保留原恢复点，
+没有改动旧数据库或日志。现有 runner 的工作目录错误使包夹具无法读取 Spec/Mapping，已改为
+在 backend/server 运行测试二进制、在 backend 编译，报告记录 cwd，Windows 子进程隐藏窗口。
+修复前失败记录保留；修复后真实 HTTP smoke 与独立 CPU/内存 profile 完成。
+
+短请求完成五对交替测量，每次 32 预热、256 请求，断言完整内容/用量和恰好 256 次上游调用。
+网关分配字节中位数从 137724 增至 502106（配对约 +264.6%），次数从 2387 增至 6697
+（约 +180.6%），CPU 从 0.549ms 增至 1.404ms。该稳定回退阻止生产切换；不能用此前局部
+预算微基准无明显差异来替代这个结论。两边模拟上游解码器不同，延迟/吞吐暂不作网关独立
+性能结论；后续公平延迟测量须固定模拟上游。当前仅一个 HTTP 场景，不是完整 A/B/C 验收。
+
+独立 profile 显示 compiledOutputPlan.build 累计约 47.6% CPU，单次对象成员读取的 Sonic
+解析树是主要请求分配来源之一；保留堆主要来自编译表达式与输出计划。后续优化按这些热点
+单独提交并复测，不放宽限额或移除必要验证。数据、执行身份、源码和二进制哈希位于
+.tmp-dev/acceptance-http-{a-build,b-build-cwd,short-pairs,b-profile}/。
