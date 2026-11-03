@@ -1453,12 +1453,3 @@ func hasTestToolCall(nodes []protocol.Node) bool {
 	}
 	return false
 }
-
-func mustToolData(t *testing.T, result ToolResult) json.RawMessage {
-	t.Helper()
-	data, err := result.MarshalData()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
-}

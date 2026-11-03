@@ -6,19 +6,6 @@ import (
 	"strings"
 )
 
-// validateWireContract checks the actual emitted wire, including after mappings.
-// It does not disallow optional vendor extensions or invent missing counters.
-func (adapter module) validateWireContract(direction p.Direction, value p.Value) error {
-	if direction != p.EncodeRequest && direction != p.EncodeResponse && direction != p.EncodeEvent {
-		return nil
-	}
-	fields, err := readWireObject(value, "")
-	if err != nil {
-		return err
-	}
-	return adapter.validateWireObjectContract(direction, value, fields)
-}
-
 func (adapter module) validateWireObjectContract(direction p.Direction, value p.Value, fields p.Object) error {
 	if direction == p.EncodeRequest {
 		return adapter.validateRequestWireContract(value, fields)

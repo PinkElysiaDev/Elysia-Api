@@ -169,3 +169,14 @@ ESLint、WebUI 生产构建通过；Chrome 配置/概览/令牌隔离的 16 项�
 跨分类草稿、失败保存、并发输入锁、隐藏错误定位、重载确认、独立清理和不同屏幕尺寸。
 日志在 .tmp-dev/webui-runtime-chrome.log 与 webui-refactor-build.log。协议后端仍需继续收尾，
 这不是最终全仓或正式性能验收。
+
+## 批次 12a：静态诊断清理
+
+删除引用扫描与 staticcheck 确认未使用的七个辅助函数；移除 fuzz 中重复的标准库 JSON
+导入，保留独立 token oracle。Hertz 无请求日志入口使用 Background context，请求日志仍
+继承调用者 context；测试响应头通过 Header() 更新，保留多值 header/trailer。
+
+staticcheck v0.8.2 的 24 条主诊断已清零，Go 全量及 vet 通过（protocol 2.766、builtin
+40.616、server 155.908 秒）。日志为 .tmp-dev/static-cleanup-*.log。日志、CLI 类型、Hertz
+夹具及日志/原生 HTTP 回归已精读；大份管理和测试文件此次仅对删除位置及引用作静态审阅，
+不能据此认定这些文件或全仓逐行审阅完成。脚本整理、其余入口及正式性能仍待后续验收。
