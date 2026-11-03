@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -164,5 +165,57 @@ func TestPackageContinuationDeliveryProof(t *testing.T) {
 		if _, err := compiled.EncodeContinuationResponse(t.Context(), wire, options); err == nil {
 			t.Fatal("failed carrier batch rendered again")
 		}
+		binding.Release()
+		if len(binding.entries) != 0 || len(binding.resources) != 0 || binding.bytes != 0 || binding.committed != 1 || !sealed.persisted {
+			t.Fatal("released binding retained payloads or lost prior delivery facts")
+		}
+		if _, err := compiled.EncodeContinuationResponse(t.Context(), wire, options); err == nil {
+			t.Fatal("released binding resumed output")
+		}
+	}
+}
+
+func TestPackageContinuationRetainsProofAndRenderingWithinOneBudget(t *testing.T) {
+	compiled := compilePackageForTest(t, continuationTestPackage(t))
+	source := Identity{DefinitionID: "source", Family: "source", WireVersion: "1"}
+	scope := Scope{Provider: "fixture", Model: "m"}
+	resource := Resource{Kind: "signature", ID: StringValue("signed"), Scope: scope}
+	node := Node{Kind: TextNode, Payload: StringValue("hi"), Resources: []Resource{resource, resource}}
+	codec, err := NewContinuationCodec([]byte("retention-fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := codec.SealState(ContinuationRecord{Version: 1, ID: "one", Protocol: source, Scope: scope, Digest: ContinuationNodeDigest(node), Node: node, ExpiresAt: time.Now().Add(time.Hour).Unix()}, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sealed.keys) != 1 {
+		t.Fatal("repeated resource alias retained a second index key")
+	}
+	binding, err := compiled.BindContinuation(EncodeResponse, source, scope, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Release()
+	compiled.limits.BufferBytes = len(sealed.Token())
+	var failure *ResourceLimitError
+	if err := binding.Append(sealed); !errors.As(err, &failure) || failure.Domain != "continuation" || failure.Metric != "bytes" {
+		t.Fatal("token-only capacity ignored proof metadata", err)
+	}
+	if len(binding.entries) != 0 || len(binding.resources) != 0 || binding.bytes != 0 {
+		t.Fatal("failed append published partial proof indexes")
+	}
+	// Exact proof capacity admits the record but cannot also retain its render view.
+	compiled.limits.BufferBytes = sealed.bytes
+	if err := binding.Append(sealed); err != nil {
+		t.Fatal(err)
+	}
+	options := (EvaluationContext{Scope: scope}).WithContinuation(binding)
+	_, err = compiled.EncodeContinuationResponse(t.Context(), fixtureValue(t, map[string]string{"reply": "hi"}), options)
+	if !errors.As(err, &failure) || failure.Metric != "bytes" {
+		t.Fatal("render view escaped the combined proof budget", err)
+	}
+	if binding.isRendering || binding.tokenView.bytes != 0 || len(binding.emitted) != 0 || binding.committed != 0 || len(binding.entries) != 1 {
+		t.Fatal("failed rendering reservation advanced delivery or lost the sealed record")
 	}
 }

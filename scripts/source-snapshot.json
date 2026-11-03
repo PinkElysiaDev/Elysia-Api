@@ -934,6 +934,7 @@
     "backend/server/gateway_request_wire.go",
     "backend/server/gateway_response.go",
     "backend/server/gateway_response_model_test.go",
+    "backend/server/gateway_response_test.go",
     "backend/server/gateway_responses_metadata_test.go",
     "backend/server/gateway_responses_null_history_test.go",
     "backend/server/gateway_route.go",

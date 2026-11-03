@@ -8,11 +8,12 @@ import (
 // SealedContinuation is authenticated host output. Private facts cannot be
 // supplied by a protocol program or reconstructed from ordinary JSON.
 type SealedContinuation struct {
-	token, id, digest string
-	source            Identity
-	scope             Scope
-	keys              []string
-	persisted         bool
+	token, id string
+	source    Identity
+	scope     Scope
+	keys      []string
+	bytes     int
+	persisted bool
 }
 
 // SealState seals the existing record format and retains only bounded proof metadata.
@@ -21,10 +22,16 @@ func (codec *ContinuationCodec) SealState(record ContinuationRecord, limit int) 
 	if err != nil {
 		return nil, err
 	}
-	state := &SealedContinuation{token: token, id: record.ID, digest: record.Digest, source: record.Protocol, scope: record.Scope}
+	state := &SealedContinuation{token: token, id: record.ID, source: record.Protocol, scope: record.Scope, bytes: len(token) + len(record.ID)}
+	keys := make(map[string]bool, len(record.Node.Resources))
 	for _, resource := range record.Node.Resources {
 		if IsContinuationResource(resource) {
-			state.keys = append(state.keys, ContinuationResourceKey(resource))
+			key := record.Digest + ":" + ContinuationResourceKey(resource)
+			if !keys[key] {
+				keys[key] = true
+				state.keys = append(state.keys, key)
+				state.bytes += len(key)
+			}
 		}
 	}
 	return state, nil
@@ -81,17 +88,17 @@ func (binding *ContinuationBinding) Append(state *SealedContinuation) error {
 	if len(binding.entries) >= limits.StateItems {
 		return resourceFailure("continuation", "items", limits.StateItems, len(binding.entries)+1)
 	}
-	if binding.bytes+len(state.token) > limits.BufferBytes {
-		return resourceFailure("continuation", "bytes", limits.BufferBytes, binding.bytes+len(state.token))
+	if binding.bytes+state.bytes > limits.BufferBytes {
+		return resourceFailure("continuation", "bytes", limits.BufferBytes, binding.bytes+state.bytes)
 	}
 	if binding.resources == nil {
 		binding.resources = map[string]*SealedContinuation{}
 	}
 	for _, key := range state.keys {
-		binding.resources[state.digest+":"+key] = state
+		binding.resources[key] = state
 	}
 	binding.entries = append(binding.entries, state)
-	binding.bytes += len(state.token)
+	binding.bytes += state.bytes
 	return nil
 }
 
@@ -152,6 +159,14 @@ func (binding *ContinuationBinding) AbortDelivery() {
 	binding.tokenView = plannedOutput{}
 }
 
+// Release drops owned tokens and indexes after the response settles. Sealed
+// persistence receipts and the committed delivery count remain unchanged.
+func (binding *ContinuationBinding) Release() {
+	binding.AbortDelivery()
+	binding.entries, binding.resources = nil, nil
+	binding.bytes = 0
+}
+
 func (binding *ContinuationBinding) check(compiled *Compiled, direction Direction, scope Scope) error {
 	if binding.deliveryAborted {
 		return operationMetadataError("/continuation", "aborted carrier output cannot resume")
@@ -162,29 +177,39 @@ func (binding *ContinuationBinding) check(compiled *Compiled, direction Directio
 	return nil
 }
 
-func (binding *ContinuationBinding) startBatch() {
-	binding.batchEnd = len(binding.entries)
-	binding.confirmed = 0
-	binding.emitted = make(map[string]bool, binding.batchEnd-binding.committed)
-	items := make([]JSONOutput, 0, binding.batchEnd-binding.committed)
-	for _, state := range binding.entries[binding.committed:binding.batchEnd] {
-		binding.emitted[state.token] = false
+func (binding *ContinuationBinding) startBatch() error {
+	batchEnd := len(binding.entries)
+	items := make([]JSONOutput, 0, batchEnd-binding.committed)
+	for _, state := range binding.entries[binding.committed:batchEnd] {
 		items = append(items, JSONObject(map[string]JSONOutput{"id": JSONLeaf(StringValue(state.id)), "token": JSONLeaf(StringValue(state.token))}))
 	}
 	output := JSONOutput{node: &jsonOutputNode{items: items}}
-	binding.tokenView = plannedOutput{output, normalizedOutputBytes(output)}
+	view := plannedOutput{output, normalizedOutputBytes(output)}
+	if retained := binding.bytes + view.bytes; retained > binding.compiled.limits.BufferBytes {
+		return resourceFailure("continuation", "bytes", binding.compiled.limits.BufferBytes, retained)
+	}
+	binding.batchEnd, binding.confirmed = batchEnd, 0
+	binding.emitted = make(map[string]bool, batchEnd-binding.committed)
+	for _, state := range binding.entries[binding.committed:batchEnd] {
+		binding.emitted[state.token] = false
+	}
+	binding.tokenView = view
 	binding.isRendering = true
+	return nil
 }
 
 func (binding *ContinuationBinding) tokenOutput() plannedOutput { return binding.tokenView }
 
 func (compiled *Compiled) encodeContinuation(ctx context.Context, wire Value, options EvaluationContext, direction Direction) (plannedOutput, bool, error) {
 	binding := options.continuation
-	if !binding.HasPending() {
+	if binding == nil {
 		return plannedOutput{}, false, nil
 	}
 	if err := binding.check(compiled, direction, options.Scope); err != nil {
 		return plannedOutput{}, false, err
+	}
+	if !binding.HasPending() {
+		return plannedOutput{}, false, nil
 	}
 	if binding.isRendering {
 		return plannedOutput{}, false, operationMetadataError("/continuation", "previous carrier batch has not completed delivery")
@@ -204,7 +229,9 @@ func (compiled *Compiled) encodeContinuation(ctx context.Context, wire Value, op
 			return plannedOutput{}, false, nil
 		}
 	}
-	binding.startBatch()
+	if err := binding.startBatch(); err != nil {
+		return plannedOutput{}, false, compiled.mappingError(direction, err)
+	}
 	output, err := binding.plan.program.build(state)
 	if err == nil {
 		err = checkPlannedOutputLimits(output, compiled.limits, "continuation_output")

@@ -64,6 +64,7 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 		candidate.continuation.sink = options.Diagnostics
 		collector, _ = protocol.NewResponseCollector(candidate.sourceEventTarget(), limits)
 		if candidate.continuation.isPackage {
+			defer candidate.continuation.binding.Release()
 			options = options.WithContinuation(candidate.continuation.binding)
 		} else {
 			carriers = &builtin.ContinuationStream{Family: plan.ingress.Identity().Family}

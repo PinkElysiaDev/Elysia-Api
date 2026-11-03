@@ -14,6 +14,14 @@ import (
 // Response delivery uses the same narrow handoff as streaming; request history
 // and retry candidates belong exclusively to preparation and dispatch.
 func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response, responseRoute protocol.ConversionContext, options protocol.EvaluationContext) error {
+	isDeliveryPending := false
+	if continuation := candidate.continuation; continuation != nil && continuation.isPackage {
+		defer func() {
+			if !isDeliveryPending {
+				continuation.binding.Release()
+			}
+		}()
+	}
 	body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 	if err != nil {
 		return protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response")
@@ -100,6 +108,7 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 		binding := candidate.continuation.binding
 		state := ensureHTTPDeliveryState(c)
 		onHTTPComplete(c, func() {
+			defer binding.Release()
 			if state.result.Outcome == deliveryCompleted {
 				// Validation has confirmed every planned carrier. Failure here is
 				// an internal ownership violation, not a recoverable I/O outcome.
@@ -108,6 +117,7 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 				}
 			}
 		})
+		isDeliveryPending = true
 	}
 	c.Data(http.StatusOK, "application/json", wireValue.Bytes())
 	return nil
