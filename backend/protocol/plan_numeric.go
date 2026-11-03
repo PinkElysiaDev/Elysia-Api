@@ -6,6 +6,9 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput, error) {
+	if plan.borrowsScalarInput {
+		state.valueReader = &scalarInputReader
+	}
 	if plan.hasRequestObjectSource && state.coreRequest != nil {
 		object, isPresent, err := plan.source.expression.readRequestObject(state)
 		if err != nil {

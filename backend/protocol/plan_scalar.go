@@ -11,6 +11,10 @@ import (
 
 const scalarOperandCapacity = 2
 
+// This reader has no mutable index or parent state. Only statically selected
+// read/literal predicates use it; their result cannot retain the selected bytes.
+var scalarInputReader = valueReader{isBorrowed: true}
+
 func (plan *compiledOutputPlan) countArrayMembers(state evaluation) (plannedOutput, error) {
 	source, err := plan.source.buildNode(state)
 	if err != nil {
@@ -156,6 +160,9 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 }
 
 func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, error) {
+	if plan.borrowsScalarInput {
+		state.valueReader = &scalarInputReader
+	}
 	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
@@ -230,6 +237,9 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 }
 
 func (plan *compiledOutputPlan) buildScalarOperands(state evaluation) (plannedOutput, error) {
+	if plan.borrowsScalarInput {
+		state.valueReader = &scalarInputReader
+	}
 	var operands []plannedOutput
 	var err error
 	if len(plan.items) <= scalarOperandCapacity {

@@ -11,6 +11,7 @@ import (
 type compiledOutputPlan struct {
 	hasCanonicalFields     bool
 	hasStreamWrites        bool
+	borrowsScalarInput     bool
 	expression             *compiledExpression
 	fields                 []outputPlanField
 	items                  []*compiledOutputPlan
@@ -138,8 +139,26 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 			plan.mergeRequirements(child, true)
 		}
 	}
+	switch expression.op {
+	case "exists", "present", "type", "is_integer":
+		plan.borrowsScalarInput = canBorrowScalarRead(expression.source)
+	case "equal":
+		if len(expression.items) == 2 {
+			left, right := expression.items[0], expression.items[1]
+			plan.borrowsScalarInput = canBorrowScalarRead(left) && isScalarLiteral(right) || canBorrowScalarRead(right) && isScalarLiteral(left)
+		}
+	}
 	expression.outputPlan = plan
 	return plan, true
+}
+
+func canBorrowScalarRead(expression *compiledExpression) bool {
+	return expression != nil && expression.op == "read" &&
+		(expression.from == "input" || expression.from == "root" || expression.from == "item" || expression.from == "binding")
+}
+
+func isScalarLiteral(expression *compiledExpression) bool {
+	return expression.op == "literal" && !expression.value.IsArray() && !expression.value.IsObject()
 }
 
 func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan, hasSameItem bool) {

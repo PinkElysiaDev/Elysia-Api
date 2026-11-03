@@ -7,7 +7,15 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(state)
+	var operands []plannedOutput
+	var err error
+	if len(plan.items) <= scalarOperandCapacity {
+		var storage [scalarOperandCapacity]plannedOutput
+		operands = storage[:len(plan.items)]
+		err = plan.buildOperandValuesInto(state, operands)
+	} else {
+		operands, err = plan.buildOperandValues(state)
+	}
 	if err != nil {
 		return plannedOutput{}, err
 	}

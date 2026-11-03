@@ -12,6 +12,7 @@ type valueReader struct {
 	index                  *valueIndex
 	requireCapturedOrigins bool
 	canGrowThreshold       bool
+	isBorrowed             bool
 }
 
 func minimumSharedValueBytes(parentBytes int) int {
@@ -22,8 +23,11 @@ func minimumSharedValueBytes(parentBytes int) int {
 // An encoder's private reader retains the largest threshold across bindings;
 // borrowed decoder readers receive only a local adjustment.
 func (reader *valueReader) forParent(value Value) *valueReader {
+	if reader == nil || reader.isBorrowed {
+		return reader
+	}
 	minimum := minimumSharedValueBytes(value.Len())
-	if reader == nil || minimum <= reader.minimumSharedBytes {
+	if minimum <= reader.minimumSharedBytes {
 		return reader
 	}
 	if reader.canGrowThreshold {
@@ -54,7 +58,7 @@ func (options EvaluationContext) WithValueReader(root Value) EvaluationContext {
 }
 
 func (reader *valueReader) fragment(raw string) string {
-	if reader != nil && len(raw) >= reader.minimumSharedBytes {
+	if reader != nil && (reader.isBorrowed || len(raw) >= reader.minimumSharedBytes) {
 		return raw
 	}
 	return strings.Clone(raw)

@@ -85,3 +85,18 @@ by 5.96%, bytes by 21.06%, allocations by 7.19%; reference rewrite is inconclusi
 Related tests and race pass, including repeated fields, exact numbers, first
 errors and owned small selections. Evidence: `.tmp-dev/deep-core-fixed-
 {objects,semantic}/`, `deep-core-{iterator-tests,fixed-tests,race}.log`.
+
+## Non-escaping scalar reads
+
+Statically selected read/literal predicates borrow their intermediate fragments
+with a stateless reader; sibling/output reads keep their ownership rules. Small
+operand lists use the existing two-element stack workspace. Evaluation remains
+eager, with unchanged node, cancellation, byte and error boundaries.
+
+Ten alternating pairs show direct predicate time improvements of 3.94–6.44%,
+with one fewer allocation (16.67–20%). Scoped cases are inconclusive with no
+stable regression. Reference and Native continuation time is inconclusive;
+allocations improve 1.12% and 9.16%, respectively. Full protocol/builtin tests
+and targeted protocol race pass. The race selector matched no builtin tests;
+it is not recorded as builtin race coverage. Evidence: `deep-scalar-{reads/,
+semantic/,tests.log}` and `deep-scalar-initial-race.log` under `.tmp-dev/`.
