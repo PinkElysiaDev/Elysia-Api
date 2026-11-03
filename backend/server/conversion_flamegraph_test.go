@@ -151,6 +151,7 @@ func TestConversionFlamegraph(t *testing.T) {
 		t.Fatal("invalid stream selection")
 	}
 	provider := startConversionHTTPChild(t, "provider", "")
+	writeConversionProviderIdentity(t, directory, provider)
 	gateway := startConversionHTTPChild(t, "gateway", provider.URL)
 	proof, err := json.MarshalIndent(gateway.Execution, "", "  ")
 	if err != nil {

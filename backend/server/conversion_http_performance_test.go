@@ -148,6 +148,7 @@ func startConversionHTTPChild(t *testing.T, role, upstream string) conversionHTT
 	}
 	command := exec.Command(binary, "-test.run=^TestConversionHTTPProcess$", "-test.timeout=40m")
 	command.Env = append(os.Environ(), "ELYSIA_CONVERSION_HTTP_ROLE="+role, "ELYSIA_CONVERSION_HTTP_READY="+ready, "ELYSIA_CONVERSION_HTTP_UPSTREAM="+upstream)
+	configureConversionProvider(command, role)
 	log, err := os.Create(filepath.Join(directory, "child.log"))
 	if err != nil {
 		t.Fatal(err)
@@ -226,9 +227,12 @@ func TestConversionHTTPProcess(t *testing.T) {
 	var execution *conversionExecutionProof
 	conversionExecution(t)
 	if role == "provider" {
+		execution = conversionProviderIdentity(t)
 		var gateway *httptest.Server
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
-			handler := flameMatrixProvider(t, flameMatrixProtocol(t, targetID))
+			compiled := flameMatrixProtocol(t, targetID)
+			execution.Packages[targetID] = compiled.Hash()
+			handler := flameMatrixProvider(t, compiled)
 			gateway = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				handler.ServeHTTP(w, r)

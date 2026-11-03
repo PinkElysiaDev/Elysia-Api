@@ -104,3 +104,9 @@ func conversionExecutionIdentity(t *testing.T, server *Server) *conversionExecut
 	}
 	return proof
 }
+
+func conversionProviderIdentity(t *testing.T) *conversionExecutionProof {
+	t.Helper()
+	return &conversionExecutionProof{Execution: conversionExecution(t), Commit: AppCommit, Compiler: protocol.CompilerVersion,
+		Packages: map[string]string{}}
+}

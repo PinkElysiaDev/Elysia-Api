@@ -16,6 +16,8 @@ export async function instrumentLegacyExecution(root, output, runnerRoot) {
   const start = helper.indexOf('func configureConversionExecution')
   helper = helper.slice(0, start) + helper.slice(helper.indexOf('func conversionExecutionIdentity'))
   helper += '\nfunc conversionExecution(t *testing.T) string {\n t.Helper()\n if protocol.CompilerVersion != "2.0.0-dev.101" || os.Getenv("ELYSIA_CONVERSION_HTTP_EXECUTION") != "legacy" { t.Fatal("reference A must use dev.101 legacy execution") }\n return "legacy"\n}\n'
+  const providerHelper = await readFile(join(runnerRoot, 'backend/server/conversion_provider_test.go'), 'utf8')
+  helper += '\n' + providerHelper.slice(providerHelper.indexOf('func configureConversionProvider'))
   const replacements = {}
   for (const name of ['conversion_http_performance_test.go', 'conversion_flamegraph_test.go']) {
     const original = resolve(root, 'backend/server', name)
@@ -24,11 +26,15 @@ export async function instrumentLegacyExecution(root, output, runnerRoot) {
       source = replace(source, '"github.com/elysia-api/backend/config"', '"github.com/elysia-api/backend/config"\n "github.com/elysia-api/backend/protocol"')
       source = replace(source, 'URL, Metrics string', 'URL, Metrics string\n Execution *conversionExecutionProof')
       source = replace(source, 'var loggingReview *loggingReviewGateway', 'var loggingReview *loggingReviewGateway\n var execution *conversionExecutionProof')
+      source = replace(source, '"ELYSIA_CONVERSION_HTTP_UPSTREAM="+upstream)', '"ELYSIA_CONVERSION_HTTP_UPSTREAM="+upstream)\n configureConversionProvider(command, role)')
+      source = replace(source, 'if role == "provider" {', 'if role == "provider" {\n execution = conversionProviderIdentity(t)')
+      source = replace(source, 'handler := flameMatrixProvider(t, flameMatrixProtocol(t, targetID))', 'compiled := flameMatrixProtocol(t, targetID)\n execution.Packages[targetID] = compiled.Hash()\n handler := flameMatrixProvider(t, compiled)')
       source = replace(source, 'gateway := startTestServer(server.engine)', 'execution = conversionExecutionIdentity(t, server)\n gateway := startTestServer(server.engine)')
       source = replace(source, 'Metrics: metrics.URL, PID: os.Getpid()', 'Metrics: metrics.URL, PID: os.Getpid(), Execution: execution')
       source = source.replaceAll('metrics(gateway.Metrics, "reset")', 'metrics(gateway.Metrics, "reset-without-gc")')
       source += '\n' + helper
     } else {
+      source = replace(source, 'provider := startConversionHTTPChild(t, "provider", "")', 'provider := startConversionHTTPChild(t, "provider", "")\n writeConversionProviderIdentity(t, directory, provider)')
       source = replace(source, 'gateway := startConversionHTTPChild(t, "gateway", provider.URL)', `gateway := startConversionHTTPChild(t, "gateway", provider.URL)
  if gateway.Execution == nil || gateway.Execution.Commit != AppCommit || gateway.Execution.Execution != "legacy" { t.Fatal("reference A execution identity mismatch") }
  proof, err := json.MarshalIndent(gateway.Execution, "", "  ")

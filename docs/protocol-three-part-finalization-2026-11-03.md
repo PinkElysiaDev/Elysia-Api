@@ -588,3 +588,29 @@ expression-fields-performance/，不能冒充最终版本数据。本批收益�
 定向 race 通过（4.441 秒），全仓 vet/staticcheck 无诊断。日志为
 .tmp-dev/expression-fields-fixed-*.log 和 expression-fields-fuzz-fixed.log；首次 fuzz 失败记录
 及最小复现保留，不能用修正前的全量结果替代最终版本验收。
+
+## 性能采集修正：固定模拟上游
+
+runner 新增 --provider-build，使用一份已完成构建的二进制和 source/backend/server 下的包
+快照；启动前核对二进制及所读 Spec/Mapping 文件哈希。仅替换 provider 子进程，网关仍使用
+各自源码、执行方式和隔离数据库。provider-execution.json 记录实际提交、编译器、执行模式
+和目标包；固定 A 复用同一测试辅助方法，通过 overlay 接线，没有修改 A 的生产源码。
+
+固定模拟器为 e32f2a3f 加本批采集器修改的源码快照。A 与当前版均通过短请求、Chat→Anthropic
+及 16 帧 SSE smoke；二进制和完整源码证据在 .tmp-dev/fixed-provider-build/、fixed-http-a-build/
+与 fixed-http-current-build/。Node 自测覆盖构建未完成、文件哈希改变和执行环境隔离；Go 自测
+证明网关不被 provider 选择覆盖。中英文性能说明同步必填执行身份、固定夹具和比较口径。
+
+随后完成五对交替短请求，每轮 32 预热、1024 请求，核对完整内容/usage、恰好 1024 次上游
+调用及完全一致的模拟器身份。当前版相对固定 A 的每请求分配字节中位数为 374193/139090，
+分配次数为 6113/2395，配对分配字节增加 167.61%–171.96%；P50 消费延迟为 1.537/0.5142ms，
+五对均增加约 199%。网关 CPU 中位数为 1.694/0.580ms。优化减少了早先部分分配，但持续请求
+下仍有明确性能回退，生产切换继续受阻。单请求延迟在客户端语义校验前停止计时；闭环吞吐
+仍包含各版本客户端校验开销，不作为网关独立吞吐结论，后续还需固定客户端实现。
+
+原始样本及身份在 .tmp-dev/fixed-http-short-pairs-final/。辅助脚本首次替换请求数时误改了
+SHA256 名称，在测量启动前失败；修正后使用新目录，未覆盖既有样本。本次仍仅短请求五对，
+不能替代完整 A/B/C、复杂 SSE、媒体、并发、取消和 production 模式验收。
+本批相关 Go 用例和五项 Node 自测通过，全仓 vet/staticcheck 无诊断；日志为
+.tmp-dev/fixed-provider-{selftest,vet,staticcheck}.log。已精读修改的父子进程启动、身份记录、
+测试覆盖层和 runner；此次没有新增生产逻辑，沿用上一批已通过的 Go 全量结果。

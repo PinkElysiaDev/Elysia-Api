@@ -5,12 +5,13 @@ import { arch, cpus, platform, totalmem } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { instrumentLegacyExecution } from './verification/conversion-execution.mjs'
+import { loadConversionProvider, conversionProviderEnvironment } from './verification/conversion-provider.mjs'
 
 const args = process.argv.slice(2)
 const option = (name, fallback) => args.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback
 const root = resolve(option('source', resolve(dirname(fileURLToPath(import.meta.url)), '..')))
 if (args.includes('--help')) {
-  console.log('Usage: node scripts/benchmark-performance.mjs --execution=legacy|packages|production --expect-commit=FULL_COMMIT --output=NEW_DIRECTORY [--source=SOURCE_DIRECTORY] [--mode=all|micro|measure|profile] [--cases=chat-short,stream256,...] [--requests=32] [--repeats=3] [--idle-ms=1000] [--seconds=15] [--profiles=chat-short,stream256,image2]')
+  console.log('Usage: node scripts/benchmark-performance.mjs --execution=legacy|packages|production --expect-commit=FULL_COMMIT --output=NEW_DIRECTORY [--source=SOURCE_DIRECTORY] [--provider-build=COMPLETED_BUILD_DIRECTORY] [--mode=all|micro|measure|profile] [--cases=chat-short,stream256,...] [--requests=32] [--repeats=3] [--idle-ms=1000] [--seconds=15] [--profiles=chat-short,stream256,image2]')
   process.exit(0)
 }
 const integer = (name, fallback, max) => {
@@ -67,6 +68,9 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const text = (command, argv, cwd = root) => execFileSync(command, argv, { cwd, env, encoding: 'utf8', maxBuffer: 64 << 20 }).trim()
 if (text('git', ['rev-parse', 'HEAD']) !== expectedCommit) throw new Error('Source commit does not match --expect-commit')
 env.ELYSIA_CONVERSION_HTTP_EXECUTION = execution
+const providerBuild = option('provider-build', '')
+const provider = providerBuild ? await loadConversionProvider(providerBuild) : null
+if (provider) Object.assign(env, conversionProviderEnvironment(provider))
 await mkdir(output, { recursive: true })
 if ((await readdir(output)).length) throw new Error('Use a new, empty output directory to preserve matching evidence')
 const binary = join(output, platform() === 'win32' ? 'server.test.exe' : 'server.test')
@@ -82,6 +86,7 @@ const report = {
   go: text('go', ['version']), goEnvironment: JSON.parse(text('go', ['env', '-json', 'GOOS', 'GOARCH', 'GOAMD64', 'CGO_ENABLED', 'GOEXPERIMENT'])),
   cpu: cpus()[0]?.model, logicalCPUs: cpus().length, totalMemoryBytes: totalmem(), platform: platform(), architecture: arch(),
   runtime: { GOMAXPROCS: env.GOMAXPROCS, GOGC: env.GOGC, GOMEMLIMIT: env.GOMEMLIMIT, pgo: 'off', tags, httpFramework: framework, transport: framework === 'hertz' ? 'standard' : 'net/http' },
+  provider,
   settings: { mode, execution, selected, profiles, requests, repeats, idleMS, seconds, sampleIntervalMS: 20 }, steps: [], results: [],
 }
 await writeFile(join(output, 'source.patch'), text('git', ['diff', '--binary', 'HEAD']) + '\n')

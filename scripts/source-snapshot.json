@@ -891,6 +891,8 @@
     "backend/server/conversion_policy.go",
     "backend/server/conversion_policy_admin.go",
     "backend/server/conversion_probe.go",
+    "backend/server/conversion_provider_command_test.go",
+    "backend/server/conversion_provider_test.go",
     "backend/server/cross_protocol_tools_e2e_test.go",
     "backend/server/custom_cumulative_v2_test.go",
     "backend/server/custom_protocol_admin.go",
