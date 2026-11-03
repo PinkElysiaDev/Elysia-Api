@@ -84,12 +84,12 @@ func TestCollectorDeferredLogprobsMatchImmediateObservation(t *testing.T) {
 							return
 						}
 						if event.Type == ItemFinished {
-							node, ordinal, ok := actual.CompletedNode(event)
-							wantNode, wantOrdinal, wantOK := reference.CompletedNode(event)
+							node, ordinal, ok, err := actual.CompletedNode(event)
+							wantNode, wantOrdinal, wantOK, wantErr := reference.CompletedNode(event)
 							wire, _ := EncodeValue(node)
 							wantWire, _ := EncodeValue(wantNode)
-							if wire != wantWire || ordinal != wantOrdinal || ok != wantOK {
-								t.Fatal("completed node differs")
+							if err != nil || wantErr != nil || wire != wantWire || ordinal != wantOrdinal || ok != wantOK {
+								t.Fatal("completed node differs", err, wantErr)
 							}
 						}
 					}

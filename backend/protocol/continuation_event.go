@@ -17,31 +17,48 @@ type continuationEventObservation struct {
 	entity   *continuationEntity
 }
 
-func (entity *continuationEntity) complete(node Node) {
-	entity.isComplete = true
-	if HasContinuationState(node) {
-		entity.digest = ContinuationNodeDigest(node)
+func (collector *ResponseCollector) completeContinuation(entity *continuationEntity, node Node) error {
+	if entity.isComplete {
+		return nil
 	}
+	var digest string
+	if HasContinuationState(node) {
+		digest = ContinuationNodeDigest(node)
+	}
+	if err := collector.checkRetainedBytes(collector.bytes + len(digest)); err != nil {
+		collector.failure = err
+		return err
+	}
+	collector.proofBytes += len(digest)
+	collector.bytes += len(digest)
+	collector.retention.commit(collector.ownedItems(), collector.bytes)
+	entity.digest, entity.isComplete = digest, true
+	return nil
 }
 
 // BindContinuationEvent associates an already consumed source event with the
 // collector's entity. Call it after capturing any newly completed nodes.
-func (collector *ResponseCollector) BindContinuationEvent(event Event, binding *ContinuationBinding) Event {
+func (collector *ResponseCollector) BindContinuationEvent(event Event, binding *ContinuationBinding) (Event, error) {
 	if binding == nil {
-		return event
+		return event, nil
+	}
+	if collector.failure != nil {
+		return Event{}, collector.failure
 	}
 	if event.Type == ResponseFinished {
 		for _, position := range collector.items {
 			if entity := position.continuation; entity != nil && !entity.isComplete {
-				entity.complete(*collector.item(entity.key))
+				if err := collector.completeContinuation(entity, *collector.item(entity.key)); err != nil {
+					return Event{}, err
+				}
 			}
 		}
-		return event
+		return event, nil
 	}
 	switch event.Type {
 	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
 	default:
-		return event
+		return event, nil
 	}
 	key, err := collector.replay.itemKey(event)
 	if err != nil {
@@ -53,14 +70,14 @@ func (collector *ResponseCollector) BindContinuationEvent(event Event, binding *
 		position = collector.items[key]
 	}
 	if collector.replay.items[key].kind == MessageNode {
-		return event
+		return event, nil
 	}
 	if position.continuation == nil {
 		position.continuation = &continuationEntity{binding: binding, key: key}
 		collector.items[key] = position
 	}
 	event.continuation = position.continuation
-	return event
+	return event, nil
 }
 
 func sameContinuationEvent(left, right Event) bool {

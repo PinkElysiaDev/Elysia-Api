@@ -34,9 +34,9 @@ func TestCollectorObservationBoundaries(t *testing.T) {
 	}
 	end := messageEvent(ItemFinished, "text", "", &Node{Kind: TextNode, Payload: StringValue(text)})
 	consume(end)
-	node, ordinal, ok := collector.CompletedNode(end)
-	if !ok || ordinal != 0 || node.Payload != StringValue(text) {
-		t.Fatal("completed node lost text")
+	node, ordinal, ok, err := collector.CompletedNode(end)
+	if err != nil || !ok || ordinal != 0 || node.Payload != StringValue(text) {
+		t.Fatal("completed node lost text", err)
 	}
 	consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue(text)}}}})
 	response, err := collector.Finish()
@@ -116,7 +116,9 @@ func BenchmarkAlgorithmMessageCompletion(b *testing.B) {
 					if _, _, err := c.Consume(e); err != nil {
 						b.Fatal(err)
 					}
-					c.CompletedNode(e)
+					if _, _, _, err := c.CompletedNode(e); err != nil {
+						b.Fatal(err)
+					}
 				}
 			}
 		})

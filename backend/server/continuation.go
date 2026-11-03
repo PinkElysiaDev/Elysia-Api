@@ -52,6 +52,7 @@ func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candida
 		return &gatewayContinuation{identity: candidate.compiled.Identity(), strict: policy.Policy.Mode == "strict", sink: sink}, nil
 	}
 	g := newContinuationOwner(codec, token, plan, candidate, sink)
+	g.saved = map[string]bool{}
 	switch plan.ingress.Identity().Family {
 	case "claude", "openai_chat", "openai_responses":
 	default:
@@ -61,7 +62,7 @@ func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candida
 }
 
 func newContinuationOwner(codec *protocol.ContinuationCodec, token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) *gatewayContinuation {
-	g := &gatewayContinuation{codec: codec, session: plan.session, scope: candidate.scope, identity: candidate.compiled.Identity(), settings: *candidate.conversion.Policy.Continuation, strict: candidate.conversion.Policy.Mode == "strict", saved: map[string]bool{}, restored: map[string]bool{}, sink: sink}
+	g := &gatewayContinuation{codec: codec, session: plan.session, scope: candidate.scope, identity: candidate.compiled.Identity(), settings: *candidate.conversion.Policy.Continuation, strict: candidate.conversion.Policy.Mode == "strict", restored: map[string]bool{}, sink: sink}
 	if codec != nil {
 		sum := sha256.Sum256([]byte(token))
 		g.owner = codec.Digest(hex.EncodeToString(sum[:]))

@@ -149,9 +149,9 @@ func TestCollectorServerSnapshotsOwnArtifactsAndInput(t *testing.T) {
 	node.Resources[0].ID = StringValue("mutated")
 	node.Native.Value = StringValue("mutated")
 	node.Attributes["outputs_shape"] = StringValue("mutated")
-	completed, _, ok := collector.CompletedNode(event)
-	if !ok || !completed.Input.Value.IsString("print(1)") || !completed.Children[0].Payload.IsString("tool log") || !completed.Resources[0].ID.IsString("container") || !completed.Native.Value.IsObject() || !completed.Attributes["outputs_shape"].IsString("array") {
-		t.Fatal("server snapshot retained mutable caller containers", completed)
+	completed, _, ok, err := collector.CompletedNode(event)
+	if err != nil || !ok || !completed.Input.Value.IsString("print(1)") || !completed.Children[0].Payload.IsString("tool log") || !completed.Resources[0].ID.IsString("container") || !completed.Native.Value.IsObject() || !completed.Attributes["outputs_shape"].IsString("array") {
+		t.Fatal("server snapshot retained mutable caller containers", completed, err)
 	}
 	completed.Native.Value = StringValue("changed completion copy")
 	consume(Event{SchemaVersion: ProtocolCoreVersion, Type: ResponseFinished})

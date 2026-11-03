@@ -25,7 +25,7 @@ func (collector *ResponseCollector) bindStreamBudget(budget *StreamBudget) error
 }
 
 func (collector *ResponseCollector) ownedItems() int {
-	return collector.snapshotItems + len(collector.response.Metadata) + len(collector.response.Attributes) + len(collector.unmapped) + collector.metadataItems
+	return collector.snapshotItems + len(collector.response.Metadata) + len(collector.response.Attributes) + len(collector.unmapped) + collector.metadataItems + collector.usageItems
 }
 
 func (binding *ContinuationBinding) bindStreamBudget(budget *StreamBudget) error {

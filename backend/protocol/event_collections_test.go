@@ -88,7 +88,9 @@ func TestReasoningCollectorSeparatesIncrementalCollections(t *testing.T) {
 			t.Fatalf("reasoning exposed as %s", kind)
 		}
 		observed.WriteString(delta)
-		if node, ordinal, ok := collector.CompletedNode(event); ok {
+		if node, ordinal, ok, err := collector.CompletedNode(event); err != nil {
+			t.Fatal(err)
+		} else if ok {
 			completed++
 			if node.Kind != ReasoningNode || ordinal != 0 || len(node.Children) != 2 || len(node.ReasoningContent) != 1 {
 				t.Fatalf("invalid continuation: %+v, %d", node, ordinal)

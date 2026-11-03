@@ -35,9 +35,9 @@ func TestCollectorAppendsDeclaredMetadataArrays(t *testing.T) {
 	if _, _, err := collector.Consume(finish); err != nil {
 		t.Fatal(err)
 	}
-	node, _, ok := collector.CompletedNode(finish)
-	if !ok || len(node.Metadata) != 2 {
-		t.Fatalf("completed metadata: %+v", node)
+	node, _, ok, err := collector.CompletedNode(finish)
+	if err != nil || !ok || len(node.Metadata) != 2 {
+		t.Fatalf("completed metadata: %+v, %v", node, err)
 	}
 	for _, metadata := range node.Metadata {
 		if metadata.Update != "" || metadata.Value.JSONString() != "[0,1,2,3,4,5,6,7]" {

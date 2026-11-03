@@ -90,7 +90,9 @@ func TestMessageCollectorThinkingAndToolChildren(t *testing.T) {
 		if delta != "" && kind != ReasoningNode && kind != TextNode {
 			t.Fatal("tool input became assistant output", kind, delta)
 		}
-		if node, ordinal, ok := collector.CompletedNode(event); ok {
+		if node, ordinal, ok, err := collector.CompletedNode(event); err != nil {
+			t.Fatal(err)
+		} else if ok {
 			if ordinal != completed || node.Kind != expectedKinds[completed] {
 				t.Fatal("completed child lost its kind or continuation position", node.Kind, ordinal, completed)
 			}
@@ -132,7 +134,9 @@ func TestMessageCollectorBoundariesAndContinuationOrdinals(t *testing.T) {
 		if _, _, err := c.Consume(e); err != nil {
 			t.Fatal(err)
 		}
-		if _, ordinal, ok := c.CompletedNode(e); ok {
+		if _, ordinal, ok, err := c.CompletedNode(e); err != nil {
+			t.Fatal(err)
+		} else if ok {
 			ordinals = append(ordinals, ordinal)
 		}
 	}
@@ -169,7 +173,7 @@ func TestContinuationOrdinalWaitsForEarlierOpenMessage(t *testing.T) {
 	if _, _, err := c.Consume(e); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := c.CompletedNode(e); ok {
-		t.Fatal("persisted an unstable leaf ordinal")
+	if _, _, ok, err := c.CompletedNode(e); err != nil || ok {
+		t.Fatal("persisted an unstable leaf ordinal", err)
 	}
 }

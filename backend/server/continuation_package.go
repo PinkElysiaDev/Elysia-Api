@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -50,8 +49,7 @@ func (s *Server) capturePackageContinuationNode(ctx context.Context, g *gatewayC
 		return g.warning("signature recovery is disabled")
 	}
 	digest := protocol.ContinuationNodeDigest(node)
-	key := fmt.Sprintf("%d:%s", ordinal, digest)
-	if g.saved[key] {
+	if g.binding.HasCaptured(ordinal, digest) {
 		return nil
 	}
 	id, err := protocol.NewContinuationID()
@@ -73,9 +71,5 @@ func (s *Server) capturePackageContinuationNode(ctx context.Context, g *gatewayC
 			return g.warning("persistent continuation write failed")
 		}
 	}
-	if err := g.binding.Append(sealed); err != nil {
-		return err
-	}
-	g.saved[key] = true
-	return nil
+	return g.binding.Append(sealed)
 }

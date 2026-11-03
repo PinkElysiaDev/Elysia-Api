@@ -33,6 +33,8 @@ type ResponseCollector struct {
 	unmappedBytes                int
 	headerBaseBytes              int
 	headerBytes, snapshotItems   int
+	proofBytes                   int
+	usageBytes, usageItems       int
 	failure                      error
 	hasResult                    bool
 	isReleased                   bool
@@ -67,21 +69,26 @@ func (collector *ResponseCollector) materializeTexts() {
 }
 
 // CompletedNode returns an isolated snapshot only at an acknowledged item end.
-func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool) {
+// Retaining its continuation proof can fail the shared budget; that failure is
+// distinct from a node whose final ordinal is not yet known.
+func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool, error) {
+	if collector.failure != nil {
+		return Node{}, 0, false, collector.failure
+	}
 	if event.Type != ItemFinished {
-		return Node{}, 0, false
+		return Node{}, 0, false, nil
 	}
 	key, err := collector.replay.itemKey(event)
 	if err != nil {
-		return Node{}, 0, false
+		return Node{}, 0, false, nil
 	}
 	position, ok := collector.items[key]
 	if !ok || position.collection != "" {
-		return Node{}, 0, false
+		return Node{}, 0, false, nil
 	}
 	node := collector.item(key)
 	if node.Kind == MessageNode {
-		return Node{}, 0, false
+		return Node{}, 0, false, nil
 	}
 	top := position.index
 	if position.parent != "" {
@@ -96,7 +103,7 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 		index := len(collector.ordinals) - 1
 		previous := collector.replay.items[collector.topKeys[index]]
 		if previous != nil && previous.kind == MessageNode && !previous.isFinished {
-			return Node{}, 0, false
+			return Node{}, 0, false, nil
 		}
 		n := collector.response.Content[index]
 		count := 1
@@ -112,12 +119,14 @@ func (collector *ResponseCollector) CompletedNode(event Event) (Node, int, bool)
 	collector.materializeText(key)
 	collector.materializeItemMetadata(key)
 	if position.continuation != nil {
-		position.continuation.complete(*node)
+		if err := collector.completeContinuation(position.continuation, *node); err != nil {
+			return Node{}, 0, false, err
+		}
 	}
 	if node.Kind == ServerToolNode {
-		return cloneServerTool(node), ordinal, true
+		return cloneServerTool(node), ordinal, true, nil
 	}
-	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true
+	return CanonicalReasoning(cloneNodes([]Node{*node})[0]), ordinal, true, nil
 }
 
 func (collector *ResponseCollector) item(key string) *Node {
@@ -562,7 +571,10 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 	}
 	collector.materializeTexts()
 	collector.materializeMetadata()
-	collector.response.Usage = collector.replay.Usage()
+	if err := collector.collectUsage(); err != nil {
+		collector.failure = err
+		return nil, err
+	}
 	for i := range collector.response.Content {
 		collector.response.Content[i] = CanonicalReasoning(collector.response.Content[i])
 	}

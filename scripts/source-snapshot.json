@@ -349,6 +349,7 @@
     "backend/protocol/continuation_event.go",
     "backend/protocol/continuation_input.go",
     "backend/protocol/continuation_package_test.go",
+    "backend/protocol/continuation_retention_test.go",
     "backend/protocol/continuation_verification.go",
     "backend/protocol/contract.go",
     "backend/protocol/control_conversion.go",

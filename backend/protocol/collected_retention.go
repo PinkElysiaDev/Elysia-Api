@@ -17,13 +17,12 @@ func (collector *ResponseCollector) setResponse(response Response, isSnapshot bo
 	retained := collector.bytes - collector.headerBytes + headerBytes
 	snapshotItems := collector.snapshotItems
 	if isSnapshot {
-		snapshot := response
-		snapshot.Usage = nil // Replay owns the merged usage, including later tails.
-		complete, err := measureSemanticValue(&snapshot, collector.replay.limits)
+		response.Usage = nil // Replay owns the merged usage until Finish copies it.
+		complete, err := measureSemanticValue(&response, collector.replay.limits)
 		if err != nil {
 			return err
 		}
-		retained = complete.bytes + collector.unmappedBytes
+		retained = complete.bytes + collector.unmappedBytes + collector.proofBytes
 		snapshotItems = countCollectedNodes(response.Content)
 		if collector.replay.isTerminal {
 			// The terminal was compared with the streamed content. Its nodes
@@ -35,11 +34,16 @@ func (collector *ResponseCollector) setResponse(response Response, isSnapshot bo
 		return err
 	}
 	additional := snapshotItems - collector.snapshotItems + len(response.Metadata) + len(response.Attributes) - len(collector.response.Metadata) - len(collector.response.Attributes)
+	if isSnapshot {
+		additional -= collector.usageItems
+	}
 	if err := collector.reserveItems(additional); err != nil {
 		return err
 	}
 	if !isSnapshot {
 		retained = collector.bytes - collector.headerBytes + headerBytes
+	} else {
+		collector.usageBytes, collector.usageItems = 0, 0
 	}
 	collector.bytes, collector.headerBytes, collector.snapshotItems = retained, headerBytes, snapshotItems
 	collector.response = response
@@ -55,7 +59,7 @@ func countCollectedNodes(nodes []Node) int {
 }
 
 func (collector *ResponseCollector) retainedItems() int {
-	return collector.replay.retainedItems() + collector.snapshotItems + len(collector.response.Metadata) + len(collector.response.Attributes) + len(collector.unmapped)
+	return collector.replay.retainedItems() + collector.snapshotItems + len(collector.response.Metadata) + len(collector.response.Attributes) + len(collector.unmapped) + collector.usageItems
 }
 
 func (collector *ResponseCollector) reserveItems(additional int) error {
@@ -84,11 +88,35 @@ func (collector *ResponseCollector) checkRetention() error {
 }
 
 func (collector *ResponseCollector) checkRetainedBytes(bytes int) error {
+	return collector.checkRetainedState(collector.ownedItems(), bytes)
+}
+
+func (collector *ResponseCollector) checkRetainedState(items, bytes int) error {
 	if bytes+collector.replay.retainedBytes() > collector.limit {
 		return streamIssue(LimitExceeded, "/response", "collected response and replay state exceed buffer limit")
 	}
 	if collector.retention.budget != nil {
-		return collector.retention.check(collector.ownedItems(), bytes)
+		return collector.retention.check(items, bytes)
 	}
+	return nil
+}
+
+func (collector *ResponseCollector) collectUsage() error {
+	items := 0
+	if collector.replay.usage != nil {
+		items = len(collector.replay.usage.Details)
+	}
+	additional := items - collector.usageItems
+	if err := collector.reserveItems(additional); err != nil {
+		return err
+	}
+	bytes := collector.bytes - collector.usageBytes + collector.replay.usageBytes
+	if err := collector.checkRetainedState(collector.ownedItems()+additional, bytes); err != nil {
+		return err
+	}
+	collector.response.Usage = collector.replay.Usage()
+	collector.usageBytes, collector.usageItems = collector.replay.usageBytes, items
+	collector.bytes = bytes
+	collector.retention.commit(collector.ownedItems(), bytes)
 	return nil
 }

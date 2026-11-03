@@ -9,11 +9,17 @@ import (
 // supplied by a protocol program or reconstructed from ordinary JSON.
 type SealedContinuation struct {
 	token, id string
+	identity  continuationIdentity
 	source    Identity
 	scope     Scope
 	keys      []string
 	bytes     int
 	persisted bool
+}
+
+type continuationIdentity struct {
+	ordinal int
+	digest  string
 }
 
 // SealState seals the existing record format and retains only bounded proof metadata.
@@ -22,7 +28,7 @@ func (codec *ContinuationCodec) SealState(record ContinuationRecord, limit int) 
 	if err != nil {
 		return nil, err
 	}
-	state := &SealedContinuation{token: token, id: record.ID, source: record.Protocol, scope: record.Scope, bytes: len(token) + len(record.ID)}
+	state := &SealedContinuation{token: token, id: record.ID, identity: continuationIdentity{record.Ordinal, record.Digest}, source: record.Protocol, scope: record.Scope, bytes: len(token) + len(record.ID) + len(record.Digest)}
 	keys := make(map[string]bool, len(record.Node.Resources))
 	for _, resource := range record.Node.Resources {
 		if IsContinuationResource(resource) {
@@ -53,6 +59,7 @@ type ContinuationBinding struct {
 	scope                                 Scope
 	plan                                  *compiledContinuationOutput
 	entries                               []*SealedContinuation
+	captured                              map[continuationIdentity]bool
 	resources                             map[string]*SealedContinuation
 	bytes, committed, batchEnd, confirmed int
 	isRendering                           bool
@@ -97,14 +104,22 @@ func (binding *ContinuationBinding) Append(state *SealedContinuation) error {
 	}
 	if binding.resources == nil {
 		binding.resources = map[string]*SealedContinuation{}
+		binding.captured = map[continuationIdentity]bool{}
 	}
 	for _, key := range state.keys {
 		binding.resources[key] = state
 	}
 	binding.entries = append(binding.entries, state)
+	binding.captured[state.identity] = true
 	binding.bytes += state.bytes
 	binding.retention.commit(len(binding.entries), binding.bytes)
 	return nil
+}
+
+// HasCaptured reports an authenticated entry already retained for this output
+// position. The index shares the sealed record's identity and budget.
+func (binding *ContinuationBinding) HasCaptured(ordinal int, digest string) bool {
+	return binding.captured[continuationIdentity{ordinal, digest}]
 }
 
 // WithContinuation binds host-created recovery facts and the caller's fixed requirement.
@@ -178,7 +193,7 @@ func (binding *ContinuationBinding) AbortDelivery() {
 // persistence receipts and the committed delivery count remain unchanged.
 func (binding *ContinuationBinding) Release() {
 	binding.AbortDelivery()
-	binding.entries, binding.resources = nil, nil
+	binding.entries, binding.resources, binding.captured = nil, nil, nil
 	binding.bytes = 0
 	binding.retention.release()
 }

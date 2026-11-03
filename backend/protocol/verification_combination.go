@@ -343,7 +343,9 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 				if _, _, err := collector.Consume(source); err != nil {
 					return err
 				}
-				if node, _, ok := collector.CompletedNode(source); ok {
+				if node, _, ok, err := collector.CompletedNode(source); err != nil {
+					return err
+				} else if ok {
 					if err := evidence.capture(ctx, []Node{node}); err != nil {
 						return err
 					}
@@ -357,7 +359,10 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 						return err
 					}
 				}
-				event = collector.BindContinuationEvent(event, evidence.binding)
+				event, err = collector.BindContinuationEvent(event, evidence.binding)
+				if err != nil {
+					return err
+				}
 			}
 			queued, err := eventState.PushContext(ctx, event)
 			if err != nil {

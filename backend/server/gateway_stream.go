@@ -252,7 +252,9 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 				}
 				stream.collector = nil
 			} else {
-				if node, ordinal, ok := stream.collector.CompletedNode(event); ok {
+				if node, ordinal, ok, err := stream.collector.CompletedNode(event); err != nil {
+					return err
+				} else if ok {
 					if err := stream.server.captureContinuationNode(stream.ctx, stream.candidate.continuation, node, ordinal); err != nil {
 						return err
 					}
@@ -270,7 +272,10 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 		}
 		projected := deliveryEvents[eventIndex]
 		if stream.collector != nil && stream.candidate.continuation.isPackage {
-			projected = stream.collector.BindContinuationEvent(projected, stream.candidate.continuation.binding)
+			projected, err = stream.collector.BindContinuationEvent(projected, stream.candidate.continuation.binding)
+			if err != nil {
+				return err
+			}
 		}
 		queued, e := stream.eventState.PushContext(stream.ctx, projected)
 		if e != nil {
