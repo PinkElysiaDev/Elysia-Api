@@ -37,6 +37,11 @@ func (collector *ResponseCollector) deferMetadataDelta(key string, event Event) 
 		}
 		position := metadataPosition(collector.item(key).Metadata, metadata)
 		if position >= 0 {
+			// A pending batch holds immutable fragments. Its initial snapshot
+			// already passed the same shape check before the batch was created.
+			if pending := collector.pendingMetadata(key, position); pending != nil && len(pending.deltas) != 0 && pending.metadata.Update == metadata.Update {
+				continue
+			}
 			current := collector.item(key).Metadata[position].Value
 			if metadata.Update == "append" && !current.IsArray() {
 				return false, streamIssue(InvalidInput, metadata.Path, "array metadata cannot append to a non-array snapshot")
@@ -52,6 +57,15 @@ func (collector *ResponseCollector) deferMetadataDelta(key string, event Event) 
 		}
 	}
 	return true, nil
+}
+
+func (collector *ResponseCollector) pendingMetadata(key string, position int) *collectedMetadata {
+	for _, pending := range collector.metadataDeltas[key] {
+		if pending.index == position {
+			return pending
+		}
+	}
+	return nil
 }
 
 func (collector *ResponseCollector) appendMetadataDelta(key string, metadata ResponseMetadata) error {
@@ -70,13 +84,7 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 	if metadata.Value.Len() > collector.limit {
 		return streamIssue(LimitExceeded, metadata.Path, "metadata delta exceeds the collection limit")
 	}
-	var pending *collectedMetadata
-	for _, candidate := range collector.metadataDeltas[key] {
-		if candidate.index == position {
-			pending = candidate
-			break
-		}
-	}
+	pending := collector.pendingMetadata(key, position)
 	if pending == nil {
 		if collector.metadataDeltas == nil {
 			collector.metadataDeltas = make(map[string][]*collectedMetadata)
@@ -145,10 +153,12 @@ func (collector *ResponseCollector) materializeItemMetadata(key string) {
 			metadata.Value, _ = mergeArrayDeltas(item.Metadata[pending.index].Value, pending.deltas)
 			metadata.Update = ""
 		} else {
-			previous, _ := EncodeValue(item.Metadata[pending.index])
-			metadata.Value = MergeLogprobDeltas(item.Metadata[pending.index].Value, pending.deltas, metadata.Codec)
-			next, _ := EncodeValue(metadata)
-			charge := next.Len() - previous.Len()
+			previous := item.Metadata[pending.index]
+			metadata.Value = MergeLogprobDeltas(previous.Value, pending.deltas, metadata.Codec)
+			// The merger already returned normalized JSON. Only the value and
+			// diagnostic strings can differ within this metadata identity.
+			charge := metadata.Value.Len() - len(compactValueString(previous.Value.raw))
+			charge += jsonStringBytes(metadata.Path) + jsonStringBytes(metadata.SourceCodec) - jsonStringBytes(previous.Path) - jsonStringBytes(previous.SourceCodec)
 			collector.bytes += charge - pending.charged
 			pending.charged = charge
 		}
