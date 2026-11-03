@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,19 +24,7 @@ type protocolAuthorContext struct {
 func TestAgentProtocolPackageAuthoringAndCatalog(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	tctx := &protocolAuthorContext{}
-	document := protocol.ProtocolPackage{SchemaVersion: protocol.ProtocolPackageSchemaVersion}
-	for _, source := range []struct {
-		name   string
-		target any
-	}{{"spec", &document.Spec}, {"mapping", &document.Mapping}} {
-		raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "sessions", "session-alpha", source.name+".json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := sonic.ConfigStd.Unmarshal(raw, source.target); err != nil {
-			t.Fatal(err)
-		}
-	}
+	document := loadGatewayPackage(t, "testdata/sessions/session-alpha")
 	raw, err := protocol.EncodeValue(document)
 	if err != nil {
 		t.Fatal(err)

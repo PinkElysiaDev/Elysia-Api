@@ -14,18 +14,18 @@ func TestProtocolWorkflowPreviewUsesSessionAndTaskRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"session-alpha", "job-beta"} {
-		definition := loadGatewayDefinition(t, name)
-		value, err := protocol.EncodeValue(definition)
+	for _, directory := range []string{"sessions/session-alpha", "tasks/job-beta"} {
+		document := loadGatewayPackage(t, "testdata/"+directory)
+		value, err := protocol.EncodeValue(document)
 		if err != nil {
 			t.Fatal(err)
 		}
 		input := protocol.PreviewInput{Definition: value}
-		if name == "session-alpha" {
+		if document.Spec.ID == "session-alpha" {
 			input.Mode = "session"
-			input.Sample = definition.SessionSamples[0].ID
+			input.Sample = document.Mapping.SessionSamples[0].ID
 		} else {
-			sample := definition.TaskSamples[0]
+			sample := document.Mapping.TaskSamples[0]
 			input.Mode, input.Operation, input.Kind, input.Purpose, input.Input = "task", sample.Operation, sample.Kind, sample.Purpose, sample.Input
 		}
 		expected := service.PreviewWorkflow(t.Context(), input)

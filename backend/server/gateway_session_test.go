@@ -56,9 +56,9 @@ func readSessionEvents(t *testing.T, ctx context.Context, connection *websocket.
 func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
-	ingress := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
-	definition := loadGatewayDefinition(t, "session-beta")
-	upstream := activateGatewayDefinition(t, server, definition)
+	ingress := activateGatewayPackage(t, server, loadGatewayPackage(t, "testdata/sessions/session-alpha"))
+	definition := loadGatewayPackage(t, "testdata/sessions/session-beta")
+	upstream := activateGatewayPackage(t, server, definition)
 	providerDone := make(chan error, 1)
 	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Query().Get("deployment") != "upstream-model" || request.URL.Query().Get("key") != "" || request.Header.Get("Authorization") != "" {
@@ -74,7 +74,7 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 		defer connection.CloseNow()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		for _, step := range definition.SessionSamples[0].Steps {
+		for _, step := range definition.Mapping.SessionSamples[0].Steps {
 			if step.Direction == protocol.DecodeEvent {
 				if err := connection.Write(ctx, websocket.MessageText, step.Input.Bytes()); err != nil {
 					providerDone <- err
@@ -124,8 +124,8 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 		t.Fatalf("gateway dial: %v %+v", err, response)
 	}
 	defer connection.CloseNow()
-	clientDefinition := ingress.Definition()
-	for _, step := range clientDefinition.SessionSamples[0].Steps {
+	clientDefinition, _ := ingress.Package()
+	for _, step := range clientDefinition.Mapping.SessionSamples[0].Steps {
 		if step.Direction == protocol.DecodeEvent {
 			events := readSessionEvents(t, ctx, connection, ingress, false)
 			var expected []protocol.Event
@@ -199,7 +199,7 @@ func TestGatewayWebSocketIndependentProtocolsAndUsage(t *testing.T) {
 func TestGatewayWebSocketRejectsAuthAndOriginBeforeUpstream(t *testing.T) {
 	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
-	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
+	compiled := activateGatewayPackage(t, server, loadGatewayPackage(t, "testdata/sessions/session-alpha"))
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -230,7 +230,7 @@ func TestGatewayWebSocketRejectsAuthAndOriginBeforeUpstream(t *testing.T) {
 func TestGatewayWebSocketLateErrorClosesWithoutReplay(t *testing.T) {
 	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
-	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "session-alpha"))
+	compiled := activateGatewayPackage(t, server, loadGatewayPackage(t, "testdata/sessions/session-alpha"))
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)

@@ -5,34 +5,47 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
 var gatewayPackageNames = []string{"openai-chat", "openai-responses", "anthropic", "google-generate-content"}
 
+func loadGatewayPackage(t *testing.T, directory string) protocol.ProtocolPackage {
+	t.Helper()
+	document := protocol.ProtocolPackage{SchemaVersion: protocol.ProtocolPackageSchemaVersion}
+	for _, source := range []struct {
+		name   string
+		target any
+	}{{"spec", &document.Spec}, {"mapping", &document.Mapping}} {
+		raw, err := os.ReadFile(filepath.Join("..", "protocol", directory, source.name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sonic.ConfigStd.Unmarshal(raw, source.target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return document
+}
+
+func activateGatewayPackage(t *testing.T, server *Server, document protocol.ProtocolPackage) *protocol.Compiled {
+	t.Helper()
+	raw := mustEncodedProtocolValue(t, document)
+	compiled := seedGatewayProtocol(t, server, document.Spec.ID, raw.Bytes(), true)
+	if compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+		t.Fatal("package fixture selected a legacy core")
+	}
+	return compiled
+}
+
 func seedGatewayPackages(t *testing.T, server *Server) map[string]*protocol.Compiled {
 	t.Helper()
 	compiled := make(map[string]*protocol.Compiled, len(gatewayPackageNames))
 	for _, name := range gatewayPackageNames {
-		read := func(part string) protocol.Value {
-			t.Helper()
-			raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "packages", name, part+".json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			value, err := protocol.ParseValue(raw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return value
-		}
-		spec := read("spec")
-		var identity struct{ ID string }
-		if err := spec.Decode(&identity); err != nil {
-			t.Fatal(err)
-		}
-		raw := mustEncodedProtocolValue(t, map[string]any{"schemaVersion": protocol.ProtocolPackageSchemaVersion, "spec": spec, "mapping": read("mapping")})
-		compiled[name] = seedGatewayProtocol(t, server, identity.ID, raw.Bytes(), false)
+		document := loadGatewayPackage(t, filepath.Join("builtin", "packages", name))
+		raw := mustEncodedProtocolValue(t, document)
+		compiled[name] = seedGatewayProtocol(t, server, document.Spec.ID, raw.Bytes(), false)
 		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse, protocol.DecodeEvent, protocol.EncodeEvent} {
 			if compiled[name].Codec(direction) != "" {
 				t.Fatal("package used a legacy codec", name, direction)
