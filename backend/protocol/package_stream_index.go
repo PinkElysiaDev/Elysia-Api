@@ -128,9 +128,8 @@ func (transaction *packageStreamTransaction) rememberIndex(state evaluation, slo
 		items++
 		bytes += len(key)
 	}
-	retainedItems := transaction.owner.packageStateItems + items
-	if retainedItems > state.budget.limits.StateItems {
-		return resourceFailure("stream", "state_items", state.budget.limits.StateItems, retainedItems)
+	if err := transaction.checkRetainedItems(items - transaction.indexItemDelta); err != nil {
+		return err
 	}
 	if err := transaction.checkRetainedBytes(bytes - transaction.indexByteDelta); err != nil {
 		return err

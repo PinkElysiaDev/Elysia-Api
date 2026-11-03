@@ -236,7 +236,7 @@ func (plan *compiledOutputPlan) trackStreamTool(state evaluation) (plannedOutput
 		transaction.toolCallBytes += callBytes
 	}
 	if isNew {
-		if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+		if err := transaction.reserveTrackChannel(key); err != nil {
 			return plannedOutput{}, err
 		}
 	}

@@ -48,10 +48,21 @@ func (validation *WireStreamValidation) consumeDeliveryRanges(ctx context.Contex
 	}
 	limits := validation.compiled.limits
 	beforeState, afterState := deliveryEvaluation(ctx, prior, limits), deliveryEvaluation(ctx, after, limits)
-	return consumeRangeDeclarations(&validation.deliveryRanges, declarations, beforeState, afterState, prior == after, limits)
+	if err := consumeRangeDeclarations(&validation.deliveryRanges, declarations, beforeState, afterState, prior == after); err != nil {
+		return err
+	}
+	if ranges := validation.deliveryRanges; ranges != nil {
+		state := validation.packageStream
+		state.rangeItems, state.rangeBytes = ranges.items, ranges.bytes+ranges.stagedBytes
+		if err := state.checkRetainedItems(0, "/delivery"); err != nil {
+			return err
+		}
+		return state.checkRetainedBytes(state.identityBytes, "/delivery")
+	}
+	return nil
 }
 
-func consumeRangeDeclarations(owner **deliveryRangeStream, declarations []compiledDeliveryRange, beforeState, afterState evaluation, unchanged bool, limits Limits) error {
+func consumeRangeDeclarations(owner **deliveryRangeStream, declarations []compiledDeliveryRange, beforeState, afterState evaluation, unchanged bool) error {
 	for channel, declaration := range declarations {
 		beforeTexts, err := declaration.readTexts(beforeState)
 		if err != nil {
@@ -113,12 +124,6 @@ func consumeRangeDeclarations(owner **deliveryRangeStream, declarations []compil
 			}
 			stream.items += len(pending.positions.next.spans) - count
 			stream.stagedBytes += bytes
-		}
-		if stream.items > limits.StateItems {
-			return resourceFailure("delivery", "state_items", limits.StateItems, stream.items)
-		}
-		if bytes := stream.bytes + stream.stagedBytes; bytes > limits.BufferBytes {
-			return resourceFailure("delivery", "state_bytes", limits.BufferBytes, bytes)
 		}
 		references := make(map[[2]string]deliveryRangeObservation, len(beforeRanges))
 		for _, reference := range beforeRanges {

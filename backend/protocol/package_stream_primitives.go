@@ -7,14 +7,16 @@ import (
 
 const streamTrackersPerItem = 8
 
-func (transaction *packageStreamTransaction) reserveTrackChannel(item string, limits Limits) error {
+func (transaction *packageStreamTransaction) reserveTrackChannel(item string) error {
 	base := transaction.primitives()
 	channels := base.trackedItems[item].channels + transaction.trackChannels[item]
-	items := len(base.trackedItems) + transaction.trackItems + base.positionItems + transaction.positionItems
-	if channels == 0 && items >= limits.StateItems {
-		return resourceFailure("stream", "tracked_items", limits.StateItems, items+1)
-	}
 	if channels == 0 {
+		if readItemAlias(base.identities.aliases, transaction.aliasUpdates, item) == "" {
+			if err := transaction.checkRetainedItems(1); err != nil {
+				return err
+			}
+			transaction.primitiveItems++
+		}
 		if err := transaction.checkRetainedBytes(len(item)); err != nil {
 			return err
 		}
@@ -24,9 +26,6 @@ func (transaction *packageStreamTransaction) reserveTrackChannel(item string, li
 		transaction.trackChannels = make(map[string]int)
 	}
 	transaction.trackChannels[item]++
-	if channels == 0 {
-		transaction.trackItems++
-	}
 	return nil
 }
 
@@ -38,6 +37,7 @@ type streamTrackedItem struct {
 }
 
 type packageStreamPrimitives struct {
+	items         int
 	trackedItems  map[string]streamTrackedItem
 	buffers       map[streamTrackKey]*streamBuffer
 	buffered      int
@@ -107,6 +107,12 @@ func (plan *compiledOutputPlan) resolveStreamItem(state evaluation) (plannedOutp
 	if err != nil {
 		return plannedOutput{}, err
 	}
+	if readItemAlias(base.identities.aliases, transaction.aliasUpdates, key) == "" && base.trackedItems[key].channels+transaction.trackChannels[key] == 0 {
+		if err := transaction.checkRetainedItems(1); err != nil {
+			return plannedOutput{}, err
+		}
+		transaction.primitiveItems++
+	}
 	bytes := transaction.aliasBytes
 	for _, alias := range aliases.values[:aliases.count] {
 		bytes += len(alias)
@@ -145,6 +151,7 @@ func (transaction *packageStreamTransaction) commitPrimitives() *packageStreamPr
 	for alias, key := range transaction.aliasUpdates {
 		base.identities.aliases[alias] = key
 	}
+	base.items += transaction.primitiveItems
 	base.aliasBytes += transaction.aliasBytes
 	base.trackedBytes += transaction.trackedBytes
 	base.toolCallBytes += transaction.toolCallBytes

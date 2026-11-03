@@ -103,8 +103,12 @@ func (state *packageStreamValidation) bindKeyedIdentity(index int, identity comp
 	if identity.isUnique && bindings.keys[value] != "" {
 		return state.boundaryIssue(identity.diagnostic, identity.keyPath, "stream identity was reused at another key", nil)
 	}
-	if state.identityItems >= state.limits.StateItems {
-		return state.boundaryIssue(identity.diagnostic, identity.field.path, "stream identity bindings exceed the item limit", resourceFailure("stream", "identity_items", state.limits.StateItems, state.identityItems+1))
+	additional := 1
+	if identity.namespace >= 0 && (state.hasIdentityKey(identity.namespace, key) || state.entities[identity.namespace][key] != nil) {
+		additional = 0
+	}
+	if err := state.checkRetainedItems(additional, identity.field.path); err != nil {
+		return state.boundaryIssue(identity.diagnostic, identity.field.path, "stream identity bindings exceed the item limit", err)
 	}
 	bytes := len(key) + len(value)
 	if err := state.checkRetainedBytes(state.identityBytes+bytes, identity.field.path); err != nil {
@@ -120,14 +124,27 @@ func (state *packageStreamValidation) bindKeyedIdentity(index int, identity comp
 		}
 	}
 	key, value = strings.Clone(key), strings.Clone(value)
+	if identity.namespace >= 0 {
+		if state.identityKeys == nil {
+			state.identityKeys = make([]map[string]bool, len(state.contract.namespaces))
+		}
+		if state.identityKeys[identity.namespace] == nil {
+			state.identityKeys[identity.namespace] = make(map[string]bool)
+		}
+		state.identityKeys[identity.namespace][key] = true
+	}
 	bindings.values[key] = value
 	if identity.isUnique {
 		bindings.keys[value] = key
 	}
 	state.identityBindings[index] = bindings
-	state.identityItems++
+	state.identityItems += additional
 	state.identityBytes += bytes
 	return nil
+}
+
+func (state *packageStreamValidation) hasIdentityKey(namespace int, key string) bool {
+	return state.identityKeys != nil && state.identityKeys[namespace][key]
 }
 
 func (state *packageStreamValidation) boundaryIssue(diagnostic *RejectDiagnostic, path, reason string, cause error) error {

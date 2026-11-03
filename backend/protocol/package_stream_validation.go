@@ -21,7 +21,9 @@ type packageStreamValidation struct {
 	hasPendingSlots                             bool
 	identities                                  []string
 	identityBindings                            []streamIdentityBindings
+	identityKeys                                []map[string]bool
 	identityItems                               int
+	rangeItems, rangeBytes                      int
 	entityIdentityKeys                          map[string]map[string]*wireEntityState
 	accepted, delivered                         streamPosition
 	hasPendingDelivery                          bool
@@ -168,6 +170,14 @@ func (state *packageStreamValidation) retainedSlotBytes() int {
 	}
 	return state.slotBytes
 }
+
+func (state *packageStreamValidation) checkRetainedItems(additional int, path string) error {
+	items := state.entityCount + state.identityItems + state.rangeItems + additional
+	if items > state.limits.StateItems {
+		return state.issue(path, "stream retained state exceeds the item limit", resourceFailure("stream", "state_items", state.limits.StateItems, items))
+	}
+	return nil
+}
 func (state *packageStreamValidation) checkRetainedBytes(identityBytes int, path string) error {
 	return state.checkRetainedState(identityBytes, state.snapshotBytes, path)
 }
@@ -175,7 +185,7 @@ func (state *packageStreamValidation) checkRetainedState(identityBytes, snapshot
 	return state.checkRetainedStateWithSlots(identityBytes, snapshotBytes, state.retainedSlotBytes(), path)
 }
 func (state *packageStreamValidation) checkRetainedStateWithSlots(identityBytes, snapshotBytes, slotBytes int, path string) error {
-	retained := identityBytes + snapshotBytes + slotBytes + state.bufferedBytes
+	retained := identityBytes + snapshotBytes + slotBytes + state.bufferedBytes + state.rangeBytes
 	if retained <= state.limits.BufferBytes {
 		return nil
 	}

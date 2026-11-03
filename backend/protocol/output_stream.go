@@ -27,6 +27,7 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 		if err := validation.deliveryRanges.commit(); err != nil {
 			return err
 		}
+		state.rangeBytes = validation.deliveryRanges.bytes
 	}
 	state.delivered = state.accepted
 	state.deliveredFrameNumber = state.frameNumber
@@ -40,12 +41,14 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 func (validation *WireStreamValidation) AbortDelivery() {
 	validation.deliveryAborted = true
 	if ranges := validation.deliveryRanges; ranges != nil {
-		clear(ranges.pending)
-		ranges.stagedBytes = 0
+		*ranges = deliveryRangeStream{}
 	}
 	if state := validation.packageStream; state != nil {
-		state.hasPendingDelivery = false
-		state.hasRejectedFrame = true
+		// An aborted stream can expose its committed position for diagnostics,
+		// but cannot resume. Entity payloads, aliases and intervals have no owner.
+		*state = packageStreamValidation{contract: state.contract, target: state.target, direction: state.direction, limits: state.limits,
+			accepted: state.delivered, delivered: state.delivered, frameNumber: state.frameNumber, deliveredFrameNumber: state.deliveredFrameNumber,
+			identityBytes: len(state.delivered.responseID), hasRejectedFrame: true}
 	}
 }
 

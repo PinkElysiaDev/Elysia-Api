@@ -693,6 +693,7 @@
     "backend/protocol/stream_disposition_test.go",
     "backend/protocol/stream_json.go",
     "backend/protocol/stream_json_test.go",
+    "backend/protocol/stream_retention_budget_test.go",
     "backend/protocol/stream_sequence.go",
     "backend/protocol/stream_state.go",
     "backend/protocol/stream_state_test.go",

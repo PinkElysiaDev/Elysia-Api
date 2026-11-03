@@ -77,6 +77,7 @@ type compiledPackageStreamContract struct {
 	state                                                          *compiledPackageState
 }
 type compiledStreamIdentity struct {
+	namespace       int
 	field           streamField
 	kind            JSONType
 	when, key       *compiledOutputPlan
@@ -231,7 +232,7 @@ func (compiler *packageStreamCompiler) compileIdentities(identities []ProtocolSt
 			return err
 		}
 		field.fromRoot = true
-		entry := compiledStreamIdentity{field: field, kind: identity.Type, when: condition, isUnique: identity.Unique}
+		entry := compiledStreamIdentity{field: field, kind: identity.Type, when: condition, isUnique: identity.Unique, namespace: -1}
 		if err := compiler.compileIdentitySelection(identity, at, &entry); err != nil {
 			return err
 		}
@@ -249,8 +250,15 @@ func (compiler *packageStreamCompiler) compileIdentitySelection(spec ProtocolStr
 	if err := compiler.compileValue(spec.Value, path+"/value", &identity.field); err != nil {
 		return err
 	}
-	if spec.Key == nil && (spec.Unique || spec.KeyPath != "") {
-		return fmt.Errorf("%s: unique and keyPath require a key expression", path)
+	if spec.Key == nil && (spec.Unique || spec.KeyPath != "" || spec.Namespace != "") {
+		return fmt.Errorf("%s: unique, keyPath and namespace require a key expression", path)
+	}
+	if spec.Namespace != "" {
+		var exists bool
+		identity.namespace, exists = compiler.contract.namespaceSlots[spec.Namespace]
+		if !exists {
+			return fmt.Errorf("%s/namespace: unknown entity namespace", path)
+		}
 	}
 	if spec.Key != nil {
 		if _, err := compileStreamField(spec.KeyPath, path+"/keyPath", compiler.limits); err != nil {

@@ -28,6 +28,7 @@ type packageStreamState struct {
 	indexes                []map[string]Value
 	indexSources           []map[string]JSONOutput
 	indexItems, indexBytes int
+	items                  int
 	bytes                  int
 	slotBytes              int
 	hasRendered            bool
@@ -45,7 +46,7 @@ type packageStreamTransaction struct {
 	trackChannels                  map[string]int
 	bufferUpdates                  map[streamTrackKey]*pendingStreamBuffer
 	bufferByteDelta                int
-	trackItems                     int
+	primitiveItems                 int
 	toolUpdates                    map[streamTrackKey]*pendingStreamTool
 	toolCallUpdates                map[streamTrackKey]string
 	toolBufferDelta                int
@@ -182,13 +183,6 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 	if transaction == nil {
 		return nil
 	}
-	if ranges := transaction.semanticRanges; ranges != nil {
-		base := transaction.primitives()
-		items := len(base.trackedItems) + transaction.trackItems + base.positionItems + transaction.positionItems + ranges.items
-		if items > state.budget.limits.StateItems {
-			return resourceFailure("stream", "state_items", state.budget.limits.StateItems, items)
-		}
-	}
 	previous := transaction.values()
 	next, bytes, err := evaluatePackageStateSlots(transaction.plan, previous, state)
 	if err != nil {
@@ -260,6 +254,41 @@ func (transaction *packageStreamTransaction) currentSlotBytes() int {
 	return transaction.plan.initialBytes
 }
 
+// Index records, dynamic identities, trackers and interval spans share the
+// owner's budget. Fixed slots and aliases of an existing identity add no item.
+func (transaction *packageStreamTransaction) retainedItems() int {
+	items := transaction.indexItemDelta + transaction.primitiveItems + transaction.positionItems
+	primitives, ranges := transaction.primitiveBase, transaction.semanticRanges
+	if transaction.previous != nil {
+		items += transaction.previous.indexItems
+		if primitives == nil {
+			primitives = transaction.previous.primitives
+		}
+		if ranges == nil {
+			ranges = transaction.previous.semanticRanges
+		}
+	}
+	if primitives != nil {
+		items += primitives.items + primitives.positionItems
+	}
+	if ranges != nil {
+		items += ranges.items
+	}
+	return items
+}
+
+func (transaction *packageStreamTransaction) checkRetainedItems(additional int) error {
+	items := transaction.owner.packageStateItems + transaction.retainedItems() + additional
+	if transaction.previous != nil {
+		items -= transaction.previous.items
+	}
+	limit := transaction.key.compiled.limits.StateItems
+	if items > limit {
+		return resourceFailure("stream", "state_items", limit, items)
+	}
+	return nil
+}
+
 // All retained payloads share one budget. Category deltas keep appending a
 // frame constant-time without granting each table a separate buffer allowance.
 func (transaction *packageStreamTransaction) retainedBytes() int {
@@ -311,10 +340,12 @@ func (transaction *packageStreamTransaction) finish(err error) {
 	}
 	if transaction.previous != nil {
 		transaction.owner.packageStateBytes -= transaction.previous.bytes
+		transaction.owner.packageStateItems -= transaction.previous.items
 	}
-	indexes, items, indexBytes := transaction.commitIndexes()
+	items := transaction.retainedItems()
+	indexes, indexItems, indexBytes := transaction.commitIndexes()
 	indexSources := transaction.commitIndexSources()
-	transaction.owner.packageStateItems += transaction.indexItemDelta
+	transaction.owner.packageStateItems += items
 	primitives := transaction.commitPrimitives()
 	ranges := transaction.semanticRanges
 	if ranges != nil {
@@ -329,7 +360,7 @@ func (transaction *packageStreamTransaction) finish(err error) {
 		semanticRanges: ranges,
 		primitives:     primitives, scope: transaction.scope,
 		slots: transaction.next, slotBytes: transaction.slotBytes,
-		indexes: indexes, indexSources: indexSources, indexItems: items, indexBytes: indexBytes,
+		indexes: indexes, indexSources: indexSources, indexItems: indexItems, indexBytes: indexBytes, items: items,
 		bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal,
 	}
 	transaction.owner.packageStateBytes += transaction.bytes
@@ -339,7 +370,7 @@ func (transaction *packageStreamTransaction) finish(err error) {
 
 func (state *EvaluationState) releasePackageState(key moduleStateKey) {
 	if previous := state.packageStates[key]; previous != nil {
-		state.packageStateItems -= previous.indexItems
+		state.packageStateItems -= previous.items
 		state.packageStateBytes -= previous.bytes
 		delete(state.packageStates, key)
 	}

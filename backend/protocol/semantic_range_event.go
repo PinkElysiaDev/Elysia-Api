@@ -100,15 +100,11 @@ func (compiled *Compiled) checkSemanticEventRanges(ctx context.Context, directio
 	limits := compiled.limits
 	if err := consumeRangeDeclarations(&transaction.semanticRanges, declarations,
 		semanticRangeEvaluation(ctx, before, limits), semanticRangeEvaluation(ctx, event, limits),
-		sameEventRangeInput(before, event), limits); err != nil {
+		sameEventRangeInput(before, event)); err != nil {
 		return compiled.mappingError(direction, err)
 	}
-	if transaction.semanticRanges != nil {
-		base := transaction.primitives()
-		items := len(base.trackedItems) + transaction.trackItems + base.positionItems + transaction.positionItems + transaction.semanticRanges.items
-		if items > limits.StateItems {
-			return resourceFailure("stream", "state_items", limits.StateItems, items)
-		}
+	if err := transaction.checkRetainedItems(0); err != nil {
+		return err
 	}
 	return transaction.checkRetainedBytes(0)
 }

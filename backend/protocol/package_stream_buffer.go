@@ -50,7 +50,7 @@ func (plan *compiledOutputPlan) useStreamBuffer(state evaluation) (plannedOutput
 		if previous != nil {
 			pending.snapshot, pending.length, pending.bytes = previous.snapshot, previous.length, previous.bytes
 			pending.nodes, pending.outputBytes = previous.nodes, previous.outputBytes
-		} else if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+		} else if err := transaction.reserveTrackChannel(key); err != nil {
 			return plannedOutput{}, err
 		}
 		if transaction.bufferUpdates == nil {
@@ -263,7 +263,9 @@ func (transaction *packageStreamTransaction) releaseTrackChannel(key string) {
 	transaction.trackChannels[key]--
 	if remaining == 0 {
 		transaction.trackedBytes -= len(key)
-		transaction.trackItems--
+		if readItemAlias(base.identities.aliases, transaction.aliasUpdates, key) == "" {
+			transaction.primitiveItems--
+		}
 	}
 }
 

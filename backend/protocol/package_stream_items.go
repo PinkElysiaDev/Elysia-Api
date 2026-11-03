@@ -53,8 +53,12 @@ func (state *packageStreamValidation) consumeEntity(ctx context.Context, action 
 			return state.itemIssue(action, action.key.path, "entity start conflicts with its registered key", nil)
 		}
 		if isNew {
-			if state.entityCount >= state.limits.StateItems {
-				return state.itemIssue(action, action.key.path, "entity count exceeds the item limit", resourceFailure("stream", "state_items", state.limits.StateItems, state.entityCount+1))
+			additional := 1
+			if state.hasIdentityKey(action.namespace, key) {
+				additional = 0
+			}
+			if err := state.checkRetainedItems(additional, action.key.path); err != nil {
+				return err
 			}
 			if err := state.checkRetainedBytes(state.identityBytes+len(key), action.key.path); err != nil {
 				return err
@@ -100,6 +104,9 @@ func (state *packageStreamValidation) consumeEntity(ctx context.Context, action 
 		return err
 	}
 	if isNew {
+		if state.hasIdentityKey(action.namespace, key) {
+			state.identityItems--
+		}
 		if state.entities[action.namespace] == nil {
 			state.entities[action.namespace] = map[string]*wireEntityState{}
 		}

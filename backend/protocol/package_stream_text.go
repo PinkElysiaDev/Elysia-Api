@@ -63,7 +63,7 @@ func (plan *compiledOutputPlan) trackStreamText(state evaluation) (plannedOutput
 		pending.deltas = append(pending.deltas, delta)
 	}
 	if isNew {
-		if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+		if err := transaction.reserveTrackChannel(key); err != nil {
 			return plannedOutput{}, err
 		}
 	}

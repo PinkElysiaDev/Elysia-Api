@@ -132,7 +132,7 @@ func (plan *compiledOutputPlan) resumeDeliveredText(state evaluation) (plannedOu
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+	if err := transaction.reserveTrackChannel(key); err != nil {
 		return plannedOutput{}, err
 	}
 	if transaction.textUpdates == nil {
@@ -161,7 +161,7 @@ func (plan *compiledOutputPlan) resumeDeliveredTool(state evaluation) (plannedOu
 		return plannedOutput{}, err
 	}
 	transaction.toolBufferDelta += len(prefix)
-	if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+	if err := transaction.reserveTrackChannel(key); err != nil {
 		return plannedOutput{}, err
 	}
 	// Snapshots and completion need the JSON prefix. Acquire it once when

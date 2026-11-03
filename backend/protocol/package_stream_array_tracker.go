@@ -32,7 +32,7 @@ func (plan *compiledOutputPlan) trackStreamArray(state evaluation) (plannedOutpu
 		return plannedOutput{}, err
 	}
 	if isNew {
-		if err := transaction.reserveTrackChannel(key, state.budget.limits); err != nil {
+		if err := transaction.reserveTrackChannel(key); err != nil {
 			return plannedOutput{}, err
 		}
 	}

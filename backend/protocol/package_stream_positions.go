@@ -97,7 +97,7 @@ func (plan *compiledOutputPlan) trackStreamPosition(state evaluation) (plannedOu
 	if pending == nil {
 		previous := base.positions[key]
 		if previous == nil {
-			if err := transaction.reserveTrackChannel(key.item, state.budget.limits); err != nil {
+			if err := transaction.reserveTrackChannel(key.item); err != nil {
 				return plannedOutput{}, err
 			}
 			previous = &streamPositionTracker{}
@@ -111,9 +111,8 @@ func (plan *compiledOutputPlan) trackStreamPosition(state evaluation) (plannedOu
 	}
 	if pending.append(output, length) {
 		transaction.positionItems++
-		items := len(base.trackedItems) + transaction.trackItems + base.positionItems + transaction.positionItems
-		if items > state.budget.limits.StateItems {
-			return plannedOutput{}, resourceFailure("stream", "position_items", state.budget.limits.StateItems, items)
+		if err := transaction.checkRetainedItems(0); err != nil {
+			return plannedOutput{}, err
 		}
 	}
 	transaction.positionEnds[key.channel] = output + length

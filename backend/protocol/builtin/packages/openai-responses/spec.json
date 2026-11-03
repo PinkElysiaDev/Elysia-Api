@@ -3184,7 +3184,8 @@
               "to": "string"
             },
             "keyPath": "/output_index",
-            "unique": true
+            "unique": true,
+            "namespace": "output"
           }
         ],
         "state": {

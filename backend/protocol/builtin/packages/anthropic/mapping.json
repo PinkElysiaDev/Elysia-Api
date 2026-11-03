@@ -14846,11 +14846,6 @@
           "op": "read",
           "from": "input",
           "path": "/index"
-        },
-        "parentId": {
-          "op": "read",
-          "from": "input",
-          "path": "/parentId"
         }
       }
     }
@@ -14861,9 +14856,7 @@
       "op": "exists",
       "source": {
         "op": "read",
-        "from": "binding",
-        "path": "/parent",
-        "name": "identity"
+        "path": "/parentId"
       }
     },
     "then": {
@@ -20200,25 +20193,8 @@
                 }
               },
               "body": {
-                "op": "let",
-                "name": "parent-identity",
-                "source": {
-                  "op": "resolve_item",
-                  "source": {
-                    "op": "object",
-                    "fields": {
-                      "itemId": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/itemId"
-                    }
-                    }
-                  }
-                },
-                "body": {
-                                      "op": "array",
-                                      "items": []
-                                    }
+                "op": "array",
+                "items": []
               }
             }
           },

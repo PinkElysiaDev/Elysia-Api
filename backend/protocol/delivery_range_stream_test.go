@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -144,11 +145,11 @@ func TestDeliveryStreamSnapshotAndAbort(t *testing.T) {
 			t.Fatal("snapshot prefix proof", err)
 		}
 		state := validation.deliveryRanges.texts[deliveryRangeKey{0, "t"}]
-		if state.positions.source != 3 || state.source.Length() != len("😀a") {
+		if !rejectPrefix && (state.positions.source != 3 || state.source.Length() != len("😀a")) {
 			t.Fatal("snapshot committed before delivery", state)
 		}
 		validation.AbortDelivery()
-		if len(validation.deliveryRanges.pending) != 0 || validation.deliveryRanges.stagedBytes != 0 || validation.CommitDelivery() == nil || validation.Consume(t.Context(), before) == nil {
+		if len(validation.deliveryRanges.texts) != 0 || len(validation.deliveryRanges.pending) != 0 || validation.deliveryRanges.stagedBytes != 0 || validation.packageStream.delivered.sequence != 1 || validation.CommitDelivery() == nil || validation.Consume(t.Context(), before) == nil {
 			t.Fatal("failed delivery retained or resumed its pending text")
 		}
 		validation.Release()
@@ -201,19 +202,20 @@ func TestDeliveryStreamIntervalStorage(t *testing.T) {
 func TestDeliveryStreamResourceBudgets(t *testing.T) {
 	for _, limit := range []string{"items", "bytes"} {
 		compiled := compilePackageForTest(t, deliveryRangeEventPackage(t))
-		validation := startDeliveryRangeStream(t, compiled)
 		if limit == "items" {
 			compiled.limits.StateItems = 1
 		} else {
 			compiled.limits.BufferBytes = 256
 		}
+		validation := startDeliveryRangeStream(t, compiled)
 		var err error
 		for sequence := 1; sequence <= 50 && err == nil; sequence++ {
 			before := deliveryObservation(t, sequence, `[{"key":"t","text":"abc","mode":"append","path":"/body"}]`, "")
 			after := deliveryObservation(t, sequence, `[{"key":"t","text":"axc","mode":"append","path":"/body"}]`, "")
 			err = validation.ConsumeTransformed(t.Context(), before, after, EvaluationContext{})
 		}
-		if err == nil || !strings.Contains(err.Error(), "state_") || !validation.deliveryAborted {
+		var failure *ResourceLimitError
+		if !errors.As(err, &failure) || failure.Metric != "state_"+limit || !validation.deliveryAborted {
 			t.Fatal("delivery state escaped its budget", limit, err)
 		}
 	}

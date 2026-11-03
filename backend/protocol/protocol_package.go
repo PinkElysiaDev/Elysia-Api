@@ -81,12 +81,15 @@ type ProtocolStreamValueSpec struct {
 
 // ProtocolStreamIdentitySpec binds frame identities without interpreting their semantics.
 type ProtocolStreamIdentitySpec struct {
-	Path       string            `json:"path"`
-	Type       JSONType          `json:"type"`
-	When       *Expression       `json:"when,omitempty"`
-	Value      *Expression       `json:"value,omitempty"`
-	Key        *Expression       `json:"key,omitempty"`
-	KeyPath    string            `json:"keyPath,omitempty"`
+	Path    string      `json:"path"`
+	Type    JSONType    `json:"type"`
+	When    *Expression `json:"when,omitempty"`
+	Value   *Expression `json:"value,omitempty"`
+	Key     *Expression `json:"key,omitempty"`
+	KeyPath string      `json:"keyPath,omitempty"`
+	// Namespace associates keyed aliases with an entity's existing state item.
+	// Values and uniqueness remain independently checked and byte-accounted.
+	Namespace  string            `json:"namespace,omitempty"`
 	Comparison string            `json:"comparison,omitempty"`
 	Unique     bool              `json:"unique,omitempty"`
 	Diagnostic *RejectDiagnostic `json:"diagnostic,omitempty"`
