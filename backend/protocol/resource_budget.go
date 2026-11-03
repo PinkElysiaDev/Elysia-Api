@@ -146,6 +146,7 @@ func checkSemanticValue(value any, limits Limits) error {
 
 type semanticSize struct {
 	semanticMetrics
+	cache       *semanticCache
 	maxRawBytes int
 	hasMetrics  bool
 }
@@ -157,9 +158,16 @@ func (size semanticSize) fits(limits Limits) bool {
 }
 
 func measureSemanticValue(value any, limits Limits) (semanticSize, error) {
+	return measureSemanticValueWithCache(value, limits, nil)
+}
+
+func measureSemanticValueWithCache(value any, limits Limits, cacheLimits *Limits) (semanticSize, error) {
 	fast := typedMeter{limits: limits}
+	if cacheLimits != nil {
+		fast.cacheLimits, fast.shouldCache = *cacheLimits, true
+	}
 	if ok, supported := fast.visitTyped(value); supported && ok && fast.fits() {
-		return semanticSize{semanticMetrics: semanticMetrics{bytes: fast.bytes, nodes: fast.nodes, depth: fast.maxDepth}, maxRawBytes: fast.maxRawBytes, hasMetrics: true}, nil
+		return semanticSize{semanticMetrics: semanticMetrics{bytes: fast.bytes, nodes: fast.nodes, depth: fast.maxDepth}, cache: fast.cache, maxRawBytes: fast.maxRawBytes, hasMetrics: true}, nil
 	}
 	// The reflective failure path preserves the previous error precedence and
 	// observed counts, including map traversal and unsupported/cyclic values.

@@ -100,3 +100,19 @@ allocations improve 1.12% and 9.16%, respectively. Full protocol/builtin tests
 and targeted protocol race pass. The race selector matched no builtin tests;
 it is not recorded as builtin race coverage. Evidence: `deep-scalar-{reads/,
 semantic/,tests.log}` and `deep-scalar-initial-race.log` under `.tmp-dev/`.
+
+## Initial semantic measurements
+
+The initial successful typed walk now lazily records large immutable raw values
+in the same segment cache used by Core reads and encoding. Small walks allocate
+no cache storage; failed walks publish no cache. Occurrence aggregation and
+smaller-budget failure diagnostics remain independent.
+
+The first candidate reduced large encoding time but added one allocation: its
+cache-limit pointer escaped. Escape analysis identified the cause; copying the
+limits into the meter removes it. Corrected ten-pair results improve 2 MiB Core
+encoding time by 26.04%, with unchanged bytes and allocations. Native/reference
+metrics are inconclusive with no stable regression. Protocol/builtin tests and
+targeted protocol race pass. Evidence: `deep-initial-{encoding/,escape.log,
+tests.log}`, `deep-initial-fixed-{encoding/,semantic/,race.log}`. The unsuccessful
+candidate remains archived. String-scan fusion has not been introduced.

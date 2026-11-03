@@ -12,7 +12,8 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 	}
 	// This is EncodeSemantic's original boundary, before execution cancellation
 	// or the target mapping's potentially smaller request budget.
-	size, err := measureSemanticValue(input, semanticLimits(semanticBudget))
+	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
+	size, err := measureSemanticValueWithCache(input, semanticLimits(semanticBudget), &workLimits)
 	if err != nil {
 		return evaluation{}, Limits{}, err
 	}
@@ -22,7 +23,6 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
 	// The caller owns input throughout this synchronous encode; no mapping has
 	// run yet. Reuse complete counts only to prove that the next budget fits.
 	if !size.fits(inputLimits) {
@@ -39,10 +39,7 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 	if err != nil {
 		return fail(err)
 	}
-	var cache *semanticCache
-	if size.maxRawBytes >= semanticCacheMinBytes {
-		cache = &semanticCache{limits: workLimits}
-	}
+	cache := size.cache
 	read := func(pointer []string) (JSONOutput, error) {
 		switch document := input.(type) {
 		case *Request:

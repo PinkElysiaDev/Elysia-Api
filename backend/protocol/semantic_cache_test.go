@@ -7,6 +7,55 @@ import (
 	"testing"
 )
 
+func TestInitialSemanticMeasurementCache(t *testing.T) {
+	limits := DefaultLimits()
+	for _, raw := range []string{`"small"`, `"` + strings.Repeat("x", 1024) + `"`, ` { "html":"<>&", "padding":"` + strings.Repeat("x", 1024) + `" } `} {
+		value := parseTestValue(t, raw)
+		request := &Request{Content: []Node{{Kind: TextNode, Payload: value}, {Kind: TextNode, Payload: value}}}
+		want, err := measureSemanticValue(request, limits)
+		got, cachedErr := measureSemanticValueWithCache(request, limits, &limits)
+		if err != nil || cachedErr != nil || got.semanticMetrics != want.semanticMetrics || got.hasMetrics != want.hasMetrics {
+			t.Fatal("initial cached walk changed counts", want, got, err, cachedErr)
+		}
+		if value.Len() < semanticCacheMinBytes {
+			if got.cache != nil {
+				t.Fatal("small input allocated cache storage")
+			}
+			continue
+		}
+		entry, exists := got.cache.lookup(value)
+		if !exists || !entry.hasMetrics || got.cache.size() != 1 {
+			t.Fatal("initial walk did not record the complete raw measurement")
+		}
+		normalized, err := EncodeValue(value)
+		if err != nil || got.cache.normalize(value) != normalized {
+			t.Fatal("initial normalization fact changed output", err)
+		}
+		// A changed document must aggregate its occurrences again, even when
+		// the underlying immutable payload remains in the segment cache.
+		request.Content = append(request.Content, request.Content[0])
+		for _, metric := range []string{"bytes", "nodes", "depth"} {
+			tight := limits
+			switch metric {
+			case "bytes":
+				tight.BufferBytes = want.bytes
+			case "nodes":
+				tight.Nodes = want.nodes
+			case "depth":
+				tight.Depth = want.depth - 1
+			}
+			wantErr := checkSemanticValue(request, tight)
+			if gotErr := got.cache.check(request, tight); !reflect.DeepEqual(gotErr, wantErr) {
+				t.Fatal("cached occurrence changed failure", metric, gotErr, wantErr)
+			}
+			failed, err := measureSemanticValueWithCache(request, tight, &limits)
+			if !reflect.DeepEqual(err, wantErr) || failed.cache != nil {
+				t.Fatal("failed initial walk published facts or changed failure", err, wantErr)
+			}
+		}
+	}
+}
+
 func TestSemanticCachePreservesResourceCounts(t *testing.T) {
 	for _, raw := range []string{`"` + strings.Repeat("a", 1024) + `"`, ` { "x" : "` + strings.Repeat("<>&\u2028", 80) + `", "n":9007199254740993 } `, `[` + strings.Repeat(`{"x":null},`, 60) + `{}]`} {
 		value, err := ParseValue([]byte(raw))

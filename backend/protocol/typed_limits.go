@@ -22,6 +22,8 @@ type typedMeter struct {
 	maxDepth            int
 	maxRawBytes         int
 	cache               *semanticCache
+	cacheLimits         Limits
+	shouldCache         bool
 	shouldNormalize     bool
 }
 
@@ -243,7 +245,13 @@ func isEmptyJSONField(value reflect.Value) bool {
 // has already validated JSON; this walk never decodes numbers through float64.
 func (meter *typedMeter) raw(raw string) bool {
 	meter.maxRawBytes = max(meter.maxRawBytes, len(raw))
-	if meter.cache == nil || len(raw) < semanticCacheMinBytes {
+	if len(raw) < semanticCacheMinBytes {
+		return meter.scanRaw(raw)
+	}
+	if meter.cache == nil && meter.shouldCache {
+		meter.cache = &semanticCache{limits: meter.cacheLimits}
+	}
+	if meter.cache == nil {
 		return meter.scanRaw(raw)
 	}
 	value := Value{raw: raw}
