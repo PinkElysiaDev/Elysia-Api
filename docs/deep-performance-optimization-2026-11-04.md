@@ -4,6 +4,21 @@ Baseline: `951da69d` (implementation), `62d852a7` (preceding documentation).
 DSL, Spec and Mapping contracts remain separate and unchanged. Work uses only
 isolated databases and local fixtures; no production switch or remote push.
 
+Final implementation: `f2b298f8`. Six HTTP workloads, each with five alternating
+pairs against C0, show no detected stable regression. SSE CPU/request improves
+12.61% and allocated bytes/request improve 14.92%. The previous compilation
+regression and the intermediate reference-allocation regression are closed.
+Full Go tests, vet, staticcheck and the relevant race selections pass.
+**Historical A performance and production-entrypoint gates remain blocked.**
+
+[Interactive report and 27 flamegraphs](../.tmp-dev/deep-optimization-report/index.html)
+include final HTTP/compilation/reference/Native profiles, C0 micro profiles and
+the intermediate candidate. [Machine-readable acceptance](../.tmp-dev/deep-optimization-report/acceptance.json)
+retains intervals, execution identities and the failed production gate. These
+large local artifacts are ignored by Git; this document and benchmark sources
+are committed. The final results below supersede intermediate measurements,
+which remain available to explain rejected experiments and corrections.
+
 ## Diagnostic workloads
 
 `BenchmarkDeepCompilation` separates authored decoding, contract compilation and
@@ -186,7 +201,7 @@ staticcheck-fixed,server-race}.log`, `deep-dispatch-race.log`,
 default or public contract was changed. Windows checks do not establish other
 platform, complete Agent, or WebUI performance acceptance.
 
-## HTTP versus C0
+## Intermediate HTTP versus C0 (`0d2cd64b`)
 
 Five alternating pairs per scenario, identical frozen local provider,
 GOMAXPROCS=2/GOGC=100/GOMEMLIMIT=2GiB, profiler disabled. Percentages below are
@@ -232,3 +247,232 @@ Boundary tests compare exact codec errors, resource counts and retained output
 ownership. Evidence: `deep-join-{strings/,semantic/,reference-c0/,tests.log,
 race.log,benchmark-source.json}`; the parent test-only overlay is recorded
 without modifying its frozen source archive.
+
+## Final HTTP acceptance (`f2b298f8`)
+
+The accepted snapshot is `.tmp-dev/deep-accepted-build/`, created from a clean
+worktree. Its source identity SHA-256 is
+`671b69cd496acf055633e8d836a89a50ac9a82cf62aaede3f874e03dc51e9059`;
+server test binary SHA-256 is
+`164ec67f24b94ac0abccced81f49a5b0f20e03617e5260f2c77afe0487fec85e`.
+It uses Go 1.27.2 on Windows/amd64, CGO_ENABLED=0, GOMAXPROCS=2, GOGC=100,
+GOMEMLIMIT=2GiB, PGO off, the standard transport and one frozen local provider.
+No limits, supplier configuration or GC settings were changed to obtain gains.
+
+Each scenario has five alternating pairs without profiling. The existing
+comparator reports a seeded 10,000-resample bootstrap interval for the ratio
+of independent medians; alternating collection is not a paired statistical
+estimator. `uncertain` means its 95% interval includes one. Every measured
+request verifies complete output and exactly one upstream generation. The
+`passed` field in collection reports means collection succeeded; individual
+metric assessments determine acceptance. Per-pair request counts are
+1,024/64/128/512/32/4 for short/history/tools/concurrent/SSE/media. The small
+media sample contributes to its unresolved CPU and throughput results.
+
+| Workload | CPU/request | Allocated bytes/request | Allocations/request | Throughput |
+|---|---:|---:|---:|---:|
+| Short | −10.84% (uncertain) | −1.72% | −3.54% | +8.73% |
+| 256 KiB history | −13.79% | −14.89% | −3.52% | +12.53% |
+| 32 tools | 0.00% (uncertain) | −2.29% | −1.73% | +4.60% |
+| Four concurrent short requests | −13.51% | −1.71% | −3.54% | +16.41% |
+| 256-frame SSE | −12.61% | −14.92% | −6.52% | +16.30% |
+| 2 MiB media | −11.11% (uncertain) | −0.77% (uncertain) | −2.18% | −10.65% (uncertain) |
+
+No measured metric has a stable regression against C0, including latency,
+first frame, throughput, peak heap/RSS and recovery heap. In particular, media
+throughput is unresolved, not an improvement; the earlier candidate's media
+CPU result cannot replace this final result. Peak heap improves in all six
+scenarios; recovery heap is inconclusive except for media. Evidence:
+`.tmp-dev/deep-accepted-http-c0/report.json` with all raw samples and commands.
+
+The historical A comparison also uses five alternating pairs and the same
+provider. Ratios below are final/A; every CPU ratio is a stable regression.
+
+| Workload | CPU/request ratio | Allocated bytes/request ratio |
+|---|---:|---:|
+| Short | 2.000× | 1.903× |
+| 256 KiB history | 1.655× | 0.856× |
+| 32 tools | 2.188× | 2.704× |
+| Four concurrent short requests | 2.000× | 1.892× |
+| 256-frame SSE | 4.478× | 2.307× |
+| 2 MiB media | 1.750× | 0.878× |
+
+Allocation counts, peak heap and recovery heap also remain worse than A in all
+six workloads. These results continue to block production switching; local
+improvements do not establish historical parity. Complete assessments are in
+`.tmp-dev/deep-accepted-http-a/report.json`.
+
+## Compilation and execution acceptance
+
+Ten alternating warmed pairs against C0 and the canonical-container snapshot
+close the earlier compilation regression. A warm run uses two benchmark
+passes in each fresh process and records only the second, retaining the first
+as explicit warmup. The canonical snapshot was dirty when archived: its commit
+alone is insufficient identity. Verified archive hashes, all source files,
+compiler binary and matching fixtures are recorded in
+`.tmp-dev/deep-final-baselines.json`.
+
+| Package | Compile time vs C0 | Compile time vs canonical | Bytes vs canonical | Allocations vs canonical |
+|---|---:|---:|---:|---:|
+| Chat | −21.12% | −20.91% | −38.90% | −36.77% |
+| Responses | −29.81% | −23.17% | −20.32% | −20.60% |
+| Anthropic | −23.11% | −23.07% | −33.35% | −34.95% |
+| Gemini | −22.34% | −22.28% | −32.98% | −33.05% |
+
+All intervals indicate improvement. These measurements use `0d2cd64b`; the
+final join follow-up changes execution only, leaving compiler implementation
+unchanged. Final `f2b298f8` compiler profiles were collected independently.
+Reports: `deep-final-builtin-c0/` and `deep-final-compile-canonical/`.
+
+The separate cold experiment uses `1x` in ten alternating fresh-process pairs:
+chat includes initial codec startup and improves 5.63%; later Responses,
+Anthropic and Gemini improve 23.87%/17.85%/21.46%. Those later packages can
+benefit from earlier codec initialization in the same process, so this is a
+fresh-process four-package pass, not four independently cold starts. Evidence:
+`deep-final-compile-cold/`.
+
+Other ten-pair C0 comparisons at `0d2cd64b` show nested expression decode time
+improving 29.33–42.69%, scalar/scoped predicates 10.59–18.74%, repeated raw Core
+objects 73.55% and 2 MiB Core-plan encoding 26.54%. Native continuation improves
+21.78% in time, 23.20% in bytes and 15.69% in allocations. Final join versus its
+parent has no stable Native time/byte change and improves allocation count;
+the Native percentages above are not relabeled as direct final/C0 results.
+Reports: `deep-final-protocol-c0/`, `deep-final-builtin-c0/`,
+`deep-join-semantic/`.
+
+The final reference rewrite comparison is direct against C0, ten warmed
+2-second pairs: time −13.13%, bytes −5.40%, allocations −1.29%. It supersedes
+the earlier +0.51%/+0.27% byte regressions; those failures remain archived.
+The shorter 300ms and longer 2-second runs are separate comparisons; their
+absolute timings must not be combined. Evidence: `deep-join-reference-c0/`.
+
+## Final profiles and remaining costs
+
+Final micro CPU and memory profiles run in separate processes at fixed
+iterations: 30 per package, 1,000 reference rewrites and 10,000 Native
+continuations. Fixture compilation is included in these diagnostic profiles.
+HTTP CPU profiling uses a fixed duration; completed request counts differ, so
+sample totals alone cannot be compared as request cost. The final/C0 counts
+are 14,336/13,312 short requests, 320/256 SSE requests and 464/424 media
+requests. CPU and allocation timing acceptance remains profiler-free.
+
+| Observed path | C0 → final diagnostic evidence | Interpretation |
+|---|---|---|
+| Compilation | Total CPU samples 11.68s → 8.15s; `checkExpressionFields` cumulative 1.35s → 0.05s | Static masks remove most field-contract work without removing checks. |
+| Expression decode | Cumulative allocated space 5,646.22 → 2,653.77 pprof MB; CPU 2.34s → 2.04s | The second value tree is gone; recursive typed decoding remains. Its final CPU percentage rises because total CPU falls faster. |
+| Native Core writes | `ast.newLazyObject` accounts for 498.49 pprof MB in C0 and has no sampled allocation in the final run | Ordered Core scanning removes that construction path; absence in a sample does not prove zero allocation everywhere. |
+| Reference join | Cumulative join allocation 1,606.77 → 1,341.34 pprof MB; total sampled `strings.Clone` allocation 987.62 → 702.08 MB | Borrowing locally consumed text reduces a real copy; owned outputs and provenance remain. |
+| Native dispatch | `buildNode` flat 0.64s plus deferred boundaries 0.18s → `buildNode` + `buildOperation` flat 0.60s | Compare both new functions together; moving dispatch does not eliminate its work. |
+
+These are sampled costs, not confidence intervals. Cumulative values overlap
+and are never summed as independent savings. Raw top/cumulative files and
+commands are in `deep-accepted-micro-profiles/`,
+`deep-final-c0-micro-profiles/` and
+`deep-optimization-report/profile-comparison.json`.
+
+The final fresh-process retained-graph diagnostic keeps the same four packages
+and sixteen policies as C0: 100,631 expression nodes, 100,631 output plans and
+1,974 cold detail records. Post-GC heap changes from 103,722,848 to 66,499,976
+bytes; delta after codec warmup changes from 91,533,360 to 53,080,176 bytes.
+These single snapshots describe retained ownership, not a repeated HTTP memory
+estimate. Public definitions, runtime plans and source/target composition
+declarations remain retained intentionally. `deep-accepted-diagnostics-fixed.log`
+passes; the first diagnostic invocation's PowerShell flag-parsing failure is
+preserved separately and did not run the test.
+
+Remaining hotspots provide boundaries for future work, not extra accepted
+optimizations in this round:
+
+- SSE field views still allocate: `readObjectFieldsWithin` is 15.35% of final
+  sampled allocation. Immediate local consumers may offer more borrowing
+  opportunities, but values entering Core, state or later frames still need
+  independent ownership. Expanding caches or reusing mutable readers is not
+  justified by this evidence.
+- `buildNode` plus `buildOperation` still contribute 8.19% flat CPU in SSE and
+  8.09% in short requests. Numeric dispatch and broader generated selectors
+  were measured and rejected; this is not grounds to reinstate them or add a VM.
+- Media `typedMeter.scanRaw` remains 25.92% cumulative CPU; this includes
+  necessary first scans and distinct semantic boundaries. Segment-local facts
+  cannot establish validity for a rewritten document or another permission
+  scope. String-scan fusion remains unimplemented and has no acceptance claim.
+- Final short-request drained heap samples attribute 54.44% to expression and
+  output-plan allocations. Runtime graphs remain necessary; further retention
+  work must distinguish public authored configuration, executable plans and
+  temporary proof data before removing any owner.
+- Native allocation now emphasizes `JSONOutput.encodeWithin` (12.15% flat),
+  field views (11.51%) and output-part assembly (9.59%). Native source identity,
+  semantic checks and delivery transactions still define separate boundaries.
+
+## Final correctness, production identity and scope
+
+After the join follow-up, `go test ./... -count=1 -timeout=8m`, `go vet ./...`
+and staticcheck v0.8.2 all pass. The full server suite takes 133.799s and
+includes the 16-direction local JSON/SSE matrix. Join-related protocol race
+passes in 3.902s. Prior targeted protocol, three builtin Native cases and
+server race remain applicable; server coverage includes prepared encodings,
+revision drift, in-flight snapshots, Native reconstruction and delivery
+ranges. Logs: `deep-final-fixed-{go-test,vet,staticcheck}.log`,
+`deep-join-race.log`, `deep-dispatch-race.log`, `deep-native-race.log` and
+`deep-final-server-race.log`.
+
+The earlier 300s broad builtin race timeout is incomplete coverage, not a pass.
+The initial staticcheck test-helper diagnostic was fixed and rechecked. No
+cross-platform, complete Agent or WebUI performance acceptance is claimed.
+The generated Core writer was changed through its generator; Swift is untouched.
+
+The final frozen binary was also run once in `production` execution mode
+without injecting packages, against the isolated local provider. The identity
+guard rejects its active legacy `openai-chat` codec at `decode_request`, revision
+`984c7f97c1b524cdfa4b6b2d09c232470df0ffe1927524e66299e6a794b6aaf9`.
+This is a **blocked production gate**, not a passed package run. Evidence and
+exact command: `.tmp-dev/deep-accepted-production/result.json` and `run.log`.
+No production preset switch is included in this work.
+
+## Local commits and reproduction
+
+| Commit | Change |
+|---|---|
+| `ecc32257` | Compiler/execution diagnostics and directed benchmarks |
+| `ec4142c7` | Single expression value decode and field masks |
+| `05d972db` | Release redundant authored option trees |
+| `b2c6f7df` | Ordered raw Core scans and generator changes |
+| `df0196e6` | Non-escaping scalar reads and small operand workspace |
+| `73169b2c` | Reuse initial immutable semantic measurements |
+| `9753a6a3` | Compact cold instruction metadata; retain string dispatch |
+| `a61fa9c2` | Smaller evaluation copying and explicit success boundary |
+| `0d2cd64b` | Staticcheck correction in the test helper |
+| `f2b298f8` | Borrow text immediately consumed by joins |
+
+Authored model pre-encoding, numeric opcodes, expanded Core selectors and the
+first constructed-node iterator were rejected or corrected based on measured
+regressions. The original recursive executor, scope ownership and Request
+selector remain. No shared mutable evaluation environment was introduced.
+
+From the repository root, rebuild the final micro binaries from the frozen
+source, then use the archived runners with a new output directory:
+
+```powershell
+$env:CGO_ENABLED = '0'
+go -C .tmp-dev/deep-accepted-build/source/backend test -pgo=off -c -o D:/DevProjects/Elysia-API/Elysia-Api/.tmp-dev/deep-accepted-builtin.test.exe ./protocol/builtin
+python .tmp-dev/measure-deep-stage.py --baseline=.tmp-dev/deep-c0-builtin.test.exe --candidate=.tmp-dev/deep-accepted-builtin.test.exe --package=protocol/builtin --bench='^BenchmarkReferenceLayoutRewrite$' --warm --time=2s --output=.tmp-dev/deep-reference-reproduction
+python .tmp-dev/profile-deep-micro.py --binary=.tmp-dev/deep-accepted-builtin.test.exe --source-build=.tmp-dev/deep-accepted-build --output=.tmp-dev/deep-micro-reproduction
+python .tmp-dev/profile-optimization-build.py --build=.tmp-dev/deep-accepted-build --output=.tmp-dev/deep-http-profile-reproduction
+python .tmp-dev/render-optimization-flames.py --profiles=.tmp-dev/deep-micro-reproduction --output=.tmp-dev/deep-micro-flame-reproduction
+Copy-Item -LiteralPath .tmp-dev/deep-accepted-http-c0/runner-source.mjs -Destination .tmp-dev/deep-http-reproduction.mjs
+node .tmp-dev/deep-http-reproduction.mjs --baseline=.tmp-dev/optimization-acceptance-build --candidate=.tmp-dev/deep-accepted-build --output=.tmp-dev/deep-http-c0-reproduction
+```
+
+Micro runners set the fixed runtime environment and reuse
+`scripts/verification/compare.mjs`. HTTP `runner-source.mjs`, each invocation's
+arguments/environment, binary/source hashes and provider identity are archived
+under `deep-accepted-http-{c0,a}/`; replay with new output paths and retain the
+same scenario sizes and alternating order. Baseline profiles are separate from
+timing runs. The prepared PowerShell wrapper was blocked by local execution
+policy and was not used; evidence came from direct Go/Python/Node commands.
+
+The copied HTTP runner must stay directly under `.tmp-dev/` so its relative
+imports resolve. For a portable regeneration, build the committed benchmark
+sources at the listed revisions and replay the archived Go test arguments and
+environment. Retain the verified historical canonical source archive because
+its dirty snapshot is not reconstructible from a commit alone. Raw local
+profiles and rejected experiments are evidence artifacts, not production inputs.
