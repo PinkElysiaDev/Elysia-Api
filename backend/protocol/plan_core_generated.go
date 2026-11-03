@@ -3505,57 +3505,57 @@ func readCoreRequestField(value *Request, field uint8, pointer []string, cache *
 	case 2:
 		return readCoreIdentity(value.Source, pointer, cache)
 	case 3:
-		if !(!value.Model.IsZero()) {
-			return JSONOutput{}, nil
+		if !value.Model.IsZero() {
+			return readCoreValue(value.Model, pointer, cache)
 		}
-		return readCoreValue(value.Model, pointer, cache)
+		return JSONOutput{}, nil
 	case 4:
 		return readCoreNodeSlice(value.Content, pointer, cache)
 	case 5:
-		if !(len(value.Tools) != 0) {
-			return JSONOutput{}, nil
+		if len(value.Tools) != 0 {
+			return readCoreToolSlice(value.Tools, pointer, cache)
 		}
-		return readCoreToolSlice(value.Tools, pointer, cache)
+		return JSONOutput{}, nil
 	case 6:
-		if !(!value.ToolChoice.IsZero()) {
-			return JSONOutput{}, nil
+		if !value.ToolChoice.IsZero() {
+			return readCoreValue(value.ToolChoice, pointer, cache)
 		}
-		return readCoreValue(value.ToolChoice, pointer, cache)
+		return JSONOutput{}, nil
 	case 7:
-		if !(len(value.Parameters) != 0) {
-			return JSONOutput{}, nil
+		if len(value.Parameters) != 0 {
+			return readCoreObject(value.Parameters, pointer, cache)
 		}
-		return readCoreObject(value.Parameters, pointer, cache)
+		return JSONOutput{}, nil
 	case 8:
-		if !(value.OutputLimitDefault) {
-			return JSONOutput{}, nil
+		if value.OutputLimitDefault {
+			return readCoreBool(value.OutputLimitDefault, pointer, cache)
 		}
-		return readCoreBool(value.OutputLimitDefault, pointer, cache)
+		return JSONOutput{}, nil
 	case 9:
-		if !(value.Reasoning != nil) {
-			return JSONOutput{}, nil
+		if value.Reasoning != nil {
+			return readCoreReasoningIntentPointer(value.Reasoning, pointer, cache)
 		}
-		return readCoreReasoningIntentPointer(value.Reasoning, pointer, cache)
+		return JSONOutput{}, nil
 	case 10:
-		if !(len(value.Cache) != 0) {
-			return JSONOutput{}, nil
+		if len(value.Cache) != 0 {
+			return readCoreCacheIntentSlice(value.Cache, pointer, cache)
 		}
-		return readCoreCacheIntentSlice(value.Cache, pointer, cache)
+		return JSONOutput{}, nil
 	case 11:
-		if !(len(value.Resources) != 0) {
-			return JSONOutput{}, nil
+		if len(value.Resources) != 0 {
+			return readCoreResourceSlice(value.Resources, pointer, cache)
 		}
-		return readCoreResourceSlice(value.Resources, pointer, cache)
+		return JSONOutput{}, nil
 	case 12:
-		if !(value.Native != nil) {
-			return JSONOutput{}, nil
+		if value.Native != nil {
+			return readCoreNativePointer(value.Native, pointer, cache)
 		}
-		return readCoreNativePointer(value.Native, pointer, cache)
+		return JSONOutput{}, nil
 	case 13:
-		if !(value.ClientOutput != nil) {
-			return JSONOutput{}, nil
+		if value.ClientOutput != nil {
+			return readCoreClientOutputPointer(value.ClientOutput, pointer, cache)
 		}
-		return readCoreClientOutputPointer(value.ClientOutput, pointer, cache)
+		return JSONOutput{}, nil
 	}
 	panic("uncompiled request field")
 }

@@ -107,9 +107,10 @@ func (g *generator) emitRequestFieldReader() {
 	for index, field := range requestFields {
 		g.line("case %d:", index+1)
 		if field.condition != "" {
-			g.line("if !(%s) {return JSONOutput{},nil}", field.condition)
+			g.line("if %s {return readCore%s(value.%s,pointer,cache)};return JSONOutput{},nil", field.condition, g.name(field.typeOf), field.name)
+		} else {
+			g.line("return readCore%s(value.%s,pointer,cache)", g.name(field.typeOf), field.name)
 		}
-		g.line("return readCore%s(value.%s,pointer,cache)", g.name(field.typeOf), field.name)
 	}
 	g.line("};panic(\"uncompiled request field\")}")
 }
