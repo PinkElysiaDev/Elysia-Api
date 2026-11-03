@@ -254,7 +254,11 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 	return executeEventFixtureWithState(ctx, compiled, sample, options)
 }
 
-func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext) (result verificationResult, err error) {
+func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext) (verificationResult, error) {
+	return executeEventFixtureStream(ctx, compiled, sample, options, nil)
+}
+
+func executeEventFixtureStream(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext, consume func(*EventFrame) error) (result verificationResult, err error) {
 	defer func() { err = resourceIssue(err, compiled.identity, sample.Direction, "verify.event") }()
 	inputs := []Value{sample.Input}
 	if sample.Sequence {
@@ -302,6 +306,7 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 	buffered := 0
 	for _, input := range inputs {
 		batchStart := len(events)
+		var decoded *EventFrame
 		hasOutputFrames := false
 		if isEventDecoder(sample.Direction) {
 			var frame *EventFrame
@@ -314,7 +319,10 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			if err != nil {
 				return verificationResult{}, err
 			}
-			frames = append(frames, frame)
+			if consume == nil {
+				frames = append(frames, frame)
+			}
+			decoded = frame
 			batch := frame.Events
 			encoded, err := EncodeValue(batch)
 			if err != nil {
@@ -351,6 +359,13 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			if err := consumeVerificationEvents(replay, events[batchStart:]); err != nil {
 				return verificationResult{}, err
 			}
+		}
+		if consume != nil {
+			if err := consume(decoded); err != nil {
+				return verificationResult{}, err
+			}
+			clear(events)
+			events = events[:0]
 		}
 		if hasOutputFrames && wireValidation != nil {
 			// This fixture explicitly simulates successful delivery of a fully
@@ -397,6 +412,9 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		if err := wireValidation.Finish(); err != nil {
 			return verificationResult{}, err
 		}
+	}
+	if consume != nil {
+		return verificationResult{}, nil
 	}
 	result = verificationResult{semantic: events, frames: frames}
 	if isEventDecoder(sample.Direction) {

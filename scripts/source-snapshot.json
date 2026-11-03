@@ -767,6 +767,7 @@
     "backend/protocol/verification.go",
     "backend/protocol/verification_combination.go",
     "backend/protocol/verification_context.go",
+    "backend/protocol/verification_event_combination.go",
     "backend/protocol/verification_events.go",
     "backend/protocol/verification_native_combination.go",
     "backend/protocol/verification_profiles.go",

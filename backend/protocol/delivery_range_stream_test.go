@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -294,5 +295,16 @@ func FuzzDeliveryStreamTransactions(f *testing.F) {
 				}
 			}
 		}
+	})
+}
+
+func verifyCombinationEventOutput(ctx context.Context, compiled *Compiled, frames []*EventFrame, options EvaluationContext, conversion *CompiledConversion, route ConversionContext) ([]Event, error) {
+	return verifyCombinationEventStream(ctx, compiled, options, conversion, route, func(emit func(*EventFrame) error) error {
+		for _, frame := range frames {
+			if err := emit(frame); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }

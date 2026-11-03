@@ -65,6 +65,39 @@ func TestPackageEventPreviewSharesStreamBudget(t *testing.T) {
 	}
 }
 
+func TestPackageEventCombinationSharesLiveStreamBudget(t *testing.T) {
+	for _, capacity := range []int{3, 4} {
+		t.Run(fmt.Sprint(capacity), func(t *testing.T) {
+			source := eventProtocolPackage(t)
+			target := eventProtocolPackage(t)
+			source.Spec.ID, target.Spec.ID = "budget-source", "budget-target"
+			limits := DefaultLimits()
+			limits.StateItems = capacity
+			source.Mapping.Limits, target.Mapping.Limits = &limits, &limits
+			upstream, ingress := compilePackageForTest(t, source), compilePackageForTest(t, target)
+			sample := Sample{Direction: DecodeEvent, Sequence: true, Input: fixtureValue(t, []Value{
+				packageStreamFrame(ResponseStarted, 0, ""),
+				packageStreamFrame(ItemStarted, 1, `,"item_id":"t"`),
+				packageStreamFrame(ItemDelta, 2, `,"item_id":"t","text":"hi"`),
+				packageStreamFrame(ItemFinished, 3, `,"item_id":"t"`),
+				packageStreamFrame(ResponseFinished, 4, ""),
+			})}
+			if _, err := executeEventFixture(t.Context(), upstream, sample); err != nil {
+				t.Fatal("standalone source did not fit its budget", err)
+			}
+			err := verifyEventCombination(t.Context(), ingress, upstream, sample)
+			if capacity == 3 {
+				var failure *ResourceLimitError
+				if !errors.As(err, &failure) || failure.Metric != "state_items" || failure.Observed != 4 {
+					t.Fatal("offline combination released source state before target delivery", err)
+				}
+			} else if err != nil {
+				t.Fatal("independent roundtrip decoding consumed the live forwarding budget", err)
+			}
+		})
+	}
+}
+
 func TestPackageEventVerificationChecksWireLifecycle(t *testing.T) {
 	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
 		for _, fault := range []string{"sequence", "EOF"} {
