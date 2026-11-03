@@ -45,11 +45,30 @@ func writeCoreRequest(output JSONOutput, value *Request, reader *valueReader) er
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreRequestField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreRequestField(field, value, reader); err != nil {
 			return err
 		}
@@ -267,11 +286,30 @@ func writeCoreResponse(output JSONOutput, value *Response, reader *valueReader) 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreResponseField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreResponseField(field, value, reader); err != nil {
 			return err
 		}
@@ -461,11 +499,30 @@ func writeCoreEvent(output JSONOutput, value *Event, reader *valueReader) error 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreEventField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreEventField(field, value, reader); err != nil {
 			return err
 		}
@@ -868,11 +925,30 @@ func writeCoreIdentity(output JSONOutput, value *Identity, reader *valueReader) 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreIdentityField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreIdentityField(field, value, reader); err != nil {
 			return err
 		}
@@ -1028,14 +1104,39 @@ func writeCoreObject(output JSONOutput, value *Object, reader *valueReader) erro
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		if *value == nil {
+			*value = make(Object, len(output.node.fields))
+		}
+		for _, field := range output.node.fields {
+			key := ownCoreMapKey(field.key)
+			child := (*value)[key]
+			if err := writeCoreValue(field.value, &child, reader); err != nil {
+				return err
+			}
+			(*value)[key] = child
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
 	if *value == nil {
-		*value = make(Object, len(fields))
+		*value = make(Object)
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		key := ownCoreMapKey(field.key)
 		child := (*value)[key]
 		if err := writeCoreValue(field.value, &child, reader); err != nil {
@@ -1350,11 +1451,30 @@ func writeCoreNode(output JSONOutput, value *Node, reader *valueReader) error {
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreNodeField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreNodeField(field, value, reader); err != nil {
 			return err
 		}
@@ -1622,11 +1742,30 @@ func writeCoreTool(output JSONOutput, value *Tool, reader *valueReader) error {
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreToolField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreToolField(field, value, reader); err != nil {
 			return err
 		}
@@ -1768,11 +1907,30 @@ func writeCoreReasoningIntent(output JSONOutput, value *ReasoningIntent, reader 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreReasoningIntentField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreReasoningIntentField(field, value, reader); err != nil {
 			return err
 		}
@@ -1905,11 +2063,30 @@ func writeCoreCacheIntent(output JSONOutput, value *CacheIntent, reader *valueRe
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreCacheIntentField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreCacheIntentField(field, value, reader); err != nil {
 			return err
 		}
@@ -2004,11 +2181,30 @@ func writeCoreResource(output JSONOutput, value *Resource, reader *valueReader) 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreResourceField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreResourceField(field, value, reader); err != nil {
 			return err
 		}
@@ -2075,11 +2271,30 @@ func writeCoreNative(output JSONOutput, value *Native, reader *valueReader) erro
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreNativeField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreNativeField(field, value, reader); err != nil {
 			return err
 		}
@@ -2146,11 +2361,30 @@ func writeCoreClientOutput(output JSONOutput, value *ClientOutput, reader *value
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreClientOutputField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreClientOutputField(field, value, reader); err != nil {
 			return err
 		}
@@ -2283,11 +2517,30 @@ func writeCoreResponseMetadata(output JSONOutput, value *ResponseMetadata, reade
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreResponseMetadataField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreResponseMetadataField(field, value, reader); err != nil {
 			return err
 		}
@@ -2390,11 +2643,30 @@ func writeCoreUsage(output JSONOutput, value *Usage, reader *valueReader) error 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreUsageField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreUsageField(field, value, reader); err != nil {
 			return err
 		}
@@ -2541,11 +2813,30 @@ func writeCoreControlState(output JSONOutput, value *ControlState, reader *value
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreControlStateField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreControlStateField(field, value, reader); err != nil {
 			return err
 		}
@@ -2621,11 +2912,30 @@ func writeCoreResponsesTurnState(output JSONOutput, value *ResponsesTurnState, r
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreResponsesTurnStateField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreResponsesTurnStateField(field, value, reader); err != nil {
 			return err
 		}
@@ -2687,11 +2997,30 @@ func writeCoreMedia(output JSONOutput, value *Media, reader *valueReader) error 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreMediaField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreMediaField(field, value, reader); err != nil {
 			return err
 		}
@@ -2847,11 +3176,30 @@ func writeCoreScope(output JSONOutput, value *Scope, reader *valueReader) error 
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreScopeField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreScopeField(field, value, reader); err != nil {
 			return err
 		}
@@ -2947,11 +3295,30 @@ func writeCoreProvenance(output JSONOutput, value *Provenance, reader *valueRead
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreProvenanceField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreProvenanceField(field, value, reader); err != nil {
 			return err
 		}
@@ -3092,14 +3459,39 @@ func writeCoreCounterMap(output JSONOutput, value *map[string]Counter, reader *v
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		if *value == nil {
+			*value = make(map[string]Counter, len(output.node.fields))
+		}
+		for _, field := range output.node.fields {
+			key := ownCoreMapKey(field.key)
+			child := (*value)[key]
+			if err := writeCoreCounter(field.value, &child, reader); err != nil {
+				return err
+			}
+			(*value)[key] = child
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
 	if *value == nil {
-		*value = make(map[string]Counter, len(fields))
+		*value = make(map[string]Counter)
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		key := ownCoreMapKey(field.key)
 		child := (*value)[key]
 		if err := writeCoreCounter(field.value, &child, reader); err != nil {
@@ -3141,11 +3533,30 @@ func writeCoreToolInput(output JSONOutput, value *ToolInput, reader *valueReader
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreToolInputField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreToolInputField(field, value, reader); err != nil {
 			return err
 		}
@@ -3209,11 +3620,30 @@ func writeCoreNativeRequestContext(output JSONOutput, value *NativeRequestContex
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreNativeRequestContextField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreNativeRequestContextField(field, value, reader); err != nil {
 			return err
 		}
@@ -3290,11 +3720,30 @@ func writeCoreResponsesStorageIntent(output JSONOutput, value *ResponsesStorageI
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreResponsesStorageIntentField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreResponsesStorageIntentField(field, value, reader); err != nil {
 			return err
 		}
@@ -3403,11 +3852,30 @@ func writeCoreCounter(output JSONOutput, value *Counter, reader *valueReader) er
 		return nil
 	}
 	reader = coreOutputReader(output, reader)
-	fields, err := coreObjectFields(output)
+	if output.node != nil {
+		if !output.node.object {
+			_, err := newCoreObjectIterator(output)
+			return err
+		}
+		for _, field := range output.node.fields {
+			if err := writeCoreCounterField(field, value, reader); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fields, err := newCoreObjectIterator(output)
 	if err != nil {
 		return err
 	}
-	for _, field := range fields {
+	for {
+		field, hasField, err := fields.next()
+		if err != nil {
+			return err
+		}
+		if !hasField {
+			break
+		}
 		if err := writeCoreCounterField(field, value, reader); err != nil {
 			return err
 		}

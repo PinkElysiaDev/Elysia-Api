@@ -98,11 +98,35 @@ func TestCoreOutputRawContracts(t *testing.T) {
 	assertCoreOutputParity(t, output, decodeCoreRequestOutput)
 	for _, raw := range []string{
 		`{"usage":{"input":{"count":7}},"usage":{"input":{"origin":"observed"}}}`,
+		`{"us\u0061ge":{"input":{"count":9007199254740993}},"usage":{"input":{"origin":"observed"}}}`,
+		`{"usage":{"input":{"count":"bad"}},"usage":{"input":{"count":7,"origin":"observed"}}}`,
 		`{"usage":{"details":{"x":{"count":7}}},"usage":{"details":{"x":{"origin":"observed"}}}}`,
 		`{"usage":{"details":{"x":{"count":7,"origin":"observed"}}},"usage":{"details":{"x":null}}}`,
 	} {
 		value, _ := ParseValue([]byte(raw))
 		assertCoreOutputParity(t, JSONLeaf(value), decodeCoreResponseOutput)
+	}
+}
+
+func TestCoreObjectIteratorMatchesWriterOwnership(t *testing.T) {
+	raw := `{"usage":{"input":{"count":7}},"usage":{"input":{"origin":"observed"}},"id":"id","attributes":{"payload":"` + strings.Repeat("x", 1<<20) + `"}}`
+	value, err := ParseValue([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response Response
+	if err := writeCoreResponse(JSONLeaf(value), &response, requestValueReader(value)); err != nil {
+		t.Fatal(err)
+	}
+	if response.Usage.Input.Count != 7 || response.Usage.Input.Origin != "observed" || !response.ID.IsString("id") {
+		t.Fatal("ordered fields lost their values", response)
+	}
+	borrowed, err := scanObjectMember(value, "id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spanIdentity(response.ID.raw) == spanIdentity(borrowed.raw) {
+		t.Fatal("small retained core value borrowed the entire input")
 	}
 }
 

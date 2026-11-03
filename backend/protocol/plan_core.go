@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/bytedance/sonic/ast"
 )
 
 //go:generate go run -tags=coreplan_bootstrap ../internal/coreplan
@@ -120,32 +118,77 @@ func coreOutputIsNull(output JSONOutput) bool {
 }
 
 func coreObjectFields(output JSONOutput) ([]jsonOutputField, error) {
-	if output.node != nil {
-		if !output.node.object {
-			return nil, fmt.Errorf("expected core object")
-		}
-		return output.node.fields, nil
-	}
-	if !output.value.IsObject() {
-		return nil, fmt.Errorf("expected core object")
-	}
-	// Preserve repeated members in order: decoding a second struct object can
-	// merge fields with the first rather than replace the whole object.
-	node := ast.NewRaw(output.value.raw)
-	properties, err := node.Properties()
+	iterator, err := newCoreObjectIterator(output)
 	if err != nil {
 		return nil, err
 	}
-	var fields []jsonOutputField
-	var pair ast.Pair
-	for properties.Next(&pair) {
-		raw, err := pair.Value.Raw()
-		if err != nil {
-			return nil, err
-		}
-		fields = append(fields, jsonOutputField{pair.Key, JSONLeaf(Value{raw: raw})})
+	if iterator.raw == "" {
+		return iterator.fields, nil
 	}
-	return fields, node.Check()
+	var fields []jsonOutputField
+	for {
+		field, hasField, err := iterator.next()
+		if err != nil || !hasField {
+			return fields, err
+		}
+		field.key = strings.Clone(field.key)
+		fields = append(fields, field)
+	}
+}
+
+// Core struct decoding merges repeated objects in wire order. Keep that order
+// without an AST or field table; only writes into retained Core values detach.
+type coreObjectIterator struct {
+	fields []jsonOutputField
+	raw    string
+	offset int
+}
+
+func newCoreObjectIterator(output JSONOutput) (coreObjectIterator, error) {
+	if output.node != nil {
+		if !output.node.object {
+			return coreObjectIterator{}, fmt.Errorf("expected core object")
+		}
+		return coreObjectIterator{fields: output.node.fields}, nil
+	}
+	if !output.value.IsObject() {
+		return coreObjectIterator{}, fmt.Errorf("expected core object")
+	}
+	raw := strings.TrimSpace(output.value.raw)
+	return coreObjectIterator{raw: raw, offset: skipJSONSpace(raw, 1)}, nil
+}
+
+func (iterator *coreObjectIterator) next() (jsonOutputField, bool, error) {
+	if iterator.raw == "" {
+		if iterator.offset == len(iterator.fields) {
+			return jsonOutputField{}, false, nil
+		}
+		field := iterator.fields[iterator.offset]
+		iterator.offset++
+		return field, true, nil
+	}
+	raw, offset := iterator.raw, iterator.offset
+	if raw[offset] == '}' {
+		return jsonOutputField{}, false, nil
+	}
+	end := jsonStringEnd(raw, offset)
+	key := raw[offset+1 : end-1]
+	if strings.Contains(key, `\`) || !utf8.ValidString(key) {
+		var err error
+		key, err = decodeObjectKey(raw[offset:end])
+		if err != nil {
+			return jsonOutputField{}, false, err
+		}
+	}
+	offset = skipJSONSpace(raw, skipJSONSpace(raw, end)+1)
+	end = jsonValueEnd(raw, offset)
+	field := jsonOutputField{key: key, value: JSONLeaf(Value{raw: raw[offset:end]})}
+	offset = skipJSONSpace(raw, end)
+	if raw[offset] == ',' {
+		offset = skipJSONSpace(raw, offset+1)
+	}
+	iterator.offset = offset
+	return field, true, nil
 }
 
 func coreArrayItems(output JSONOutput) ([]JSONOutput, error) {

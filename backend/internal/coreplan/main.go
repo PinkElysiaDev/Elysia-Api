@@ -186,7 +186,8 @@ func (g *generator) emitWriter(name string, t reflect.Type) {
 		if t.Key().Kind() != reflect.String {
 			panic("unsupported map: " + t.String())
 		}
-		g.line("if coreOutputIsNull(output){*value=nil;return nil};reader=coreOutputReader(output,reader);fields,err:=coreObjectFields(output);if err!=nil{return err};if *value==nil{*value=make(%s,len(fields))};for _,field:=range fields {key:=ownCoreMapKey(field.key);child:=(*value)[key];if err:=writeCore%s(field.value,&child,reader);err!=nil{return err};(*value)[key]=child};return nil", local(t), g.name(t.Elem()))
+		g.line("if coreOutputIsNull(output){*value=nil;return nil}")
+		g.emitObjectWriter(local(t), fmt.Sprintf("key:=ownCoreMapKey(field.key);child:=(*value)[key];if err:=writeCore%s(field.value,&child,reader);err!=nil{return err};(*value)[key]=child", g.name(t.Elem())))
 	case reflect.Struct:
 		if t == reflect.TypeFor[p.Native]() || t == reflect.TypeFor[p.Provenance]() {
 			origin := "capturedNativeOrigin"
@@ -195,7 +196,9 @@ func (g *generator) emitWriter(name string, t reflect.Type) {
 			}
 			g.line("if !coreOutputIsNull(output){if err:=requireCoreOrigin(output,reader,%s);err!=nil{return err}}", origin)
 		}
-		g.line("if coreOutputIsNull(output){return nil};reader=coreOutputReader(output,reader);fields,err:=coreObjectFields(output);if err!=nil{return err};for _,field:=range fields {if err:=writeCore%sField(field,value,reader);err!=nil{return err}};return nil\n}", name)
+		g.line("if coreOutputIsNull(output){return nil}")
+		g.emitObjectWriter("", fmt.Sprintf("if err:=writeCore%sField(field,value,reader);err!=nil{return err}", name))
+		g.line("}")
 		g.line("func writeCore%sField(field jsonOutputField,value *%s,reader *valueReader) error {switch field.key {", name, local(t))
 		var names []string
 		for _, field := range fields(t) {
@@ -207,6 +210,22 @@ func (g *generator) emitWriter(name string, t reflect.Type) {
 		panic("unsupported core type: " + t.String())
 	}
 	g.line("}")
+}
+
+// Constructed plans already expose an ordered slice. Only raw leaves need the
+// scanner; keeping that choice outside the loop avoids taxing every Core field.
+func (g *generator) emitObjectWriter(mapType, writeField string) {
+	g.line("reader=coreOutputReader(output,reader)")
+	g.line("if output.node!=nil {if !output.node.object{_,err:=newCoreObjectIterator(output);return err}")
+	if mapType != "" {
+		g.line("if *value==nil{*value=make(%s,len(output.node.fields))}", mapType)
+	}
+	g.line("for _,field:=range output.node.fields {%s};return nil}", writeField)
+	g.line("fields,err:=newCoreObjectIterator(output);if err!=nil{return err}")
+	if mapType != "" {
+		g.line("if *value==nil{*value=make(%s)}", mapType)
+	}
+	g.line("for {field,hasField,err:=fields.next();if err!=nil{return err};if !hasField{break};%s};return nil", writeField)
 }
 
 func (g *generator) emitReader(name string, t reflect.Type) {

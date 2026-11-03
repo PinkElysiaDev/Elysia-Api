@@ -67,3 +67,21 @@ heap for four packages plus sixteen policies changes from 93,564,968 to
 67,417,120 bytes. These single diagnostic runs establish ownership reduction,
 not final HTTP memory acceptance. Evidence: `deep-options-fixed-{compilation/,
 diagnostics.log,tests.log}` and `deep-options-race.log` under `.tmp-dev/`.
+
+## Ordered Core object scans
+
+Raw Core object writers now scan validated JSON members in order without Sonic
+ASTs or temporary field slices. Generated writers keep their original direct
+field loop for constructed plans. Materializing callers retain an ordered-field
+helper; small retained Core values still detach from large input bodies.
+
+The first iterator applied to both raw and constructed objects. Ten pairs
+showed about 10% slower constructed writes; that implementation was corrected,
+and the original evidence remains in `deep-core-{objects,semantic}/`.
+Corrected ten-pair results: repeated raw Core objects improve time by 77.52%,
+bytes by 91.70%, allocations by 72.97%; constructed/materialized request metrics
+are inconclusive with no stable regression. Native continuation improves time
+by 5.96%, bytes by 21.06%, allocations by 7.19%; reference rewrite is inconclusive.
+Related tests and race pass, including repeated fields, exact numbers, first
+errors and owned small selections. Evidence: `.tmp-dev/deep-core-fixed-
+{objects,semantic}/`, `deep-core-{iterator-tests,fixed-tests,race}.log`.
