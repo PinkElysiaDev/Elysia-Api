@@ -546,3 +546,21 @@ heap 峰值和恢复值也有明显波动。两版模拟器仍各用自身解码
 深层相邻值和所有权回归及定向 race 通过；扫描器 fuzz 10 秒执行 265886 次通过。最终 Go
 全量通过，vet/staticcheck 无诊断。证据为 .tmp-dev/object-member-{performance-branch,http-build,http-pairs}/
 及 object-member-final-*.log；辅助脚本曾因输出目录已存在而在测量前退出，未覆盖旧证据。
+
+## 定向优化 4：编译表达式不保留空表
+
+独立 profile 定位到每个表达式都创建 fields、cases、values 三张表，原样本这些分配点合计
+占约 11.5MB 保留堆。核对完整编译文件、输出计划、类型推导和证明读取者后，仅在对应声明
+非空时分配表；只读空表使用 nil，不新增缓存、对象池或执行分支，不改限额、权限及编译指纹。
+
+新增四预置完整 CompileSources 基准，将文件读取与编译器构造置于计时外。以 35a7c8ad 为
+局部基线，固定 Go 1.27.2、GOMAXPROCS=2、GOGC=100、CGO=0，十对交替 300ms 测得 Chat、
+Responses、Anthropic、Gemini 配对中位耗时分别下降 1.21%、3.25%、1.72%、2.03%，分配次数
+下降 3.70%、5.99%、6.18%、6.39%。这些是编译收益，不等同于网关请求性能收益。
+
+五对短请求 HTTP 的分配字节/次数配对中位差接近零，CPU、峰值和自然恢复 heap 存在噪声。
+另行采集的 GC 后堆 profile 中，编译函数直接保留由 47.01MB 降至 36.51MB，整堆由 86.97MB
+降至 69.85MB；采样值只证明该分配热点减少，不把单次整堆比例作为稳定性能结论。证据在
+.tmp-dev/expression-table-{performance,http-build,http-pairs,profile}/。协议/builtin 全量通过
+（4.439/28.493 秒），编译/引用复用定向 race 通过（4.306 秒），全仓 vet/staticcheck 无诊断。
+日志为 .tmp-dev/expression-tables-*.log；生产切换和完整 A/B/C 验收仍未完成。

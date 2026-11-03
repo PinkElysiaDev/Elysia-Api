@@ -446,7 +446,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		*child.output = value
 	}
-	compiled.fields = make(map[string]*compiledExpression, len(expression.Fields))
+	if len(expression.Fields) != 0 {
+		compiled.fields = make(map[string]*compiledExpression, len(expression.Fields))
+	}
 	compiled.keys = sortedKeys(expression.Fields)
 	for _, key := range compiled.keys {
 		child, err := compiler.compile(expression.Fields[key], path+"/fields/"+escapePointer(key), scope, depth+1)
@@ -462,7 +464,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.items = append(compiled.items, child)
 	}
-	compiled.cases = make(map[string]*compiledExpression, len(expression.Cases))
+	if len(expression.Cases) != 0 {
+		compiled.cases = make(map[string]*compiledExpression, len(expression.Cases))
+	}
 	for _, key := range sortedKeys(expression.Cases) {
 		child, err := compiler.compile(expression.Cases[key], path+"/cases/"+escapePointer(key), scope, depth+1)
 		if err != nil {
@@ -470,7 +474,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.cases[key] = child
 	}
-	compiled.values = make(map[string]Value, len(expression.Values))
+	if len(expression.Values) != 0 {
+		compiled.values = make(map[string]Value, len(expression.Values))
+	}
 	for key, value := range expression.Values {
 		compiled.values[key] = value
 	}

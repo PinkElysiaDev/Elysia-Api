@@ -194,6 +194,7 @@
     "backend/protocol/builtin/output_text_test.go",
     "backend/protocol/builtin/package_assistant_layout_test.go",
     "backend/protocol/builtin/package_cache_projection_test.go",
+    "backend/protocol/builtin/package_compile_bench_test.go",
     "backend/protocol/builtin/package_continuation_openai_test.go",
     "backend/protocol/builtin/package_conversion_defaults_test.go",
     "backend/protocol/builtin/package_error_projection_test.go",
