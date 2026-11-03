@@ -368,7 +368,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 				return err
 			}
 			server.invalidateRouteCache()
-			return nil
+			return checkReloadedConversionExecution(ctx, server, execution)
 		}
 		settle = func() error {
 			deadline := time.Now().Add(30 * time.Second)
