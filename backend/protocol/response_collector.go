@@ -12,9 +12,10 @@ type collectedPosition struct {
 // ResponseCollector assembles a bounded result for consumers that need a whole
 // response (Agent and probes). Ordinary gateway streams use EventReplay alone.
 type ResponseCollector struct {
-	replay   *EventReplay
-	response Response
-	items    map[string]collectedPosition
+	retention streamReservation
+	replay    *EventReplay
+	response  Response
+	items     map[string]collectedPosition
 	// Auxiliary native frames cannot establish an identity or borrow one from
 	// an unrelated later event; bind them to the observed response start.
 	startedResponseID Value
@@ -178,6 +179,7 @@ func (collector *ResponseCollector) Consume(event Event) (kind NodeKind, delta s
 			collector.materializeMetadata()
 			clear(collector.texts)
 			collector.replay.releaseToolInputs()
+			collector.replay.retention.commit(collector.replay.retainedItems(), collector.replay.retainedBytes())
 		}
 	}()
 	if event.Unmapped != nil {
@@ -601,6 +603,7 @@ func (collector *ResponseCollector) Partial() (*Response, error) {
 // Release drops accumulation and validation state after its consumer settles.
 // A successful Finish result keeps its response storage; Partial owns a copy.
 func (collector *ResponseCollector) Release() {
+	collector.retention.release()
 	collector.replay.Release()
 	var response Response
 	if collector.hasResult {

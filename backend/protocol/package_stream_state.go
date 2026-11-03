@@ -152,8 +152,7 @@ func (compiled *Compiled) beginPackageTransaction(direction Direction, options E
 		return options, nil, fmt.Errorf("declared event state requires one EvaluationState per stream")
 	}
 	if budget := options.State.retention.budget; budget != nil {
-		budget.limits.StateItems = min(budget.limits.StateItems, compiled.limits.StateItems)
-		budget.limits.BufferBytes = min(budget.limits.BufferBytes, compiled.limits.BufferBytes)
+		budget.constrain(compiled.limits)
 	}
 	previous := options.State.packageStates[key]
 	if previous != nil && previous.scope != options.Scope {

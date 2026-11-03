@@ -46,6 +46,7 @@ func (state *SealedContinuation) MarkPersisted() { state.persisted = true }
 // ContinuationBinding owns one response's carrier delivery and recovery facts.
 // It shares immutable tokens; it does not retain the source response or history.
 type ContinuationBinding struct {
+	retention                             streamReservation
 	compiled                              *Compiled
 	direction                             Direction
 	source                                Identity
@@ -91,6 +92,9 @@ func (binding *ContinuationBinding) Append(state *SealedContinuation) error {
 	if binding.bytes+state.bytes > limits.BufferBytes {
 		return resourceFailure("continuation", "bytes", limits.BufferBytes, binding.bytes+state.bytes)
 	}
+	if err := binding.retention.check(len(binding.entries)+1, binding.bytes+state.bytes); err != nil {
+		return err
+	}
 	if binding.resources == nil {
 		binding.resources = map[string]*SealedContinuation{}
 	}
@@ -99,6 +103,7 @@ func (binding *ContinuationBinding) Append(state *SealedContinuation) error {
 	}
 	binding.entries = append(binding.entries, state)
 	binding.bytes += state.bytes
+	binding.retention.commit(len(binding.entries), binding.bytes)
 	return nil
 }
 
@@ -132,10 +137,18 @@ func (binding *ContinuationBinding) Finish() error {
 
 // CommitDelivery consumes one confirmed batch only after the host's writes and flush succeed.
 func (binding *ContinuationBinding) CommitDelivery() error {
-	if binding != nil && binding.deliveryAborted {
+	if binding == nil {
+		return nil
+	}
+	if binding.deliveryAborted {
 		return operationMetadataError("/continuation", "aborted carrier output cannot commit delivery")
 	}
-	if binding == nil || !binding.isRendering {
+	if budget := binding.retention.budget; budget != nil {
+		if err := budget.Check(); err != nil {
+			return err
+		}
+	}
+	if !binding.isRendering {
 		return nil
 	}
 	if binding.confirmed != binding.batchEnd-binding.committed {
@@ -146,6 +159,7 @@ func (binding *ContinuationBinding) CommitDelivery() error {
 	binding.isRendering = false
 	binding.emitted = nil
 	binding.tokenView = plannedOutput{}
+	binding.retention.commit(len(binding.entries), binding.bytes)
 	return nil
 }
 
@@ -157,6 +171,7 @@ func (binding *ContinuationBinding) AbortDelivery() {
 	binding.confirmed = 0
 	binding.emitted = nil
 	binding.tokenView = plannedOutput{}
+	binding.retention.commit(len(binding.entries), binding.bytes)
 }
 
 // Release drops owned tokens and indexes after the response settles. Sealed
@@ -165,6 +180,7 @@ func (binding *ContinuationBinding) Release() {
 	binding.AbortDelivery()
 	binding.entries, binding.resources = nil, nil
 	binding.bytes = 0
+	binding.retention.release()
 }
 
 func (binding *ContinuationBinding) check(compiled *Compiled, direction Direction, scope Scope) error {
@@ -188,6 +204,9 @@ func (binding *ContinuationBinding) startBatch() error {
 	if retained := binding.bytes + view.bytes; retained > binding.compiled.limits.BufferBytes {
 		return resourceFailure("continuation", "bytes", binding.compiled.limits.BufferBytes, retained)
 	}
+	if err := binding.retention.check(len(binding.entries), binding.bytes+view.bytes); err != nil {
+		return err
+	}
 	binding.batchEnd, binding.confirmed = batchEnd, 0
 	binding.emitted = make(map[string]bool, batchEnd-binding.committed)
 	for _, state := range binding.entries[binding.committed:batchEnd] {
@@ -195,6 +214,7 @@ func (binding *ContinuationBinding) startBatch() error {
 	}
 	binding.tokenView = view
 	binding.isRendering = true
+	binding.retention.commit(len(binding.entries), binding.bytes+view.bytes)
 	return nil
 }
 

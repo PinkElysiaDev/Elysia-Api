@@ -23,6 +23,7 @@ type replayItem struct {
 // EventReplay is the shared semantic event validator for fixtures and runtime
 // sessions. It retains bounded identities/digests, not already-forwarded text.
 type EventReplay struct {
+	retention     streamReservation
 	state         *StreamState
 	sequence      *SequenceTracker
 	items         map[string]*replayItem
@@ -429,8 +430,16 @@ func (replay *EventReplay) retainedBytes() int {
 }
 
 func (replay *EventReplay) checkRetainedBytes() error {
-	if replay.retainedBytes() > replay.limits.BufferBytes {
+	bytes := replay.retainedBytes()
+	if bytes > replay.limits.BufferBytes {
 		return streamIssue(LimitExceeded, "/item", "stream identities and buffered input exceed the buffer limit")
+	}
+	if replay.retention.budget != nil {
+		items := replay.retainedItems()
+		if err := replay.retention.check(items, bytes); err != nil {
+			return err
+		}
+		replay.retention.commit(items, bytes)
 	}
 	return nil
 }
@@ -455,6 +464,9 @@ func (replay *EventReplay) Finish() error {
 	if !replay.isTerminal {
 		return streamIssue(UpstreamContractViolation, "/type", "event sequence ended without a terminal")
 	}
+	if budget := replay.retention.budget; budget != nil {
+		return budget.Check()
+	}
 	return nil
 }
 
@@ -464,5 +476,6 @@ func (replay *EventReplay) Usage() *Usage { return MergeUsage(nil, replay.usage)
 // Release drops request-owned identities, history and input buffers. A released
 // replay cannot accept more events or establish successful completion.
 func (replay *EventReplay) Release() {
+	replay.releaseRetention()
 	*replay = EventReplay{isReleased: true}
 }

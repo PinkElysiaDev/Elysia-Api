@@ -74,12 +74,21 @@ func (collector *ResponseCollector) checkRetention() error {
 	if err := collector.reserveItems(0); err != nil {
 		return err
 	}
-	return collector.checkRetainedBytes(collector.bytes)
+	if err := collector.checkRetainedBytes(collector.bytes); err != nil {
+		return err
+	}
+	if collector.retention.budget != nil {
+		collector.retention.commit(collector.ownedItems(), collector.bytes)
+	}
+	return nil
 }
 
 func (collector *ResponseCollector) checkRetainedBytes(bytes int) error {
 	if bytes+collector.replay.retainedBytes() > collector.limit {
 		return streamIssue(LimitExceeded, "/response", "collected response and replay state exceed buffer limit")
+	}
+	if collector.retention.budget != nil {
+		return collector.retention.check(collector.ownedItems(), bytes)
 	}
 	return nil
 }
