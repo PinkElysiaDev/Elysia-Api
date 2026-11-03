@@ -88,14 +88,18 @@ func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
 		replay.terminal = ResponseFinished
 	case OperationFailed, OperationCancelled:
 		// Failed/cancelled operations may legitimately leave partial arguments.
-		for _, tool := range replay.state.tools {
-			tool.input.Reset()
-		}
-		replay.state.buffered = 0
+		replay.releaseToolInputs()
 		replay.isTerminal = true
 		replay.terminal = event.Type
 	}
 	return true, nil
+}
+
+func (replay *EventReplay) releaseToolInputs() {
+	for _, tool := range replay.state.tools {
+		tool.input.Reset()
+	}
+	replay.state.buffered = 0
 }
 
 func (replay *EventReplay) consumeItem(event Event) error {

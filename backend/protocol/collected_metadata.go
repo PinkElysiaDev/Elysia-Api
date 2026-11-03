@@ -64,7 +64,7 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 	}
 	// Bound retained fragments independently. Materialization preserves the
 	// snapshot instead of rejecting solely because it arrived in many frames.
-	if collector.metadataItems == collector.metadataLimit || metadata.Value.Len() > collector.limit-collector.metadataBytes {
+	if collector.metadataItems+collector.retainedItems() >= collector.replay.limits.StateItems || metadata.Value.Len() > collector.limit-collector.metadataBytes {
 		collector.materializeMetadata()
 	}
 	if metadata.Value.Len() > collector.limit {
@@ -93,28 +93,37 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 		collector.materializeItemMetadata(key)
 		return collector.appendMetadataDelta(key, metadata)
 	}
+	previous := item.Metadata[position]
+	if len(pending.deltas) != 0 {
+		previous = pending.metadata
+	}
+	meter := typedMeter{limits: collector.replay.limits}
+	if !meter.raw(metadata.Value.raw) {
+		return streamIssue(LimitExceeded, metadata.Path, "metadata delta exceeds the collection limit")
+	}
+	charge := meter.bytes
 	if metadata.Update == "append" {
-		previous := item.Metadata[position]
-		if len(pending.deltas) != 0 {
-			previous = pending.metadata
-		}
-		meter := typedMeter{limits: collector.replay.limits}
-		if !meter.raw(metadata.Value.raw) {
-			return streamIssue(LimitExceeded, metadata.Path, "metadata delta exceeds the collection limit")
-		}
-		charge := meter.bytes - 2 // The array brackets belong to the existing snapshot.
+		charge -= 2 // The array brackets belong to the existing snapshot.
 		hasItems := hasMetadataArrayItems(metadata.Value)
 		if hasItems && pending.hasArrayItems {
 			charge++
 		}
-		charge += jsonStringBytes(metadata.Path) + jsonStringBytes(metadata.SourceCodec) - jsonStringBytes(previous.Path) - jsonStringBytes(previous.SourceCodec)
-		if charge > collector.limit-collector.bytes {
-			return streamIssue(LimitExceeded, metadata.Path, "appended metadata exceeds the collection limit")
-		}
-		collector.bytes += charge
-		pending.charged += charge
 		pending.hasArrayItems = pending.hasArrayItems || hasItems
 	}
+	charge += jsonStringBytes(metadata.Path) + jsonStringBytes(metadata.SourceCodec) - jsonStringBytes(previous.Path) - jsonStringBytes(previous.SourceCodec)
+	if charge > collector.limit-collector.bytes-collector.replay.usageBytes {
+		if metadata.Update == "append" {
+			return streamIssue(LimitExceeded, metadata.Path, "appended metadata exceeds the collection limit")
+		}
+		// Legacy fragments retain container syntax until materialization. At
+		// the boundary, charge the merged snapshot so frame count or whitespace
+		// cannot reject content that fits in the same collection budget.
+		collector.materializeMetadata()
+		item.Metadata = MergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata}, true)
+		return collector.accountItemMetadata(key, *item)
+	}
+	collector.bytes += charge
+	pending.charged += charge
 	pending.metadata = metadata
 	pending.deltas = append(pending.deltas, metadata.Value)
 	pending.bytes += metadata.Value.Len()
@@ -126,6 +135,9 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 func (collector *ResponseCollector) materializeItemMetadata(key string) {
 	item := collector.item(key)
 	for _, pending := range collector.metadataDeltas[key] {
+		if len(pending.deltas) == 0 {
+			continue
+		}
 		metadata := pending.metadata
 		if metadata.Update == "append" {
 			// Shape was checked before these immutable array fragments entered
@@ -133,7 +145,12 @@ func (collector *ResponseCollector) materializeItemMetadata(key string) {
 			metadata.Value, _ = mergeArrayDeltas(item.Metadata[pending.index].Value, pending.deltas)
 			metadata.Update = ""
 		} else {
+			previous, _ := EncodeValue(item.Metadata[pending.index])
 			metadata.Value = MergeLogprobDeltas(item.Metadata[pending.index].Value, pending.deltas, metadata.Codec)
+			next, _ := EncodeValue(metadata)
+			charge := next.Len() - previous.Len()
+			collector.bytes += charge - pending.charged
+			pending.charged = charge
 		}
 		item.Metadata = MergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata}, false)
 		// Transfer the already charged fragments to this item's snapshot ledger.

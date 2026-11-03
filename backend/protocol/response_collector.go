@@ -20,17 +20,21 @@ type ResponseCollector struct {
 	startedResponseID Value
 	// Prefix entries become immutable once preceding messages close. Advancing
 	// this frontier visits each top-level item once across the whole stream.
-	topKeys                                     []string
-	ordinals                                    []int
-	containers                                  bool
-	hasServerTools                              bool
-	texts                                       map[string]*collectedText
-	metadata                                    map[string]int
-	metadataDeltas                              map[string][]*collectedMetadata
-	metadataItems, metadataBytes, metadataLimit int
-	unmapped                                    []Value
-	bytes                                       int
-	limit                                       int
+	topKeys                      []string
+	ordinals                     []int
+	containers                   bool
+	hasServerTools               bool
+	texts                        map[string]*collectedText
+	metadata                     map[string]int
+	metadataDeltas               map[string][]*collectedMetadata
+	metadataItems, metadataBytes int
+	unmapped                     []Value
+	unmappedBytes                int
+	headerBaseBytes              int
+	headerBytes, snapshotItems   int
+	failure                      error
+	bytes                        int
+	limit                        int
 }
 
 type collectedText struct {
@@ -131,12 +135,20 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	return &ResponseCollector{replay: replay, response: Response{SchemaVersion: target.coreSchemaVersion(), Source: target.Protocol}, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, metadataLimit: limits.StateItems}, nil
+	response := Response{SchemaVersion: target.coreSchemaVersion(), Source: target.Protocol}
+	base, err := measureSemanticValue(&response, semanticLimits(limits))
+	if err != nil {
+		return nil, err
+	}
+	return &ResponseCollector{replay: replay, response: response, items: map[string]collectedPosition{}, texts: map[string]*collectedText{}, metadata: map[string]int{}, limit: limits.BufferBytes, headerBaseBytes: base.bytes}, nil
 }
 
 // Consume returns the newly appended text, if any. Snapshot prefixes and
 // duplicate sequence frames never appear twice in a caller's output.
-func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, error) {
+func (collector *ResponseCollector) Consume(event Event) (kind NodeKind, delta string, err error) {
+	if collector.failure != nil {
+		return "", "", collector.failure
+	}
 	// Public callers can bypass frame decoding. Bound the auxiliary frame
 	// before sequence canonicalization or metadata validation copies its body.
 	if event.Type == NativeEvent && event.Native != nil && event.Native.Source.Path == responsesMetadataPath {
@@ -144,14 +156,29 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 			return "", "", err
 		}
 	}
+	isAccepted, err := collector.replay.Consume(event)
+	if err != nil || !isAccepted {
+		return "", "", err
+	}
+	defer func() {
+		if err == nil {
+			err = collector.checkRetention()
+			if err != nil {
+				kind, delta = "", ""
+			}
+		}
+		if err != nil {
+			collector.failure = err
+			collector.materializeTexts()
+			collector.materializeMetadata()
+			clear(collector.texts)
+			collector.replay.releaseToolInputs()
+		}
+	}()
 	if event.Unmapped != nil {
 		if err := collector.collectUnmapped(event.Unmapped); err != nil {
 			return "", "", err
 		}
-	}
-	isAccepted, err := collector.replay.Consume(event)
-	if err != nil || !isAccepted {
-		return "", "", err
 	}
 	if event.controlReceipt != nil {
 		return "", "", nil
@@ -168,9 +195,17 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 		}
 		return "", "", err
 	}
-	collector.response.Metadata = mergeCollectedMetadata(collector.response.Metadata, event.Metadata)
-	if !event.ResponseID.IsZero() {
-		collector.response.ID = event.ResponseID
+	header := collector.response
+	metadata, hasMetadata := mergeCollectedMetadata(header.Metadata, event.Metadata)
+	hasIdentity := !event.ResponseID.IsZero() && event.ResponseID != header.ID
+	if hasMetadata || hasIdentity {
+		header.Metadata = metadata
+		if hasIdentity {
+			header.ID = event.ResponseID
+		}
+		if err := collector.setResponse(header, false); err != nil {
+			return "", "", err
+		}
 	}
 	if event.Response != nil {
 		if err := CheckGenerationOutcome(event.Response); err != nil {
@@ -183,12 +218,15 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 		if event.Response != nil {
 			collector.materializeMetadata()
 			id, metadata := collector.response.ID, collector.response.Metadata
-			collector.response = *event.Response
-			collector.ownServerResponseContent()
-			if collector.response.ID.IsZero() {
-				collector.response.ID = id
+			snapshot := *event.Response
+			if snapshot.ID.IsZero() {
+				snapshot.ID = id
 			}
-			collector.response.Metadata = mergeCollectedMetadata(metadata, event.Response.Metadata)
+			snapshot.Metadata, _ = mergeCollectedMetadata(metadata, event.Response.Metadata)
+			if err := collector.setResponse(snapshot, true); err != nil {
+				return "", "", err
+			}
+			collector.ownServerResponseContent()
 			if !event.Response.ID.IsZero() {
 				collector.startedResponseID = event.Response.ID
 			}
@@ -224,30 +262,27 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 			}
 			content, id, model := collector.response.Content, collector.response.ID, collector.response.Model
 			attributes, metadata := collector.response.Attributes, collector.response.Metadata
-			collector.response = *event.Response
-			collector.ownServerResponseContent()
-			collector.response.Attributes = copyObject(attributes)
+			snapshot := *event.Response
+			snapshot.Attributes = copyObject(attributes)
 			for key, value := range event.Response.Attributes {
-				collector.response.Attributes[key] = value
+				snapshot.Attributes[key] = value
 			}
-			collector.response.Metadata = mergeCollectedMetadata(metadata, event.Response.Metadata)
-			if collector.response.ID.IsZero() {
-				collector.response.ID = id
+			snapshot.Metadata, _ = mergeCollectedMetadata(metadata, event.Response.Metadata)
+			if snapshot.ID.IsZero() {
+				snapshot.ID = id
 			}
-			if collector.response.Model.IsZero() {
-				collector.response.Model = model
+			if snapshot.Model.IsZero() {
+				snapshot.Model = model
 			}
-			if len(collector.response.Content) == 0 {
-				collector.response.Content = content
+			if len(snapshot.Content) == 0 {
+				snapshot.Content = content
 			}
-			encoded, err := EncodeValue(collector.response)
-			if err != nil {
+			if err := collector.setResponse(snapshot, true); err != nil {
 				return "", "", err
 			}
-			if len(encoded.Bytes()) > collector.limit {
-				return "", "", streamIssue(LimitExceeded, "/response", "collected response exceeds buffer limit")
-			}
+			collector.ownServerResponseContent()
 		}
+		clear(collector.texts)
 		return "", "", nil
 	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
 		return collector.collectItem(event)
@@ -262,14 +297,15 @@ func (collector *ResponseCollector) Consume(event Event) (NodeKind, string, erro
 // responses carry the same evidence under Attributes["wire:stream"], bounded
 // by the shared buffer limit.
 func (collector *ResponseCollector) collectUnmapped(native *Native) error {
-	encoded, err := EncodeValue(native.Value)
-	if err != nil {
-		return err
-	}
-	if collector.bytes+len(encoded.Bytes()) > collector.limit {
+	size := native.Value.Len()
+	if collector.bytes+size > collector.limit {
 		return streamIssue(LimitExceeded, "/unmapped", "unmapped stream extensions exceed buffer limit")
 	}
-	collector.bytes += len(encoded.Bytes())
+	if err := collector.reserveItems(1); err != nil {
+		return err
+	}
+	collector.bytes += size
+	collector.unmappedBytes += size
 	collector.unmapped = append(collector.unmapped, native.Value)
 	return nil
 }
@@ -505,6 +541,9 @@ func (collector *ResponseCollector) accountItemMetadata(key string, node Node) e
 
 // Finish requires a real terminal and includes usage arriving after completion.
 func (collector *ResponseCollector) Finish() (*Response, error) {
+	if collector.failure != nil {
+		return nil, collector.failure
+	}
 	if err := collector.replay.Finish(); err != nil {
 		return nil, err
 	}
@@ -515,6 +554,9 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 		collector.response.Content[i] = CanonicalReasoning(collector.response.Content[i])
 	}
 	collector.attachUnmapped(&collector.response)
+	if _, err := measureSemanticValue(&collector.response, collector.replay.limits); err != nil {
+		return nil, err
+	}
 	return &collector.response, nil
 }
 
@@ -529,6 +571,9 @@ func (collector *ResponseCollector) Partial() (*Response, error) {
 	collector.attachUnmapped(&partial)
 	value, err := EncodeValue(partial)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkResourceValue(value, collector.replay.limits, "collect.partial"); err != nil {
 		return nil, err
 	}
 	var result Response
@@ -560,25 +605,28 @@ func (collector *ResponseCollector) finishTools() error {
 // IsItemSnapshot 判定事件是否携带全量快照（非增量 delta）。
 func IsItemSnapshot(eventType EventType) bool { return eventType != ItemDelta }
 
-func mergeCollectedMetadata(left, right []ResponseMetadata) []ResponseMetadata {
-	out := append([]ResponseMetadata(nil), left...)
+func mergeCollectedMetadata(left, right []ResponseMetadata) ([]ResponseMetadata, bool) {
+	out := left
+	hasChanged := false
 	for _, m := range right {
 		if m.Location != "response" && m.Location != "usage" {
 			continue
 		}
-		found := false
-		for i := range out {
-			if out[i].Codec == m.Codec && out[i].Location == m.Location && out[i].Name == m.Name {
-				out[i] = m
-				found = true
-				break
-			}
+		position := metadataPosition(out, m)
+		if position >= 0 && out[position] == m {
+			continue
 		}
-		if !found {
+		if !hasChanged {
+			out = append([]ResponseMetadata(nil), left...)
+			hasChanged = true
+		}
+		if position < 0 {
 			out = append(out, m)
+		} else {
+			out[position] = m
 		}
 	}
-	return out
+	return out, hasChanged
 }
 
 // Node metadata snapshots replace earlier values. Token probabilities arriving

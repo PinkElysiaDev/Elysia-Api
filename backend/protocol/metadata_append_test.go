@@ -91,7 +91,6 @@ func TestMetadataAppendBudgetSurvivesFragmentCompaction(t *testing.T) {
 	delta.Metadata = []ResponseMetadata{{Codec: "custom", Location: "item", Name: "values", Update: "append", Value: fixtureValue(t, []string{"012345678901234567890123456789"})}}
 	hasCompacted := false
 	for range 32 {
-		previous := collector.metadataItems
 		_, _, err := collector.Consume(delta)
 		if err != nil {
 			if !hasCompacted || !hasIssueCode(err, LimitExceeded) {
@@ -99,7 +98,14 @@ func TestMetadataAppendBudgetSurvivesFragmentCompaction(t *testing.T) {
 			}
 			return
 		}
-		hasCompacted = hasCompacted || collector.metadataItems < previous
+		// A one-fragment window can compact and append in the same call.
+		// Observe the growing snapshot instead of a drop in the queue length.
+		key, _ := collector.replay.itemKey(delta)
+		var values []Value
+		if err := collector.item(key).Metadata[0].Value.Decode(&values); err != nil {
+			t.Fatal(err)
+		}
+		hasCompacted = hasCompacted || len(values) > 1
 	}
 	t.Fatal("array append bypassed the collection budget after fragment compaction")
 }
