@@ -8,19 +8,20 @@ import (
 )
 
 type compiledPackagePlan struct {
-	continuation       *compiledContinuation
-	coreVersion        int
-	dslVersion         int
-	effects            map[Direction][]compiledSemanticEffect
-	requestProjection  Value
-	hasCacheProjection bool
-	hasFieldProjection bool
-	modelContracts     map[string]compiledWireContract
-	taskContracts      map[string]map[string]packageTaskContracts
-	finalContracts     map[Direction]compiledWireContract
-	modelPolicy        *compiledModelPolicy
-	conversionDefaults []ConversionRule
-	fieldObservations  map[string]compiledFieldObservation
+	continuation         *compiledContinuation
+	coreVersion          int
+	dslVersion           int
+	effects              map[Direction][]compiledSemanticEffect
+	requestProjection    Value
+	hasCacheProjection   bool
+	hasFieldProjection   bool
+	modelContracts       map[string]compiledWireContract
+	modelClientContracts map[string]compiledWireContract
+	taskContracts        map[string]map[string]packageTaskContracts
+	finalContracts       map[Direction]compiledWireContract
+	modelPolicy          *compiledModelPolicy
+	conversionDefaults   []ConversionRule
+	fieldObservations    map[string]compiledFieldObservation
 }
 
 type compiledSemanticEffect struct {

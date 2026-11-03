@@ -28,6 +28,86 @@
             }
           }
         }
+      },
+      "encodeModels": {
+        "op": "if",
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/next"
+              }
+            },
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/hasMore"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/hasMore"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          ]
+        },
+        "then": {
+          "op": "reject",
+          "path": "/models",
+          "reason": "client catalog requires a complete local page",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "evaluate"
+          }
+        },
+        "otherwise": {
+          "op": "object",
+          "fields": {
+            "object": {
+              "op": "literal",
+              "value": "list"
+            },
+            "data": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "path": "/models"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "id": {
+                    "op": "read",
+                    "path": "/id",
+                    "from": "item"
+                  },
+                  "object": {
+                    "op": "literal",
+                    "value": "model"
+                  },
+                  "created": {
+                    "op": "literal",
+                    "value": 0
+                  },
+                  "owned_by": {
+                    "op": "literal",
+                    "value": "elysia-api"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   ,
@@ -39363,6 +39443,53 @@
           },
           {
             "id": "beta"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog.encode.empty",
+      "operation": "models",
+      "direction": "encode_response",
+      "input": {
+        "models": []
+      },
+      "expected": {
+        "object": "list",
+        "data": []
+      }
+    },
+    {
+      "id": "catalog.encode.local",
+      "operation": "models",
+      "direction": "encode_response",
+      "input": {
+        "models": [
+          {
+            "id": "local-default",
+            "name": "local-default"
+          },
+          {
+            "id": "local-limit",
+            "name": "local-limit",
+            "maxTokens": 2048
+          }
+        ]
+      },
+      "expected": {
+        "object": "list",
+        "data": [
+          {
+            "id": "local-default",
+            "object": "model",
+            "created": 0,
+            "owned_by": "elysia-api"
+          },
+          {
+            "id": "local-limit",
+            "object": "model",
+            "created": 0,
+            "owned_by": "elysia-api"
           }
         ]
       }

@@ -206,6 +206,9 @@ func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig,
 }
 
 func (s *Server) listModels(ctx context.Context, c *app.RequestContext) {
+	if s.servePackageModelCatalog(ctx, c) {
+		return
+	}
 	groups := s.getGroups()
 
 	// 返回模型组名称作为模型 ID
@@ -231,6 +234,9 @@ func (s *Server) listModels(ctx context.Context, c *app.RequestContext) {
 }
 
 func (s *Server) listGeminiModels(ctx context.Context, c *app.RequestContext) {
+	if s.servePackageModelCatalog(ctx, c) {
+		return
+	}
 	groups := s.getGroups()
 
 	// 返回 Gemini 原生格式：{ models: [{ name: "models/GROUP_NAME", ... }] }

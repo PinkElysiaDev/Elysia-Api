@@ -521,6 +521,7 @@ export function ProtocolV2Editor({
                     conversionDefaults.streamDisposition 声明流内损失的 degrade／reject、path 和 reason；目标事件程序使用 require_disposition 的固定 name 引用规则，source 提供实际位置。严格模式、规则禁用或不匹配时拒绝，原生 observer 同样执行授权。
                     nativeWhen 可读取 runtime 的 /encoding/hasRendered，判断此前是否执行过语义编码，据此选择包含历史内容的帧是否重建；它不代表成功交付，不授予引用、资源或续传证明。
                     encode_event.semanticRanges 使用相同的文本／引用记录检查核心事件改写：仅可读取事件身份、delta、item 的 kind／payload 和 metadata。原值由宿主保留，配置不能提供改写证明；最终 wire 与实际交付检查仍分别执行。
+                    models 操作通过 Spec 的 models.clientDocument 声明客户端目录合同，Mapping 的 encodeModels 将核心 models 数组编码成目标格式；decodeModels 继续负责上游发现。modelSamples.direction 使用 encode_response 验证客户端输出，省略时验证 decode_response。两方向的样例覆盖分别检查。
                     encode_response／encode_event.deliveryRanges 声明引用关联：name 为通道，measure 度量字符串，texts 返回 key／text／mode／path，ranges 返回 key／id／start／end／path。选择程序只读 wire；最终改写仅保留 Unicode 字符边界上相同的前后区间，引用索引必须匹配已证明位置。事件方向保留摘要和区间，支持晚到引用；只有成功 Flush 后提交，snapshot 不能改写已交付前缀。
                   </p>
                 )}
@@ -605,7 +606,10 @@ export function ProtocolV2Editor({
                   aria-label="预览类型"
                   className={selectClass}
                   value={previewMode}
-                  onChange={(event) => setPreviewMode(event.target.value)}
+                  onChange={(event) => {
+                    setPreviewMode(event.target.value)
+                    if (event.target.value === 'models') setDirection('decode_response')
+                  }}
                 >
                   <option value="mapping">请求 / 响应 / 事件</option>
                   <option value="session">完整双向会话</option>
@@ -622,7 +626,7 @@ export function ProtocolV2Editor({
                   value={direction}
                   onChange={(event) => setDirection(event.target.value)}
                 >
-                  {schema.directions.map((value) => (
+                  {(previewMode === 'models' ? ['decode_response', 'encode_response'] : schema.directions).map((value) => (
                     <option key={value}>{value}</option>
                   ))}
                 </select>
@@ -640,7 +644,7 @@ export function ProtocolV2Editor({
 
             {previewMode === 'models' && (
               <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                <span>发现操作名</span>
+                <span>目录操作名（decode_response 发现／encode_response 客户端输出）</span>
                 <Input
                   value={taskOperation}
                   onChange={(event) => setTaskOperation(event.target.value)}
@@ -716,6 +720,7 @@ export function ProtocolV2Editor({
                               source,
                               {
                                 mode: previewMode,
+                                direction: previewMode === 'models' ? direction : undefined,
                                 sample: workflowSample,
                                 operation: taskOperation,
                                 kind: taskKind,

@@ -28,7 +28,8 @@
       },
       "response": "model-page",
       "models": {
-        "cursorParameter": "pageToken"
+        "cursorParameter": "pageToken",
+        "clientDocument": "client-model-page"
       }
     },
     "stream": {
@@ -49,6 +50,53 @@
     }
   },
   "documents": {
+    "client-model-page": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "displayName",
+                "description",
+                "inputTokenLimit",
+                "outputTokenLimit",
+                "supportedGenerationMethods"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "inputTokenLimit": {
+                  "type": "integer"
+                },
+                "outputTokenLimit": {
+                  "type": "integer"
+                },
+                "supportedGenerationMethods": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "request": {
       "schema": {
         "type": "object",

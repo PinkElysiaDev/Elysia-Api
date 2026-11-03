@@ -56,6 +56,157 @@
             "path": "/nextPageToken"
           }
         }
+      },
+      "encodeModels": {
+        "op": "if",
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/next"
+              }
+            },
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/hasMore"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/hasMore"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          ]
+        },
+        "then": {
+          "op": "reject",
+          "path": "/models",
+          "reason": "client catalog requires a complete local page",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "evaluate"
+          }
+        },
+        "otherwise": {
+          "op": "object",
+          "fields": {
+            "models": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "path": "/models"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "name": {
+                    "op": "join",
+                    "items": [
+                      {
+                        "op": "literal",
+                        "value": "models/"
+                      },
+                      {
+                        "op": "read",
+                        "path": "/id",
+                        "from": "item"
+                      }
+                    ]
+                  },
+                  "displayName": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "path": "/name",
+                        "from": "item"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "path": "/name",
+                      "from": "item"
+                    },
+                    "otherwise": {
+                      "op": "read",
+                      "path": "/id",
+                      "from": "item"
+                    }
+                  },
+                  "description": {
+                    "op": "literal",
+                    "value": "elysia-api model group"
+                  },
+                  "inputTokenLimit": {
+                    "op": "if",
+                    "when": {
+                      "op": "integer",
+                      "operation": "gt",
+                      "items": [
+                        {
+                          "op": "if",
+                          "when": {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "path": "/maxTokens",
+                              "from": "item"
+                            }
+                          },
+                          "then": {
+                            "op": "read",
+                            "path": "/maxTokens",
+                            "from": "item"
+                          },
+                          "otherwise": {
+                            "op": "literal",
+                            "value": 0
+                          }
+                        },
+                        {
+                          "op": "literal",
+                          "value": 0
+                        }
+                      ]
+                    },
+                    "then": {
+                      "op": "read",
+                      "path": "/maxTokens",
+                      "from": "item"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 1048576
+                    }
+                  },
+                  "outputTokenLimit": {
+                    "op": "literal",
+                    "value": 8192
+                  },
+                  "supportedGenerationMethods": {
+                    "op": "literal",
+                    "value": [
+                      "generateContent",
+                      "streamGenerateContent"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "stream": {
@@ -27195,6 +27346,61 @@
         "models": [
           {
             "id": "gemini-2.5-flash"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog.encode.empty",
+      "operation": "models",
+      "direction": "encode_response",
+      "input": {
+        "models": []
+      },
+      "expected": {
+        "models": []
+      }
+    },
+    {
+      "id": "catalog.encode.local",
+      "operation": "models",
+      "direction": "encode_response",
+      "input": {
+        "models": [
+          {
+            "id": "local-default",
+            "name": "local-default"
+          },
+          {
+            "id": "local-limit",
+            "name": "local-limit",
+            "maxTokens": 2048
+          }
+        ]
+      },
+      "expected": {
+        "models": [
+          {
+            "name": "models/local-default",
+            "displayName": "local-default",
+            "description": "elysia-api model group",
+            "inputTokenLimit": 1048576,
+            "outputTokenLimit": 8192,
+            "supportedGenerationMethods": [
+              "generateContent",
+              "streamGenerateContent"
+            ]
+          },
+          {
+            "name": "models/local-limit",
+            "displayName": "local-limit",
+            "description": "elysia-api model group",
+            "inputTokenLimit": 2048,
+            "outputTokenLimit": 8192,
+            "supportedGenerationMethods": [
+              "generateContent",
+              "streamGenerateContent"
+            ]
           }
         ]
       }

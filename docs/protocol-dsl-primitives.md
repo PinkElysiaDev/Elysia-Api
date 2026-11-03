@@ -526,5 +526,15 @@ reasoning、refusal、text 保持不同通道；容器附属语义及独立候�
 文本身份及显式区间按实际条目计入 StateItems；身份字节及当前批暂存载荷计入 BufferBytes。
 同一未改写载荷共用字符串和摘要，普通 1,024 帧追加不会产生 1,024 份历史区间。
 
-这里证明的是最终 wire 规则前后的文本关系；语义事件规则改写与原始事件之间的可信关联仍是独立待完成项。
+这里证明的是最终 wire 规则前后的文本关系；dev.133 的 semanticRanges 另行证明语义事件与宿主原始投影的关联。
 未知 wire 修改范围最多读取当前帧，不完整重建语义流；静态影响路径优化尚未完成。
+
+## 客户端目录操作
+
+`Spec.operations.<name>.models.clientDocument` 与 `Mapping.operations.<name>.encodeModels` 配对声明。
+输入使用通用 ModelPage，编码复用现有 Expression、命名程序和只读 operation plan，最终输出必须
+满足所声明 JSON 文档。上游发现继续使用 response／decodeModels，不共享成功验证覆盖。
+
+`modelSamples.direction: encode_response` 提供客户端输出样例；省略或 decode_response 表示上游
+发现样例。验证及 models 预览执行同一编码边界。宿主只提供目录成员，固定字段和默认数值在
+Mapping 中声明；默认 Chat／Gemini 编码器只接受完整本地目录，有分页信息时明确拒绝。

@@ -157,6 +157,12 @@ func TestPackageModelsRejectInvalidBindings(t *testing.T) {
 			p.Spec.Operations["models"] = op
 		}},
 		{"no-program", func(p *ProtocolPackage) { p.Mapping.Operations["models"] = ProtocolOperationMapping{} }},
+		{"no-client-program", func(p *ProtocolPackage) { p.Spec.Operations["models"].Models.ClientDocument = "catalog-page" }},
+		{"no-client-document", func(p *ProtocolPackage) {
+			op := p.Mapping.Operations["models"]
+			op.EncodeModels = expressionPointer(readExpression("input", ""))
+			p.Mapping.Operations["models"] = op
+		}},
 		{"generation-binding", func(p *ProtocolPackage) {
 			op := p.Mapping.Operations["models"]
 			op.Response = DecodeResponse
@@ -179,5 +185,48 @@ func TestPackageModelsRejectInvalidBindings(t *testing.T) {
 				t.Fatal("invalid model declaration compiled")
 			}
 		})
+	}
+}
+
+func TestPackageClientCatalogEvidencePreviewAndFinalContract(t *testing.T) {
+	document := discoveryPackage(t)
+	document.Spec.Operations["models"].Models.ClientDocument = "client-catalog"
+	document.Spec.Documents["client-catalog"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, Required: []string{"available"}, Properties: map[string]ValueSchema{
+		"available": {Type: ArrayType, Items: &ValueSchema{Type: StringType}},
+	}}}
+	binding := document.Mapping.Operations["models"]
+	binding.EncodeModels = expressionPointer(objectExpression(map[string]Expression{
+		"available": {Op: "map", Source: expressionPointer(readExpression("input", "/models")), Body: expressionPointer(readExpression("item", "/id"))},
+	}))
+	document.Mapping.Operations["models"] = binding
+	sample := ModelSample{ID: "client", Operation: "models", Direction: EncodeResponse,
+		Input: parseTestValue(t, `{"models":[{"id":"local"}]}`), Expected: parseTestValue(t, `{"available":["local"]}`)}
+	document.Mapping.ModelSamples = append(document.Mapping.ModelSamples, sample)
+	compiled := compilePackageForTest(t, document)
+	if report := Verify(t.Context(), compiled); !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{compiler: compiler}
+	result := service.PreviewWorkflow(t.Context(), PreviewInput{Mode: "models", Operation: "models", Direction: EncodeResponse, Definition: fixtureValue(t, document), Input: sample.Input})
+	if IssuesError(result.Issues) != nil || !equalValues(result.Output, sample.Expected) {
+		t.Fatal("preview bypassed catalog encoding", result)
+	}
+	document.Mapping.ModelSamples = document.Mapping.ModelSamples[:len(document.Mapping.ModelSamples)-1]
+	if Verify(t.Context(), compilePackageForTest(t, document)).Passed {
+		t.Fatal("discovery evidence authorized an untested client encoder")
+	}
+	contract := document.Spec.Documents["client-catalog"]
+	contract.Assertions = []WireAssertion{{Path: "/available/0", Schema: &ValueSchema{Type: StringType, Enum: []Value{StringValue("other")}}, Code: ConversionRejected, Reason: "client catalog identity is not allowed"}}
+	document.Spec.Documents["client-catalog"] = contract
+	strict := compilePackageForTest(t, document)
+	if _, err := strict.EncodeModelPage(t.Context(), "models", ModelPage{Models: []DiscoveredModel{{ID: "local"}}}); err == nil {
+		t.Fatal("client output skipped final Spec validation")
+	}
+	if _, err := compiled.EncodeModelPage(t.Context(), "models", ModelPage{Models: []DiscoveredModel{{ID: "local"}, {ID: "local"}}}); err == nil {
+		t.Fatal("duplicate host identity was accepted")
 	}
 }

@@ -173,6 +173,7 @@ type Compiled struct {
 	modelPageValidator *runtimeValueSchema
 	taskMappings       map[string]map[string]compiledMapping
 	modelMappings      map[string]compiledMapping
+	modelEncoders      map[string]compiledMapping
 	agentMapping       *compiledMapping
 	agentClientOutput  []compiledAgentOutputField
 	agentEfforts       []string

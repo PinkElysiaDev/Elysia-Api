@@ -322,3 +322,24 @@ CoreVersion。Mapping 的 encode_response 构造正文，ValidateResponseOutput 
 
 任务控制等宿主管理出口仍使用其自身合同；本切片不宣称全部入口统一或旧链已退役。新包 public
 入口直接使用 Spec 完整路径；仅旧核心的基地址前缀适配仍留待最终删除。
+
+## 客户端模型目录（dev.134）
+
+已有 `models` operation 继续使用 `response`／`decodeModels` 进行上游发现。可选的
+`Spec.operations.<name>.models.clientDocument` 指定客户端 JSON 合同，必须与
+`Mapping.operations.<name>.encodeModels` 同时声明。编码器读取通用 ModelPage（models 中的
+id／name／maxTokens 及分页信息），执行共享 operation plan，并在返回前验证 clientDocument。
+不新增 HTTP 端点，不把目录包装成生成响应，不通过名称选择供应商字段。
+
+`modelSamples.direction` 省略或 decode_response 验证发现，encode_response 验证客户端输出；
+发现终页及分页证据不能替代编码证据。管理／CLI 的 models 预览使用同一方向和编译结果，编辑器
+可选择两个方向。两份源继续共同形成修订和验证哈希。
+
+现有 `/v1/models` 与 `/v1beta/models` 的新包路径，以及通用 gateway 中匹配的 models 操作，均
+使用鉴权前固定的编译快照。宿主枚举已启用模型组，Mapping 决定外部字段、固定标签和默认 token
+数值；空目录编码为空数组。默认编码器明确拒绝分页输入，不静默丢弃 cursor。没有 encoder 或
+最终合同失败时，使用已选协议的错误出口；不尝试旧格式。
+
+本批保持既有目录成员策略，没有改变 token 的模型组过滤合同。只给现有 Chat／Gemini 客户端
+目录添加默认编码声明；Responses／Anthropic 继续只有已支持的上游发现。旧生产默认仍保留其
+既有目录 handler，按核心版本在执行前选择，待生产切换统一删除；新包失败不会回退到它。

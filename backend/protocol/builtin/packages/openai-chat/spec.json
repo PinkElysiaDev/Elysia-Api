@@ -29,7 +29,9 @@
         "prefix": "Bearer "
       },
       "response": "model-page",
-      "models": {}
+      "models": {
+        "clientDocument": "client-model-page"
+      }
     },
     "stream": {
       "kind": "generate",
@@ -51,6 +53,52 @@
     }
   },
   "documents": {
+    "client-model-page": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "object",
+          "data"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "object",
+                "created",
+                "owned_by"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "object": {
+                  "type": "string",
+                  "enum": [
+                    "model"
+                  ]
+                },
+                "created": {
+                  "type": "integer"
+                },
+                "owned_by": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "request": {
       "schema": {
         "type": "object",

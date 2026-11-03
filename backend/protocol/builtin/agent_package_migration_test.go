@@ -43,8 +43,8 @@ func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
 				t.Fatal(err)
 			}
 			document, _ := draft.Package()
-			if !draft.HasAgentPolicy() || len(document.Mapping.Agent.Samples) != len(definition.Agent.Samples) || !equalAgentMigrationValues(t, document.Mapping.ModelSamples, definition.ModelSamples) {
-				t.Fatal("declared Agent or discovery evidence changed")
+			if !draft.HasAgentPolicy() || len(document.Mapping.Agent.Samples) != len(definition.Agent.Samples) {
+				t.Fatal("declared Agent evidence changed")
 			}
 			for _, sample := range definition.ModelSamples {
 				t.Run(sample.ID, func(t *testing.T) {

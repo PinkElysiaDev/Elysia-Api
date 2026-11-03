@@ -38,9 +38,11 @@ type ProtocolOperationSpec struct {
 	Session   *ProtocolSessionSpec        `json:"session,omitempty"`
 }
 
-// ProtocolModelDiscoverySpec declares wire pagination without a core decoder.
+// ProtocolModelDiscoverySpec declares discovery pagination and an optional
+// client catalog document. Neither field contains executable mappings.
 type ProtocolModelDiscoverySpec struct {
 	CursorParameter string `json:"cursorParameter,omitempty"`
+	ClientDocument  string `json:"clientDocument,omitempty"`
 }
 
 // ProtocolOperationMapping selects core adapters for an existing wire operation.
@@ -48,6 +50,7 @@ type ProtocolOperationMapping struct {
 	Request      Direction            `json:"request,omitempty"`
 	Response     Direction            `json:"response,omitempty"`
 	DecodeModels *Expression          `json:"decodeModels,omitempty"`
+	EncodeModels *Expression          `json:"encodeModels,omitempty"`
 	Task         *ProtocolTaskMapping `json:"task,omitempty"`
 }
 
@@ -151,6 +154,12 @@ func (wire ProtocolOperationSpec) compile(name string, documents map[string]comp
 			return Operation{}, fmt.Errorf("%s: model discovery requires GET HTTP JSON, a response document and explicit models configuration", path)
 		}
 		operation.Models = &ModelDiscovery{CursorParameter: wire.Models.CursorParameter}
+		if document := wire.Models.ClientDocument; document != "" {
+			contract, exists := documents[document]
+			if !exists || contract.packageStream != nil {
+				return Operation{}, fmt.Errorf("%s/models/clientDocument: requires a declared JSON document", path)
+			}
+		}
 		if err := checkModelCursor(operation); err != nil {
 			return Operation{}, fmt.Errorf("%s/models: %w", path, err)
 		}
@@ -196,7 +205,7 @@ func (compiled *Compiled) bindPackageOperations(spec ProtocolSpec, mapping Proto
 		}
 		wire, operation := spec.Operations[name], compiled.operations[name]
 		if operation.Kind == "submit" || operation.Kind == "status" || operation.Kind == "result" || operation.Kind == "cancel" {
-			if binding.DecodeModels != nil || binding.Request != "" || binding.Response != "" || (operation.Kind == "submit") != (binding.Task != nil) {
+			if binding.DecodeModels != nil || binding.EncodeModels != nil || binding.Request != "" || binding.Response != "" || (operation.Kind == "submit") != (binding.Task != nil) {
 				return fmt.Errorf("%s: task operations use their flow's declared programs", path)
 			}
 			continue
@@ -206,12 +215,15 @@ func (compiled *Compiled) bindPackageOperations(spec ProtocolSpec, mapping Proto
 		}
 		if operation.Kind == "models" {
 			if binding.DecodeModels == nil || binding.Request != "" || binding.Response != "" {
-				return fmt.Errorf("%s: model discovery requires only a declared decodeModels program", path)
+				return fmt.Errorf("%s: models require decodeModels and no generation binding", path)
+			}
+			if (binding.EncodeModels != nil) != (wire.Models.ClientDocument != "") {
+				return fmt.Errorf("%s/encodeModels: requires both a clientDocument and its encoder", path)
 			}
 			continue
 		}
-		if binding.DecodeModels != nil {
-			return fmt.Errorf("%s/decodeModels: requires models operation kind", path)
+		if binding.DecodeModels != nil || binding.EncodeModels != nil {
+			return fmt.Errorf("%s: catalog programs require models operation kind", path)
 		}
 		if operation.Transport == WebSocket {
 			if err := compiled.bindPackageSession(wire, binding, mapping.Directions); err != nil {

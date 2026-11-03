@@ -116,6 +116,10 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
     if (path.endsWith('/protocols/validate')) data = {
       valid: false, issues: [{ code: 'invalid_definition', severity: 'error', path: '/mapping/expressions/exact/value', reason: 'Synthetic editor diagnostic' }],
     }
+    if (path.endsWith('/protocols/preview')) {
+      expect(route.request().postDataJSON()).toMatchObject({ mode: 'models', direction: 'encode_response', operation: 'models', input: { models: [{ id: 'local' }] } })
+      data = { output: { available: ['local'] }, issues: [] }
+    }
     await route.fulfill({ json: { ok: true, data } })
   })
   await page.goto('/#/protocols')
@@ -155,6 +159,14 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   await page.getByLabel('协议诊断').getByRole('button').click()
   await expect(page.getByRole('tab', { name: '转换说明 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
   expect(await mappingEditor.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('900719925474099312346')
+  await page.getByRole('tab', { name: '转换预览', exact: true }).click()
+  await page.getByLabel('预览类型', { exact: true }).selectOption('models')
+  await expect(page.getByLabel('转换方向', { exact: true })).toHaveValue('decode_response')
+  await page.getByLabel('转换方向', { exact: true }).selectOption('encode_response')
+  await page.getByRole('textbox', { name: '目录操作名（decode_response 发现／encode_response 客户端输出）', exact: true }).fill('models')
+  await page.getByRole('textbox', { name: '预览输入 JSON', exact: true }).fill('{"models":[{"id":"local"}]}')
+  await page.getByRole('button', { name: '运行转换预览', exact: true }).click()
+  await expect(page.getByLabel('转换链路结果')).toContainText('available')
 })
 
 test('browser creates, verifies, previews, activates and rolls back through the real protocol service', async ({ page, request }) => {

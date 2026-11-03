@@ -47,6 +47,9 @@ func (s *Server) gatewayProtocol(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	path := selection.path
+	if ingress.CoreVersion() == protocol.ProtocolCoreVersion && s.serveModelCatalog(ctx, c, ingress, path) {
+		return
+	}
 	if operation, exists := gatewaySessionOperation(ingress, string(c.Method()), path); exists {
 		handshake, err := readSessionHandshake(c, operation)
 		if err != nil {

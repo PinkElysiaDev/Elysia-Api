@@ -159,6 +159,15 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 			output, err = EncodeValue(semantic)
 		}
 	case "models":
+		if input.Direction == EncodeResponse {
+			semantic = input.Input
+			output, err = compiled.previewModelEncoding(ctx, input.Operation, input.Input)
+			break
+		}
+		if input.Direction != "" && input.Direction != DecodeResponse {
+			err = fmt.Errorf("models preview requires decode_response or encode_response")
+			break
+		}
 		semantic, err = compiled.DecodeModelPage(ctx, input.Operation, input.Input)
 		if err == nil {
 			output, err = EncodeValue(semantic)
