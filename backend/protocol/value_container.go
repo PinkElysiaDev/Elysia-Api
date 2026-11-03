@@ -25,7 +25,9 @@ func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
 		end := jsonStringEnd(raw, offset)
 		key := raw[offset+1 : end-1]
 		if strings.Contains(key, `\`) || !utf8.ValidString(key) {
-			if err := sonic.ConfigStd.Unmarshal([]byte(raw[offset:end]), &key); err != nil {
+			var err error
+			key, err = decodeObjectKey(raw[offset:end])
+			if err != nil {
 				return nil, err
 			}
 		} else {
@@ -42,6 +44,12 @@ func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
 		}
 	}
 	return fields, nil
+}
+
+func decodeObjectKey(raw string) (string, error) {
+	var key string
+	err := sonic.ConfigStd.UnmarshalFromString(raw, &key)
+	return key, err
 }
 
 func (value Value) readArray() ([]Value, error) {

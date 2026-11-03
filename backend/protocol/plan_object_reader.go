@@ -45,6 +45,9 @@ func (reader *planObjectReader) ownerFor(value Value) *planObjectReader {
 
 func (reader *planObjectReader) readOwnedMember(value Value, key string) (Value, error) {
 	if reader == nil {
+		if value.Len() <= objectMemberScanBytes {
+			return scanObjectMember(value, key)
+		}
 		return sonicObjectMember(value, key)
 	}
 	identity := spanIdentity(value.raw)

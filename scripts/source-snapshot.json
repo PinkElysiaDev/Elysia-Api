@@ -477,6 +477,7 @@
     "backend/protocol/native_mutation_plan_test.go",
     "backend/protocol/native_reconcile.go",
     "backend/protocol/native_test.go",
+    "backend/protocol/object_member_bench_test.go",
     "backend/protocol/operation_input.go",
     "backend/protocol/operation_input_test.go",
     "backend/protocol/operation_metadata.go",
