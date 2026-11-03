@@ -161,3 +161,74 @@ Ten pairs improve reference rewrite time by 10.58%, Native continuation by
 no metric shows a stable regression. Full protocol/builtin tests and targeted
 protocol and three builtin Native race tests pass. Evidence:
 `deep-dispatch-{semantic/,reads/,tests.log,race.log}`, `deep-native-race.log`.
+
+## First frozen candidate and correctness
+
+Candidate: `0d2cd64b` (production implementation frozen at `a61fa9c2`; the last
+commit only corrects a test helper's error-result position). Its source,
+binary, toolchain, fixture and provider identities are preserved in
+`.tmp-dev/deep-final-build/`. C0, historical A and the canonical-container
+source archives and binary hashes were verified before comparison; see
+`.tmp-dev/deep-final-baselines.json`.
+
+Full `go test ./... -count=1 -timeout=8m` and `go vet ./...` pass, including the
+16-direction local JSON/SSE gateway matrix. Staticcheck v0.8.2 initially
+reported ST1008 in the new test helper; the correction and targeted test pass,
+then staticcheck passes without diagnostics. Full tests were not repeated for
+that test-only signature change. Targeted protocol, builtin Native and server
+race runs pass. Server race covers prepared encodings, reload identity drift,
+in-flight revisions, Native reconstruction and stream delivery ranges (139.082s).
+The earlier broad builtin race timeout remains a failed/incomplete run.
+
+Evidence logs under `.tmp-dev/`: `deep-final-{go-test,vet,staticcheck,
+staticcheck-fixed,server-race}.log`, `deep-dispatch-race.log`,
+`deep-native-race.log`. No supplier, production database, log, Swift, preset
+default or public contract was changed. Windows checks do not establish other
+platform, complete Agent, or WebUI performance acceptance.
+
+## HTTP versus C0
+
+Five alternating pairs per scenario, identical frozen local provider,
+GOMAXPROCS=2/GOGC=100/GOMEMLIMIT=2GiB, profiler disabled. Percentages below are
+median changes; `uncertain` means the bootstrap interval includes no change.
+Every request verifies complete output and exactly one upstream generation.
+
+| Workload | CPU/request | Allocated bytes/request | Allocations/request |
+|---|---:|---:|---:|
+| Short | −8.43% (uncertain) | −1.70% | −3.16% |
+| 256 KiB history | −10.00% | −9.64% | −2.20% |
+| 32 tools | −2.78% (uncertain) | −2.26% | −1.66% |
+| Four concurrent short requests | −15.79% | −2.18% | −3.35% |
+| 256-frame SSE | −9.57% (uncertain) | −14.89% | −6.06% |
+| 2 MiB media | −22.22% | +0.79% (uncertain) | −1.77% |
+
+No measured metric has a stable regression against C0, including latency,
+first frame, throughput, peak memory and recovery heap. Some of those metrics
+remain noisy; this is absence of a detected regression in these workloads,
+not a universal performance guarantee. Complete intervals and samples:
+`.tmp-dev/deep-final-http-c0/report.json`.
+
+## Follow-up: text consumed by joins
+
+Final warmed microbenchmarks exposed a reference-rewrite allocation regression
+against C0: +0.51% allocated bytes, reproduced at +0.27% with ten longer 2-second
+pairs. Both failures remain in `deep-final-builtin-c0/` and
+`deep-final-reference-investigation/`; the 5% investigation flag did not excuse
+them. Matched 1,000-iteration allocation profiles expose substantial local
+text cloning in join. Sampling cannot attribute the entire small net increase
+to that site, but the unnecessary copy is independently measurable.
+
+Join now uses the existing borrowed text reader before immediately copying
+each fragment into its owned builder/output. All operand evaluation, decoded
+byte limits and error ordering stay in place. No buffer pool, cache limit or
+GC setting changes. Ten parent/candidate pairs improve short/ASCII/Unicode
+join time by 6.66%/22.63%/15.79%; escaped text is inconclusive without stable
+regression. Reference rewrite improves another 2.29% in time and 5.68% in bytes;
+Native time is inconclusive and allocations improve.
+
+Ten longer pairs against C0 now improve reference rewrite time by 13.13%, bytes
+by 5.40%, and allocations by 1.29%, closing the observed allocation regression.
+Boundary tests compare exact codec errors, resource counts and retained output
+ownership. Evidence: `deep-join-{strings/,semantic/,reference-c0/,tests.log,
+race.log,benchmark-source.json}`; the parent test-only overlay is recorded
+without modifying its frozen source archive.

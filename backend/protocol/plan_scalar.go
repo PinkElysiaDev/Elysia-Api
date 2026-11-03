@@ -366,7 +366,9 @@ func (plan *compiledOutputPlan) buildJoin(state evaluation) (plannedOutput, erro
 	}
 	var result strings.Builder
 	for _, operand := range operands {
-		text, err := readPlannedString(operand.output)
+		// The builder owns the joined output before any borrowed fragment can
+		// leave this call, just as text comparison consumes its fragments locally.
+		text, err := readComparisonText(operand.output)
 		if err != nil {
 			return plannedOutput{}, err
 		}
