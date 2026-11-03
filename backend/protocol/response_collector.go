@@ -441,8 +441,11 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 	if !value.IsZero() {
 		if item.Kind == ToolCallNode && isSnapshot && item.Input.Kind == JSONInput {
 			delta = string(value.Bytes())
-		} else if err := value.Decode(&delta); err != nil {
-			return "", "", err
+		} else {
+			delta, err = readString(value)
+			if err != nil {
+				return "", "", err
+			}
 		}
 		if isSnapshot {
 			if item.Kind == ToolCallNode && item.Input.Kind == JSONInput {

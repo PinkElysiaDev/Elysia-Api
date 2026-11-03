@@ -702,6 +702,7 @@
     "backend/protocol/stream_state_test.go",
     "backend/protocol/stream_stress_test.go",
     "backend/protocol/stream_text.go",
+    "backend/protocol/string_read_test.go",
     "backend/protocol/testdata/history/anthropic.json",
     "backend/protocol/testdata/history/chat.json",
     "backend/protocol/testdata/history/gemini.json",

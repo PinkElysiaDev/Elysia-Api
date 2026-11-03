@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func readArray(value Value) ([]Value, error) {
@@ -32,8 +33,15 @@ func readBoolean(value Value) (bool, error) {
 }
 
 func readString(value Value) (string, error) {
-	if valueType(value) != StringType {
+	raw := strings.TrimSpace(value.raw)
+	if len(raw) == 0 || raw[0] != '"' {
 		return "", fmt.Errorf("expected a string")
+	}
+	text := raw[1 : len(raw)-1]
+	// Value already owns valid JSON syntax. Plain UTF-8 needs no decoder;
+	// detach the result so a small identity cannot retain its source frame.
+	if strings.IndexByte(text, '\\') < 0 && utf8.ValidString(text) {
+		return strings.Clone(text), nil
 	}
 	var result string
 	err := value.Decode(&result)
