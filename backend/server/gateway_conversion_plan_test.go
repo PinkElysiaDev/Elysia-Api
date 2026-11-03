@@ -120,3 +120,25 @@ func TestGatewayConversionPlanGenerationAndIsolation(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestGatewayConversionPlanSeparatesCountingPrograms(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	compiled := conversionPackage(t, protocol.PresetAnthropicID)
+	counter, _ := compiled.TokenCountRequestProtocol("count_tokens")
+	snapshot, err := s.pinGatewayConversions(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := config.ModelRef{SourceID: "source", ID: "model", Name: "model"}
+	generation, err := snapshot.resolve(compiled, compiled, model, "count_tokens", protocol.HTTPJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := snapshot.resolve(counter, counter, model, "count_tokens", protocol.HTTPJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled.Hash() != counter.Hash() || len(snapshot.plans) != 2 || count.Hash == generation.Hash {
+		t.Fatal("count request programs reused generation defaults")
+	}
+}

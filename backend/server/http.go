@@ -276,18 +276,9 @@ func (s *Server) countTokens(ctx context.Context, c *app.RequestContext) {
 	if !ok {
 		return
 	}
-	compiled := selection.compiled
-	body, err := protocol.ReadBoundedBody(requestBody(c), compiled.RequestLimits(ctx).BufferBytes)
-	if err != nil {
-		s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
-		return
+	if !s.serveTokenCounting(ctx, c, selection) {
+		s.writeTokenCountError(ctx, c, http.StatusNotFound, gatewayIssue(selection.compiled.Identity(), protocol.UnsupportedCapability, "/operations", "protocol has no declared token counting operation"))
 	}
-	request, err := compiled.DecodeRequest(ctx, body, protocol.EvaluationContext{})
-	if err != nil {
-		s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, utils.H{"input_tokens": s.estimateProtocolInputTokens(request)})
 }
 
 func (s *Server) healthCheck(ctx context.Context, c *app.RequestContext) {

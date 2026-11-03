@@ -43,6 +43,9 @@ func (s *Server) gatewayProtocol(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	service, view, ingress := selection.service, selection.view, selection.compiled
+	if s.serveTokenCounting(ctx, c, selection) {
+		return
+	}
 	if s.serveGatewayJobControl(ctx, c, service, ingress) {
 		return
 	}

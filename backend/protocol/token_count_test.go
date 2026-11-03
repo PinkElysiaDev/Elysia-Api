@@ -33,6 +33,9 @@ func tokenCountingPackage(t *testing.T) ProtocolPackage {
 func TestTokenCountingEvidenceAndPreview(t *testing.T) {
 	document := tokenCountingPackage(t)
 	compiled := compilePackageForTest(t, document)
+	if !canProfileHTTP(compiled) {
+		t.Fatal("auxiliary token counter disabled generation capability profiles")
+	}
 	report := Verify(t.Context(), compiled)
 	if !report.Passed || len(report.Checks) != 8 {
 		t.Fatal(report)
@@ -87,6 +90,13 @@ func TestTokenCountingOnlyAndInvalidResults(t *testing.T) {
 	report := Verify(t.Context(), compiled)
 	if !report.Passed || compiled.Supports(DecodeRequest) || len(report.Covered) != 1 {
 		t.Fatal("count evidence claimed generation", report)
+	}
+	binding := Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.DeclaredCapabilities(), Transports: []Transport{HTTPJSON}}
+	if issues := CheckTokenCountBinding(binding, compiled, "count"); len(issues) != 0 {
+		t.Fatal("count-only binding requires generation programs", issues)
+	}
+	if len(CheckBinding(binding, compiled)) == 0 {
+		t.Fatal("count-only binding authorized generation")
 	}
 	for _, raw := range []string{`{}`, `{"tokens":null}`, `{"tokens":-1}`, `{"tokens":1.5}`, `{"tokens":9223372036854775808}`, `{"tokens":1,"unknown":2}`} {
 		if _, err := compiled.DecodeTokenCount(t.Context(), "count", Value{raw: raw}); err == nil {

@@ -161,6 +161,7 @@ type Compiled struct {
 	identity           Identity
 	definition         Value
 	hash               string
+	executionHash      string
 	samplesHash        string
 	limits             Limits
 	explicitLimits     bool
@@ -668,6 +669,15 @@ func (compiled *Compiled) Identity() Identity { return compiled.identity }
 
 // Hash identifies the normalized definition including samples and metadata.
 func (compiled *Compiled) Hash() string { return compiled.hash }
+
+// ExecutionHash distinguishes an operation's request programs within the same
+// pinned package revision. Ordinary revisions use their complete package hash.
+func (compiled *Compiled) ExecutionHash() string {
+	if compiled.executionHash != "" {
+		return compiled.executionHash
+	}
+	return compiled.hash
+}
 
 // ResourceLimits returns the immutable revision's bounded execution contract.
 func (compiled *Compiled) ResourceLimits() Limits { return compiled.limits }

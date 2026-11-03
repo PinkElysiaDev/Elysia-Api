@@ -209,8 +209,10 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	}
 	binding := entry.Binding
 	compiled, _ := view.Pin(binding.ProtocolID)
-	if issues := protocol.CheckBinding(binding, compiled); len(issues) > 0 {
-		return candidate, &protocol.ConversionError{Issues: issues}
+	if kind != "count_tokens" || compiled == nil {
+		if issues := protocol.CheckBinding(binding, compiled); len(issues) > 0 {
+			return candidate, &protocol.ConversionError{Issues: issues}
+		}
 	}
 	if kind == "generate" && binding.Wait != nil {
 		for name, operation := range compiled.OperationRoutes() {
@@ -219,18 +221,30 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 			}
 		}
 	}
+	selectedOperation := binding.Operation
+	if kind == "count_tokens" {
+		selected, _ := compiled.Operation(selectedOperation)
+		if selected.Kind != kind {
+			selectedOperation = ""
+		}
+	}
 	for name, entry := range compiled.OperationRoutes() {
 		isCompatibleStream := (transport == protocol.SSE || transport == protocol.NDJSON) && (entry.Transport == protocol.SSE || entry.Transport == protocol.NDJSON)
-		if entry.Kind != kind || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (binding.Operation != "" && name != binding.Operation) {
+		if entry.Kind != kind || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (selectedOperation != "" && name != selectedOperation) {
 			continue
 		}
 		if candidate.operationName != "" {
-			return candidate, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "multiple upstream generation operations require an explicit selection")
+			return candidate, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "multiple matching upstream operations require an explicit selection")
 		}
 		candidate.operationName = name
 	}
 	if candidate.operationName == "" {
 		return candidate, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/operations", "upstream has no operation for the requested transport")
+	}
+	if kind == "count_tokens" {
+		if issues := protocol.CheckTokenCountBinding(binding, compiled, candidate.operationName); len(issues) > 0 {
+			return candidate, &protocol.ConversionError{Issues: issues}
+		}
 	}
 	operation, _ := compiled.Operation(candidate.operationName)
 	candidate.binding, candidate.compiled, candidate.operation, candidate.scope = binding, compiled, operation, modelProtocolScope(model)
@@ -447,9 +461,13 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 func (s *Server) bindGatewayRequest(ctx context.Context, c *app.RequestContext, view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, path string, request *protocol.Request, record *usageRecord) (protocol.Scope, error) {
 	ingress := plan.ingress
 
-	name, operation, err := selectGatewayIngressOperation(ingress, string(c.Method()), path, request)
-	if err != nil {
-		return protocol.Scope{}, err
+	name, operation := plan.operationName, plan.operation
+	if name == "" {
+		var err error
+		name, operation, err = selectGatewayIngressOperation(ingress, string(c.Method()), path, request)
+		if err != nil {
+			return protocol.Scope{}, err
+		}
 	}
 	plan.operation = operation
 	plan.operationName = name
@@ -475,7 +493,13 @@ func (s *Server) bindGatewayRequest(ctx context.Context, c *app.RequestContext, 
 		if binding.Unbound {
 			return protocol.Scope{}, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/binding", "model group is explicitly unbound; select a protocol before calling")
 		}
-		if err := protocol.IssuesError(protocol.CheckIngressBinding(binding.Binding, ingress)); err != nil {
+		var issues []protocol.ConversionIssue
+		if operation.Kind == "count_tokens" {
+			issues = protocol.CheckTokenCountBinding(binding.Binding, ingress, name)
+		} else {
+			issues = protocol.CheckIngressBinding(binding.Binding, ingress)
+		}
+		if err := protocol.IssuesError(issues); err != nil {
 			return protocol.Scope{}, err
 		}
 		if !slices.Contains(binding.Binding.Transports, operation.Transport) {

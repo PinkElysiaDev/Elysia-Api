@@ -415,8 +415,13 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.bindPackageIdentity(document); err != nil {
 		return nil, err
 	}
-	for _, count := range compiled.packagePlan.tokenCounts {
+	for name, count := range compiled.packagePlan.tokenCounts {
 		count.request.hash, count.request.definition = compiled.hash, compiled.definition
+		identity, err := EncodeValue(struct{ Revision, Operation string }{compiled.hash, name})
+		if err != nil {
+			return nil, err
+		}
+		count.request.executionHash = hashValue(identity)
 	}
 	return compiled, nil
 }

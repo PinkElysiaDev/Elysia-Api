@@ -17,6 +17,9 @@ func (s *Server) serveVersionedPublicIngress(ctx context.Context, c *app.Request
 		return
 	}
 	view, ingress := selection.view, selection.compiled
+	if s.serveTokenCounting(ctx, c, selection) {
+		return
+	}
 	if ingress.Identity().DefinitionID == protocol.PresetResponsesID {
 		configuration := s.config.GetResponsesConfig()
 		if configuration.Enabled != nil && !*configuration.Enabled {

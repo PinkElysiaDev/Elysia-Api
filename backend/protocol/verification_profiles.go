@@ -89,7 +89,7 @@ func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, cap
 func canProfileHTTP(compiled *Compiled) bool {
 	hasGeneration := false
 	for _, operation := range compiled.operations {
-		if operation.Kind == "models" {
+		if operation.Kind == "models" || operation.Kind == "count_tokens" {
 			continue
 		}
 		if operation.Kind != "generate" || operation.Transport == WebSocket {

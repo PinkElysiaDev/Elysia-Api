@@ -445,36 +445,51 @@
           "encode_request": {
             "document": "count-request",
             "program": {
-              "op": "object",
-              "fields": {
-                "generateContentRequest": {
-                  "op": "merge",
-                  "policy": "reject",
-                  "items": [
-                    {
-                      "op": "object",
-                      "fields": {
-                        "model": {
-                          "op": "join",
-                          "items": [
-                            {
-                              "op": "literal",
-                              "value": "models/"
-                            },
-                            {
-                              "op": "read",
-                              "from": "input",
-                              "path": "/model"
-                            }
-                          ]
+              "op": "if",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/native/value/contents"
+                }
+              },
+              "then": {
+                "op": "ref",
+                "ref": "encode-request-program"
+              },
+              "otherwise": {
+                "op": "object",
+                "fields": {
+                  "generateContentRequest": {
+                    "op": "merge",
+                    "policy": "reject",
+                    "items": [
+                      {
+                        "op": "object",
+                        "fields": {
+                          "model": {
+                            "op": "join",
+                            "items": [
+                              {
+                                "op": "literal",
+                                "value": "models/"
+                              },
+                              {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/model"
+                              }
+                            ]
+                          }
                         }
+                      },
+                      {
+                        "op": "ref",
+                        "ref": "encode-request-program"
                       }
-                    },
-                    {
-                      "op": "ref",
-                      "ref": "encode-request-program"
-                    }
-                  ]
+                    ]
+                  }
                 }
               }
             },

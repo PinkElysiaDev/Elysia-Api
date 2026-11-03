@@ -44,6 +44,29 @@ func (s *Server) readGatewayRequest(ctx context.Context, c *app.RequestContext, 
 	if !budgetOK {
 		return nil, false
 	}
+	body, err := s.readPreparedProtocolBody(ctx, c, compiled)
+	if err == nil {
+		return body, true
+	}
+	var preparation *gatewayFailure
+	if errors.As(err, &preparation) {
+		s.rejectPreparation(ctx, c, compiled, err)
+		return nil, false
+	}
+	s.releaseGatewayPreparation(c)
+	err = protocol.AnnotateResourceError(err, compiled.Identity(), protocol.DecodeRequest, "read.request")
+	record := s.initUsageRecord(ctx, c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
+	record.IngressRevision, record.SourceFormat = compiled.Hash(), compiled.Identity().DefinitionID
+	record.RelayMode = "protocol_v2"
+	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
+	s.failGateway(ctx, c, record, http.StatusBadRequest, err)
+	s.recordHTTPUsage(c, record)
+	return nil, false
+}
+
+// readPreparedProtocolBody shares bounded input and preparation ownership without
+// committing a generation usage record for auxiliary operations.
+func (s *Server) readPreparedProtocolBody(ctx context.Context, c *app.RequestContext, compiled *protocol.Compiled) ([]byte, error) {
 	limit := compiled.RequestLimits(ctx).BufferBytes
 	declared := int64(c.Request.Header.ContentLength())
 	reservation := int64(limit)
@@ -51,8 +74,7 @@ func (s *Server) readGatewayRequest(ctx context.Context, c *app.RequestContext, 
 		reservation = min(reservation, max(1, declared))
 	}
 	if err := s.acquireGatewayPreparation(ctx, c, reservation); err != nil {
-		s.rejectPreparation(ctx, c, compiled, err)
-		return nil, false
+		return nil, &gatewayFailure{preparationStatus(err), err}
 	}
 	// A declared length is not trusted: read at most one extra byte and reject
 	// mismatches rather than extending a reservation while holding other slots.
@@ -65,18 +87,7 @@ func (s *Server) readGatewayRequest(ctx context.Context, c *app.RequestContext, 
 	if err == nil && declared >= 0 && int64(len(body)) != declared {
 		err = fmt.Errorf("request body length differs from Content-Length")
 	}
-	if err == nil {
-		return body, true
-	}
-	s.releaseGatewayPreparation(c)
-	err = protocol.AnnotateResourceError(err, compiled.Identity(), protocol.DecodeRequest, "read.request")
-	record := s.initUsageRecord(ctx, c, time.Now(), nil, builtin.FormatType(compiled.Identity().Family))
-	record.IngressRevision, record.SourceFormat = compiled.Hash(), compiled.Identity().DefinitionID
-	record.RelayMode = "protocol_v2"
-	installDownstreamCapture(c, record, downstreamCaptureLimit(s.usageLogConfig()))
-	s.failGateway(ctx, c, record, http.StatusBadRequest, err)
-	s.recordHTTPUsage(c, record)
-	return nil, false
+	return body, err
 }
 
 // localResourceStatus only classifies pre-send failures; observed HTTP and
