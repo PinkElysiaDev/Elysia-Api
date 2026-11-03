@@ -215,72 +215,77 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 	return plan.buildNode(state)
 }
 
-func (plan *compiledOutputPlan) buildNode(state evaluation) (value plannedOutput, err error) {
-	if plan.expression.op == "read" && state.hasOutputReader(plan.expression.from) {
-		return plan.expression.buildReadOutput(state)
-	}
+func (plan *compiledOutputPlan) buildNode(state evaluation) (plannedOutput, error) {
 	expression := plan.expression
-	defer func() { err = locateMappingError(expression.path, err) }()
-	if err := state.advance(); err != nil {
-		return plannedOutput{}, err
+	if expression.op == "read" && state.hasOutputReader(expression.from) {
+		return expression.buildReadOutput(state)
 	}
-	defer func() {
-		if err == nil && value.bytes > state.budget.limits.BufferBytes {
-			err = resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, value.bytes)
-			value = plannedOutput{}
-		}
-	}()
+	if err := state.advance(); err != nil {
+		return plannedOutput{}, locateMappingError(expression.path, err)
+	}
+	value, err := plan.buildOperation(&state)
+	if err == nil && value.bytes > state.budget.limits.BufferBytes {
+		err = resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, value.bytes)
+		value = plannedOutput{}
+	}
+	return value, locateMappingError(expression.path, err)
+}
+
+// The common return boundary owns accounting and error location. Dispatch
+// borrows the local scope; nested operations still receive their own scope value.
+func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput, error) {
+	expression := plan.expression
 	switch expression.op {
 	case "omit":
 		return plannedOutput{}, nil
 	case "literal":
 		return plannedLeaf(expression.value), nil
 	case "read":
-		return plan.buildReadValue(state)
+		return plan.buildReadValue(*state)
 	case "let":
-		return plan.buildBinding(state)
+		return plan.buildBinding(*state)
 	case "with_input":
-		return plan.buildInputScope(state)
+		return plan.buildInputScope(*state)
 	case "check_usage":
-		return plan.checkUsage(state)
+		return plan.checkUsage(*state)
 	case "check_links":
-		return plan.checkLinks(state)
+		return plan.checkLinks(*state)
 	case "pointer_join":
-		return plan.buildPointerJoin(state)
+		return plan.buildPointerJoin(*state)
 	case "resolve_item":
-		return plan.resolveStreamItem(state)
+		return plan.resolveStreamItem(*state)
 	case "track_text":
-		return plan.trackStreamText(state)
+		return plan.trackStreamText(*state)
 	case "track_array":
-		return plan.trackStreamArray(state)
+		return plan.trackStreamArray(*state)
 	case "track_position":
-		return plan.trackStreamPosition(state)
+		return plan.trackStreamPosition(*state)
 	case "project_range":
-		return plan.projectStreamRange(state)
+		return plan.projectStreamRange(*state)
 	case "require_disposition":
-		return plan.requireStreamDisposition(state)
+		return plan.requireStreamDisposition(*state)
 	case "json_digest":
-		return plan.buildJSONDigest(state)
+		return plan.buildJSONDigest(*state)
 	case "track_tool":
-		return plan.trackStreamTool(state)
+		return plan.trackStreamTool(*state)
 	case "buffer_text", "buffer_array":
-		return plan.useStreamBuffer(state)
+		return plan.useStreamBuffer(*state)
 	case "read_delivered_item":
-		return plan.readDeliveredItem(state)
+		return plan.readDeliveredItem(*state)
 	case "resume_text":
-		return plan.resumeDeliveredText(state)
+		return plan.resumeDeliveredText(*state)
 	case "resume_tool":
-		return plan.resumeDeliveredTool(state)
+		return plan.resumeDeliveredTool(*state)
 	case "index_values":
-		return plan.readStreamIndexValues(state)
+		return plan.readStreamIndexValues(*state)
 	case "with_index":
-		return plan.buildIndexScope(state)
+		return plan.buildIndexScope(*state)
 	case "remember":
-		return plan.rememberValue(state)
+		return plan.rememberValue(*state)
 	case "recall":
-		return plan.recallValue(state)
+		return plan.recallValue(*state)
 	case "forget":
-		return plan.forgetValue(state)
+		return plan.forgetValue(*state)
 	case "index_size":
 		if expression.isStreamIndex {
 			return plannedLeaf(coreInteger(int64(state.streamTransaction.indexSize(expression.indexSlot)))), nil
@@ -289,65 +294,65 @@ func (plan *compiledOutputPlan) buildNode(state evaluation) (value plannedOutput
 	case "index":
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
 	case "capture_native":
-		return plan.captureNative(state)
+		return plan.captureNative(*state)
 	case "capture_source":
-		return plan.captureSource(state)
+		return plan.captureSource(*state)
 	case "is_carrier":
-		return plan.isCarrier(state)
+		return plan.isCarrier(*state)
 	case "replay_native", "native_matches":
-		return plan.buildNativeTarget(state)
+		return plan.buildNativeTarget(*state)
 	case "object":
-		return plan.buildObject(state)
+		return plan.buildObject(*state)
 	case "reject":
-		return plannedOutput{}, plan.reject(state)
+		return plannedOutput{}, plan.reject(*state)
 	case "check_fields":
-		return plan.checkObjectFields(state)
+		return plan.checkObjectFields(*state)
 	case "project":
-		return plan.buildProjection(state)
+		return plan.buildProjection(*state)
 	case "keys":
-		return plan.buildKeys(state)
+		return plan.buildKeys(*state)
 	case "entries":
-		return plan.buildEntries(state)
+		return plan.buildEntries(*state)
 	case "from_entries":
-		return plan.buildObjectEntries(state)
+		return plan.buildObjectEntries(*state)
 	case "array":
-		return plan.buildArray(state)
+		return plan.buildArray(*state)
 	case "length":
-		return plan.countArrayMembers(state)
+		return plan.countArrayMembers(*state)
 	case "merge", "concat":
-		return plan.buildOperands(state)
+		return plan.buildOperands(*state)
 	case "merge_deep":
-		return plan.buildDeepMerge(state)
+		return plan.buildDeepMerge(*state)
 	case "merge_usage":
-		return plan.mergeUsage(state)
+		return plan.mergeUsage(*state)
 	case "join":
-		return plan.buildJoin(state)
+		return plan.buildJoin(*state)
 	case "sort", "associate":
-		return plan.buildKeyedArray(state)
+		return plan.buildKeyedArray(*state)
 	case "parse_json", "stringify_json":
-		return plan.buildJSONScalar(state)
+		return plan.buildJSONScalar(*state)
 	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains", "has_control", "utf16_length":
-		return plan.buildScalar(state)
+		return plan.buildScalar(*state)
 	case "type", "is_integer":
-		return plan.buildTypeQuery(state)
+		return plan.buildTypeQuery(*state)
 	case "integer":
-		return plan.buildInteger(state)
+		return plan.buildInteger(*state)
 	case "equal", "all", "any":
-		return plan.buildScalarOperands(state)
+		return plan.buildScalarOperands(*state)
 	case "equal_text":
-		return plan.compareText(state)
+		return plan.compareText(*state)
 	case "map", "flatmap":
-		return plan.buildIteration(state)
+		return plan.buildIteration(*state)
 	case "walk", "recur":
-		return plan.buildWalk(state)
+		return plan.buildWalk(*state)
 	case "visit":
-		return plan.buildVisit(state)
+		return plan.buildVisit(*state)
 	case "filter":
-		return plan.buildFilter(state)
+		return plan.buildFilter(*state)
 	case "group_runs":
-		return plan.buildRuns(state)
+		return plan.buildRuns(*state)
 	case "if":
-		condition, err := plan.when.buildNode(state)
+		condition, err := plan.when.buildNode(*state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -362,9 +367,9 @@ func (plan *compiledOutputPlan) buildNode(state evaluation) (value plannedOutput
 		if branch == nil {
 			return plannedOutput{}, nil
 		}
-		return branch.buildNode(state)
+		return branch.buildNode(*state)
 	case "choose":
-		discriminator, err := plan.source.buildNode(state)
+		discriminator, err := plan.source.buildNode(*state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -379,7 +384,7 @@ func (plan *compiledOutputPlan) buildNode(state evaluation) (value plannedOutput
 		if branch == nil {
 			return plannedOutput{}, fmt.Errorf("%s/cases: no branch for discriminator", expression.path)
 		}
-		return branch.buildNode(state)
+		return branch.buildNode(*state)
 	}
 	panic("uncompiled output operation")
 }

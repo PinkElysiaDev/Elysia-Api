@@ -74,7 +74,7 @@ func (expression *compiledExpression) checkIdentityAfter(ctx context.Context, by
 	return nil
 }
 
-func (state evaluation) advance() error {
+func (state *evaluation) advance() error {
 	state.budget.steps++
 	stepLimit := state.budget.stepLimit
 	if stepLimit == 0 {

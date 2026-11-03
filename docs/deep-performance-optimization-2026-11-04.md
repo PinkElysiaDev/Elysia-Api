@@ -135,3 +135,29 @@ hot-native/,inline-native/,rejected/}` and the parent/candidate Native profiles.
 Cold metadata alone passes ten pairs: compile bytes improve 1.99–3.20%; Native
 and reference metrics are inconclusive without stable regression. Evidence:
 `.tmp-dev/deep-cold-{semantic/,diagnostics.log,race.log}`.
+The broad race selection passes protocol but times out in builtin at 300s;
+that builtin run is not a pass. Full non-race protocol/builtin tests pass with
+the subsequent selector candidate; targeted builtin race is run separately.
+
+## Static selection experiment and execution boundary
+
+The generated Response/Event/Node/Usage selector experiment passed full tests
+and scope/reader parity checks. Its ten-pair primary semantic metrics were
+inconclusive, while equal-with-input regressed 6.06%. It was removed; the
+existing Request selector remains. Code and results are preserved in
+`deep-selectors-{semantic/,reads/,rejected/,tests.log,scopes.log}`. A proposed
+additional direct-selector benchmark in that archive was not run and is not
+performance evidence.
+
+After the new Native CPU samples, dispatch now borrows the caller's local
+evaluation scope and uses one explicit return boundary for byte limits and
+error location. Node advancement and reader detection also borrow their local
+scope. Nested operations still copy their scope as before; no shared mutable
+environment or extra environment allocation was added. The original step,
+cancellation, eager operand and precise error checks remain.
+
+Ten pairs improve reference rewrite time by 10.58%, Native continuation by
+14.83%, and scalar/scope cases by 6.78–12.75%. Large encoding is inconclusive;
+no metric shows a stable regression. Full protocol/builtin tests and targeted
+protocol and three builtin Native race tests pass. Evidence:
+`deep-dispatch-{semantic/,reads/,tests.log,race.log}`, `deep-native-race.log`.

@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-func (state evaluation) hasOutputReader(from string) bool {
+func (state *evaluation) hasOutputReader(from string) bool {
 	switch from {
 	case "input":
 		return state.inputReader != nil
