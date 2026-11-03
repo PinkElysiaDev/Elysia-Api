@@ -758,6 +758,7 @@
     "backend/protocol/value_container.go",
     "backend/protocol/value_encode.go",
     "backend/protocol/value_encode_test.go",
+    "backend/protocol/value_equal_test.go",
     "backend/protocol/value_hash.go",
     "backend/protocol/value_hash_test.go",
     "backend/protocol/value_identity.go",

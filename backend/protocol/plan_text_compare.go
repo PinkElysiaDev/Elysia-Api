@@ -1,14 +1,6 @@
 package protocol
 
-import (
-	"fmt"
-
-	"github.com/bytedance/sonic"
-)
-
-// Text is used only during the synchronous comparison. Borrowing unescaped
-// strings cannot retain an input in a result or stream state.
-var comparisonTextDecoder = sonic.Config{ValidateString: true}.Froze()
+import "fmt"
 
 func (plan *compiledOutputPlan) compareText(state evaluation) (plannedOutput, error) {
 	var operands [2]plannedOutput
@@ -61,12 +53,10 @@ func readTextParts(state evaluation, output JSONOutput) ([]string, error) {
 }
 
 func readComparisonText(output JSONOutput) (string, error) {
-	if output.node != nil || !output.value.IsStringValue() {
+	if output.node != nil {
 		return "", fmt.Errorf("expected a string")
 	}
-	var text string
-	err := comparisonTextDecoder.UnmarshalFromString(output.value.raw, &text)
-	return text, err
+	return readComparisonString(output.value)
 }
 
 // Chunk boundaries carry no text semantics. Each slice is consumed in place;

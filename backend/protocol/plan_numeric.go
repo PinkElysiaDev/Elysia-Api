@@ -3,7 +3,6 @@ package protocol
 import (
 	"fmt"
 	"math"
-	"strings"
 )
 
 func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput, error) {
@@ -43,23 +42,7 @@ func plannedJSONType(output JSONOutput) string {
 		}
 		return "array"
 	}
-	if output.IsZero() {
-		return "missing"
-	}
-	switch strings.TrimSpace(output.value.raw)[0] {
-	case 'n':
-		return "null"
-	case '"':
-		return "string"
-	case 't', 'f':
-		return "boolean"
-	case '[':
-		return "array"
-	case '{':
-		return "object"
-	default:
-		return "number"
-	}
+	return jsonValueKind(output.value)
 }
 
 func readPlannedInteger(output JSONOutput) (int64, error) {

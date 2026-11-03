@@ -51,6 +51,28 @@ func valueType(value Value) JSONType {
 	}
 }
 
+// Value already contains valid JSON. Classifying its token must not expand a
+// number or materialize a container just to distinguish JSON kinds.
+func jsonValueKind(value Value) string {
+	if value.IsZero() {
+		return "missing"
+	}
+	switch strings.TrimSpace(value.raw)[0] {
+	case 'n':
+		return "null"
+	case '"':
+		return "string"
+	case 't', 'f':
+		return "boolean"
+	case '[':
+		return "array"
+	case '{':
+		return "object"
+	default:
+		return "number"
+	}
+}
+
 func isAssignable(actual, expected JSONType) bool {
 	return actual == AnyType || expected == AnyType || actual == expected || (actual == IntegerType && expected == NumberType)
 }
@@ -119,11 +141,29 @@ func sortedKeys[K ~string, V any](object map[K]V) []K {
 // unmapped field as changed. equalJSON applies exact numeric comparison for
 // that reason; a byte comparison would be both stricter and wrong.
 func equalValues(left, right Value) bool {
-	if left.IsZero() || right.IsZero() {
-		return left.IsZero() && right.IsZero()
-	}
 	if left.raw == right.raw {
 		return true
+	}
+	leftKind, rightKind := jsonValueKind(left), jsonValueKind(right)
+	if leftKind != rightKind {
+		return false
+	}
+	switch leftKind {
+	case "string":
+		first, firstErr := readComparisonString(left)
+		second, secondErr := readComparisonString(right)
+		return firstErr == nil && secondErr == nil && first == second
+	case "null":
+		return true
+	case "boolean":
+		return strings.TrimSpace(left.raw) == strings.TrimSpace(right.raw)
+	case "number":
+		first, isValid := exactNumber(strings.TrimSpace(left.raw))
+		if !isValid {
+			return false
+		}
+		second, isValid := exactNumber(strings.TrimSpace(right.raw))
+		return isValid && first.Cmp(second) == 0
 	}
 	var leftDecoded, rightDecoded any
 	if left.Decode(&leftDecoded) != nil || right.Decode(&rightDecoded) != nil {
