@@ -187,7 +187,7 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		candidate.binding = constrained
 		candidate.routeBinding = matched
 		if canRetainEncoding {
-			candidate.encoding = &gatewayRequestEncoding{value: encoded, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(ctx), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
+			candidate.encoding = newGatewayRequestEncoding(ctx, candidate.compiled, probe, encoded, probeOptions)
 		}
 		eligible = append(eligible, candidate)
 	}

@@ -110,6 +110,9 @@ func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Nati
 // can be reused with identical request, revision, scope, context and budgets.
 // It never authorizes skipping final wire or operation validation.
 func (compiled *Compiled) CanReuseRequestEncoding() bool {
+	if compiled.packagePlan != nil {
+		return compiled.canReusePackageRequest
+	}
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
 		mapping := compiled.mappings[direction]
 		if !compiled.hasPureRequestMapping(direction) || mapping.after != nil && !mapping.after.isInputIdentity() {

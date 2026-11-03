@@ -158,28 +158,29 @@ type compiledEventRule struct{ when, emit *compiledOutputPlan }
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
-	identity           Identity
-	definition         Value
-	hash               string
-	executionHash      string
-	samplesHash        string
-	limits             Limits
-	explicitLimits     bool
-	capabilities       CapabilitySet
-	native             NativePolicy
-	mappings           map[Direction]compiledMapping
-	wireContracts      map[Direction]compiledWireContract
-	operations         map[string]Operation
-	operationSchemas   map[string]*runtimeValueSchema
-	modelPageValidator *runtimeValueSchema
-	taskMappings       map[string]map[string]compiledMapping
-	modelMappings      map[string]compiledMapping
-	modelEncoders      map[string]compiledMapping
-	agentMapping       *compiledMapping
-	agentClientOutput  []compiledAgentOutputField
-	agentEfforts       []string
-	agentToolResults   InputKind
-	packagePlan        *compiledPackagePlan
+	canReusePackageRequest bool
+	identity               Identity
+	definition             Value
+	hash                   string
+	executionHash          string
+	samplesHash            string
+	limits                 Limits
+	explicitLimits         bool
+	capabilities           CapabilitySet
+	native                 NativePolicy
+	mappings               map[Direction]compiledMapping
+	wireContracts          map[Direction]compiledWireContract
+	operations             map[string]Operation
+	operationSchemas       map[string]*runtimeValueSchema
+	modelPageValidator     *runtimeValueSchema
+	taskMappings           map[string]map[string]compiledMapping
+	modelMappings          map[string]compiledMapping
+	modelEncoders          map[string]compiledMapping
+	agentMapping           *compiledMapping
+	agentClientOutput      []compiledAgentOutputField
+	agentEfforts           []string
+	agentToolResults       InputKind
+	packagePlan            *compiledPackagePlan
 }
 
 // Compile strictly parses one authored document and compiles every direction.
