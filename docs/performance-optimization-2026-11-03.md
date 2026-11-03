@@ -63,3 +63,36 @@ Reproduction inputs, hashes and commands are in
 The build records the dirty source snapshot; the later bootstrap-comment move
 does not affect production code. Profiling and timed comparisons run separately,
 with GOMAXPROCS=2, GOGC=100, GOMEMLIMIT=2GiB, CGO_ENABLED=0 and PGO disabled.
+
+## 4. Scoped object field views
+
+Wire shape validation and mapping pointer reads share read-only fields in the
+existing input/iteration lifetime. This replaces cached Sonic object trees;
+the root plus eight-descendant bound is unchanged. Plain keys borrow input only
+in these private views. Public/adapter maps and keys remain owned; retained small
+selections still detach at the existing value-reader boundary. Iteration exit
+releases the view on success and error. The old parser-error retention tests
+now exercise release after mapping failure: the cache no longer owns Sonic
+parser errors, and the span scanner only consumes already validated Values.
+
+Protocol/builtin tests and targeted protocol race pass. The targeted builtin
+race also covers Native tool/thinking continuation, stream text ranges and
+citation layout. Ten field-view microbenchmarks are recorded; view sharing adds
+two small workspace allocations compared with a single-use scan, so that
+microbenchmark alone is not evidence of allocation savings against the former
+cached-AST execution.
+
+Five alternating HTTP pairs against the normalization snapshot show:
+
+| Scenario | Bytes/request | Allocations/request | CPU/request | P50 |
+| --- | ---: | ---: | ---: | ---: |
+| Short | −13.88% | −15.61% | inconclusive | inconclusive |
+| 256-frame SSE | −37.25% | −34.04% | −24.69% | −18.28% |
+| 256 KiB history | −1.75% | −5.17% | inconclusive | inconclusive |
+
+SSE sampled peak heap falls 2.14%; other memory and first-frame results remain
+inconclusive. Evidence: `.tmp-dev/optimization-field-views-{build,pairs}/` and
+`optimization-field-views-{tests,race,benchmark}.log`. The normalization short
+CPU profiles each contain about 14 seconds of samples; CPU/request differs by
+about 1.5%, which does not explain the first timing run's 27% P50 change. They
+remain diagnostic evidence, not a substitute for unprofiled measurements.

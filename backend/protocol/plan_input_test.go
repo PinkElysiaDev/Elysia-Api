@@ -75,7 +75,7 @@ func TestOutputPlanRootObjectReadScope(t *testing.T) {
 			}
 			copied := Value{raw: strings.Clone(root.raw)}
 			value, err := readValuePointerWithObjectReader(copied, []string{"a", "n"}, nil, objects)
-			if err != nil || value.raw != "1" || objects.isLoaded {
+			if err != nil || value.raw != "1" || objects.fields != nil {
 				t.Fatal("equal contents reused a different root's storage", value, err)
 			}
 			for _, input := range []struct {
@@ -83,7 +83,7 @@ func TestOutputPlanRootObjectReadScope(t *testing.T) {
 				want  string
 			}{{root, "1"}, {Value{raw: `{"a":{"n":3}}`}, "3"}, {root, "1"}} {
 				value, err := readValuePointerWithObjectReader(input.value, []string{"a", "n"}, nil, objects)
-				if err != nil || value.raw != input.want || !objects.isLoaded {
+				if err != nil || value.raw != input.want || objects.fields == nil {
 					t.Fatal("root reader crossed storage boundaries", value, err)
 				}
 			}
@@ -116,18 +116,16 @@ func TestOutputPlanItemReadScope(t *testing.T) {
 	}
 }
 
-func TestItemObjectReaderReleasesOwnersWithoutChangingParserError(t *testing.T) {
-	input := Value{raw: `{"unfinished":`}
+func TestItemObjectReaderReleasesOwnersAfterFailure(t *testing.T) {
+	input := Value{raw: `{"value":1}`}
 	reader := newPlanObjectReader(input, objectReuseReads)
 	reader.parent = newPlanObjectReader(Value{raw: `{"parent":true}`}, objectReuseReads)
-	_, err := reader.readOwnedMember(input, "unfinished")
-	if err == nil {
-		t.Fatal("incomplete JSON unexpectedly parsed")
+	if _, err := reader.readOwnedMember(input, "value"); err != nil {
+		t.Fatal(err)
 	}
-	want := err.Error()
-	reader.releaseItem(err)
-	if err.Error() != want || reader.parent != nil || reader.root != (immutableSpan{}) {
-		t.Fatal("item release changed the parser error or retained its enclosing owner", err)
+	reader.releaseItem(fmt.Errorf("mapping rejected value"))
+	if reader.fields != nil || reader.parent != nil || reader.root != (immutableSpan{}) {
+		t.Fatal("failed item retained its input or enclosing owner")
 	}
 }
 
@@ -152,7 +150,7 @@ func TestObjectReaderBoundsDescendantsToActiveOwner(t *testing.T) {
 		t.Fatal("descendant cache did not stay bounded", len(reader.children))
 	}
 	reader.releaseItem(nil)
-	if reader.children != nil || reader.isLoaded || reader.parent != nil || reader.root != (immutableSpan{}) {
+	if reader.children != nil || reader.fields != nil || reader.parent != nil || reader.root != (immutableSpan{}) {
 		t.Fatal("finished item retained its descendants")
 	}
 	input = Value{raw: `{"nested":{"n":1}}`}
@@ -161,14 +159,8 @@ func TestObjectReaderBoundsDescendantsToActiveOwner(t *testing.T) {
 	if err != nil || len(reader.children) != 1 {
 		t.Fatal("descendant was not cached", err)
 	}
-	malformed := Value{raw: `{"n":`}
-	_, err = reader.readOwnedMember(malformed, "n")
-	if err == nil {
-		t.Fatal("malformed descendant unexpectedly parsed")
-	}
-	want := err.Error()
-	reader.releaseItem(err)
-	if err.Error() != want || reader.children != nil || reader.root != (immutableSpan{}) {
-		t.Fatal("release altered the descendant parser error or retained the owner")
+	reader.releaseItem(fmt.Errorf("mapping rejected descendant"))
+	if reader.fields != nil || reader.children != nil || reader.root != (immutableSpan{}) {
+		t.Fatal("failed item retained its descendants")
 	}
 }

@@ -72,11 +72,19 @@ func (plan *wireSchemaPlan) validateWithin(ctx context.Context, value Value, pat
 	} else {
 		reader = newNativeComparisonReader(value)
 	}
-	return plan.validateShape(ctx, value, path, limits, reader)
+	var objects *planObjectReader
+	if view != nil {
+		objects = view.objectReader()
+	}
+	return plan.validateShapeWithin(ctx, value, path, limits, reader, objects)
 }
 
 func (plan *wireSchemaPlan) validateShape(ctx context.Context, value Value, path string, limits Limits, reader *valueReader) error {
-	isValid, err := plan.accepts(ctx, value, reader)
+	return plan.validateShapeWithin(ctx, value, path, limits, reader, nil)
+}
+
+func (plan *wireSchemaPlan) validateShapeWithin(ctx context.Context, value Value, path string, limits Limits, reader *valueReader, objects *planObjectReader) error {
+	isValid, err := plan.accepts(ctx, value, reader, objects)
 	if err != nil {
 		return err
 	}
@@ -89,7 +97,7 @@ func (plan *wireSchemaPlan) validateShape(ctx context.Context, value Value, path
 	return locateMappingError(path, fmt.Errorf("wire schema plan rejected a value without a matching schema diagnostic"))
 }
 
-func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *valueReader) (bool, error) {
+func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *valueReader, objects *planObjectReader) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -115,7 +123,7 @@ func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *va
 	}
 	switch kind {
 	case ObjectType:
-		fields, err := value.readObjectWithin(reader)
+		fields, err := objects.readFields(value, reader)
 		if err != nil {
 			return false, err
 		}
@@ -134,7 +142,7 @@ func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *va
 					return false, nil
 				}
 			}
-			if isValid, err := childPlan.accepts(ctx, child, reader); !isValid || err != nil {
+			if isValid, err := childPlan.accepts(ctx, child, reader, objects); !isValid || err != nil {
 				return isValid, err
 			}
 		}
@@ -148,7 +156,7 @@ func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *va
 			itemPlan = plan.items
 		}
 		for _, item := range items {
-			if isValid, err := itemPlan.accepts(ctx, item, reader); !isValid || err != nil {
+			if isValid, err := itemPlan.accepts(ctx, item, reader, objects); !isValid || err != nil {
 				return isValid, err
 			}
 		}

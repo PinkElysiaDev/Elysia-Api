@@ -16,6 +16,12 @@ func (value Value) readObject() (Object, error) {
 }
 
 func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
+	return value.readObjectFieldsWithin(reader, false)
+}
+
+// Borrowed field tables are private to an input invocation. Public and adapter
+// reads still own their maps and keys, even when large values share storage.
+func (value Value) readObjectFieldsWithin(reader *valueReader, canBorrowKeys bool) (Object, error) {
 	raw := strings.TrimSpace(value.raw)
 	if len(raw) == 0 || raw[0] != '{' {
 		return nil, fmt.Errorf("expected JSON object")
@@ -30,7 +36,7 @@ func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
 			if err != nil {
 				return nil, err
 			}
-		} else {
+		} else if !canBorrowKeys {
 			key = strings.Clone(key)
 		}
 		offset = skipJSONSpace(raw, skipJSONSpace(raw, end)+1)

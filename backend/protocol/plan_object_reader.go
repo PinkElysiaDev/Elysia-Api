@@ -1,7 +1,5 @@
 package protocol
 
-import "github.com/bytedance/sonic/ast"
-
 const (
 	objectReuseReads     = 2
 	objectReaderChildren = 8
@@ -11,15 +9,14 @@ const (
 // Parent readers describe enclosing active scopes, never previously visited items.
 type planObjectReader struct {
 	root     immutableSpan
-	node     ast.Node
+	fields   Object
 	parent   *planObjectReader
-	isLoaded bool
 	children []objectReadView
 }
 
 type objectReadView struct {
 	identity immutableSpan
-	node     ast.Node
+	fields   Object
 }
 
 func (plan *compiledOutputPlan) newRootObjectReader(input Value) *planObjectReader {
@@ -50,42 +47,45 @@ func (reader *planObjectReader) readOwnedMember(value Value, key string) (Value,
 		}
 		return sonicObjectMember(value, key)
 	}
+	fields, err := reader.readFields(value, &valueReader{})
+	return fields[key], err
+}
+
+// Only the current root and its bounded descendants share a field table. Values
+// and plain keys borrow immutable input; consumers must not mutate these maps.
+func (reader *planObjectReader) readFields(value Value, borrowed *valueReader) (Object, error) {
+	if reader == nil {
+		return value.readObjectFieldsWithin(borrowed, true)
+	}
 	identity := spanIdentity(value.raw)
 	if reader.root == identity {
-		if !reader.isLoaded {
-			reader.node = ast.NewRaw(value.raw)
-			reader.isLoaded = true
+		if reader.fields == nil {
+			fields, err := value.readObjectFieldsWithin(borrowed, true)
+			reader.fields = fields
+			return fields, err
 		}
-		return readSonicObjectMember(&reader.node, key)
+		return reader.fields, nil
 	}
-	for index := range reader.children {
-		child := &reader.children[index]
+	for _, child := range reader.children {
 		if child.identity == identity {
-			return readSonicObjectMember(&child.node, key)
+			return child.fields, nil
 		}
 	}
-	// Only descendants reached through this active owner enter the bounded
-	// cache. A large history cannot retain one parse tree per visited node.
+	fields, err := value.readObjectFieldsWithin(borrowed, true)
+	if err != nil {
+		return nil, err
+	}
 	if len(reader.children) < objectReaderChildren {
 		if reader.children == nil {
 			reader.children = make([]objectReadView, 0, objectReaderChildren)
 		}
-		reader.children = append(reader.children, objectReadView{identity: identity, node: ast.NewRaw(value.raw)})
-		return readSonicObjectMember(&reader.children[len(reader.children)-1].node, key)
+		reader.children = append(reader.children, objectReadView{identity: identity, fields: fields})
 	}
-	return sonicObjectMember(value, key)
+	return fields, nil
 }
 
-func (reader *planObjectReader) releaseItem(err error) {
+func (reader *planObjectReader) releaseItem(_ error) {
 	if reader == nil {
-		return
-	}
-	if err != nil {
-		// Sonic errors can reference node itself; release enclosing owners without
-		// rewriting the node retained by that error.
-		reader.root = immutableSpan{}
-		reader.parent = nil
-		reader.children = nil
 		return
 	}
 	*reader = planObjectReader{}

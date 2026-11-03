@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -132,4 +133,70 @@ func TestWireSourceDecodeFrameCannotHideInvalidWire(t *testing.T) {
 	}
 	_, err = validation.DecodeFrame(t.Context(), repeated, options)
 	assertPackageRuntimeIssue(t, err, UpstreamContractViolation, "/seq")
+}
+
+func TestInputViewSharesFieldsWithoutSharingOwnedResults(t *testing.T) {
+	plan, err := compileWireSchemaPlan(&ValueSchema{Type: ObjectType, AllowUnknown: true}, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		`{"a":0,"\u0061":9007199254740993,"child":{"text":"<&>\u2028😀"}}`,
+		"{\"bad\xff\":0,\"bad\ufffd\":1,\"child\":{\"text\":\"last\"}}",
+		`{"a":1e100,"child":{"text":"small"},"large":"` + strings.Repeat("x", 128<<10) + `"}`,
+	} {
+		input := parseTestValue(t, raw)
+		view := newInputView(input)
+		if err := plan.validateWithin(t.Context(), input, "/", DefaultLimits(), view); err != nil {
+			t.Fatal(err)
+		}
+		for _, pointer := range [][]string{{"a"}, {"bad�"}, {"child", "text"}, {"missing"}} {
+			want, wantErr := readValuePointer(input, pointer)
+			got, gotErr := readValuePointerWithObjectReader(input, pointer, &view.owned, view.objectReader())
+			if got != want || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) {
+				t.Fatal("shared validation changed mapping selection", pointer, gotErr, wantErr)
+			}
+			if !got.IsZero() && sharesValueStorage(input, got) {
+				t.Fatal("small retained value pins the original input")
+			}
+		}
+		owned, err := input.readObjectWithin(&view.owned)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owned["child"] = StringValue("modified")
+		child, err := readValuePointerWithObjectReader(input, []string{"child", "text"}, &view.owned, view.objectReader())
+		if err != nil || child.IsZero() {
+			t.Fatal("caller-owned map modified the shared field view", err)
+		}
+	}
+}
+
+func BenchmarkInputFieldViews(b *testing.B) {
+	input := Value{raw: `{"id":"reply","object":"chunk","model":"m","choices":[{"index":0,"delta":{"content":"hello"}}],"usage":{"input_tokens":11,"output_tokens":7}}`}
+	plan, err := compileWireSchemaPlan(&ValueSchema{Type: ObjectType, AllowUnknown: true}, DefaultLimits())
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, shared := range []bool{false, true} {
+		b.Run(fmt.Sprintf("shared=%t", shared), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				var view *inputView
+				var objects *planObjectReader
+				if shared {
+					view = newInputView(input)
+					objects = view.objectReader()
+				}
+				if err := plan.validateWithin(b.Context(), input, "/", DefaultLimits(), view); err != nil {
+					b.Fatal(err)
+				}
+				for _, path := range [][]string{{"id"}, {"model"}, {"choices", "0", "delta", "content"}, {"usage", "input_tokens"}, {"usage", "output_tokens"}} {
+					if _, err := readValuePointerWithObjectReader(input, path, nil, objects); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+		})
+	}
 }
