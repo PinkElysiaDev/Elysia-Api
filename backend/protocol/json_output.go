@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // JSONOutput is an immutable, closed JSON construction plan. Containers snapshot
@@ -17,10 +18,13 @@ type JSONOutput struct {
 }
 
 type jsonOutputNode struct {
-	object bool
-	origin coreOriginTag
-	fields []jsonOutputField
-	items  []JSONOutput
+	object           bool
+	origin           coreOriginTag
+	hasCanonicalKeys bool
+	hasSortedFields  bool
+	encodedBytes     int
+	fields           []jsonOutputField
+	items            []JSONOutput
 }
 
 type jsonOutputField struct {
@@ -38,8 +42,9 @@ func JSONObject(fields map[string]JSONOutput) JSONOutput {
 	if fields == nil {
 		return JSONLeaf(Value{raw: "null"})
 	}
-	node := &jsonOutputNode{object: true, fields: make([]jsonOutputField, 0, len(fields))}
+	node := &jsonOutputNode{object: true, hasCanonicalKeys: true, hasSortedFields: true, fields: make([]jsonOutputField, 0, len(fields))}
 	for _, key := range sortedKeys(fields) {
+		node.hasCanonicalKeys = node.hasCanonicalKeys && utf8.ValidString(key)
 		node.fields = append(node.fields, jsonOutputField{key, fields[key]})
 	}
 	return JSONOutput{node: node}

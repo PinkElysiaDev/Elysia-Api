@@ -96,3 +96,27 @@ inconclusive. Evidence: `.tmp-dev/optimization-field-views-{build,pairs}/` and
 CPU profiles each contain about 14 seconds of samples; CPU/request differs by
 about 1.5%, which does not explain the first timing run's 27% P50 change. They
 remain diagnostic evidence, not a substitute for unprofiled measurements.
+
+## 5. Canonical containers and static request fields
+
+Private nodes record canonical-key/order facts and construction-time encoded
+lengths. Already sorted canonical fields no longer go through another map and
+sort. Struct fields retain their original wire order; a sorted selection copies
+only the field slice. Invalid UTF-8 keys still use the original last-wins
+normalization. Lengths are set before publishing a completed node, never lazily
+on a shared object; mutable run builders do not cache incomplete lengths.
+
+The generator also binds fixed Request field selectors at compilation. An
+initial attempt used the presence of a request pointer as eligibility and
+failed `TestPackageInstructionLayoutPreservesNativePlacement`: a local Node
+reader could still carry its enclosing request pointer. The final implementation
+requires the expression's actual static input type to be Request. The failure
+log is retained; corrected protocol/builtin tests and targeted race pass.
+
+Ten canonical-field microbenchmarks avoid six allocations/4,712 bytes per
+32-field selection. Five alternating HTTP pairs versus field views reduce short
+request bytes/allocations by 3.04%/3.32%; timing remains inconclusive. SSE
+bytes/allocations fall 1.00%/0.94%, P50 falls 2.08%, and sampled peak heap falls
+2.35%. CPU and RSS remain inconclusive. Evidence:
+`.tmp-dev/optimization-container-{build,pairs}/`,
+`optimization-container-{tests,fixed-tests,race,benchmark}.log`.

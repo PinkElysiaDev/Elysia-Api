@@ -4,6 +4,10 @@ package protocol
 
 // Generation excludes stale direct field references before importing the model.
 // These entrypoints are never executed by the generator or a production build.
+func coreRequestFieldIndex(string) uint8 { panic("coreplan generation") }
+func readCoreRequestField(*Request, uint8, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
 func readCoreObject(Object, []string, *semanticCache) (JSONOutput, error) {
 	panic("coreplan generation")
 }

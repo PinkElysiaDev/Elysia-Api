@@ -25,6 +25,9 @@ func (expression *compiledExpression) readOutput(state evaluation) (JSONOutput, 
 	var output JSONOutput
 	var err error
 	switch {
+	case state.coreRequest != nil && expression.requestField != 0:
+		output, err = readCoreRequestField(state.coreRequest, expression.requestField, expression.pointer[1:], state.cache)
+
 	case expression.from == "input" && state.inputReader != nil:
 		output, err = state.inputReader(expression.pointer)
 	case expression.from == "root" && state.rootReader != nil:
@@ -93,7 +96,11 @@ func readOutputPointerWithObjectReader(output JSONOutput, pointer []string, read
 		if output.node.object {
 			var selected JSONOutput
 			for _, field := range output.node.fields {
-				if coreJSONKey(field.key) == key {
+				name := field.key
+				if !output.node.hasCanonicalKeys {
+					name = coreJSONKey(name)
+				}
+				if name == key {
 					selected = field.value
 				}
 			}

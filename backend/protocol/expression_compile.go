@@ -36,6 +36,7 @@ type compiledExpression struct {
 	fieldCheck                          *compiledObjectFieldCheck
 	rejection                           *declaredRejectionError
 	isRequired                          bool
+	requestField                        uint8
 	result                              JSONType
 	schema                              *ValueSchema
 	coreType                            reflect.Type
@@ -271,6 +272,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if fieldSchema != nil {
 			compiled.result = fieldSchema.Type
 			compiled.schema = fieldSchema
+		}
+		if coreType == reflect.TypeFor[Request]() && len(pointer) != 0 && (compiled.from == "input" || compiled.from == "root") {
+			compiled.requestField = coreRequestFieldIndex(pointer[0])
 		}
 		compiled.coreType = coreTypeAtPointer(coreType, pointer)
 	}

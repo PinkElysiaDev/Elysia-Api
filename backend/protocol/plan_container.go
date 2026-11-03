@@ -1,6 +1,10 @@
 package protocol
 
-import "fmt"
+import (
+	"cmp"
+	"fmt"
+	"slices"
+)
 
 func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, error) {
 	operands, err := plan.buildOperandValues(state)
@@ -67,6 +71,14 @@ func plannedObjectFields(output JSONOutput) ([]jsonOutputField, error) {
 	if output.node != nil {
 		if !output.node.object {
 			return nil, fmt.Errorf("expected JSON object")
+		}
+		if output.node.hasCanonicalKeys {
+			if output.node.hasSortedFields {
+				return output.node.fields, nil
+			}
+			fields := slices.Clone(output.node.fields)
+			slices.SortFunc(fields, func(a, b jsonOutputField) int { return cmp.Compare(a.key, b.key) })
+			return fields, nil
 		}
 		// Reading an encoded object folds repeated decoded keys before merge's
 		// collision policy runs. Core maps may contain distinct invalid UTF-8
@@ -137,6 +149,9 @@ func normalizedOutputBytes(output JSONOutput) int {
 		return output.value.Len()
 	}
 	node := output.node
+	if node.encodedBytes != 0 {
+		return node.encodedBytes
+	}
 	bytes, count := 2, len(node.items)
 	if node.object {
 		count = len(node.fields)

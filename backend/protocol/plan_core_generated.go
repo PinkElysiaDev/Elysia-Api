@@ -244,7 +244,7 @@ func readCoreRequest(value Request, pointer []string, cache *semanticCache) (JSO
 		}
 		fields = append(fields, jsonOutputField{"clientOutput", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreRequestPointer(output JSONOutput, value **Request, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -438,7 +438,7 @@ func readCoreResponse(value Response, pointer []string, cache *semanticCache) (J
 		}
 		fields = append(fields, jsonOutputField{"native", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreResponsePointer(output JSONOutput, value **Response, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -800,7 +800,7 @@ func readCoreEvent(value Event, pointer []string, cache *semanticCache) (JSONOut
 		}
 		fields = append(fields, jsonOutputField{"unmapped", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreEventPointer(output JSONOutput, value **Event, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -855,7 +855,7 @@ func readCoreEventSlice(value []Event, pointer []string, cache *semanticCache) (
 		}
 		items[index] = output
 	}
-	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
+	return finishCoreOutput(&jsonOutputNode{items: items}), nil
 }
 func writeCoreInt(output JSONOutput, value *int, reader *valueReader) error {
 	return writeCoreScalar(output, value)
@@ -936,7 +936,7 @@ func readCoreIdentity(value Identity, pointer []string, cache *semanticCache) (J
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"revision", output})
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreValue(output JSONOutput, value *Value, reader *valueReader) error {
 	return assignCoreValue(output, value, reader)
@@ -981,7 +981,7 @@ func readCoreNodeSlice(value []Node, pointer []string, cache *semanticCache) (JS
 		}
 		items[index] = output
 	}
-	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
+	return finishCoreOutput(&jsonOutputNode{items: items}), nil
 }
 func writeCoreToolSlice(output JSONOutput, value *[]Tool, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1020,7 +1020,7 @@ func readCoreToolSlice(value []Tool, pointer []string, cache *semanticCache) (JS
 		}
 		items[index] = output
 	}
-	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
+	return finishCoreOutput(&jsonOutputNode{items: items}), nil
 }
 func writeCoreObject(output JSONOutput, value *Object, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1064,7 +1064,7 @@ func readCoreObject(value Object, pointer []string, cache *semanticCache) (JSONO
 		}
 		fields = append(fields, jsonOutputField{key, output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, fields: fields}), nil
 }
 func writeCoreBool(output JSONOutput, value *bool, reader *valueReader) error {
 	return writeCoreScalar(output, value)
@@ -1125,7 +1125,7 @@ func readCoreCacheIntentSlice(value []CacheIntent, pointer []string, cache *sema
 		}
 		items[index] = output
 	}
-	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
+	return finishCoreOutput(&jsonOutputNode{items: items}), nil
 }
 func writeCoreResourceSlice(output JSONOutput, value *[]Resource, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1164,7 +1164,7 @@ func readCoreResourceSlice(value []Resource, pointer []string, cache *semanticCa
 		}
 		items[index] = output
 	}
-	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
+	return finishCoreOutput(&jsonOutputNode{items: items}), nil
 }
 func writeCoreNativePointer(output JSONOutput, value **Native, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1235,7 +1235,7 @@ func readCoreResponseMetadataSlice(value []ResponseMetadata, pointer []string, c
 		}
 		items[index] = output
 	}
-	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
+	return finishCoreOutput(&jsonOutputNode{items: items}), nil
 }
 func writeCoreUsagePointer(output JSONOutput, value **Usage, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1615,7 +1615,7 @@ func readCoreNode(value Node, pointer []string, cache *semanticCache) (JSONOutpu
 		}
 		fields = append(fields, jsonOutputField{"native", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreTool(output JSONOutput, value *Tool, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1761,7 +1761,7 @@ func readCoreTool(value Tool, pointer []string, cache *semanticCache) (JSONOutpu
 		}
 		fields = append(fields, jsonOutputField{"native", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreReasoningIntent(output JSONOutput, value *ReasoningIntent, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1898,7 +1898,7 @@ func readCoreReasoningIntent(value ReasoningIntent, pointer []string, cache *sem
 		}
 		fields = append(fields, jsonOutputField{"historyRetention", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreCacheIntent(output JSONOutput, value *CacheIntent, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -1997,7 +1997,7 @@ func readCoreCacheIntent(value CacheIntent, pointer []string, cache *semanticCac
 		}
 		fields = append(fields, jsonOutputField{"resource", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreResource(output JSONOutput, value *Resource, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2063,7 +2063,7 @@ func readCoreResource(value Resource, pointer []string, cache *semanticCache) (J
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"scope", output})
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreNative(output JSONOutput, value *Native, reader *valueReader) error {
 	if !coreOutputIsNull(output) {
@@ -2139,7 +2139,7 @@ func readCoreNative(value Native, pointer []string, cache *semanticCache) (JSONO
 		}
 		fields = append(fields, jsonOutputField{"requestContext", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreClientOutput(output JSONOutput, value *ClientOutput, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2276,7 +2276,7 @@ func readCoreClientOutput(value ClientOutput, pointer []string, cache *semanticC
 		}
 		fields = append(fields, jsonOutputField{"responsesStorage", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreResponseMetadata(output JSONOutput, value *ResponseMetadata, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2383,7 +2383,7 @@ func readCoreResponseMetadata(value ResponseMetadata, pointer []string, cache *s
 		}
 		fields = append(fields, jsonOutputField{"update", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreUsage(output JSONOutput, value *Usage, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2534,7 +2534,7 @@ func readCoreUsage(value Usage, pointer []string, cache *semanticCache) (JSONOut
 		}
 		fields = append(fields, jsonOutputField{"details", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreControlState(output JSONOutput, value *ControlState, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2614,7 +2614,7 @@ func readCoreControlState(value ControlState, pointer []string, cache *semanticC
 		}
 		fields = append(fields, jsonOutputField{"frameNumber", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreResponsesTurnState(output JSONOutput, value *ResponsesTurnState, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2680,7 +2680,7 @@ func readCoreResponsesTurnState(value ResponsesTurnState, pointer []string, cach
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"frameNumber", output})
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreMedia(output JSONOutput, value *Media, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -2774,7 +2774,7 @@ func readCoreMedia(value Media, pointer []string, cache *semanticCache) (JSONOut
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"reference", output})
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreNodeKind(output JSONOutput, value *NodeKind, reader *valueReader) error {
 	return writeCoreScalar(output, value)
@@ -2935,7 +2935,7 @@ func readCoreScope(value Scope, pointer []string, cache *semanticCache) (JSONOut
 		}
 		fields = append(fields, jsonOutputField{"session", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreProvenance(output JSONOutput, value *Provenance, reader *valueReader) error {
 	if !coreOutputIsNull(output) {
@@ -3020,7 +3020,7 @@ func readCoreProvenance(value Provenance, pointer []string, cache *semanticCache
 		}
 		fields = append(fields, jsonOutputField{"scope", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreNativeRequestContextPointer(output JSONOutput, value **NativeRequestContext, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -3128,7 +3128,7 @@ func readCoreCounterMap(value map[string]Counter, pointer []string, cache *seman
 		}
 		fields = append(fields, jsonOutputField{key, output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, fields: fields}), nil
 }
 func writeCoreInt64(output JSONOutput, value *int64, reader *valueReader) error {
 	return writeCoreScalar(output, value)
@@ -3196,7 +3196,7 @@ func readCoreToolInput(value ToolInput, pointer []string, cache *semanticCache) 
 		}
 		fields = append(fields, jsonOutputField{"value", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreDirection(output JSONOutput, value *Direction, reader *valueReader) error {
 	return writeCoreScalar(output, value)
@@ -3283,7 +3283,7 @@ func readCoreNativeRequestContext(value NativeRequestContext, pointer []string, 
 		}
 		fields = append(fields, jsonOutputField{"interleavedThinking", output})
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreResponsesStorageIntent(output JSONOutput, value *ResponsesStorageIntent, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -3396,7 +3396,7 @@ func readCoreResponsesStorageIntent(value ResponsesStorageIntent, pointer []stri
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"effective", output})
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreCounter(output JSONOutput, value *Counter, reader *valueReader) error {
 	if coreOutputIsNull(output) {
@@ -3453,7 +3453,7 @@ func readCoreCounter(value Counter, pointer []string, cache *semanticCache) (JSO
 		return JSONOutput{}, err
 	}
 	fields = append(fields, jsonOutputField{"origin", output})
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	return finishCoreOutput(&jsonOutputNode{object: true, hasCanonicalKeys: true, fields: fields}), nil
 }
 func writeCoreInputKind(output JSONOutput, value *InputKind, reader *valueReader) error {
 	return writeCoreScalar(output, value)
@@ -3466,6 +3466,98 @@ func writeCoreCounterOrigin(output JSONOutput, value *CounterOrigin, reader *val
 }
 func readCoreCounterOrigin(value CounterOrigin, pointer []string, cache *semanticCache) (JSONOutput, error) {
 	return readCoreScalar(StringValue(string(value)), pointer)
+}
+func coreRequestFieldIndex(key string) uint8 {
+	switch key {
+	case "schemaVersion":
+		return 1
+	case "source":
+		return 2
+	case "model":
+		return 3
+	case "content":
+		return 4
+	case "tools":
+		return 5
+	case "toolChoice":
+		return 6
+	case "parameters":
+		return 7
+	case "outputLimitDefault":
+		return 8
+	case "reasoning":
+		return 9
+	case "cache":
+		return 10
+	case "resources":
+		return 11
+	case "native":
+		return 12
+	case "clientOutput":
+		return 13
+	}
+	return 0
+}
+func readCoreRequestField(value *Request, field uint8, pointer []string, cache *semanticCache) (JSONOutput, error) {
+	switch field {
+	case 1:
+		return readCoreInt(value.SchemaVersion, pointer, cache)
+	case 2:
+		return readCoreIdentity(value.Source, pointer, cache)
+	case 3:
+		if !(!value.Model.IsZero()) {
+			return JSONOutput{}, nil
+		}
+		return readCoreValue(value.Model, pointer, cache)
+	case 4:
+		return readCoreNodeSlice(value.Content, pointer, cache)
+	case 5:
+		if !(len(value.Tools) != 0) {
+			return JSONOutput{}, nil
+		}
+		return readCoreToolSlice(value.Tools, pointer, cache)
+	case 6:
+		if !(!value.ToolChoice.IsZero()) {
+			return JSONOutput{}, nil
+		}
+		return readCoreValue(value.ToolChoice, pointer, cache)
+	case 7:
+		if !(len(value.Parameters) != 0) {
+			return JSONOutput{}, nil
+		}
+		return readCoreObject(value.Parameters, pointer, cache)
+	case 8:
+		if !(value.OutputLimitDefault) {
+			return JSONOutput{}, nil
+		}
+		return readCoreBool(value.OutputLimitDefault, pointer, cache)
+	case 9:
+		if !(value.Reasoning != nil) {
+			return JSONOutput{}, nil
+		}
+		return readCoreReasoningIntentPointer(value.Reasoning, pointer, cache)
+	case 10:
+		if !(len(value.Cache) != 0) {
+			return JSONOutput{}, nil
+		}
+		return readCoreCacheIntentSlice(value.Cache, pointer, cache)
+	case 11:
+		if !(len(value.Resources) != 0) {
+			return JSONOutput{}, nil
+		}
+		return readCoreResourceSlice(value.Resources, pointer, cache)
+	case 12:
+		if !(value.Native != nil) {
+			return JSONOutput{}, nil
+		}
+		return readCoreNativePointer(value.Native, pointer, cache)
+	case 13:
+		if !(value.ClientOutput != nil) {
+			return JSONOutput{}, nil
+		}
+		return readCoreClientOutputPointer(value.ClientOutput, pointer, cache)
+	}
+	panic("uncompiled request field")
 }
 func isCoreRequestObjectPath(pointer []string) bool {
 	if len(pointer) == 0 {

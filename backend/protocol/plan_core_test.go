@@ -43,6 +43,12 @@ func TestCoreOutputPublishedContracts(t *testing.T) {
 					case DecodeRequest:
 						request := assertCoreOutputParity(t, output, decodeCoreRequestOutput)
 						assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer, nil) })
+						assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) {
+							if len(pointer) != 0 && coreRequestFieldIndex(pointer[0]) != 0 {
+								return readCoreRequestField(request, coreRequestFieldIndex(pointer[0]), pointer[1:], nil)
+							}
+							return readCoreRequestOutput(request, pointer, nil)
+						})
 					case DecodeResponse:
 						response := assertCoreOutputParity(t, output, decodeCoreResponseOutput)
 						assertCoreReaderParity(t, response, func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(response, pointer, nil) })
@@ -278,6 +284,9 @@ func assertCoreReaderParity(t *testing.T, value any, read func([]string) (JSONOu
 		actual, err := output.Encode(context.Background())
 		if err != nil || actual != current {
 			t.Fatalf("core selection %v changed: got %s, want %s: %v", pointer, actual.raw, current.raw, err)
+		}
+		if output.node != nil && output.node.encodedBytes != actual.Len() {
+			t.Fatalf("constructed core length changed at %v: %d != %d", pointer, output.node.encodedBytes, actual.Len())
 		}
 		if current.IsObject() {
 			fields, _ := current.ReadObject()

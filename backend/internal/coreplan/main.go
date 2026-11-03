@@ -70,6 +70,7 @@ func main() {
 		g.emitWriter(g.name(g.types[index]), g.types[index])
 		g.emitReader(g.name(g.types[index]), g.types[index])
 	}
+	g.emitRequestFieldReader()
 	objectTypes := collectRequestObjectTypes()
 	for _, kind := range g.types {
 		if objectTypes[kind] {
@@ -91,6 +92,26 @@ func main() {
 	if err := os.WriteFile(path, source, 0644); err != nil {
 		panic(err)
 	}
+}
+
+// Fixed request fields resolve once when a plan compiles. Dynamic map keys and
+// indexes retain the normal generated reader and its error/omission rules.
+func (g *generator) emitRequestFieldReader() {
+	requestFields := fields(reflect.TypeFor[p.Request]())
+	g.line("func coreRequestFieldIndex(key string) uint8 {switch key {")
+	for index, field := range requestFields {
+		g.line("case %q:return %d", field.key, index+1)
+	}
+	g.line("};return 0}")
+	g.line("func readCoreRequestField(value *Request,field uint8,pointer []string,cache *semanticCache)(JSONOutput,error){switch field {")
+	for index, field := range requestFields {
+		g.line("case %d:", index+1)
+		if field.condition != "" {
+			g.line("if !(%s) {return JSONOutput{},nil}", field.condition)
+		}
+		g.line("return readCore%s(value.%s,pointer,cache)", g.name(field.typeOf), field.name)
+	}
+	g.line("};panic(\"uncompiled request field\")}")
 }
 
 type field struct {
@@ -203,9 +224,9 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 	case reflect.Int, reflect.Int64:
 		g.line("return readCoreScalar(coreInteger(int64(value)),pointer)")
 	case reflect.Slice:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return JSONOutput{},err};return readCore%s(value[index],pointer[1:],cache)};items:=make([]JSONOutput,len(value));for index,child:=range value {output,err:=readCore%s(child,nil,cache);if err!=nil{return JSONOutput{},err};items[index]=output};return JSONOutput{node:&jsonOutputNode{items:items}},nil", g.name(t.Elem()), g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return JSONOutput{},err};return readCore%s(value[index],pointer[1:],cache)};items:=make([]JSONOutput,len(value));for index,child:=range value {output,err:=readCore%s(child,nil,cache);if err!=nil{return JSONOutput{},err};items[index]=output};return finishCoreOutput(&jsonOutputNode{items:items}),nil", g.name(t.Elem()), g.name(t.Elem()))
 	case reflect.Map:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {key,ok:=coreMapKey(value,pointer[0]);if !ok{return JSONOutput{},nil};return readCore%s(value[key],pointer[1:],cache)};fields:=make([]jsonOutputField,0,len(value));for _,key:=range sortedKeys(value) {output,err:=readCore%s(value[key],nil,cache);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{key,output})};return JSONOutput{node:&jsonOutputNode{object:true,fields:fields}},nil", g.name(t.Elem()), g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {key,ok:=coreMapKey(value,pointer[0]);if !ok{return JSONOutput{},nil};return readCore%s(value[key],pointer[1:],cache)};fields:=make([]jsonOutputField,0,len(value));for _,key:=range sortedKeys(value) {output,err:=readCore%s(value[key],nil,cache);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{key,output})};return finishCoreOutput(&jsonOutputNode{object:true,fields:fields}),nil", g.name(t.Elem()), g.name(t.Elem()))
 	case reflect.Struct:
 		g.line("if len(pointer)!=0 {switch pointer[0] {")
 		for _, field := range fields(t) {
@@ -228,7 +249,7 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 				g.line("}")
 			}
 		}
-		g.line("return JSONOutput{node:&jsonOutputNode{object:true,fields:fields}},nil")
+		g.line("return finishCoreOutput(&jsonOutputNode{object:true,hasCanonicalKeys:true,fields:fields}),nil")
 	default:
 		panic("unsupported core type: " + t.String())
 	}

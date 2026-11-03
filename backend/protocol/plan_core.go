@@ -15,6 +15,14 @@ import (
 
 const coreDirectDecodeBytes = 4 << 10
 
+// Generated readers complete every child before publishing the parent. Record
+// its size once; each later logical occurrence still pays the same full budget.
+func finishCoreOutput(node *jsonOutputNode) JSONOutput {
+	output := JSONOutput{node: node}
+	node.encodedBytes = normalizedOutputBytes(output)
+	return output
+}
+
 // Wire capture alone establishes provenance. Explicit source indexes retain
 // that receipt with owned JSON; ordinary serialization or reconstruction cannot
 // create it. Immutable reads preserve existing tags.

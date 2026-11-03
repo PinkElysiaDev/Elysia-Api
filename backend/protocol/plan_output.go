@@ -3,11 +3,13 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"unicode/utf8"
 )
 
 // compiledOutputPlan keeps construction nodes unencoded until the mapping
 // returns. Eligibility is decided before execution; a failed plan is never rerun.
 type compiledOutputPlan struct {
+	hasCanonicalFields     bool
 	hasStreamWrites        bool
 	expression             *compiledExpression
 	fields                 []outputPlanField
@@ -106,7 +108,9 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		plan.mergeRequirements(compiled, child.hasSameItem)
 	}
 	if expression.op == "object" {
+		plan.hasCanonicalFields = true
 		for _, key := range expression.keys {
+			plan.hasCanonicalFields = plan.hasCanonicalFields && utf8.ValidString(key)
 			child, ok := compileOutputPlan(expression.fields[key])
 			if !ok {
 				return nil, false
@@ -358,7 +362,7 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 }
 
 func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, error) {
-	node := &jsonOutputNode{object: true, fields: make([]jsonOutputField, 0, len(plan.fields))}
+	node := &jsonOutputNode{object: true, hasCanonicalKeys: plan.hasCanonicalFields, hasSortedFields: true, fields: make([]jsonOutputField, 0, len(plan.fields))}
 	logicalBytes, encodedBytes := 0, 2
 	for _, field := range plan.fields {
 		value, err := field.expression.build(state)
@@ -379,6 +383,7 @@ func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, er
 		encodedBytes += field.keyBytes + 1 + value.bytes
 		node.fields = append(node.fields, jsonOutputField{field.key, value.output})
 	}
+	node.encodedBytes = encodedBytes
 	return plannedOutput{JSONOutput{node: node}, encodedBytes}, nil
 }
 
@@ -400,6 +405,7 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 			encodedBytes += appendPlannedItem(node, value, state.cache)
 		}
 	}
+	node.encodedBytes = encodedBytes
 	return plannedOutput{JSONOutput{node: node}, encodedBytes}, nil
 }
 
@@ -487,6 +493,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 			return plannedOutput{}, resourceFailure("evaluation", "nodes", state.budget.limits.Nodes, len(node.items))
 		}
 	}
+	node.encodedBytes = encodedBytes
 	return plannedOutput{JSONOutput{node: node}, encodedBytes}, nil
 }
 
