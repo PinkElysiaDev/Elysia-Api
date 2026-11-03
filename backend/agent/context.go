@@ -11,6 +11,10 @@ import (
 
 // 上下文压缩的阈值与长度锚点。
 const (
+	defaultContextWindow = 128_000
+	microCompactRatio    = 0.75
+	summaryCompactRatio  = 0.90
+	compactionRetries    = 2
 	summaryMinTokens     = 8_000 // 摘要的最小对话规模：更短的对话即使比例高也不值得
 	summaryMinMessages   = 8     // 同上：消息条数下限
 	summaryMinCut        = 2     // 切点下界：至少摘要这么多条
@@ -61,10 +65,11 @@ func (e *Engine) maybeSummarize(ctx context.Context, sessionID string, session *
 	}
 	head := textTurn(RoleUser, "以下是此前对话的摘要，请据此继续：\n"+summary)
 	next := append([]conversationTurn{head}, conversation[cut:]...)
+	after := estimateTokens(next)
 	emitEvent(events, Event{Type: EventContextCompacted, Compaction: &Compaction{
-		Kind: "summary", Summarized: cut, Kept: len(conversation) - cut, BeforeTokens: before, AfterTokens: estimateTokens(next),
+		Kind: "summary", Summarized: cut, Kept: len(conversation) - cut, BeforeTokens: before, AfterTokens: after,
 	}})
-	e.emitContext(events, estimateTokens(next), window)
+	e.emitContext(events, after, window)
 	return next
 }
 
@@ -91,10 +96,7 @@ func summaryCut(conversation []conversationTurn) int {
 }
 
 func (e *Engine) emitContext(events chan Event, tokens, window int) {
-	ratio := 0.0
-	if window > 0 {
-		ratio = float64(tokens) / float64(window)
-	}
+	ratio := float64(tokens) / float64(window)
 	emitEvent(events, Event{Type: EventContextUpdated, Context: &ContextUsage{InputTokens: tokens, WindowTokens: window, Ratio: ratio}})
 }
 
@@ -135,9 +137,6 @@ func microCompact(conversation []conversationTurn) ([]conversationTurn, int) {
 // summarizeHead 把给定前缀交给模型生成结构化摘要（失败重试，最终由调用方
 // 降级放弃）。
 func (e *Engine) summarizeHead(ctx context.Context, session *Session, head []conversationTurn) (string, error) {
-	if len(head) == 0 {
-		return "", fmt.Errorf("empty head")
-	}
 	var b strings.Builder
 	for _, message := range head {
 		b.WriteString(message.Role)

@@ -13,7 +13,7 @@ func TestTurnEventStreamClosesAfterCleanup(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1"}})
 	caller := &fakeCaller{responses: []scriptedResponse{{result: &CallResult{Text: "done"}}}}
 	engine := newTestEngine(caller, store)
-	ctx, handle, cancel, err := engine.begin("s1", engine.opts.TurnTimeout)
+	ctx, handle, cancel, err := engine.beginTurn("s1", engine.opts.TurnTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
