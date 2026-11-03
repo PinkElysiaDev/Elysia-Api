@@ -6,7 +6,7 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildPointerJoin(state evaluation) (plannedOutput, error) {
-	base, err := plan.source.build(state)
+	base, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -20,7 +20,7 @@ func (plan *compiledOutputPlan) buildPointerJoin(state evaluation) (plannedOutpu
 	var pointer strings.Builder
 	pointer.WriteString(prefix)
 	for _, child := range plan.items {
-		value, err := child.build(state)
+		value, err := child.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}

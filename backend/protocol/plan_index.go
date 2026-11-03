@@ -24,7 +24,7 @@ func (plan *compiledOutputPlan) buildIndexScope(state evaluation) (plannedOutput
 	previous := state.indexes.frames[slot]
 	index := &outputIndex{values: make(map[string]plannedOutput), policy: plan.expression.policy}
 	state.indexes.frames[slot] = index
-	output, err := plan.body.build(state)
+	output, err := plan.body.buildNode(state)
 	state.indexes.frames[slot] = previous
 	state.indexes.entries -= len(index.values)
 	state.indexes.bytes -= index.bytes
@@ -32,11 +32,11 @@ func (plan *compiledOutputPlan) buildIndexScope(state evaluation) (plannedOutput
 }
 
 func (plan *compiledOutputPlan) rememberValue(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.build(state)
+	keyOutput, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	value, err := plan.body.build(state)
+	value, err := plan.body.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -79,7 +79,7 @@ func (plan *compiledOutputPlan) rememberValue(state evaluation) (plannedOutput, 
 }
 
 func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.build(state)
+	keyOutput, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -105,7 +105,7 @@ func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, er
 }
 
 func (plan *compiledOutputPlan) forgetValue(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.build(state)
+	keyOutput, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

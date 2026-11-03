@@ -24,11 +24,11 @@ func (pending *pendingStreamText) snapshotSuffix(snapshot string) (string, error
 }
 
 func (plan *compiledOutputPlan) trackStreamText(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.build(state)
+	keyOutput, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	textOutput, err := plan.body.build(state)
+	textOutput, err := plan.body.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

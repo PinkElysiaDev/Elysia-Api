@@ -19,7 +19,7 @@ func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput,
 		}
 		return plannedLeaf(StringValue(kind)), nil
 	}
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

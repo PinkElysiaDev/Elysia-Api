@@ -15,7 +15,7 @@ type linkDefinition struct {
 // real wire locations; argument bodies, media and native snapshots stay outside
 // the association table, which lives only for this synchronous check.
 func (plan *compiledOutputPlan) checkLinks(state evaluation) (plannedOutput, error) {
-	input, err := plan.source.build(state)
+	input, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

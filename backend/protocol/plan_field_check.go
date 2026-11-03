@@ -58,7 +58,7 @@ func (check *compiledObjectFieldCheck) allows(key string) bool {
 }
 
 func (plan *compiledOutputPlan) checkObjectFields(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

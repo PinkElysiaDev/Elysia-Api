@@ -93,11 +93,11 @@ func (pending *pendingStreamTool) contents(extra string) string {
 }
 
 func (plan *compiledOutputPlan) trackStreamTool(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.build(state)
+	keyOutput, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	observationOutput, err := plan.body.build(state)
+	observationOutput, err := plan.body.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

@@ -25,7 +25,7 @@ type pendingStreamBuffer struct {
 }
 
 func (plan *compiledOutputPlan) useStreamBuffer(state evaluation) (plannedOutput, error) {
-	selected, err := plan.source.build(state)
+	selected, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -70,7 +70,7 @@ func (plan *compiledOutputPlan) useStreamBuffer(state evaluation) (plannedOutput
 	case "read":
 		return pending.read(state)
 	case "append", "snapshot":
-		value, err := plan.body.build(state)
+		value, err := plan.body.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}

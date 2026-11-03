@@ -6,7 +6,7 @@ func (plan *compiledOutputPlan) reject(state evaluation) error {
 	if plan.source == nil {
 		return plan.expression.rejection
 	}
-	location, err := plan.source.build(state)
+	location, err := plan.source.buildNode(state)
 	if err != nil {
 		return err
 	}

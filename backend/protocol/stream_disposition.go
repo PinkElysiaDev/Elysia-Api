@@ -68,7 +68,7 @@ func (options EvaluationContext) WithConversion(conversion *CompiledConversion, 
 type streamDispositionRequest struct{ name, path string }
 
 func (plan *compiledOutputPlan) requireStreamDisposition(state evaluation) (plannedOutput, error) {
-	output, err := plan.source.build(state)
+	output, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

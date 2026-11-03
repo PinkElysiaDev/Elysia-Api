@@ -6,7 +6,7 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildProjection(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

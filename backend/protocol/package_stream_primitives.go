@@ -68,7 +68,7 @@ func (transaction *packageStreamTransaction) primitives() *packageStreamPrimitiv
 }
 
 func (plan *compiledOutputPlan) resolveStreamItem(state evaluation) (plannedOutput, error) {
-	input, err := plan.source.build(state)
+	input, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

@@ -3,7 +3,7 @@ package protocol
 import "fmt"
 
 func (plan *compiledOutputPlan) buildInputScope(state evaluation) (plannedOutput, error) {
-	selected, err := plan.source.build(state)
+	selected, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -24,7 +24,7 @@ func (plan *compiledOutputPlan) buildInputScope(state evaluation) (plannedOutput
 		capture.input, capture.hasInputScope = nativeReadLocation(plan.source.expression, state.capture), true
 		state.capture = &capture
 	}
-	output, err := plan.body.build(state)
+	output, err := plan.body.buildNode(state)
 	reader.releaseItem(err)
 	return output, err
 }

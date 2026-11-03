@@ -88,7 +88,7 @@ func (plan *compiledOutputPlan) captureSource(state evaluation) (plannedOutput, 
 }
 
 func (plan *compiledOutputPlan) captureWireValue(state evaluation) (plannedOutput, JSONOutput, error) {
-	selected, err := plan.source.build(state)
+	selected, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, JSONOutput{}, err
 	}

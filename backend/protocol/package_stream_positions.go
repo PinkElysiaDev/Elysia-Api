@@ -58,7 +58,7 @@ func (pending *pendingStreamPositions) append(output, length int64) bool {
 }
 
 func (plan *compiledOutputPlan) positionItem(state evaluation) (streamTrackKey, error) {
-	value, err := plan.source.build(state)
+	value, err := plan.source.buildNode(state)
 	if err != nil {
 		return streamTrackKey{}, err
 	}
@@ -71,7 +71,7 @@ func (plan *compiledOutputPlan) trackStreamPosition(state evaluation) (plannedOu
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	value, err := plan.body.build(state)
+	value, err := plan.body.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -124,7 +124,7 @@ func (plan *compiledOutputPlan) projectStreamRange(state evaluation) (plannedOut
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	value, err := plan.body.build(state)
+	value, err := plan.body.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

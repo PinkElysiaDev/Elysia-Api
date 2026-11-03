@@ -6,7 +6,7 @@ import (
 )
 
 func (plan *compiledOutputPlan) buildJSONDigest(state evaluation) (plannedOutput, error) {
-	input, err := plan.source.build(state)
+	input, err := plan.source.buildNode(state)
 	if err != nil || input.output.IsZero() {
 		return input, err
 	}

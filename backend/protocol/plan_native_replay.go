@@ -32,7 +32,7 @@ func (plan *compiledOutputPlan) buildNativeTarget(state evaluation) (plannedOutp
 	if state.native == nil {
 		return plannedOutput{}, fmt.Errorf("native target is not bound")
 	}
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

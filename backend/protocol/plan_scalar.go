@@ -12,7 +12,7 @@ import (
 const scalarOperandCapacity = 2
 
 func (plan *compiledOutputPlan) countArrayMembers(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -156,7 +156,7 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 }
 
 func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -198,7 +198,7 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 		value, ok := expression.values[key]
 		if !ok {
 			if plan.otherwise != nil {
-				return plan.otherwise.build(state)
+				return plan.otherwise.buildNode(state)
 			}
 			return plannedOutput{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
@@ -302,7 +302,7 @@ func equalPlannedOutputs(left, right JSONOutput) bool {
 }
 
 func (plan *compiledOutputPlan) buildJSONScalar(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -335,7 +335,7 @@ func (plan *compiledOutputPlan) buildJSONScalar(state evaluation) (plannedOutput
 func (plan *compiledOutputPlan) buildJoin(state evaluation) (plannedOutput, error) {
 	var operands []plannedOutput
 	if plan.source != nil {
-		source, err := plan.source.build(state)
+		source, err := plan.source.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -369,7 +369,7 @@ func (plan *compiledOutputPlan) buildJoin(state evaluation) (plannedOutput, erro
 }
 
 func (plan *compiledOutputPlan) buildKeyedArray(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

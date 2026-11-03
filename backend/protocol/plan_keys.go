@@ -47,7 +47,7 @@ func (plan *compiledOutputPlan) readObjectKeys(state evaluation) ([]string, erro
 		slices.Sort(keys)
 		return slices.Compact(keys), nil
 	}
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return nil, err
 	}

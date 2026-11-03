@@ -3,7 +3,7 @@ package protocol
 import "fmt"
 
 func (plan *compiledOutputPlan) buildEntries(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -33,7 +33,7 @@ func (plan *compiledOutputPlan) buildEntries(state evaluation) (plannedOutput, e
 }
 
 func (plan *compiledOutputPlan) buildObjectEntries(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

@@ -10,7 +10,7 @@ func (failure *declaredCheckError) Error() string { return failure.err.Error() }
 func (failure *declaredCheckError) Unwrap() error { return failure.err }
 
 func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, error) {
-	value, err := plan.source.build(state)
+	value, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

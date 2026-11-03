@@ -193,6 +193,10 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 			state.capture.bindings = make([]nativeLocation, plan.bindingSlots)
 		}
 	}
+	return plan.buildNode(state)
+}
+
+func (plan *compiledOutputPlan) buildNode(state evaluation) (value plannedOutput, err error) {
 	if plan.expression.op == "read" && state.hasOutputReader(plan.expression.from) {
 		return plan.expression.buildReadOutput(state)
 	}
@@ -324,7 +328,7 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 	case "group_runs":
 		return plan.buildRuns(state)
 	case "if":
-		condition, err := plan.when.build(state)
+		condition, err := plan.when.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -339,9 +343,9 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		if branch == nil {
 			return plannedOutput{}, nil
 		}
-		return branch.build(state)
+		return branch.buildNode(state)
 	case "choose":
-		discriminator, err := plan.source.build(state)
+		discriminator, err := plan.source.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -356,7 +360,7 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 		if branch == nil {
 			return plannedOutput{}, fmt.Errorf("%s/cases: no branch for discriminator", expression.path)
 		}
-		return branch.build(state)
+		return branch.buildNode(state)
 	}
 	panic("uncompiled output operation")
 }
@@ -365,7 +369,7 @@ func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, er
 	node := &jsonOutputNode{object: true, hasCanonicalKeys: plan.hasCanonicalFields, hasSortedFields: true, fields: make([]jsonOutputField, 0, len(plan.fields))}
 	logicalBytes, encodedBytes := 0, 2
 	for _, field := range plan.fields {
-		value, err := field.expression.build(state)
+		value, err := field.expression.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -391,7 +395,7 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(plan.items))}
 	logicalBytes, encodedBytes := 0, 2
 	for _, item := range plan.items {
-		value, err := item.build(state)
+		value, err := item.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -410,7 +414,7 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 }
 
 func (plan *compiledOutputPlan) buildIteration(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -453,7 +457,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 			*itemReader = planObjectReader{root: spanIdentity(item.value.raw), parent: state.objectReader}
 			child.objectReader = itemReader
 		}
-		value, err := body.build(child)
+		value, err := body.buildNode(child)
 		itemReader.releaseItem(err)
 		if err != nil {
 			return plannedOutput{}, err

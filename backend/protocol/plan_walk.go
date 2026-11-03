@@ -3,7 +3,7 @@ package protocol
 import "fmt"
 
 func (plan *compiledOutputPlan) buildVisit(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -32,7 +32,7 @@ func (plan *compiledOutputPlan) buildVisit(state evaluation) (plannedOutput, err
 		reader = &planObjectReader{root: spanIdentity(source.output.value.raw), parent: state.objectReader}
 		state.objectReader = reader
 	}
-	output, err := plan.body.build(state)
+	output, err := plan.body.buildNode(state)
 	reader.releaseItem(err)
 	return output, err
 }
@@ -40,7 +40,7 @@ func (plan *compiledOutputPlan) buildVisit(state evaluation) (plannedOutput, err
 func (plan *compiledOutputPlan) buildWalk(state evaluation) (plannedOutput, error) {
 	// The selector observes the caller's item and lexical bindings. Only the
 	// chosen array enters the recursive body; unrelated JSON stays opaque.
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

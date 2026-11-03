@@ -1,7 +1,7 @@
 package protocol
 
 func (plan *compiledOutputPlan) trackStreamArray(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.build(state)
+	keyOutput, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -9,7 +9,7 @@ func (plan *compiledOutputPlan) trackStreamArray(state evaluation) (plannedOutpu
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	input, err := plan.body.build(state)
+	input, err := plan.body.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

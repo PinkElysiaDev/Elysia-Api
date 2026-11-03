@@ -31,7 +31,7 @@ func (plan *compiledOutputPlan) buildOperandValuesInto(state evaluation, operand
 	// Evaluate all operands before checking their container types or collisions,
 	// preserving the expression evaluator's first-error order.
 	for index, item := range plan.items {
-		value, err := item.build(state)
+		value, err := item.buildNode(state)
 		if err != nil {
 			return err
 		}
@@ -168,7 +168,7 @@ func normalizedOutputBytes(output JSONOutput) int {
 
 func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, error) {
 	expression := plan.expression
-	source, err := plan.source.build(state)
+	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -189,7 +189,7 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 		if item.node != nil {
 			child.itemOutput = &item
 		}
-		value, err := plan.when.build(child)
+		value, err := plan.when.buildNode(child)
 		if err != nil {
 			return plannedOutput{}, err
 		}
