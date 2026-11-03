@@ -266,15 +266,20 @@ func (session *SessionReplay) Responses() []SessionResponse {
 }
 
 func (session *SessionReplay) checkBudget() error {
-	items := len(session.responses) + len(session.tools) + len(session.clientSequence.records) + len(session.serverSequence.records) + session.pendingResponses
-	buffered := 0
-	for _, response := range session.responses {
-		items += len(response.items) + len(response.identities.aliases) + len(response.sequence.records)
-		buffered += response.state.buffered
+	items := len(session.responses) + session.pendingResponses
+	buffered := len(session.sessionID) + session.model.Len()
+	for id, response := range session.responses {
+		items += response.retainedItems()
+		buffered += len(id) + response.retainedBytes()
 	}
 	if items > session.limits.StateItems || buffered > session.limits.BufferBytes {
 		return streamIssue(LimitExceeded, "/session", "aggregate session state exceeds its configured limit")
 	}
+	// Tool-result flags share their response item; lane history uses only the
+	// remaining capacity beyond each lane's fixed latest-sequence fact.
+	available := session.limits.StateItems - items
+	session.clientSequence.trim(max(1, available-max(0, session.serverSequence.count-1)+1))
+	session.serverSequence.trim(max(1, available-max(0, session.clientSequence.count-1)+1))
 	return nil
 }
 

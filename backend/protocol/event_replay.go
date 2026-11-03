@@ -23,15 +23,18 @@ type replayItem struct {
 // EventReplay is the shared semantic event validator for fixtures and runtime
 // sessions. It retains bounded identities/digests, not already-forwarded text.
 type EventReplay struct {
-	state      *StreamState
-	sequence   *SequenceTracker
-	items      map[string]*replayItem
-	identities *ItemIdentities
-	limits     Limits
-	target     Target
-	usage      *Usage
-	isTerminal bool
-	terminal   EventType
+	state         *StreamState
+	sequence      *SequenceTracker
+	items         map[string]*replayItem
+	identities    *ItemIdentities
+	limits        Limits
+	embeddedItems int
+	identityBytes int
+	usageBytes    int
+	target        Target
+	usage         *Usage
+	isTerminal    bool
+	terminal      EventType
 }
 
 // NewEventReplay creates isolated state for one response event sequence.
@@ -45,7 +48,13 @@ func NewEventReplay(target Target, limits Limits) (*EventReplay, error) {
 
 // Consume validates one semantic event. False means an identical, explicitly
 // sequenced event was already observed; callers must not forward it twice.
-func (replay *EventReplay) Consume(event Event) (bool, error) {
+func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
+	defer func() {
+		if err == nil && accepted {
+			err = replay.checkRetainedBytes()
+			accepted = err == nil
+		}
+	}()
 	if err := IssuesError(CheckEvent(event, replay.target, replay.limits)); err != nil {
 		return false, err
 	}
@@ -56,10 +65,14 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 		return false, streamIssue(UpstreamContractViolation, "/type", "event arrived after terminal; only usage tails are permitted")
 	}
 	if event.Usage != nil {
-		replay.usage = MergeUsage(replay.usage, event.Usage)
+		if err := replay.mergeUsage(event.Usage); err != nil {
+			return false, err
+		}
 	}
 	if event.Response != nil && event.Response.Usage != nil {
-		replay.usage = MergeUsage(replay.usage, event.Response.Usage)
+		if err := replay.mergeUsage(event.Response.Usage); err != nil {
+			return false, err
+		}
 	}
 	switch event.Type {
 	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
@@ -75,6 +88,10 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 		replay.terminal = ResponseFinished
 	case OperationFailed, OperationCancelled:
 		// Failed/cancelled operations may legitimately leave partial arguments.
+		for _, tool := range replay.state.tools {
+			tool.input.Reset()
+		}
+		replay.state.buffered = 0
 		replay.isTerminal = true
 		replay.terminal = event.Type
 	}
@@ -106,8 +123,8 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if event.Item == nil {
 			return streamIssue(InvalidInput, "/item", "item start requires semantic item kind")
 		}
-		if len(replay.items) >= replay.limits.StateItems {
-			return streamIssue(LimitExceeded, "/item", "too many stream items")
+		if err := replay.reserveItems(1); err != nil {
+			return err
 		}
 		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm, parent: parent, collection: event.Collection}
 		if event.Item.Input != nil {
@@ -124,6 +141,8 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if item == nil {
 		return streamIssue(InvalidAssociation, "/itemId", "delta or completion has no preceding item start")
 	}
+	previousBytes := item.retainedBytes()
+	defer func() { replay.identityBytes += item.retainedBytes() - previousBytes }()
 	if item.parent != parent {
 		return streamIssue(InvalidAssociation, "/parentId", "item parent changed")
 	}
@@ -266,15 +285,24 @@ func (replay *EventReplay) trackReasoningSnapshot(key string, item *replayItem, 
 		if len(part.nodes) < *part.count {
 			return streamIssue(UpstreamContractViolation, part.path, "reasoning snapshot removed an emitted part")
 		}
+		additional := len(part.nodes) - *part.count
+		if err := replay.reserveItems(additional); err != nil {
+			return err
+		}
 		for index, child := range part.nodes {
 			text, err := readString(child.Payload)
 			if err != nil {
 				return err
 			}
-			if _, err := replay.state.TrackText(fmt.Sprintf("%s/%s/%d", key, part.name, index), text, true); err != nil {
+			trackerKey := fmt.Sprintf("%s/%s/%d", key, part.name, index)
+			if _, err := replay.state.TrackText(trackerKey, text, true); err != nil {
 				return err
 			}
+			if index >= *part.count {
+				replay.identityBytes += len(trackerKey)
+			}
 		}
+		replay.embeddedItems += additional
 		*part.count = len(part.nodes)
 	}
 	return nil
@@ -350,6 +378,53 @@ func (replay *EventReplay) consumeTool(key string, item *replayItem, event Event
 
 func (replay *EventReplay) itemKey(event Event) (string, error) {
 	return replay.identities.Resolve(event)
+}
+
+func (item *replayItem) retainedBytes() int {
+	return item.wireID.Len() + item.role.Len() + len(item.callID) + len(item.name)
+}
+
+func (replay *EventReplay) retainedItems() int {
+	items := len(replay.items) + replay.embeddedItems
+	if replay.usage != nil {
+		items += len(replay.usage.Details)
+	}
+	return items
+}
+
+func (replay *EventReplay) mergeUsage(update *Usage) error {
+	replay.usage = MergeUsage(replay.usage, update)
+	if err := replay.reserveItems(0); err != nil {
+		return err
+	}
+	size, err := measureSemanticValue(replay.usage, replay.limits)
+	if err != nil {
+		return err
+	}
+	replay.usageBytes = size.bytes
+	return nil
+}
+
+func (replay *EventReplay) reserveItems(additional int) error {
+	items := replay.retainedItems() + additional
+	if items > replay.limits.StateItems {
+		return streamIssue(LimitExceeded, "/item", "stream identities and embedded content exceed the item limit")
+	}
+	// The latest sequence is a fixed lane fact. Older deduplication records
+	// use only spare capacity and may expire as semantic state grows.
+	replay.sequence.trim(max(1, replay.limits.StateItems-items+1))
+	return nil
+}
+
+func (replay *EventReplay) retainedBytes() int {
+	return replay.identities.bytes + replay.identityBytes + replay.state.buffered + replay.usageBytes
+}
+
+func (replay *EventReplay) checkRetainedBytes() error {
+	if replay.retainedBytes() > replay.limits.BufferBytes {
+		return streamIssue(LimitExceeded, "/item", "stream identities and buffered input exceed the buffer limit")
+	}
+	return nil
 }
 
 func (replay *EventReplay) completeTools() error {

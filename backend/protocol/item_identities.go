@@ -9,6 +9,7 @@ const itemIdentityKinds = 3
 type ItemIdentities struct {
 	aliases map[string]string
 	limit   int
+	bytes   int
 }
 
 // NewItemIdentities bounds aliases independently of retained item payloads.
@@ -36,6 +37,7 @@ func (index *ItemIdentities) Resolve(event Event) (string, error) {
 	}
 	for _, alias := range aliases.values[:aliases.count] {
 		index.aliases[alias] = key
+		index.bytes += len(alias)
 	}
 	return key, nil
 }
