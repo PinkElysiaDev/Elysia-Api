@@ -22,7 +22,7 @@ func TestBorrowedScalarReadBoundaries(t *testing.T) {
 		original.borrowsScalarInput = false
 		for _, raw := range []string{`{}`, `{"value":null}`, `{"value":9007199254740993}`, `{"value":"<>&😀"}`, `{"value":"` + strings.Repeat("x", 1<<16) + `"}`} {
 			for _, boundary := range []string{"normal", "bytes", "steps", "cancel"} {
-				run := func(current *compiledOutputPlan) (Value, error, int) {
+				run := func(current *compiledOutputPlan) (Value, int, error) {
 					state := numericTestState(t, numericTestInput(t, raw))
 					switch boundary {
 					case "bytes":
@@ -33,10 +33,10 @@ func TestBorrowedScalarReadBoundaries(t *testing.T) {
 						state.ctx = &outputPlanCancelContext{Context: t.Context(), remaining: 2}
 					}
 					output, err := current.evaluate(state)
-					return output, err, state.budget.steps
+					return output, state.budget.steps, err
 				}
-				want, wantErr, wantSteps := run(&original)
-				got, gotErr, gotSteps := run(plan)
+				want, wantSteps, wantErr := run(&original)
+				got, gotSteps, gotErr := run(plan)
 				if got != want || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) || gotSteps != wantSteps {
 					t.Fatal("borrowed predicate changed result/error/accounting", operation, boundary, got, want, gotErr, wantErr, gotSteps, wantSteps)
 				}
