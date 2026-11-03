@@ -53,6 +53,40 @@ func TestPackageConversionDefaultReplacement(t *testing.T) {
 	}
 }
 
+func TestModelDefaultCompositionPreservesDeclaration(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Mapping.ModelPolicy = &ProtocolModelPolicy{
+		Reasoning: literalExpression(ReasoningCapabilities{Kind: "none"}),
+		Steps:     []ProtocolControlStep{{Set: map[string]Expression{"/parameters/target": literalExpression("target")}}},
+		Normalize: []ProtocolControlStep{{Set: map[string]Expression{"/parameters/source": literalExpression("source")}}},
+	}
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "model", Order: 10, Enabled: true, Phase: ConversionRequest, Use: "model_policy"}}
+	compiled := compilePackageForTest(t, document)
+	policy := DefaultConversionPolicy(compiled, compiled)
+	model := compiled.packagePlan.modelPolicy
+	var expected modelControlOptions
+	if err := model.conversion.Decode(&expected); err != nil {
+		t.Fatal(err)
+	}
+	expected.Source = model.normalization
+	if actual := fixtureValue(t, expected); policy.Rules[0].Value != actual {
+		t.Fatal("composed rule changed its encoding or fingerprint", policy.Rules[0].Value, actual)
+	}
+	conversion, err := ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, err := readConversionOption[modelControlOptions](conversion, policy.Rules[0])
+	if err != nil || options.Policy.Steps != nil || options.Expressions != nil || options.Source.Steps != nil || options.Source.Expressions != nil {
+		t.Fatal("runtime policy retained compiled declarations", err)
+	}
+	request := &Request{SchemaVersion: ProtocolCoreVersion}
+	result, err := conversion.Request(t.Context(), request, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+	if err != nil || !result.Parameters["source"].IsString("source") || !result.Parameters["target"].IsString("target") || request.Parameters != nil {
+		t.Fatal("composed model programs lost source/target behavior", result, err)
+	}
+}
+
 func TestPointerJoinEscapesOnlySegments(t *testing.T) {
 	expression := Expression{Op: "pointer_join", Source: expressionPointer(literalExpression("/already~1escaped")), Items: []Expression{literalExpression("a/b~c"), literalExpression("")}}
 	plan, _ := compileOutputPlan(compileTestOutputExpression(t, expression))

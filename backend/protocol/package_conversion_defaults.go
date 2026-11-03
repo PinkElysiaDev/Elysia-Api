@@ -146,6 +146,7 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 		if err != nil {
 			return err
 		}
+		options.Steps, options.Expressions = nil, nil
 		rule.preparedOption = &preparedConversionOption{declarationHash: fingerprint, phase: rule.Phase, limits: compiler.limits, option: conversionOption{raw: value, value: options}}
 		compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
 	}
@@ -238,6 +239,7 @@ func compileCoreControlOption(rule ConversionRule, limits Limits) (conversionOpt
 	options.bindingSlots = controlBindingSlots(options.steps)
 	options.hasContext = controlsReadContext(options.steps)
 	compiler.releaseGraph()
+	options.Steps, options.Expressions = nil, nil
 	return conversionOption{raw: rule.Value, value: options}, nil
 }
 

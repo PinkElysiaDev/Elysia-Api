@@ -82,7 +82,7 @@ func (conversion *CompiledConversion) applyControlEvent(event *Event, route Conv
 	if CanPreserveNative(event.Control.Source, Target{Protocol: route.Target, Direction: EncodeEvent}) || !slices.Contains(options.Control.Kinds, event.Control.Kind) {
 		return false, nil
 	}
-	if err := conversion.controlDiagnostic(rule, route, ProtocolControlDiagnostic{Kind: "degrade", Path: options.Control.Path, Attribution: "source"}, options.Control.Reason, sink); err != nil {
+	if err := conversion.controlDiagnostic(rule, route, controlDiagnosticInfo{Kind: "degrade", Path: options.Control.Path, Attribution: "source"}, options.Control.Reason, sink); err != nil {
 		return false, err
 	}
 	event.omittedControl = omitProtectedEvent(event, route, options.EncoderHash, options.DecoderHash)

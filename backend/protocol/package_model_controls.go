@@ -60,9 +60,18 @@ type compiledControlUpdate struct {
 }
 
 type compiledControlDiagnostic struct {
-	declaration ProtocolControlDiagnostic
+	declaration controlDiagnosticInfo
 	reason      *compiledOutputPlan
 	source      *compiledOutputPlan
+}
+
+// Authored reason/source programs live in their compiled plans. Runtime
+// diagnostics retain only the metadata used to report their result.
+type controlDiagnosticInfo struct {
+	Kind, Attribution, Path string
+	Code                    IssueCode
+	Direction               Direction
+	Stage, Suggestion       string
 }
 
 type modelControlOptions struct {
@@ -261,7 +270,9 @@ func compileScopedControlSteps(steps []ProtocolControlStep, compiler *expression
 			if !isAssignable(reason.expression.result, StringType) {
 				return nil, fmt.Errorf("%s/diagnostic/reason: message must be a string", at)
 			}
-			step.diagnostic = &compiledControlDiagnostic{declaration: *diagnostic, reason: reason}
+			step.diagnostic = &compiledControlDiagnostic{declaration: controlDiagnosticInfo{
+				Kind: diagnostic.Kind, Attribution: diagnostic.Attribution, Path: diagnostic.Path,
+				Code: diagnostic.Code, Direction: diagnostic.Direction, Stage: diagnostic.Stage, Suggestion: diagnostic.Suggestion}, reason: reason}
 			if diagnostic.Source != nil {
 				step.diagnostic.source, err = compiler.compilePlan(*diagnostic.Source, at+"/diagnostic/source", scope, 1)
 				if err != nil {
@@ -376,8 +387,10 @@ func compileModelControlOptions(raw Value, limits Limits) (conversionOption, err
 			return conversionOption{}, err
 		}
 		sourceCompiler.releaseGraph()
+		options.Source.Steps, options.Source.Checks, options.Source.Expressions = nil, nil, nil
 	}
 	compiler.releaseGraph()
+	options.Policy, options.Expressions = ProtocolModelPolicy{}, nil
 	return conversionOption{raw: raw, value: options}, nil
 }
 

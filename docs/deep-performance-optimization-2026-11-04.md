@@ -45,3 +45,25 @@ All intervals indicate improvement. Nested-expression microbenchmarks have
 their own ten-pair report. Evidence: `.tmp-dev/deep-expression-{compilation,
 nested}/` and `deep-expression-{tests,race,fuzz}.log`. These are compilation
 results; final HTTP and historical-A gates remain open.
+
+## Retained conversion declarations
+
+Prepared controls/recovery and resolved model options release authored trees
+after their plans are compiled. Runtime diagnostics keep only reporting fields;
+their reason/location expressions live in the executable plans. Raw public
+rules and definitions remain available for overrides, hashes and export.
+
+The first candidate also pre-encoded source normalization and discarded its
+authoring tree. Ten compilation pairs found stable allocation-count increases
+of 0.195%/0.197% for Anthropic/Gemini. That part was **removed**, not accepted
+under the 5% flag. Target/source declarations needed by default composition
+therefore still use the original representation. Its code diff and measurements
+remain in `.tmp-dev/deep-options-compilation/`.
+
+The corrected ten-pair run classifies all compilation metrics as inconclusive,
+with no stable regression. Related tests/race pass. Exact diagnostic post-GC
+heap for four packages plus sixteen policies changes from 93,564,968 to
+76,285,040 bytes; retained delta after codec warmup changes from 84,933,480 to
+67,417,120 bytes. These single diagnostic runs establish ownership reduction,
+not final HTTP memory acceptance. Evidence: `deep-options-fixed-{compilation/,
+diagnostics.log,tests.log}` and `deep-options-race.log` under `.tmp-dev/`.

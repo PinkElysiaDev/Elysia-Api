@@ -129,7 +129,7 @@ func (transaction *packageStreamTransaction) resolveDispositions() error {
 		if path == "" {
 			path = disposition.Path
 		}
-		if err := conversion.controlDiagnostic(rule, binding.route, ProtocolControlDiagnostic{Kind: disposition.Kind, Path: path}, disposition.Reason, sink); err != nil {
+		if err := conversion.controlDiagnostic(rule, binding.route, controlDiagnosticInfo{Kind: disposition.Kind, Path: path}, disposition.Reason, sink); err != nil {
 			return err
 		}
 	}

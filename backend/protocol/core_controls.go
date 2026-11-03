@@ -180,7 +180,7 @@ func applyControlSteps(state evaluation, conversion *CompiledConversion, documen
 	return result, nil
 }
 
-func (conversion *CompiledConversion) controlDiagnostic(rule ConversionRule, route ConversionContext, diagnostic ProtocolControlDiagnostic, reason string, sink *DiagnosticSink) error {
+func (conversion *CompiledConversion) controlDiagnostic(rule ConversionRule, route ConversionContext, diagnostic controlDiagnosticInfo, reason string, sink *DiagnosticSink) error {
 	if diagnostic.Kind == "invalid" {
 		return IssuesError([]ConversionIssue{{Code: diagnostic.Code, Severity: SeverityError, Direction: diagnostic.Direction, Stage: diagnostic.Stage, Path: diagnostic.Path, Reason: reason, Suggestion: diagnostic.Suggestion}})
 	}

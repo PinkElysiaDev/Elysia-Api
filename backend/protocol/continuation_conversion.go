@@ -50,6 +50,7 @@ func (compiled *Compiled) compileRecoveryDefault(declaration ProtocolConversionD
 	if err != nil {
 		return ConversionRule{}, err
 	}
+	options.Policy.PreserveWhen, options.Expressions = nil, nil
 	rule.preparedOption = &preparedConversionOption{phase: rule.Phase, limits: compiler.limits, declarationHash: fingerprint, option: conversionOption{raw: raw, value: options}}
 	return rule, nil
 }
@@ -93,6 +94,7 @@ func compileContinuationRecovery(rule ConversionRule, limits Limits) (conversion
 		return conversionOption{}, err
 	}
 	compiler.releaseGraph()
+	options.Policy.PreserveWhen, options.Expressions = nil, nil
 	return conversionOption{raw: rule.Value, value: options}, nil
 }
 

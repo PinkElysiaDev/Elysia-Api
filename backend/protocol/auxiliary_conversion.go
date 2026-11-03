@@ -104,7 +104,7 @@ func (conversion *CompiledConversion) applyAuxiliaryDisposition(event *Event, ro
 		}
 		return false, streamIssue(UnsupportedNative, options.Disposition.Path, "auxiliary replay requires equivalent mappings, native policy and scope")
 	}
-	if err := conversion.controlDiagnostic(rule, route, ProtocolControlDiagnostic{Kind: "degrade", Path: options.Disposition.Path, Attribution: "source"}, options.Disposition.Reason, sink); err != nil {
+	if err := conversion.controlDiagnostic(rule, route, controlDiagnosticInfo{Kind: "degrade", Path: options.Disposition.Path, Attribution: "source"}, options.Disposition.Reason, sink); err != nil {
 		return false, err
 	}
 	event.omittedAuxiliary = omitProtectedEvent(event, route, options.EncoderHash, options.DecoderHash)
