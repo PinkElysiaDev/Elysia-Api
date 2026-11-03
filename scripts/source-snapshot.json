@@ -435,6 +435,8 @@
     "backend/protocol/event_replay.go",
     "backend/protocol/event_replay_test.go",
     "backend/protocol/expression_compile.go",
+    "backend/protocol/expression_fields.go",
+    "backend/protocol/expression_fields_test.go",
     "backend/protocol/expression_oracle_test.go",
     "backend/protocol/expression_reference.go",
     "backend/protocol/expression_reference_test.go",

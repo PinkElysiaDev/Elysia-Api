@@ -1,14 +1,11 @@
 package protocol
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/bytedance/sonic"
 )
 
 type compiledExpression struct {
@@ -485,33 +482,6 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	}
 	compiled.inheritCoreType()
 	return compiled, nil
-}
-
-func checkExpressionFields(expression Expression, operation OperationInfo, path string) error {
-	encoded, err := sonic.ConfigStd.Marshal(expression)
-	if err != nil {
-		return err
-	}
-	var object map[string]json.RawMessage
-	if err := sonic.ConfigStd.Unmarshal(encoded, &object); err != nil {
-		return err
-	}
-	for key := range expression.present {
-		if _, exists := object[key]; !exists {
-			object[key] = nil
-		}
-	}
-	for key := range object {
-		if key != "op" && !slices.Contains(operation.Fields, key) {
-			return fmt.Errorf("%s/%s: field is not allowed for %s", path, key, operation.Name)
-		}
-	}
-	for _, key := range operation.Required {
-		if value, exists := object[key]; !exists || len(value) == 0 || (string(value) == "null" && key != "value") {
-			return fmt.Errorf("%s/%s is required for %s", path, key, operation.Name)
-		}
-	}
-	return nil
 }
 
 func checkCompiledExpression(expression *compiledExpression, source Expression) error {

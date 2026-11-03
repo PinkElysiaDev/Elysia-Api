@@ -564,3 +564,27 @@ Responses、Anthropic、Gemini 配对中位耗时分别下降 1.21%、3.25%、1.
 .tmp-dev/expression-table-{performance,http-build,http-pairs,profile}/。协议/builtin 全量通过
 （4.439/28.493 秒），编译/引用复用定向 race 通过（4.306 秒），全仓 vet/staticcheck 无诊断。
 日志为 .tmp-dev/expression-tables-*.log；生产切换和完整 A/B/C 验收仍未完成。
+
+## 批次 7a：表达式字段只检查当前层
+
+完整编译 CPU profile 中 checkExpressionFields 累计约 26.14%，原实现为检查当前操作的字段，
+在每层重新编码并解析整个子树。现按 Expression 的 JSON 标签建立一次字段元数据，复用已有
+空值判定，当前层检查合法字段和必要值；子表达式由原编译递归检查。原始字段名仍独立检查，
+Go 侧构造或修改后的表达式也不能绕过值检查，枚举的 absent 值继续拒绝。没有增加服务层、
+缓存或限额，也没有改动有效程序的执行计划、权限及编译指纹。
+
+首次差分 fuzz 发现 JSON 解码器会接受大小写别名：sourCe/keYs/poLiCY 被解码到合法 Go 字段，
+但原 DSL 合同按原始字段名拒绝。补回这层必要边界并保留失败样例；修正后 15 秒 fuzz 执行
+268955 次通过。新增回归同时覆盖 null、空数组、无关 false/空值、嵌套错误、Go 修改后的字段
+与缺失枚举成员。差分使用旧字段编码算法作为测试 oracle，不保留旧生产执行分支。
+
+最终版本相对 082925ba，四预置十对交替 300ms 编译基准的配对中位耗时分别下降
+32.96%、33.22%、31.90%、33.03%，分配字节下降 27.89%–34.86%，分配次数下降
+43.15%–49.91%。证据为 .tmp-dev/expression-fields-performance-fixed/；修正前样本保留在
+expression-fields-performance/，不能冒充最终版本数据。本批收益属于启动/修订编译，未据此
+推断请求吞吐改善。已精读表达式字段检查、递归编译、类型推导、定义解码和相关调用边界。
+
+修正后 Go 全量通过（protocol 5.391、builtin 29.830、server 162.173 秒），编译/字段/引用
+定向 race 通过（4.441 秒），全仓 vet/staticcheck 无诊断。日志为
+.tmp-dev/expression-fields-fixed-*.log 和 expression-fields-fuzz-fixed.log；首次 fuzz 失败记录
+及最小复现保留，不能用修正前的全量结果替代最终版本验收。
