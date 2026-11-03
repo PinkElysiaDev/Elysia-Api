@@ -158,6 +158,7 @@ type compiledEventRule struct{ when, emit *compiledOutputPlan }
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
+	compileExpressions     []*compiledExpression
 	canReusePackageRequest bool
 	identity               Identity
 	definition             Value
@@ -291,6 +292,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		return fail("/samples", err)
 	}
 	compiled.samplesHash = hashValue(samples)
+	expressions.releaseGraph()
 	return compiled, nil
 }
 

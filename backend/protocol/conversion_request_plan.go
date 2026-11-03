@@ -65,6 +65,7 @@ func compileRequestProjectionOption(raw Value, limits Limits) (conversionOption,
 			}
 		}
 		options.corePlan = plan
+		compiler.releaseGraph()
 	}
 	return conversionOption{raw: raw, value: options}, nil
 }

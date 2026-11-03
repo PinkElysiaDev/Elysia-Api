@@ -426,6 +426,7 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		}
 		count.request.executionHash = hashValue(identity)
 	}
+	compiled.compileExpressions = expressions.compiledExpressions
 	return compiled, nil
 }
 

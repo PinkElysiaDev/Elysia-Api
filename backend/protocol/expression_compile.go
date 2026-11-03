@@ -8,38 +8,45 @@ import (
 	"strings"
 )
 
-type compiledExpression struct {
+// expressionCompileFacts is detached after all type, permission and semantic
+// proofs succeed. Runtime instructions retain diagnostics and Native metadata,
+// but never the duplicate expression graph or inferred schemas.
+type expressionCompileFacts struct {
 	outputPlan                          *compiledOutputPlan
-	trackerName                         string
-	streamNamespace                     string
-	op                                  string
-	operation                           string
-	path                                string
-	nativeLocation                      *nativeLocationPattern
-	pointer                             []string
-	from                                string
-	bindingSlot                         int
-	stateSlot                           int
-	indexSlot                           int
-	isStreamIndex                       bool
-	value                               Value
-	literalText                         string
 	fields                              map[string]*compiledExpression
-	keys                                []string
 	items                               []*compiledExpression
 	source, body, when, then, otherwise *compiledExpression
 	cases                               map[string]*compiledExpression
-	values                              map[string]Value
-	to                                  JSONType
-	policy                              string
-	onConflict                          *MergeConflictDiagnostic
-	fieldCheck                          *compiledObjectFieldCheck
-	rejection                           *declaredRejectionError
-	isRequired                          bool
-	requestField                        uint8
 	result                              JSONType
 	schema                              *ValueSchema
 	coreType                            reflect.Type
+}
+
+type compiledExpression struct {
+	*expressionCompileFacts
+	trackerName     string
+	streamNamespace string
+	op              string
+	operation       string
+	path            string
+	nativeLocation  *nativeLocationPattern
+	pointer         []string
+	from            string
+	bindingSlot     int
+	stateSlot       int
+	indexSlot       int
+	isStreamIndex   bool
+	value           Value
+	literalText     string
+	keys            []string
+	values          map[string]Value
+	to              JSONType
+	policy          string
+	onConflict      *MergeConflictDiagnostic
+	fieldCheck      *compiledObjectFieldCheck
+	rejection       *declaredRejectionError
+	isRequired      bool
+	requestField    uint8
 }
 
 // isInputIdentity recognizes a compiled leaf, including an expanded reference.
@@ -49,20 +56,49 @@ func (expression *compiledExpression) isInputIdentity() bool {
 }
 
 type expressionCompiler struct {
-	streamDispositions map[string]bool
-	maximumDepth       int
-	instances          map[referenceContext][]compiledReference
-	limits             Limits
-	nodes              int
-	references         map[string]Expression
-	resolving          map[string]bool
-	used               map[string]bool
-	mappingReferences  map[string]Expression
-	constraints        *wireConstraintCompiler
+	compiledExpressions []*compiledExpression
+	compileFacts        []expressionCompileFacts
+	streamDispositions  map[string]bool
+	maximumDepth        int
+	instances           map[referenceContext][]compiledReference
+	limits              Limits
+	nodes               int
+	references          map[string]Expression
+	resolving           map[string]bool
+	used                map[string]bool
+	mappingReferences   map[string]Expression
+	constraints         *wireConstraintCompiler
+}
+
+const compileFactsBatch = 64
+
+// Facts share short-lived batches; individual runtime instructions survive
+// publication independently. Old batches remain owned by their live facts.
+func (compiler *expressionCompiler) newCompileFacts(result JSONType) *expressionCompileFacts {
+	if len(compiler.compileFacts) == cap(compiler.compileFacts) {
+		compiler.compileFacts = make([]expressionCompileFacts, 0, min(compileFactsBatch, compiler.limits.Nodes-compiler.nodes+1))
+	}
+	compiler.compileFacts = append(compiler.compileFacts, expressionCompileFacts{result: result})
+	return &compiler.compileFacts[len(compiler.compileFacts)-1]
 }
 
 func newExpressionCompiler(limits Limits, references map[string]Expression) *expressionCompiler {
 	return &expressionCompiler{limits: limits, references: references, resolving: make(map[string]bool), used: make(map[string]bool)}
+}
+
+func releaseExpressionGraphs(expressions []*compiledExpression) {
+	for _, expression := range expressions {
+		expression.expressionCompileFacts = nil
+		if expression.op == "object" {
+			expression.keys = nil // The runtime plan owns its compiled field order.
+		}
+	}
+}
+
+func (compiler *expressionCompiler) releaseGraph() {
+	releaseExpressionGraphs(compiler.compiledExpressions)
+	compiler.compiledExpressions = nil
+	compiler.compileFacts = nil
 }
 
 type expressionScope struct {
@@ -145,7 +181,8 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if expression.Op == "ref" {
 		return compiler.compileReference(expression.Ref, path, scope, depth)
 	}
-	compiled := &compiledExpression{op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
+	compiled := &compiledExpression{expressionCompileFacts: compiler.newCompileFacts(operation.Result), op: expression.Op, operation: expression.Operation, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required}
+	compiler.compiledExpressions = append(compiler.compiledExpressions, compiled)
 	if scope.isWireContract && compiled.op == "check_usage" {
 		return nil, fmt.Errorf("%s: core usage checks belong to Mapping, not an external wire contract", path)
 	}

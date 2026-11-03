@@ -375,7 +375,9 @@ func compileModelControlOptions(raw Value, limits Limits) (conversionOption, err
 		if err := options.Source.compile(sourceCompiler); err != nil {
 			return conversionOption{}, err
 		}
+		sourceCompiler.releaseGraph()
 	}
+	compiler.releaseGraph()
 	return conversionOption{raw: raw, value: options}, nil
 }
 

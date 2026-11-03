@@ -5,7 +5,11 @@ import "testing"
 func historyOwnerTestProgram(t *testing.T) (Expression, compiledSemanticEffect) {
 	t.Helper()
 	document := historyPrototype(t, "anthropic")
-	compiled := compilePackageForTest(t, document)
+	// Proof tests inspect the compiler's graph before publication releases it.
+	compiled, err := document.compileContract(DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
 	branch := document.Mapping.Directions[DecodeRequest].Program
 	program := objectExpression(map[string]Expression{
 		"reasoning": {Op: "if", When: branch.When, Then: expressionPointer(branch.Then.Fields["reasoning"])},

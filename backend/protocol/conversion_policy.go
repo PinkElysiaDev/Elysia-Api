@@ -368,6 +368,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		c.ownedPhases[rule.Phase] = c.ownedPhases[rule.Phase] && state.accepts(rule.Phase, rule)
 	}
 	markRequestPartitions(c.phases[ConversionRequest])
+	compiler.releaseGraph()
 	return c, nil
 }
 

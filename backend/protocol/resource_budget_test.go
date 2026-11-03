@@ -130,7 +130,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 		t.Fatal("response wire budget leaked")
 	}
 	budget := &evaluationBudget{limits: semanticLimits(DefaultLimits()), stepLimit: 1}
-	expression := compiledExpression{op: "literal", value: StringValue("x")}
+	expression := compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "literal", value: StringValue("x")}
 	state := evaluation{ctx: ctx, budget: budget}
 	if _, err := expression.evaluate(state); err != nil {
 		t.Fatal(err)

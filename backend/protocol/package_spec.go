@@ -127,6 +127,7 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 		}
 		compiled.operations[name], compiled.operationSchemas[name] = operation, schema
 	}
+	expressions.releaseGraph()
 	return compiled, nil
 }
 

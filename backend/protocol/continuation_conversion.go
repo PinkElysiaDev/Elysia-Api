@@ -92,6 +92,7 @@ func compileContinuationRecovery(rule ConversionRule, limits Limits) (conversion
 	if err != nil {
 		return conversionOption{}, err
 	}
+	compiler.releaseGraph()
 	return conversionOption{raw: rule.Value, value: options}, nil
 }
 

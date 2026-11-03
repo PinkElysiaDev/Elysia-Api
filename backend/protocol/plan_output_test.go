@@ -184,11 +184,11 @@ func (ctx *outputPlanCancelContext) Err() error {
 }
 
 func TestOutputPlanSelectsBeforeExecution(t *testing.T) {
-	unknown := &compiledExpression{op: "future_operation"}
+	unknown := &compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "future_operation"}
 	for _, expression := range []*compiledExpression{
 		unknown,
-		{op: "map", source: unknown, body: &compiledExpression{op: "literal"}},
-		{op: "if", when: &compiledExpression{op: "literal"}, then: unknown, otherwise: &compiledExpression{op: "object"}},
+		{op: "map", expressionCompileFacts: &expressionCompileFacts{source: unknown, body: &compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "literal"}}},
+		{op: "if", expressionCompileFacts: &expressionCompileFacts{when: &compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "literal"}, then: unknown, otherwise: &compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "object"}}},
 	} {
 		if _, ok := compileOutputPlan(expression); ok {
 			t.Fatal("unsupported construction selected", expression.op)
@@ -207,7 +207,7 @@ func TestOutputPlanCoversCatalog(t *testing.T) {
 			group = "plan-only"
 		}
 		t.Run(group+"/"+operation.Name, func(t *testing.T) {
-			if _, ok := compileOutputPlan(&compiledExpression{op: operation.Name}); !ok {
+			if _, ok := compileOutputPlan(&compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: operation.Name}); !ok {
 				t.Fatal("catalog operation has no compiled plan", operation.Name)
 			}
 		})

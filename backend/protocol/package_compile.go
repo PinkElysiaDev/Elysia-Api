@@ -94,6 +94,8 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 	// a mutation between preflight and encoding with the same runtime inputs.
 	decode, encode := compiled.mappings[DecodeRequest], compiled.mappings[EncodeRequest]
 	compiled.canReusePackageRequest = decode.outputPlan != nil && encode.outputPlan != nil && decode.streamState == nil && encode.streamState == nil
+	releaseExpressionGraphs(compiled.compileExpressions)
+	compiled.compileExpressions = nil
 	return compiled, nil
 }
 

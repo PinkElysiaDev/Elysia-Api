@@ -31,9 +31,10 @@ func TestProjectObjectFields(t *testing.T) {
 			if err := IssuesError(issues); err != nil || output.raw != test.expected {
 				t.Fatalf("got %s / %v, want %s", output.raw, err, test.expected)
 			}
-			// after and event rules also use the direct expression entrypoint.
+			// The historical oracle owns its compilation graph independently of
+			// the production revision, which retains only executable plans.
 			state := evaluation{ctx: t.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}}
-			output, err := compiled.mappings[EncodeRequest].outputPlan.expression.evaluate(state)
+			output, err := compileTestOutputExpression(t, expression).evaluate(state)
 			if err != nil || output.raw != test.expected {
 				t.Fatalf("expression: got %s / %v, want %s", output.raw, err, test.expected)
 			}

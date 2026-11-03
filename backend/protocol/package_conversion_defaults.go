@@ -237,6 +237,7 @@ func compileCoreControlOption(rule ConversionRule, limits Limits) (conversionOpt
 	}
 	options.bindingSlots = controlBindingSlots(options.steps)
 	options.hasContext = controlsReadContext(options.steps)
+	compiler.releaseGraph()
 	return conversionOption{raw: rule.Value, value: options}, nil
 }
 

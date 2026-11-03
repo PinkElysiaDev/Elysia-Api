@@ -7,7 +7,7 @@ import (
 )
 
 func TestIdentityAfterChecksMatchEvaluation(t *testing.T) {
-	expression := &compiledExpression{op: "read", from: "input", path: "/directions/encode_request/after"}
+	expression := &compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "read", from: "input", path: "/directions/encode_request/after"}
 	value := StringValue("payload")
 	for _, canceled := range []bool{false, true} {
 		for _, size := range []int{len(value.raw) - 1, len(value.raw), len(value.raw) + 1} {

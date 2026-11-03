@@ -120,3 +120,43 @@ bytes/allocations fall 1.00%/0.94%, P50 falls 2.08%, and sampled peak heap falls
 2.35%. CPU and RSS remain inconclusive. Evidence:
 `.tmp-dev/optimization-container-{build,pairs}/`,
 `optimization-container-{tests,fixed-tests,race,benchmark}.log`.
+
+## 6. Release compilation graphs
+
+Compile-only edges, inferred schemas/types and the output-plan backlink now
+live in a detachable structure. Publication releases them only after contract,
+permission and semantic proofs, including token-count programs. Spec and
+conversion compilers release their own completed graphs. Executable plans,
+diagnostic locations and Native metadata survive unchanged. Proof unit tests
+inspect pre-publication graphs explicitly; production revisions do not keep
+the historical expression evaluator alive for tests.
+
+Protocol/builtin tests and targeted race pass. The first test run exposed a
+proof fixture inspecting a published graph; its input now comes from the
+contract-compilation stage. The original failure log remains available.
+
+A separate memory profile against the container snapshot measured exact
+post-GC starting HeapAlloc of 72.293 versus 63.688 MiB (−11.90%). Sampled drained
+heap was 78.09 versus 66.57 MiB; sampled values are not exact heap sizes. The
+remaining executable graph and authored configuration are still retained.
+
+Ten alternating compilation pairs initially showed 2.4–4.6% more allocations.
+Batching 64 short-lived fact records removes nearly all of that increase without
+changing limits. The corrected ten pairs still show **1.34–2.53% more allocated
+bytes**, and Responses compile time regresses 2.26% with a non-overlapping
+interval. Other compile times are inconclusive. This is a retained-memory versus
+transient-compilation tradeoff, **not a passing no-regression result**; it remains
+an explicit production-switch blocker. The batch build is the final graph
+implementation; the first memory profile precedes the batch allocation change.
+
+Evidence: `.tmp-dev/optimization-{container,graph}-memory-profile/`,
+`optimization-graph-{compilation,batch-compilation,batch-build}/`, and
+`optimization-graph-{tests,fixed-tests,race,batch-tests}.log`.
+
+### Execution roots
+
+Binding allocation now belongs to the existing plan entrypoint. Child nodes
+use the initialized bindings directly. Per-node cancellation, step accounting,
+diagnostic ordering and Native binding restoration are unchanged; there is no
+new interpreter. Protocol/builtin tests and binding/output-plan/Native targeted
+race pass. Final combined timing evidence follows below.

@@ -40,7 +40,7 @@ func TestPackageAgentClientOutputOwnership(t *testing.T) {
 		t.Fatal("parameter policy did not share the Agent preferences", prepared.Parameters)
 	}
 	// A parameter-only call does not evaluate the independent delivery policy.
-	compiled.agentClientOutput[0].program, _ = compileOutputPlan(&compiledExpression{op: "reject", path: "/clientOutput", rejection: &declaredRejectionError{reason: "must not run"}})
+	compiled.agentClientOutput[0].program, _ = compileOutputPlan(&compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "reject", path: "/clientOutput", rejection: &declaredRejectionError{reason: "must not run"}})
 	if _, err := compiled.BuildAgentParameters(t.Context(), AgentPreferences{MaxOutputTokens: 10}); err != nil {
 		t.Fatal("parameter preview executed client output fields", err)
 	}
