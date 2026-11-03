@@ -520,6 +520,7 @@ export function ProtocolV2Editor({
                     track_position 按固定 name 和 item key 记录增量长度；project_range 将声明的 start/end 换算到输出区间，拒绝跨其他 item 的范围。长度单位与引用字段由 Mapping 指定。
                     conversionDefaults.streamDisposition 声明流内损失的 degrade／reject、path 和 reason；目标事件程序使用 require_disposition 的固定 name 引用规则，source 提供实际位置。严格模式、规则禁用或不匹配时拒绝，原生 observer 同样执行授权。
                     nativeWhen 可读取 runtime 的 /encoding/hasRendered，判断此前是否执行过语义编码，据此选择包含历史内容的帧是否重建；它不代表成功交付，不授予引用、资源或续传证明。
+                    encode_event.semanticRanges 使用相同的文本／引用记录检查核心事件改写：仅可读取事件身份、delta、item 的 kind／payload 和 metadata。原值由宿主保留，配置不能提供改写证明；最终 wire 与实际交付检查仍分别执行。
                     encode_response／encode_event.deliveryRanges 声明引用关联：name 为通道，measure 度量字符串，texts 返回 key／text／mode／path，ranges 返回 key／id／start／end／path。选择程序只读 wire；最终改写仅保留 Unicode 字符边界上相同的前后区间，引用索引必须匹配已证明位置。事件方向保留摘要和区间，支持晚到引用；只有成功 Flush 后提交，snapshot 不能改写已交付前缀。
                   </p>
                 )}

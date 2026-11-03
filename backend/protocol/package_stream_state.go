@@ -21,6 +21,7 @@ type compiledPackageStateSlot struct {
 }
 
 type packageStreamState struct {
+	semanticRanges         *deliveryRangeStream
 	primitives             *packageStreamPrimitives
 	scope                  Scope
 	slots                  []Value
@@ -36,6 +37,7 @@ type packageStreamState struct {
 // Updates are staged separately from retained state. The outer event boundary
 // commits only after decoding, provenance and native reconciliation succeed.
 type packageStreamTransaction struct {
+	semanticRanges                 *deliveryRangeStream
 	conversion                     *streamConversionBinding
 	dispositions                   []streamDispositionRequest
 	diagnostics                    *DiagnosticSink
@@ -180,6 +182,13 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 	if transaction == nil {
 		return nil
 	}
+	if ranges := transaction.semanticRanges; ranges != nil {
+		base := transaction.primitives()
+		items := len(base.trackedItems) + transaction.trackItems + base.positionItems + transaction.positionItems + ranges.items
+		if items > state.budget.limits.StateItems {
+			return resourceFailure("stream", "state_items", state.budget.limits.StateItems, items)
+		}
+	}
 	previous := transaction.values()
 	next, bytes, err := evaluatePackageStateSlots(transaction.plan, previous, state)
 	if err != nil {
@@ -255,6 +264,13 @@ func (transaction *packageStreamTransaction) currentSlotBytes() int {
 // frame constant-time without granting each table a separate buffer allowance.
 func (transaction *packageStreamTransaction) retainedBytes() int {
 	bytes := transaction.currentSlotBytes() + transaction.indexByteDelta + transaction.aliasBytes + transaction.trackedBytes + transaction.toolCallBytes + transaction.toolBufferDelta + transaction.bufferByteDelta
+	ranges := transaction.semanticRanges
+	if ranges == nil && transaction.previous != nil {
+		ranges = transaction.previous.semanticRanges
+	}
+	if ranges != nil {
+		bytes += ranges.bytes + ranges.stagedBytes
+	}
 	if transaction.previous != nil {
 		bytes += transaction.previous.indexBytes
 		if primitives := transaction.previous.primitives; primitives != nil {
@@ -300,8 +316,18 @@ func (transaction *packageStreamTransaction) finish(err error) {
 	indexSources := transaction.commitIndexSources()
 	transaction.owner.packageStateItems += transaction.indexItemDelta
 	primitives := transaction.commitPrimitives()
+	ranges := transaction.semanticRanges
+	if ranges != nil {
+		transaction.bytes -= ranges.stagedBytes
+		if err := ranges.commit(); err != nil {
+			panic(err) // Only a compiled SHA-256 tracker is cloned at commit.
+		}
+	} else if transaction.previous != nil {
+		ranges = transaction.previous.semanticRanges
+	}
 	transaction.owner.packageStates[transaction.key] = &packageStreamState{
-		primitives: primitives, scope: transaction.scope,
+		semanticRanges: ranges,
+		primitives:     primitives, scope: transaction.scope,
 		slots: transaction.next, slotBytes: transaction.slotBytes,
 		indexes: indexes, indexSources: indexSources, indexItems: items, indexBytes: indexBytes,
 		bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal,

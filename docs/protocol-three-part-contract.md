@@ -287,8 +287,23 @@ Responses 选择可见文本增量、完成快照、content part、message 和 t
 释放观察。续传扩展在同一 sealed batch 和相同已提交位置上应用同一个只读程序，获得逐帧 before／after
 配对；无修改只执行一次，不假设原始帧位于载体批次末尾。wire 修改改变载体边界或输出数量时拒绝。
 
-当前仍未实现语义事件改写与原 frame 的可信修改事实，也未做静态 wire 影响路径分析。旧生产链、B／C
-归档及正式性能仍待后续批次，不能把本切片标记为总目标完成。
+dev.133 增加下述语义事件证明。静态 wire 影响路径分析、旧生产链退役、B／C 归档及正式性能
+仍待后续批次，不能把本切片标记为总目标完成。
+
+## 语义事件引用证明（dev.133）
+
+`directions.encode_event.semanticRanges` 使用同一 name／measure／texts／ranges 声明，绑定受限核心
+事件投影。只能读取类型、关联标识、delta、metadata 及 item 的 kind／payload／metadata；不能读取
+Source、资源、权限或流状态。只允许 frameBatch 目标事件程序，schema 和编辑器帮助同步提供字段。
+
+Conversion.Event 在相关字段实际改变时保留不可由 JSON 提供的原始投影；EncodeConvertedFrame
+也可从原 frame 与一对一事件取得这一事实。目标重建与 Native 观察共用编码事务和未改写区间算法，
+正文不变时不创建原始副本，改写时只比较当前片段。事件编码后仅保留摘要、区间和独立身份，
+不持有完整原帧或已发送正文。最终 wire 检查与成功 Flush 后的 CommitDelivery 继续独立负责交付事实。
+
+Chat／Responses 配置选择引用所属核心 item 并使用 UTF-16。等长替换、跨改写区引用和未修正的后缀
+索引拒绝；未改写前后缀可保留，无引用改写允许。完整 JSON 响应的语义布局证明及 Agent 直接核心
+收集仍不由这一事件编码边界覆盖，不能据此宣称全部语义改写路径完成。
 
 ## 早期错误与固定入口（dev.131）
 

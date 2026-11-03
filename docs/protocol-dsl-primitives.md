@@ -4,6 +4,14 @@
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
 
+`encode_event.semanticRanges` 使用与 deliveryRanges 相同的 name／measure／texts／ranges 记录，
+检查目标编码前的核心事件。选择器只能读取 type、responseId、itemId、parentId、collection、delta、
+metadata 及 item 的 kind／payload／metadata。供应商引用字段及字符单位在 Mapping 中；原始值由
+宿主转换边界保留，不能通过配置 Source 或布尔标记提交证明。未变化路径复用选择结果，不复制正文。
+改变文本的事件可先输出，后续引用必须位于已证明未变的区间且索引正确；snapshot 复用前缀摘要。
+该状态属于编码事务，表示来源与目标暂存内容的关联，不替代最终 wire 检查和 Flush 后交付提交。
+目前此声明仅接线到 frameBatch 的事件输出；完整响应的语义布局改写尚未使用它。
+
 `encode_event.nativeWhen` 可只读 `runtime.clientOutput` 和 `/encoding/hasRendered`。后者沿用本方向
 既有编码状态，表示此前执行过语义编码；原生 observer 不设置它。Mapping 用它决定包含历史内容
 的聚合帧是否可以原样重放。它不证明 Write／Flush 成功、正文等价、引用有效或资源权限。

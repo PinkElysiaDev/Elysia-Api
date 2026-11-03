@@ -115,6 +115,11 @@ func (compiled *Compiled) encodeFrame(ctx context.Context, direction Direction, 
 func (compiled *Compiled) EncodeConvertedFrame(ctx context.Context, frame *EventFrame, events []Event, options EvaluationContext) ([]Value, error) {
 	converted := *frame
 	converted.Events = events
+	for index := range events {
+		if events[index].SchemaVersion == ProtocolCoreVersion && events[index].rangeOrigin == nil && len(frame.Events) == len(events) && !sameEventRangeInput(&frame.Events[index], &events[index]) {
+			events[index].rangeOrigin = captureEventRangeOrigin(frame.Events[index])
+		}
+	}
 	if converted.native != nil && compiled.native.Preserve && CanPreserveNative(converted.native.Source, compiled.target(EncodeEvent, options)) {
 		digest, err := digestSemanticEvents(events)
 		if err != nil {

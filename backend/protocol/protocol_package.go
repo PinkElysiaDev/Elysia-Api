@@ -167,8 +167,11 @@ type ProtocolDirectionMapping struct {
 	FinalDocument string `json:"finalDocument,omitempty"`
 	// FinalCheck observes the final request wire and caller intent after all edits.
 	// It cannot mutate either input or access stream state.
-	FinalCheck     *Expression                   `json:"finalCheck,omitempty"`
-	DeliveryRanges []ProtocolDeliveryRange       `json:"deliveryRanges,omitempty"`
+	FinalCheck     *Expression             `json:"finalCheck,omitempty"`
+	DeliveryRanges []ProtocolDeliveryRange `json:"deliveryRanges,omitempty"`
+	// SemanticRanges associates core event text and references before encoding.
+	// The selectors read only event identities, text and owned metadata.
+	SemanticRanges []ProtocolDeliveryRange       `json:"semanticRanges,omitempty"`
 	IsEventBatch   bool                          `json:"eventBatch,omitempty"`
 	CanDeferEvents bool                          `json:"deferEvents,omitempty"`
 	IsFrameBatch   bool                          `json:"frameBatch,omitempty"`

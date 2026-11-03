@@ -48,6 +48,10 @@ func (validation *WireStreamValidation) consumeDeliveryRanges(ctx context.Contex
 	}
 	limits := validation.compiled.limits
 	beforeState, afterState := deliveryEvaluation(ctx, prior, limits), deliveryEvaluation(ctx, after, limits)
+	return consumeRangeDeclarations(&validation.deliveryRanges, declarations, beforeState, afterState, prior == after, limits)
+}
+
+func consumeRangeDeclarations(owner **deliveryRangeStream, declarations []compiledDeliveryRange, beforeState, afterState evaluation, unchanged bool, limits Limits) error {
 	for channel, declaration := range declarations {
 		beforeTexts, err := declaration.readTexts(beforeState)
 		if err != nil {
@@ -58,7 +62,7 @@ func (validation *WireStreamValidation) consumeDeliveryRanges(ctx context.Contex
 			return err
 		}
 		afterTexts, afterRanges := beforeTexts, beforeRanges
-		if prior != after {
+		if !unchanged {
 			afterTexts, err = declaration.readTexts(afterState)
 			if err != nil {
 				return err
@@ -71,10 +75,10 @@ func (validation *WireStreamValidation) consumeDeliveryRanges(ctx context.Contex
 		if len(beforeTexts)+len(afterTexts)+len(afterRanges) == 0 {
 			continue
 		}
-		if validation.deliveryRanges == nil {
-			validation.deliveryRanges = &deliveryRangeStream{}
+		if *owner == nil {
+			*owner = &deliveryRangeStream{}
 		}
-		stream := validation.deliveryRanges
+		stream := *owner
 		afterByKey := make(map[string]deliveryTextObservation, len(afterTexts))
 		for _, text := range afterTexts {
 			afterByKey[text.key] = text

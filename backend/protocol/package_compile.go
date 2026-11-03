@@ -231,6 +231,13 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
+	if len(mapping.SemanticRanges) != 0 && (direction != EncodeEvent || !mapping.IsFrameBatch) {
+		return compiledMapping{}, nil, fmt.Errorf("%s/semanticRanges: requires frame-batch event encoding", path)
+	}
+	semanticRanges, err := compileDeliveryRanges(mapping.SemanticRanges, direction, &semanticRangeEventSchema, path+"/semanticRanges", compiler)
+	if err != nil {
+		return compiledMapping{}, nil, err
+	}
 	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler.limits, &scope)
 	if err != nil {
 		return compiledMapping{}, nil, err
@@ -239,7 +246,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
-	if nativeWhen != nil && nativeWhen.hasEncodingStateRead && streamState == nil {
+	if (nativeWhen != nil && nativeWhen.hasEncodingStateRead || len(semanticRanges) != 0) && streamState == nil {
 		streamState = &compiledPackageState{initial: []Value{}}
 	}
 	var finalizer *compiledOutputPlan
@@ -424,6 +431,7 @@ func compileProtocolProgram(mapping ProtocolDirectionMapping, direction Directio
 		nativeWhen:             nativeWhen,
 		finalCheck:             finalCheck,
 		deliveryRanges:         deliveryRanges,
+		semanticRanges:         semanticRanges,
 		outputPlan:             plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
 		isEventBatch:      mapping.IsEventBatch,
 		canDeferEvents:    mapping.CanDeferEvents,

@@ -28575,6 +28575,288 @@
           }
         }
       }
+    },
+    "semantic-event-texts": {
+      "op": "if",
+      "when": {
+        "op": "present",
+        "source": {
+          "op": "read",
+          "path": "/itemId"
+        }
+      },
+      "then": {
+        "op": "if",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "path": "/delta"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "string"
+            }
+          ]
+        },
+        "then": {
+          "op": "array",
+          "items": [
+            {
+              "op": "object",
+              "fields": {
+                "key": {
+                  "op": "read",
+                  "path": "/itemId"
+                },
+                "text": {
+                  "op": "read",
+                  "path": "/delta"
+                },
+                "mode": {
+                  "op": "literal",
+                  "value": "append"
+                },
+                "path": {
+                  "op": "literal",
+                  "value": "/delta"
+                }
+              }
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "path": "/item/payload"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "string"
+              }
+            ]
+          },
+          "then": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "key": {
+                    "op": "read",
+                    "path": "/itemId"
+                  },
+                  "text": {
+                    "op": "read",
+                    "path": "/item/payload"
+                  },
+                  "mode": {
+                    "op": "literal",
+                    "value": "snapshot"
+                  },
+                  "path": {
+                    "op": "literal",
+                    "value": "/item/payload"
+                  }
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": []
+          }
+        }
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": []
+      }
+    },
+    "semantic-event-ranges": {
+      "op": "let",
+      "name": "text-key",
+      "source": {
+        "op": "read",
+        "path": "/itemId"
+      },
+      "body": {
+        "op": "flatmap",
+        "source": {
+          "op": "concat",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/metadata"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/metadata"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/item/metadata"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/item/metadata"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            }
+          ]
+        },
+        "body": {
+          "op": "let",
+          "name": "field",
+          "source": {
+            "op": "read",
+            "path": "",
+            "from": "item"
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "path": "/name",
+                  "from": "item"
+                },
+                {
+                  "op": "literal",
+                  "value": "annotations"
+                }
+              ]
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "path": "/value",
+                "from": "item"
+              },
+              "body": {
+                "op": "let",
+                "name": "citation",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "field",
+                        "path": "/codec"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "openai-chat"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "read",
+                    "path": "/url_citation",
+                    "from": "item"
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "path": "",
+                    "from": "item"
+                  }
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "key": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "text-key",
+                      "path": ""
+                    },
+                    "id": {
+                      "op": "json_digest",
+                      "source": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "citation",
+                            "path": "/url"
+                          },
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "citation",
+                            "path": "/title"
+                          },
+                          {
+                            "op": "index"
+                          }
+                        ]
+                      }
+                    },
+                    "start": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "citation",
+                      "path": "/start_index"
+                    },
+                    "end": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "citation",
+                      "path": "/end_index"
+                    },
+                    "path": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "field",
+                      "path": "/path"
+                    }
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": []
+            }
+          }
+        }
+      }
     }
   },
   "directions": {
@@ -35071,6 +35353,26 @@
           "ranges": {
             "op": "ref",
             "ref": "delivery-event-ranges"
+          }
+        }
+      ],
+      "semanticRanges": [
+        {
+          "name": "core-text",
+          "measure": {
+            "op": "utf16_length",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "texts": {
+            "op": "ref",
+            "ref": "semantic-event-texts"
+          },
+          "ranges": {
+            "op": "ref",
+            "ref": "semantic-event-ranges"
           }
         }
       ]

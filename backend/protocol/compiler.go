@@ -134,6 +134,7 @@ type compiledMapping struct {
 	nativeWhen             *compiledOutputPlan
 	finalCheck             *compiledOutputPlan
 	deliveryRanges         []compiledDeliveryRange
+	semanticRanges         []compiledDeliveryRange
 	streamObserver         *compiledOutputPlan
 	capabilities           CapabilitySet
 	module                 Module

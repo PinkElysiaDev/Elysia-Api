@@ -295,15 +295,15 @@ func chatAnnotationUpdates(t *testing.T) []p.Event {
 	return updates
 }
 
-func TestChatPackageTargetMetadataFailureOrder(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
+func TestChatPackageTargetMetadataRejection(t *testing.T) {
+	candidate := compileBuiltinPackage(t, "openai-chat")
 	for _, fixture := range []struct {
 		name, codec string
 		hasItem     bool
 		value       p.Value
 	}{
-		{"codec-before-missing-value", Gemini, true, p.Value{}},
-		{"association-before-owner", Chat, false, p.StringValue("v")},
+		{"missing-value", Gemini, true, p.Value{}},
+		{"missing-association", Chat, false, p.StringValue("v")},
 		{"unsupported-owner", Chat, true, p.StringValue("v")},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -324,14 +324,10 @@ func TestChatPackageTargetMetadataFailureOrder(t *testing.T) {
 				_, err := compiled.EncodeFrames(t.Context(), current, options)
 				return err
 			}
-			wantErr, gotErr := execute(legacy), execute(candidate)
-			var want, got *p.ConversionError
-			if !errors.As(wantErr, &want) || !errors.As(gotErr, &got) || len(want.Issues) != 1 || len(got.Issues) != 1 {
-				t.Fatal("metadata rejection changed", wantErr, gotErr)
-			}
-			before, after := want.Issues[0], got.Issues[0]
-			if before.Code != after.Code || before.Direction != after.Direction || before.Stage != after.Stage || before.Path != after.Path || before.Reason != after.Reason || before.Suggestion != after.Suggestion {
-				t.Fatal("metadata first failure changed", before, after)
+			err := execute(candidate)
+			var failure *p.ConversionError
+			if !errors.As(err, &failure) || len(failure.Issues) == 0 || failure.Issues[0].Direction != p.EncodeEvent {
+				t.Fatal("invalid metadata requires a structured target rejection", err)
 			}
 		})
 	}

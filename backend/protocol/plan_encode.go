@@ -113,6 +113,9 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 }
 
 func (compiled *Compiled) checkNativeEventEffects(ctx context.Context, direction Direction, event Event, options EvaluationContext) error {
+	if err := compiled.checkSemanticEventRanges(ctx, direction, &event, options); err != nil {
+		return err
+	}
 	inputLimits, _, workLimits := compiled.mappingLimits(ctx, direction)
 	fail := func(err error) error { return compiled.runtimeError(direction, compiled.mappingError(direction, err)) }
 	contextValue, err := EncodeValue(options.Values)

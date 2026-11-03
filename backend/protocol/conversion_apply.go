@@ -98,13 +98,22 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 	return &result, nil
 }
 
-func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
+func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (result Event, err error) {
+	origin := event.rangeOrigin
+	defer func() {
+		if err == nil && event.SchemaVersion == ProtocolCoreVersion {
+			if origin == nil && !sameEventRangeInput(&event, &result) {
+				origin = captureEventRangeOrigin(event)
+			}
+			result.rangeOrigin = origin
+		}
+	}()
 	entity := event.continuation
 	if entity == nil {
 		return c.convertEvent(ctx, event, route, sink)
 	}
 	route.continuationEvent = &continuationEventObservation{original: event, entity: entity}
-	result, err := c.convertEvent(ctx, event, route, sink)
+	result, err = c.convertEvent(ctx, event, route, sink)
 	if err != nil {
 		return Event{}, err
 	}

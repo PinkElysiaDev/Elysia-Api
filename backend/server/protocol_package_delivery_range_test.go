@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -86,6 +87,18 @@ func TestPackageGatewayStreamDeliveryRanges(t *testing.T) {
 	if err := mustProtocolValue(t, fixture).Decode(&frames); err != nil {
 		t.Fatal(err)
 	}
+	// Deliver the reference before any completion snapshot, so rejection proves
+	// the edited delta's association rather than snapshot prefix consistency.
+	annotation := mustProtocolValue(t, `{"type":"response.output_text.annotation.added","output_index":0,"content_index":1,"annotation_index":0,"item_id":"r_item_0","annotation":{"type":"url_citation","url":"https://example.test","title":"reference","start_index":0,"end_index":10}}`)
+	frames = append(frames[:8:8], append([]protocol.Value{annotation}, frames[8:]...)...)
+	for index, frame := range frames {
+		fields, err := frame.ReadObject()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields["sequence_number"] = mustProtocolValue(t, strconv.Itoa(index))
+		frames[index] = mustEncodedProtocolValue(t, fields)
+	}
 	var upstream bytes.Buffer
 	for _, frame := range frames {
 		if err := protocol.WriteFrame(&upstream, source.Operations()["stream"], frame); err != nil {
@@ -100,43 +113,51 @@ func TestPackageGatewayStreamDeliveryRanges(t *testing.T) {
 	}))
 	defer provider.Close()
 	setupGatewayModelWithCapabilities(t, server, source, provider.URL, protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true})
-	for _, replacement := range []string{"range-body", "RANGE-body"} {
-		var expression protocol.Expression
-		if err := mustProtocolValue(t, fmt.Sprintf(`{"op":"if","when":{"op":"equal","items":[{"op":"read","path":"/choices/0/delta/content"},{"op":"literal","value":"range-body"}]},"then":{"op":"merge","policy":"last","items":[{"op":"read"},{"op":"object","fields":{"choices":{"op":"map","source":{"op":"read","path":"/choices"},"body":{"op":"merge","policy":"last","items":[{"op":"read","from":"item"},{"op":"object","fields":{"delta":{"op":"merge","policy":"last","items":[{"op":"read","from":"item","path":"/delta"},{"op":"literal","value":{"content":%q}}]}}}]}}}}]},"otherwise":{"op":"read"}}`, replacement)).Decode(&expression); err != nil {
-			t.Fatal(err)
-		}
-		policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "delivery-rewrite", Rules: []protocol.ConversionRule{{ID: "delivery-rewrite", Order: 1000, Enabled: true, Phase: protocol.ConversionWire, Action: "transform", Expression: &expression}}}
-		bindings, err := server.store.ListProtocolBindings(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &policy}
-		service, _ := server.protocolService()
-		bindings, err = server.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := server.store.SaveProtocolBinding(t.Context(), bindings[0]); err != nil {
-			t.Fatal(err)
-		}
-		server.invalidateRouteCache()
-		request := httptest.NewRequest(http.MethodPost, "/gateway/"+target.Identity().DefinitionID+target.Operations()["stream"].Path, strings.NewReader(buildPackageGatewayRequest("openai-chat", true)))
-		request.Header.Set("Authorization", "Bearer gateway-test-token")
-		reply := httptest.NewRecorder()
-		prior := calls.Load()
-		serveTestHTTP(server.engine, reply, request)
-		if reply.Code != http.StatusOK || calls.Load() != prior+1 || !strings.Contains(reply.Body.String(), replacement) {
-			t.Fatal("incremental text was rejected or generation repeated", reply.Code, calls.Load()-prior, reply.Body.String())
-		}
-		if replacement == "range-body" {
-			body := reply.Body.String()
-			response := collectPackageGatewayReply(t, target, reply, true, protocol.Scope{})
-			checkPackageGatewayReply(t, response, "😀range-body", 20, 2)
-			if !strings.Contains(body, "url_citation") || reply.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
-				t.Fatal("unchanged reference or successful termination was lost", body)
+	for _, phase := range []protocol.ConversionPhase{protocol.ConversionWire, protocol.ConversionEvent} {
+		for _, replacement := range []string{"range-body", "RANGE-body"} {
+			var expression protocol.Expression
+			if err := mustProtocolValue(t, fmt.Sprintf(`{"op":"if","when":{"op":"equal","items":[{"op":"read","path":"/choices/0/delta/content"},{"op":"literal","value":"range-body"}]},"then":{"op":"merge","policy":"last","items":[{"op":"read"},{"op":"object","fields":{"choices":{"op":"map","source":{"op":"read","path":"/choices"},"body":{"op":"merge","policy":"last","items":[{"op":"read","from":"item"},{"op":"object","fields":{"delta":{"op":"merge","policy":"last","items":[{"op":"read","from":"item","path":"/delta"},{"op":"literal","value":{"content":%q}}]}}}]}}}}]},"otherwise":{"op":"read"}}`, replacement)).Decode(&expression); err != nil {
+				t.Fatal(err)
 			}
-		} else if strings.Contains(reply.Body.String(), "url_citation") || strings.Contains(reply.Body.String(), "[DONE]") || reply.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" {
-			t.Fatal("late reference to rewritten text reached the client", reply.Body.String(), reply.Result().Trailer)
+			if phase == protocol.ConversionEvent {
+				if err := mustProtocolValue(t, fmt.Sprintf(`{"op":"if","when":{"op":"equal","items":[{"op":"read","path":"/delta"},{"op":"literal","value":"range-body"}]},"then":{"op":"merge","policy":"last","items":[{"op":"read"},{"op":"literal","value":{"delta":%q}}]},"otherwise":{"op":"read"}}`, replacement)).Decode(&expression); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "delivery-rewrite", Rules: []protocol.ConversionRule{{ID: "delivery-rewrite", Order: 1000, Enabled: true, Phase: phase, Action: "transform", Expression: &expression}}}
+			bindings, err := server.store.ListProtocolBindings(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &policy}
+			service, _ := server.protocolService()
+			bindings, err = server.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := server.store.SaveProtocolBinding(t.Context(), bindings[0]); err != nil {
+				t.Fatal(err)
+			}
+			server.invalidateRouteCache()
+			request := httptest.NewRequest(http.MethodPost, "/gateway/"+target.Identity().DefinitionID+target.Operations()["stream"].Path, strings.NewReader(buildPackageGatewayRequest("openai-chat", true)))
+			request.Header.Set("Authorization", "Bearer gateway-test-token")
+			reply := httptest.NewRecorder()
+			prior := calls.Load()
+			serveTestHTTP(server.engine, reply, request)
+			if reply.Code != http.StatusOK || calls.Load() != prior+1 || !strings.Contains(reply.Body.String(), replacement) {
+				t.Fatal("incremental text was rejected or generation repeated", reply.Code, calls.Load()-prior, reply.Body.String())
+			}
+			if replacement == "range-body" {
+				body := reply.Body.String()
+				response := collectPackageGatewayReply(t, target, reply, true, protocol.Scope{})
+				checkPackageGatewayReply(t, response, "😀range-body", 20, 2)
+				if !strings.Contains(body, "url_citation") || reply.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
+					t.Fatal("unchanged reference or successful termination was lost", body)
+				}
+			} else if strings.Contains(reply.Body.String(), "url_citation") || strings.Contains(reply.Body.String(), "[DONE]") || reply.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" {
+				t.Fatal("late reference to rewritten text reached the client", reply.Body.String(), reply.Result().Trailer)
+			}
 		}
 	}
 }
