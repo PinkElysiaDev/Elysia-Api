@@ -60,6 +60,11 @@ func (compiled *Compiled) validateSourceFrame(ctx context.Context, direction Dir
 			options.State.sourceStreams = make(map[sourceStreamKey]*WireStreamValidation)
 		}
 		options.State.sourceStreams[key] = validator
+		if budget := options.State.retention.budget; budget != nil {
+			if err := validator.bindStreamBudget(budget); err != nil {
+				return options, err
+			}
+		}
 	}
 	options.inputView = newInputView(frame)
 	if err := validator.consume(ctx, frame, options.inputView); err != nil {

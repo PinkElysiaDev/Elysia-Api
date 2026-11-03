@@ -88,6 +88,10 @@ func (state *EvaluationState) Release() {
 	clear(state.packageStates)
 	clear(state.modules)
 	clear(state.initialized)
+	for _, validation := range state.sourceStreams {
+		validation.Release()
+	}
 	clear(state.sourceStreams)
 	state.packageStateItems, state.packageStateBytes = 0, 0
+	state.retention.release()
 }

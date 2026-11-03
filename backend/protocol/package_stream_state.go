@@ -151,6 +151,10 @@ func (compiled *Compiled) beginPackageTransaction(direction Direction, options E
 	if options.State == nil {
 		return options, nil, fmt.Errorf("declared event state requires one EvaluationState per stream")
 	}
+	if budget := options.State.retention.budget; budget != nil {
+		budget.limits.StateItems = min(budget.limits.StateItems, compiled.limits.StateItems)
+		budget.limits.BufferBytes = min(budget.limits.BufferBytes, compiled.limits.BufferBytes)
+	}
 	previous := options.State.packageStates[key]
 	if previous != nil && previous.scope != options.Scope {
 		return options, nil, streamIssue(ResourceScopeMismatch, "/state", "event state belongs to another stream scope")
@@ -204,7 +208,7 @@ func (transaction *packageStreamTransaction) stage(state evaluation, isRendered 
 	}
 	transaction.next, transaction.slotBytes = next, bytes
 	transaction.bytes = transaction.retainedBytes()
-	return nil
+	return transaction.checkSharedRetention()
 }
 
 // Slot evaluation shares the preceding snapshot and returns owned staged values.
@@ -364,6 +368,7 @@ func (transaction *packageStreamTransaction) finish(err error) {
 		bytes: transaction.bytes, hasRendered: transaction.hasRendered, hasTerminal: transaction.hasTerminal,
 	}
 	transaction.owner.packageStateBytes += transaction.bytes
+	transaction.owner.retention.commit(transaction.owner.packageStateItems, transaction.owner.packageStateBytes)
 	transaction.commitDiagnostics()
 	transaction.next = nil
 }
@@ -373,5 +378,6 @@ func (state *EvaluationState) releasePackageState(key moduleStateKey) {
 		state.packageStateItems -= previous.items
 		state.packageStateBytes -= previous.bytes
 		delete(state.packageStates, key)
+		state.retention.commit(state.packageStateItems, state.packageStateBytes)
 	}
 }

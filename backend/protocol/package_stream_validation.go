@@ -9,6 +9,7 @@ import (
 
 // Wire state owns external identities and payload validators, never core events.
 type packageStreamValidation struct {
+	retention                                   streamReservation
 	contract                                    *compiledPackageStreamContract
 	target                                      Target
 	direction                                   Direction
@@ -95,6 +96,9 @@ func (state *packageStreamValidation) consumeInputView(ctx context.Context, view
 	if current.hasStagedSlots {
 		state.slots, state.slotBytes = current.slots, current.slotBytes
 	}
+	if err := state.commitRetention(); err != nil {
+		return state.issue("/state", "stream owners exceed their shared budget", err)
+	}
 	state.hasPendingDelivery = state.direction == EncodeEvent
 	state.frameHadResponse, state.frameResponseID = prior.hasStarted, prior.responseID
 	state.frameHasSequence, state.frameSequence = current.hasSequence, current.sequence
@@ -172,7 +176,7 @@ func (state *packageStreamValidation) retainedSlotBytes() int {
 }
 
 func (state *packageStreamValidation) checkRetainedItems(additional int, path string) error {
-	items := state.entityCount + state.identityItems + state.rangeItems + additional
+	items := state.retainedItems() + additional
 	if items > state.limits.StateItems {
 		return state.issue(path, "stream retained state exceeds the item limit", resourceFailure("stream", "state_items", state.limits.StateItems, items))
 	}

@@ -57,7 +57,10 @@ func (validation *WireStreamValidation) consumeDeliveryRanges(ctx context.Contex
 		if err := state.checkRetainedItems(0, "/delivery"); err != nil {
 			return err
 		}
-		return state.checkRetainedBytes(state.identityBytes, "/delivery")
+		if err := state.checkRetainedBytes(state.identityBytes, "/delivery"); err != nil {
+			return err
+		}
+		return state.commitRetention()
 	}
 	return nil
 }

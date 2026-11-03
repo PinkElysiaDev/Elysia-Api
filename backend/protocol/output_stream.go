@@ -20,6 +20,11 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 		return fmt.Errorf("delivery commit requires an output package stream")
 	}
 	state := validation.packageStream
+	if budget := state.retention.budget; budget != nil {
+		if err := budget.Check(); err != nil {
+			return err
+		}
+	}
 	if !state.hasPendingDelivery {
 		return fmt.Errorf("delivery commit requires a successfully accepted output frame")
 	}
@@ -28,6 +33,7 @@ func (validation *WireStreamValidation) CommitDelivery() error {
 			return err
 		}
 		state.rangeBytes = validation.deliveryRanges.bytes
+		state.retention.commit(state.retainedItems(), state.retainedBytes())
 	}
 	state.delivered = state.accepted
 	state.deliveredFrameNumber = state.frameNumber
@@ -46,9 +52,10 @@ func (validation *WireStreamValidation) AbortDelivery() {
 	if state := validation.packageStream; state != nil {
 		// An aborted stream can expose its committed position for diagnostics,
 		// but cannot resume. Entity payloads, aliases and intervals have no owner.
-		*state = packageStreamValidation{contract: state.contract, target: state.target, direction: state.direction, limits: state.limits,
+		*state = packageStreamValidation{retention: state.retention, contract: state.contract, target: state.target, direction: state.direction, limits: state.limits,
 			accepted: state.delivered, delivered: state.delivered, frameNumber: state.frameNumber, deliveredFrameNumber: state.deliveredFrameNumber,
 			identityBytes: len(state.delivered.responseID), hasRejectedFrame: true}
+		state.retention.commit(state.retainedItems(), state.retainedBytes())
 	}
 }
 
@@ -56,6 +63,9 @@ func (validation *WireStreamValidation) AbortDelivery() {
 // settles. A released validator remains closed and cannot resume an output.
 func (validation *WireStreamValidation) Release() {
 	validation.AbortDelivery()
+	if state := validation.packageStream; state != nil {
+		state.retention.release()
+	}
 	validation.deliveryRanges = nil
 	validation.packageStream = nil
 	validation.decoder = nil

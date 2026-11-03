@@ -75,6 +75,7 @@ func (compiled *Compiled) ValidateEventReferences(ctx context.Context, event Eve
 	if transaction != nil {
 		transaction.next, transaction.slotBytes = transaction.values(), transaction.currentSlotBytes()
 		transaction.bytes = transaction.retainedBytes()
+		return transaction.checkSharedRetention()
 	}
 	return nil
 }

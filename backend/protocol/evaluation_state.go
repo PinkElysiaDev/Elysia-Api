@@ -97,6 +97,7 @@ type streamModuleState struct {
 // EvaluationState owns native codec state for one stream/session. It is not
 // shared across requests or goroutines and is inaccessible to expressions.
 type EvaluationState struct {
+	retention         streamReservation
 	modules           map[moduleStateKey]*streamModuleState
 	initialized       map[moduleStateKey]bool
 	packageStates     map[moduleStateKey]*packageStreamState
