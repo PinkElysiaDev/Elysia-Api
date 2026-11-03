@@ -140,6 +140,9 @@ func TestConversionHTTPIsolated(t *testing.T) {
 
 func startConversionHTTPChild(t *testing.T, role, upstream string) conversionHTTPAddress {
 	t.Helper()
+	if path := os.Getenv("ELYSIA_CONVERSION_HTTP_EXTERNAL"); path != "" {
+		return readExternalConversionAddress(t, path, role)
+	}
 	directory := t.TempDir()
 	ready := filepath.Join(directory, "ready.json")
 	binary, err := os.Executable()
