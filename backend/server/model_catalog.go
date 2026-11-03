@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,13 +45,13 @@ type modelCatalog struct {
 	// 返回空串表示禁用落盘（如测试场景）。
 	cachePathGetter func() string
 
-	mu         sync.RWMutex
-	entries    map[string]*catalogEntry // 规范化 key → 条目（含 provider/id 与裸 id 两种键）
-	count      int                      // 目录内模型条目数（按 provider/model 计，不含裸 id 重复键）
-	lastSync   time.Time
-	lastTry    time.Time
-	lastError  string
-	refreshing bool
+	mu           sync.RWMutex
+	entries      map[string]*catalogEntry // 规范化 key → 条目（含 provider/id 与裸 id 两种键）
+	count        int                      // 目录内模型条目数（按 provider/model 计，不含裸 id 重复键）
+	lastSync     time.Time
+	lastTry      time.Time
+	lastError    string
+	isRefreshing bool
 	// The lifecycle context owns both the periodic loop and in-flight fetches.
 	done      chan struct{}
 	ctx       context.Context
@@ -80,30 +79,24 @@ type catalogEntry struct {
 
 const (
 	modelCatalogDefaultURL   = "https://models.dev/api.json"
+	modelCatalogCDNURL       = "https://cdn.jsdelivr.net/gh/ThinkInAIXYZ/PublicProviderConf@dev/dist/all.json"
+	modelCatalogFastlyURL    = "https://fastly.jsdelivr.net/gh/ThinkInAIXYZ/PublicProviderConf@dev/dist/all.json"
+	modelCatalogMaxBytes     = 64 << 20
 	modelCatalogRetryBackoff = 10 * time.Minute
-	// 目录拉取超时：目录不可达时不能拖慢模型刷新路径（ensureLoaded 已非阻塞，
-	// 这里只是后台拉取自身的上限），15s 足够完成正常下载。
-	modelCatalogFetchTimeout = 15 * time.Second
+	// 在线拉取不阻塞模型刷新，超时只约束目录任务自身。
+	modelCatalogFetchTimeout   = 15 * time.Second
+	modelCatalogRefreshTimeout = modelCatalogFetchTimeout + 5*time.Second
+	modelCatalogWaitTimeout    = modelCatalogFetchTimeout + 10*time.Second
+	modelCatalogWaitTick       = 100 * time.Millisecond
 	// 定期循环的检查粒度：周期配置可运行时修改，按此间隔动态重算是否到期。
 	modelCatalogPeriodicTick = 30 * time.Second
 )
 
-// catalogSyncDue 判断按当前配置的同步周期是否到期（动态读取，改配置即时生效）。
-// 显式配置 0 = 不启用定期同步：只有 force（管理页「立即更新」）才会拉取，
-// 内置快照与本地缓存照常可用。
-func (m *modelCatalog) syncIntervalDue() bool {
-	cfg := config.ModelCatalogConfig{}
+func (m *modelCatalog) currentConfig() config.ModelCatalogConfig {
 	if m.getter != nil {
-		cfg = m.getter()
+		return m.getter()
 	}
-	interval, enabled := cfg.ModelCatalogSyncInterval()
-	if !enabled {
-		return false
-	}
-	m.mu.RLock()
-	due := time.Since(m.lastSync) >= interval
-	m.mu.RUnlock()
-	return due
+	return config.ModelCatalogConfig{}
 }
 
 func newModelCatalog(getter func() config.ModelCatalogConfig, cachePathGetter func() string) *modelCatalog {
@@ -144,7 +137,7 @@ type catalogCacheFile struct {
 // loadFromCache 启动时从落盘缓存恢复目录数据——重启后无需等网络即可用。
 // 与内置快照取 fetchedAt 较新者：防止旧缓存倒灌覆盖新版本二进制自带的更新快照。
 func (m *modelCatalog) loadFromCache() {
-	if m == nil || m.cachePathGetter == nil {
+	if m.cachePathGetter == nil {
 		return
 	}
 	path := m.cachePathGetter()
@@ -176,7 +169,7 @@ func (m *modelCatalog) loadFromCache() {
 // saveToCache 把成功的拉取结果原子落盘（临时文件 + 重命名），失败仅记为状态错误
 // 不影响内存数据。
 func (m *modelCatalog) saveToCache(body []byte, fetchedAt time.Time) {
-	if m == nil || m.cachePathGetter == nil {
+	if m.cachePathGetter == nil {
 		return
 	}
 	path := m.cachePathGetter()
@@ -218,14 +211,6 @@ func catalogHTTPClient(proxy string) *http.Client {
 	return &http.Client{Timeout: modelCatalogFetchTimeout, Transport: outbound.NewSecureTransport(proxy)}
 }
 
-// ensureLoaded 确保目录数据可用：数据过期时**异步**触发后台拉取，立即返回——
-// 调用方（模型刷新路径）绝不阻塞等待网络（models.dev 不可达时曾把刷新拖慢 60s）。
-// 本次调用用旧数据（首次则空目录，Enrich 全部 no-op），后台拉取成功后下一次
-// 刷新即获得能力回填。并发触发只允许一个执行拉取；失败后 10 分钟内不重试。
-func (m *modelCatalog) ensureLoaded(ctx context.Context) {
-	m.triggerRefreshIfNeeded(false)
-}
-
 // runPeriodic 后台定期循环：按 tick 粒度检查目录是否超过配置周期，到期则触发
 // 后台更新。周期动态读取配置，管理页修改后无需重启即生效。
 func (m *modelCatalog) runPeriodic() {
@@ -234,11 +219,13 @@ func (m *modelCatalog) runPeriodic() {
 	}
 	m.startOnce.Do(func() {
 		defer close(m.done)
+		ticker := time.NewTicker(modelCatalogPeriodicTick)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-m.ctx.Done():
 				return
-			case <-time.After(modelCatalogPeriodicTick):
+			case <-ticker.C:
 				m.triggerRefreshIfNeeded(false)
 			}
 		}
@@ -261,45 +248,14 @@ func (m *modelCatalog) shutdown() {
 // triggerRefreshIfNeeded 判定是否需要刷新（force=true 绕过周期与退避）并按需启动
 // 后台（异步）拉取。返回是否已启动。
 func (m *modelCatalog) triggerRefreshIfNeeded(force bool) bool {
-	if m == nil || m.ctx.Err() != nil {
+	if m == nil {
 		return false
 	}
-	cfg := config.ModelCatalogConfig{}
-	if m.getter != nil {
-		cfg = m.getter()
-	}
-	if !modelCatalogEnabled(cfg) {
+	cfg := m.currentConfig()
+	if !modelCatalogEnabled(cfg) || !m.beginRefresh(cfg, force) {
 		return false
 	}
-	// 先在锁外计算到期判定（syncIntervalDue 自身取读锁，避免递归加锁）。
-	syncDue := m.syncIntervalDue()
-	m.mu.RLock()
-	shouldFetch := !m.refreshing && (force ||
-		(syncDue && time.Since(m.lastTry) >= modelCatalogRetryBackoff))
-	m.mu.RUnlock()
-	if !shouldFetch {
-		return false
-	}
-
-	m.mu.Lock()
-	// 双检：可能已有后台拉取在进行。
-	shouldFetch = !m.refreshing && (force ||
-		(syncDue && time.Since(m.lastTry) >= modelCatalogRetryBackoff))
-	if !shouldFetch || m.ctx.Err() != nil {
-		m.mu.Unlock()
-		return false
-	}
-	m.refreshing = true
-	m.fetchWG.Add(1)
-	m.mu.Unlock()
-
-	// 后台拉取：独立 context，不跟随请求生命周期（请求结束不应中止目录加载）。
-	go func() {
-		defer m.fetchWG.Done()
-		backgroundCtx, cancel := context.WithTimeout(m.ctx, modelCatalogFetchTimeout+5*time.Second)
-		defer cancel()
-		m.performRefresh(backgroundCtx, cfg)
-	}()
+	go m.runRefresh(cfg)
 	return true
 }
 
@@ -309,63 +265,78 @@ func (m *modelCatalog) Refresh() (map[string]any, bool) {
 	if m == nil {
 		return map[string]any{"enabled": false}, false
 	}
-	cfg := config.ModelCatalogConfig{}
-	if m.getter != nil {
-		cfg = m.getter()
-	}
+	cfg := m.currentConfig()
 	if !modelCatalogEnabled(cfg) {
 		return map[string]any{"enabled": false, "lastError": "model catalog is disabled"}, false
 	}
-	m.mu.RLock()
-	refreshing := m.refreshing
-	m.mu.RUnlock()
-	if refreshing {
-		// 已在进行（后台或并发的强制刷新）：等待完成（上限 = 拉取超时 + 余量）。
-		deadline := time.Now().Add(modelCatalogFetchTimeout + 10*time.Second)
-		for {
-			m.mu.RLock()
-			refreshing = m.refreshing
-			m.mu.RUnlock()
-			if !refreshing || time.Now().After(deadline) {
-				return m.Status(), false
-			}
-			select {
-			case <-m.ctx.Done():
-				return m.Status(), false
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
-	}
-	m.mu.Lock()
-	if m.refreshing || m.ctx.Err() != nil { // 双检（等待窗口外的并发）
-		m.mu.Unlock()
+	if !m.beginRefresh(cfg, true) {
+		m.waitForRefresh()
 		return m.Status(), false
 	}
-	m.refreshing = true
-	m.fetchWG.Add(1)
-	m.mu.Unlock()
-	defer m.fetchWG.Done()
-
-	ctx, cancel := context.WithTimeout(m.ctx, modelCatalogFetchTimeout+5*time.Second)
-	defer cancel()
-	m.performRefresh(ctx, cfg)
+	m.runRefresh(cfg)
 	return m.Status(), true
 }
 
-// performRefresh 执行一次实际拉取并交换内存数据（调用方已置 refreshing）。
+// The same lock owns admission and shutdown, including WaitGroup.Add.
+func (m *modelCatalog) beginRefresh(cfg config.ModelCatalogConfig, force bool) bool {
+	interval, isPeriodicEnabled := cfg.ModelCatalogSyncInterval()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.isRefreshing || m.ctx.Err() != nil || !force && (!isPeriodicEnabled || time.Since(m.lastSync) < interval || time.Since(m.lastTry) < modelCatalogRetryBackoff) {
+		return false
+	}
+	m.isRefreshing = true
+	m.fetchWG.Add(1)
+	return true
+}
+
+func (m *modelCatalog) waitForRefresh() {
+	ctx, cancel := context.WithTimeout(m.ctx, modelCatalogWaitTimeout)
+	defer cancel()
+	ticker := time.NewTicker(modelCatalogWaitTick)
+	defer ticker.Stop()
+	for {
+		m.mu.RLock()
+		isRefreshing := m.isRefreshing
+		m.mu.RUnlock()
+		if !isRefreshing {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// Refresh work belongs to the catalog lifecycle, not the requesting HTTP client.
+func (m *modelCatalog) runRefresh(cfg config.ModelCatalogConfig) {
+	defer m.fetchWG.Done()
+	ctx, cancel := context.WithTimeout(m.ctx, modelCatalogRefreshTimeout)
+	defer cancel()
+	m.performRefresh(ctx, cfg)
+}
+
+// performRefresh 执行一次实际拉取并交换内存数据（调用方已取得刷新所有权）。
 func (m *modelCatalog) performRefresh(ctx context.Context, cfg config.ModelCatalogConfig) {
+	defer func() {
+		m.mu.Lock()
+		m.isRefreshing = false
+		m.mu.Unlock()
+	}()
 	dataset, body, sourceURL, err := m.fetch(ctx, cfg)
+	fetchedAt := time.Now()
 
 	m.mu.Lock()
-	m.refreshing = false
-	m.lastTry = time.Now()
+	m.lastTry = fetchedAt
 	if err != nil {
 		// 失败保留既有 entries（内置快照/缓存继续可用）。
 		m.lastError = err.Error()
 	} else {
 		m.entries = dataset.entries
 		m.count = dataset.count
-		m.lastSync = time.Now()
+		m.lastSync = fetchedAt
 		m.lastError = ""
 		m.origin = "network"
 		m.sourceURL = sourceURL
@@ -373,7 +344,7 @@ func (m *modelCatalog) performRefresh(ctx context.Context, cfg config.ModelCatal
 	m.mu.Unlock()
 
 	if err == nil {
-		m.saveToCache(body, time.Now())
+		m.saveToCache(body, fetchedAt)
 	}
 }
 
@@ -413,8 +384,8 @@ func catalogSourceURLs(cfg config.ModelCatalogConfig) []string {
 	}
 	urls = append(urls,
 		modelCatalogDefaultURL,
-		"https://cdn.jsdelivr.net/gh/ThinkInAIXYZ/PublicProviderConf@dev/dist/all.json",
-		"https://fastly.jsdelivr.net/gh/ThinkInAIXYZ/PublicProviderConf@dev/dist/all.json",
+		modelCatalogCDNURL,
+		modelCatalogFastlyURL,
 	)
 	return urls
 }
@@ -439,7 +410,7 @@ func (m *modelCatalog) fetch(ctx context.Context, cfg config.ModelCatalogConfig)
 			lastErr = err
 			continue
 		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, modelCatalogMaxBytes))
 		resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			lastErr = fmt.Errorf("%s: %s", sourceURL, resp.Status)
@@ -459,9 +430,6 @@ func (m *modelCatalog) fetch(ctx context.Context, cfg config.ModelCatalogConfig)
 			continue
 		}
 		return dataset, body, sourceURL, nil
-	}
-	if lastErr == nil {
-		lastErr = errors.New("model catalog fetch failed: no source configured")
 	}
 	return nil, nil, "", lastErr
 }
@@ -620,9 +588,6 @@ func catalogLookupVariants(id string) []string {
 
 // lookup 按模型 id 查目录条目，支持精确/去前缀/去日期后缀的渐进匹配。
 func (m *modelCatalog) lookup(modelID string) (*catalogEntry, bool) {
-	if m == nil {
-		return nil, false
-	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, variant := range catalogLookupVariants(modelID) {
@@ -637,8 +602,7 @@ func (m *modelCatalog) lookup(modelID string) (*catalogEntry, bool) {
 // 字段映射：vision←modalities.input 含 image；tools←tool_call；
 // structured←structured_output；thinking←reasoning.supported；
 // maxTokens←limit.context；type←type（归一）。
-// 上游 API 返回的字段（如 Gemini 的 inputTokenLimit）优先级更高：仅当模型当前
-// 对应字段为空/零值时才用目录值覆盖，避免用目录猜测顶掉上游权威数据。
+// 目录覆盖能力标记；已知上下文容量和专用模型类型保留上游信息。
 func (m *modelCatalog) Enrich(model *storage.Model) bool {
 	if m == nil || model == nil {
 		return false
@@ -658,7 +622,7 @@ func (m *modelCatalog) Enrich(model *storage.Model) bool {
 	if entry.maxTokens > 0 && model.MaxTokens <= 0 {
 		model.MaxTokens = entry.maxTokens
 	}
-	if entry.modelType != "" && model.Type == "llm" {
+	if model.Type == "llm" {
 		model.Type = entry.modelType
 	}
 	model.CapabilitySource = "catalog"
@@ -670,10 +634,7 @@ func (m *modelCatalog) Status() map[string]any {
 	if m == nil {
 		return map[string]any{"enabled": false}
 	}
-	cfg := config.ModelCatalogConfig{}
-	if m.getter != nil {
-		cfg = m.getter()
-	}
+	cfg := m.currentConfig()
 	enabled := modelCatalogEnabled(cfg)
 	interval, syncEnabled := cfg.ModelCatalogSyncInterval()
 	m.mu.RLock()

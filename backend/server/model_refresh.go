@@ -149,14 +149,13 @@ func (s *Server) fetchSourceModelsByKey(ctx context.Context, source storage.Mode
 	return result, nil
 }
 
-// enrichModelFromCatalog 用能力目录（models.dev）回填模型能力字段（方向1）。
-// 目录不可用/未命中时 no-op；上游 API 已返回的字段（如 Gemini inputTokenLimit）
-// 优先于目录值（Enrich 内部按「仅空值覆盖」处理）。
+// enrichModelFromCatalog 用已有目录回填能力，目录更新在后台执行。
+// 目录未命中时保持原值；上游已知的上下文容量由 Enrich 保留。
 func (s *Server) enrichModelFromCatalog(model *storage.Model) {
 	if s.catalog == nil || model == nil {
 		return
 	}
-	s.catalog.ensureLoaded(context.Background())
+	s.catalog.triggerRefreshIfNeeded(false)
 	s.catalog.Enrich(model)
 }
 
