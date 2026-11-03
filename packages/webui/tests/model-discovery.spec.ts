@@ -68,6 +68,72 @@ test('manual source retains model key assignment', async ({ page }) => {
   expect(state.saved().apiKeys?.map((key) => key.allowedModels)).toEqual([[], ['alpha']])
 })
 
+for (const count of [1, 2]) {
+  test(`manual source preserves explicit empty permissions with ${count} keys`, async ({ page }) => {
+    const keys = Array.from({ length: count }, (_, index) => ({ value: `key-${index}`, allowedModels: [] }))
+    const state = await mockDiscovery(page, keys, true)
+    await page.getByTitle('编辑', { exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '编辑模型源' })
+    for (let index = 0; index < count; index++) {
+      await expect(dialog.getByRole('button', { name: `Key ${index + 1}`, exact: true })).toHaveAttribute('aria-pressed', 'false')
+    }
+    await dialog.getByRole('button', { name: '保存', exact: true }).click()
+    await expect(dialog).not.toBeVisible()
+    expect(state.saved().apiKeys).toEqual(keys)
+    await page.getByTitle('编辑', { exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Key 1', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  })
+}
+
+test('unrestricted and explicitly restricted keys initialize independently', async ({ page }) => {
+  await mockDiscovery(page, [
+    { value: 'unrestricted', allowedModels: null },
+    { value: 'denied', allowedModels: [] },
+    { value: 'allowed', allowedModels: ['alpha'] },
+  ], true)
+  await page.getByTitle('编辑', { exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑模型源' })
+  for (const [index, selected] of [true, false, true].entries()) {
+    await expect(dialog.getByRole('button', { name: `Key ${index + 1}`, exact: true })).toHaveAttribute('aria-pressed', String(selected))
+  }
+})
+
+test('key reordering and blank row removal keep permissions with their credentials', async ({ page }) => {
+  const state = await mockDiscovery(page, [
+    { value: 'selected', allowedModels: ['alpha'] },
+    { value: '', allowedModels: [] },
+    { value: 'denied', allowedModels: [] },
+  ], true)
+  await page.getByTitle('编辑', { exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑模型源' })
+  await dialog.getByTitle('下移', { exact: true }).first().click()
+  await expect(dialog.getByRole('button', { name: 'Key 2', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await dialog.getByTitle('删除', { exact: true }).first().click()
+  await dialog.getByTitle('下移', { exact: true }).first().click()
+  await expect(dialog.getByRole('button', { name: 'Key 1', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await expect(dialog.getByRole('button', { name: 'Key 2', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(state.saved().apiKeys).toEqual([
+    { value: 'denied', allowedModels: [] },
+    { value: 'selected', allowedModels: ['alpha'] },
+  ])
+})
+
+test('removing the selected key does not authorize the remaining key', async ({ page }) => {
+  const state = await mockDiscovery(page, [
+    { value: 'selected', allowedModels: ['alpha'] },
+    { value: 'denied', allowedModels: [] },
+  ], true)
+  await page.getByTitle('编辑', { exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑模型源' })
+  await dialog.getByTitle('删除', { exact: true }).first().click()
+  await expect(dialog.getByRole('button', { name: 'Key 1', exact: true })).toHaveAttribute('aria-pressed', 'false')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).not.toBeVisible()
+  expect(state.saved().apiKeys).toEqual([{ value: 'denied', allowedModels: [] }])
+})
+
 test('failed refresh reports the failing key and retained data', async ({ page }) => {
   await mockDiscovery(page, [{ value: 'a' }, { value: 'b', note: 'backup' }])
   await page.getByTitle('拉取模型', { exact: true }).click()
