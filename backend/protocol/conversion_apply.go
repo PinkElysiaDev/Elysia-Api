@@ -95,6 +95,7 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 	if err = decodeContract(v.Bytes(), &result); err != nil {
 		return nil, err
 	}
+	inheritResponseRangeOrigin(response, &result)
 	return &result, nil
 }
 
@@ -102,6 +103,7 @@ func (c *CompiledConversion) Event(ctx context.Context, event Event, route Conve
 	origin := event.rangeOrigin
 	defer func() {
 		if err == nil && event.SchemaVersion == ProtocolCoreVersion {
+			inheritResponseRangeOrigin(event.Response, result.Response)
 			if origin == nil && !sameEventRangeInput(&event, &result) {
 				origin = captureEventRangeOrigin(event)
 			}

@@ -170,8 +170,8 @@ type ProtocolDirectionMapping struct {
 	// It cannot mutate either input or access stream state.
 	FinalCheck     *Expression             `json:"finalCheck,omitempty"`
 	DeliveryRanges []ProtocolDeliveryRange `json:"deliveryRanges,omitempty"`
-	// SemanticRanges associates core event text and references before encoding.
-	// The selectors read only event identities, text and owned metadata.
+	// SemanticRanges associates core response/event text and references before
+	// encoding. Selectors read only identities, content and owned metadata.
 	SemanticRanges []ProtocolDeliveryRange       `json:"semanticRanges,omitempty"`
 	IsEventBatch   bool                          `json:"eventBatch,omitempty"`
 	CanDeferEvents bool                          `json:"deferEvents,omitempty"`

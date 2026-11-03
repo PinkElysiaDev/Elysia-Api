@@ -110,6 +110,7 @@ func (declaration compiledDeliveryRange) measureText(state evaluation, text stri
 	state.input = StringValue(text)
 	state.root = state.input
 	state.inputView, state.objectReader = nil, nil
+	state.inputReader, state.rootReader = nil, nil
 	value, err := declaration.measure.build(state)
 	if err != nil {
 		return 0, err

@@ -248,10 +248,14 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
-	if len(mapping.SemanticRanges) != 0 && (direction != EncodeEvent || !mapping.IsFrameBatch) {
-		return compiledMapping{}, nil, fmt.Errorf("%s/semanticRanges: requires frame-batch event encoding", path)
+	if len(mapping.SemanticRanges) != 0 && direction != EncodeResponse && (direction != EncodeEvent || !mapping.IsFrameBatch) {
+		return compiledMapping{}, nil, fmt.Errorf("%s/semanticRanges: requires response or frame-batch event encoding", path)
 	}
-	semanticRanges, err := compileDeliveryRanges(mapping.SemanticRanges, direction, &semanticRangeEventSchema, path+"/semanticRanges", compiler)
+	semanticSchema := &semanticRangeEventSchema
+	if direction == EncodeResponse {
+		semanticSchema = &semanticRangeResponseSchema
+	}
+	semanticRanges, err := compileDeliveryRanges(mapping.SemanticRanges, direction, semanticSchema, path+"/semanticRanges", compiler)
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
@@ -263,7 +267,7 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
-	if (nativeWhen != nil && nativeWhen.hasEncodingStateRead || len(semanticRanges) != 0) && streamState == nil {
+	if (nativeWhen != nil && nativeWhen.hasEncodingStateRead || direction == EncodeEvent && len(semanticRanges) != 0) && streamState == nil {
 		streamState = &compiledPackageState{initial: []Value{}}
 	}
 	var finalizer *compiledOutputPlan

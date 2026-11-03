@@ -10,7 +10,11 @@ metadata 及 item 的 kind／payload／metadata。供应商引用字段及字符
 宿主转换边界保留，不能通过配置 Source 或布尔标记提交证明。未变化路径复用选择结果，不复制正文。
 改变文本的事件可先输出，后续引用必须位于已证明未变的区间且索引正确；snapshot 复用前缀摘要。
 该状态属于编码事务，表示来源与目标暂存内容的关联，不替代最终 wire 检查和 Flush 后交付提交。
-目前此声明仅接线到 frameBatch 的事件输出；完整响应的语义布局改写尚未使用它。
+dev.137 还支持 `encode_response.semanticRanges`，读取响应 id、metadata 及 content 树的
+id／kind／payload／metadata／children／reasoningContent。完整响应、包含响应的事件、Native
+观察及 Agent 核心收集共用引用检查。Chat 的单正文投影用局部索引线性计算 UTF-16 偏移，
+允许已声明的合并布局；Responses 按稳定节点标识关联，不能把丢失身份的引用附到另一个节点。
+局部索引仅在当前选择器求值内存活；它不能读取编码状态或建立宿主原始值和交付凭据。
 
 `encode_event.nativeWhen` 可只读 `runtime.clientOutput` 和 `/encoding/hasRendered`。后者沿用本方向
 既有编码状态，表示此前执行过语义编码；原生 observer 不设置它。Mapping 用它决定包含历史内容

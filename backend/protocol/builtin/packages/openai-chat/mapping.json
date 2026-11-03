@@ -28937,6 +28937,633 @@
           }
         }
       }
+    },
+    "semantic-response-items": {
+      "op": "flatmap",
+      "source": {
+        "op": "read",
+        "path": "/content"
+      },
+      "body": {
+        "op": "let",
+        "name": "response-item-key",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/id",
+              "from": "item"
+            }
+          },
+          "then": {
+            "op": "read",
+            "path": "/id",
+            "from": "item"
+          },
+          "otherwise": {
+            "op": "index"
+          }
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/kind",
+                "from": "item"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          },
+          "then": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "path": "/children",
+              "from": "item"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "itemId": {
+                  "op": "stringify_json",
+                  "source": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "read",
+                        "path": "/id",
+                        "from": "root"
+                      },
+                      {
+                        "op": "read",
+                        "path": "",
+                        "from": "binding",
+                        "name": "response-item-key"
+                      },
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "path": "/id",
+                            "from": "item"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "path": "/id",
+                          "from": "item"
+                        },
+                        "otherwise": {
+                          "op": "index"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "item": {
+                  "op": "read",
+                  "path": "",
+                  "from": "item"
+                }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "itemId": {
+                    "op": "stringify_json",
+                    "source": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "read",
+                          "path": "/id",
+                          "from": "root"
+                        },
+                        {
+                          "op": "read",
+                          "path": "",
+                          "from": "binding",
+                          "name": "response-item-key"
+                        }
+                      ]
+                    }
+                  },
+                  "item": {
+                    "op": "read",
+                    "path": "",
+                    "from": "item"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "semantic-response-texts": {
+      "op": "array",
+      "items": [
+        {
+          "op": "object",
+          "fields": {
+            "key": {
+              "op": "stringify_json",
+              "source": {
+                "op": "array",
+                "items": [
+                  {
+                    "op": "read",
+                    "path": "/id",
+                    "from": "root"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "visible-text"
+                  }
+                ]
+              }
+            },
+            "text": {
+              "op": "join",
+              "source": {
+                "op": "map",
+                "source": {
+                  "op": "ref",
+                  "ref": "semantic-response-text-items"
+                },
+                "body": {
+                  "op": "read",
+                  "path": "/item/payload",
+                  "from": "item"
+                }
+              }
+            },
+            "mode": {
+              "op": "literal",
+              "value": "snapshot"
+            },
+            "path": {
+              "op": "literal",
+              "value": "/content"
+            }
+          }
+        }
+      ]
+    },
+    "semantic-response-ranges": {
+      "op": "with_index",
+      "name": "reference-offsets",
+      "keyMode": "raw_json",
+      "policy": "last",
+      "body": {
+        "op": "let",
+        "name": "text-initial",
+        "source": {
+          "op": "remember",
+          "name": "reference-offsets",
+          "source": {
+            "op": "literal",
+            "value": "position"
+          },
+          "body": {
+            "op": "literal",
+            "value": 0
+          }
+        },
+        "body": {
+          "op": "let",
+          "name": "reference-initial",
+          "source": {
+            "op": "remember",
+            "name": "reference-offsets",
+            "source": {
+              "op": "literal",
+              "value": "ordinal"
+            },
+            "body": {
+              "op": "literal",
+              "value": 0
+            }
+          },
+          "body": {
+            "op": "flatmap",
+            "source": {
+              "op": "ref",
+              "ref": "semantic-response-text-items"
+            },
+            "body": {
+              "op": "let",
+              "name": "text-offset",
+              "source": {
+                "op": "recall",
+                "name": "reference-offsets",
+                "source": {
+                  "op": "literal",
+                  "value": "position"
+                },
+                "policy": "reject"
+              },
+              "body": {
+                "op": "let",
+                "name": "text-next",
+                "source": {
+                  "op": "remember",
+                  "name": "reference-offsets",
+                  "source": {
+                    "op": "literal",
+                    "value": "position"
+                  },
+                  "body": {
+                    "op": "integer",
+                    "operation": "add",
+                    "items": [
+                      {
+                        "op": "read",
+                        "path": "",
+                        "from": "binding",
+                        "name": "text-offset"
+                      },
+                      {
+                        "op": "utf16_length",
+                        "source": {
+                          "op": "read",
+                          "path": "/item/payload",
+                          "from": "item"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "body": {
+                  "op": "with_input",
+                  "source": {
+                    "op": "read",
+                    "path": "",
+                    "from": "item"
+                  },
+                  "body": {
+                    "op": "map",
+                    "source": {
+                      "op": "ref",
+                      "ref": "semantic-response-node-ranges"
+                    },
+                    "body": {
+                      "op": "let",
+                      "name": "reference-ordinal",
+                      "source": {
+                        "op": "recall",
+                        "name": "reference-offsets",
+                        "source": {
+                          "op": "literal",
+                          "value": "ordinal"
+                        },
+                        "policy": "reject"
+                      },
+                      "body": {
+                        "op": "let",
+                        "name": "reference-next",
+                        "source": {
+                          "op": "remember",
+                          "name": "reference-offsets",
+                          "source": {
+                            "op": "literal",
+                            "value": "ordinal"
+                          },
+                          "body": {
+                            "op": "integer",
+                            "operation": "add",
+                            "items": [
+                              {
+                                "op": "read",
+                                "path": "",
+                                "from": "binding",
+                                "name": "reference-ordinal"
+                              },
+                              {
+                                "op": "literal",
+                                "value": 1
+                              }
+                            ]
+                          }
+                        },
+                        "body": {
+                          "op": "object",
+                          "fields": {
+                            "key": {
+                              "op": "stringify_json",
+                              "source": {
+                                "op": "array",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "path": "/id",
+                                    "from": "root"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "visible-text"
+                                  }
+                                ]
+                              }
+                            },
+                            "id": {
+                              "op": "json_digest",
+                              "source": {
+                                "op": "array",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "path": "/id",
+                                    "from": "item"
+                                  },
+                                  {
+                                    "op": "read",
+                                    "path": "",
+                                    "from": "binding",
+                                    "name": "reference-ordinal"
+                                  }
+                                ]
+                              }
+                            },
+                            "start": {
+                              "op": "integer",
+                              "operation": "add",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "path": "/start",
+                                  "from": "item"
+                                },
+                                {
+                                  "op": "read",
+                                  "path": "",
+                                  "from": "binding",
+                                  "name": "text-offset"
+                                }
+                              ]
+                            },
+                            "end": {
+                              "op": "integer",
+                              "operation": "add",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "path": "/end",
+                                  "from": "item"
+                                },
+                                {
+                                  "op": "read",
+                                  "path": "",
+                                  "from": "binding",
+                                  "name": "text-offset"
+                                }
+                              ]
+                            },
+                            "path": {
+                              "op": "read",
+                              "path": "/path",
+                              "from": "item"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "semantic-response-text-items": {
+      "op": "filter",
+      "source": {
+        "op": "ref",
+        "ref": "semantic-response-items"
+      },
+      "when": {
+        "op": "all",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/item/kind",
+                "from": "item"
+              },
+              {
+                "op": "literal",
+                "value": "text"
+              }
+            ]
+          },
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "path": "/item/payload",
+                  "from": "item"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "string"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "semantic-response-node-ranges": {
+      "op": "let",
+      "name": "text-key",
+      "source": {
+        "op": "read",
+        "path": "/itemId"
+      },
+      "body": {
+        "op": "flatmap",
+        "source": {
+          "op": "concat",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/metadata"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/metadata"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            {
+              "op": "if",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/item/metadata"
+                }
+              },
+              "then": {
+                "op": "read",
+                "path": "/item/metadata"
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            }
+          ]
+        },
+        "body": {
+          "op": "let",
+          "name": "field",
+          "source": {
+            "op": "read",
+            "path": "",
+            "from": "item"
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "path": "/name",
+                  "from": "item"
+                },
+                {
+                  "op": "literal",
+                  "value": "annotations"
+                }
+              ]
+            },
+            "then": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "path": "/value",
+                "from": "item"
+              },
+              "body": {
+                "op": "let",
+                "name": "citation",
+                "source": {
+                  "op": "if",
+                  "when": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "binding",
+                        "name": "field",
+                        "path": "/codec"
+                      },
+                      {
+                        "op": "literal",
+                        "value": "openai-chat"
+                      }
+                    ]
+                  },
+                  "then": {
+                    "op": "read",
+                    "path": "/url_citation",
+                    "from": "item"
+                  },
+                  "otherwise": {
+                    "op": "read",
+                    "path": "",
+                    "from": "item"
+                  }
+                },
+                "body": {
+                  "op": "object",
+                  "fields": {
+                    "key": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "text-key",
+                      "path": ""
+                    },
+                    "id": {
+                      "op": "json_digest",
+                      "source": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "citation",
+                            "path": "/url"
+                          },
+                          {
+                            "op": "read",
+                            "from": "binding",
+                            "name": "citation",
+                            "path": "/title"
+                          }
+                        ]
+                      }
+                    },
+                    "start": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "citation",
+                      "path": "/start_index"
+                    },
+                    "end": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "citation",
+                      "path": "/end_index"
+                    },
+                    "path": {
+                      "op": "read",
+                      "from": "binding",
+                      "name": "field",
+                      "path": "/path"
+                    }
+                  }
+                }
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": []
+            }
+          }
+        }
+      }
     }
   },
   "directions": {
@@ -29895,6 +30522,26 @@
                 }
               }
             }
+          }
+        }
+      ],
+      "semanticRanges": [
+        {
+          "name": "core-text",
+          "measure": {
+            "op": "utf16_length",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "texts": {
+            "op": "ref",
+            "ref": "semantic-response-texts"
+          },
+          "ranges": {
+            "op": "ref",
+            "ref": "semantic-response-ranges"
           }
         }
       ]

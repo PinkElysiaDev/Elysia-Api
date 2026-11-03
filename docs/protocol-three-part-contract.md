@@ -302,8 +302,18 @@ Conversion.Event 在相关字段实际改变时保留不可由 JSON 提供的原
 不持有完整原帧或已发送正文。最终 wire 检查与成功 Flush 后的 CommitDelivery 继续独立负责交付事实。
 
 Chat／Responses 配置选择引用所属核心 item 并使用 UTF-16。等长替换、跨改写区引用和未修正的后缀
-索引拒绝；未改写前后缀可保留，无引用改写允许。完整 JSON 响应的语义布局证明及 Agent 直接核心
-收集仍不由这一事件编码边界覆盖，不能据此宣称全部语义改写路径完成。
+索引拒绝；未改写前后缀可保留，无引用改写允许。
+
+dev.137 扩展到 `encode_response.semanticRanges`：响应投影包含 id、metadata 和 content 树，
+节点仅暴露 id、kind、payload、metadata、children、reasoningContent。实际修改才保存宿主投影，
+连续转换沿用最初投影；新增完整响应及无法关联的批次不能把新增内容作为自己的修改证明。
+`ValidateResponseReferences`／`ValidateEventReferences` 供不编码 wire 的核心消费者使用，
+Agent 的 JSON／SSE 收集已接线。事件检查复用编码事务的区间状态，但不执行目标编码及槽位更新。
+编码入口自身执行同一检查，调用方不应在同一状态上再独立调用事件检查。
+
+Chat 的完整响应选择器按单个有序正文解释文本合并及引用偏移；局部索引一次累计长度和引用顺序，
+不保留跨帧状态、不重复遍历前缀。Responses 按稳定节点身份检查文本重排；身份丢失明确拒绝。
+最终 wire 合同、核心权限及成功交付仍是独立边界；组合资源预算和静态修改影响分析尚待后续批次。
 
 ## 早期错误与固定入口（dev.131）
 

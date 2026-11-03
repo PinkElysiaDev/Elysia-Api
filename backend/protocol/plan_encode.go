@@ -30,6 +30,11 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 			return fail(err)
 		}
 	}
+	if event, ok := input.(*Event); ok && direction == EncodeEvent {
+		if err := compiled.checkSemanticEventRanges(ctx, direction, event, options); err != nil {
+			return evaluation{}, Limits{}, err
+		}
+	}
 	contextValue, err := EncodeValue(options.Values)
 	if err != nil {
 		return fail(err)

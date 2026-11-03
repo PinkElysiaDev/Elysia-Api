@@ -233,6 +233,9 @@ func (compiled *Compiled) EncodeResponseValue(ctx context.Context, response *Res
 	if err := IssuesError(CheckResponse(response, compiled.target(EncodeResponse, options), compiled.limits)); err != nil {
 		return Value{}, err
 	}
+	if err := compiled.ValidateResponseReferences(ctx, response); err != nil {
+		return Value{}, err
+	}
 	output, err := encodeTyped(ctx, compiled, EncodeResponse, response, options, func(module TypedModule, input *Response, options EvaluationContext) (Value, error) {
 		return module.EncodeResponse(ctx, input, options)
 	})

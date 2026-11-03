@@ -154,6 +154,9 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		if err != nil {
 			return nil, err
 		}
+		if err := candidate.compiled.ValidateResponseReferences(ctx, result); err != nil {
+			return nil, err
+		}
 		return result, errors.Join(protocol.CheckGenerationOutcome(result), protocol.IssuesError(protocol.CheckModelResponse(result, candidate.compiled, candidate.binding, candidate.scope)))
 	}
 	target := candidate.sourceEventTarget()
@@ -163,6 +166,9 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	}
 	source, err := newProtocolSourceStream(ctx, candidate, candidate.compiled, candidate.conversionContext(candidate.compiled, true), options, record, func(decoded *protocol.EventFrame, _ protocol.Object) error {
 		for _, event := range decoded.Events {
+			if err := candidate.compiled.ValidateEventReferences(ctx, event, options); err != nil {
+				return err
+			}
 			kind, delta, err := collector.Consume(event)
 			if err != nil {
 				return err

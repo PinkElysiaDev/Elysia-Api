@@ -19,9 +19,6 @@ var semanticRangeEventSchema = ValueSchema{Type: ObjectType, Properties: map[str
 }}
 
 func captureEventRangeOrigin(event Event) *Event {
-	if event.Item == nil && event.Delta.IsZero() && len(event.Metadata) == 0 {
-		return nil
-	}
 	origin := &Event{Type: event.Type, ResponseID: event.ResponseID, ItemID: event.ItemID,
 		ParentID: event.ParentID, Collection: event.Collection, Delta: event.Delta, Metadata: slices.Clone(event.Metadata)}
 	if event.Item != nil {
@@ -58,20 +55,34 @@ func readSemanticRangeEvent(event *Event, pointer []string) (JSONOutput, error) 
 		}
 		return readCoreEventOutput(event, pointer)
 	}
-	fields := make([]jsonOutputField, 0, len(semanticRangeEventSchema.Properties))
-	for _, name := range []string{"type", "responseId", "itemId", "parentId", "collection", "delta", "metadata", "item"} {
-		value, err := readSemanticRangeEvent(event, []string{name})
-		if err != nil {
-			return JSONOutput{}, err
-		}
-		if !value.IsZero() {
-			fields = append(fields, jsonOutputField{name, value})
-		}
+	return readRangeObject([]string{"type", "responseId", "itemId", "parentId", "collection", "delta", "metadata", "item"}, func(path []string) (JSONOutput, error) {
+		return readSemanticRangeEvent(event, path)
+	})
+}
+
+// ValidateEventReferences checks a core-only consumer without executing wire
+// encoding or its state updates. State must belong to this consumer's stream;
+// encoded streams perform this check as part of their encoding transaction.
+func (compiled *Compiled) ValidateEventReferences(ctx context.Context, event Event, options EvaluationContext) (err error) {
+	options, transaction, err := compiled.beginPackageTransaction(EncodeEvent, options)
+	if err != nil {
+		return err
 	}
-	return JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}, nil
+	defer func() { transaction.finish(err) }()
+	if err = compiled.checkSemanticEventRanges(ctx, EncodeEvent, &event, options); err != nil {
+		return err
+	}
+	if transaction != nil {
+		transaction.next, transaction.slotBytes = transaction.values(), transaction.currentSlotBytes()
+		transaction.bytes = transaction.retainedBytes()
+	}
+	return nil
 }
 
 func (compiled *Compiled) checkSemanticEventRanges(ctx context.Context, direction Direction, event *Event, options EvaluationContext) error {
+	if err := compiled.ValidateResponseReferences(ctx, event.Response); err != nil {
+		return err
+	}
 	declarations := compiled.mappings[direction].semanticRanges
 	if len(declarations) == 0 {
 		return nil

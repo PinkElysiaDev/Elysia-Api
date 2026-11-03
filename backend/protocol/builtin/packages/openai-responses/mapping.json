@@ -26442,6 +26442,181 @@
           }
         }
       }
+    },
+    "semantic-response-items": {
+      "op": "flatmap",
+      "source": {
+        "op": "read",
+        "path": "/content"
+      },
+      "body": {
+        "op": "let",
+        "name": "response-item-key",
+        "source": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/id",
+              "from": "item"
+            }
+          },
+          "then": {
+            "op": "read",
+            "path": "/id",
+            "from": "item"
+          },
+          "otherwise": {
+            "op": "index"
+          }
+        },
+        "body": {
+          "op": "if",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/kind",
+                "from": "item"
+              },
+              {
+                "op": "literal",
+                "value": "message"
+              }
+            ]
+          },
+          "then": {
+            "op": "map",
+            "source": {
+              "op": "read",
+              "path": "/children",
+              "from": "item"
+            },
+            "body": {
+              "op": "object",
+              "fields": {
+                "itemId": {
+                  "op": "stringify_json",
+                  "source": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "read",
+                        "path": "/id",
+                        "from": "root"
+                      },
+                      {
+                        "op": "read",
+                        "path": "",
+                        "from": "binding",
+                        "name": "response-item-key"
+                      },
+                      {
+                        "op": "if",
+                        "when": {
+                          "op": "present",
+                          "source": {
+                            "op": "read",
+                            "path": "/id",
+                            "from": "item"
+                          }
+                        },
+                        "then": {
+                          "op": "read",
+                          "path": "/id",
+                          "from": "item"
+                        },
+                        "otherwise": {
+                          "op": "index"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "item": {
+                  "op": "read",
+                  "path": "",
+                  "from": "item"
+                }
+              }
+            }
+          },
+          "otherwise": {
+            "op": "array",
+            "items": [
+              {
+                "op": "object",
+                "fields": {
+                  "itemId": {
+                    "op": "stringify_json",
+                    "source": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "read",
+                          "path": "/id",
+                          "from": "root"
+                        },
+                        {
+                          "op": "read",
+                          "path": "",
+                          "from": "binding",
+                          "name": "response-item-key"
+                        }
+                      ]
+                    }
+                  },
+                  "item": {
+                    "op": "read",
+                    "path": "",
+                    "from": "item"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "semantic-response-texts": {
+      "op": "flatmap",
+      "source": {
+        "op": "ref",
+        "ref": "semantic-response-items"
+      },
+      "body": {
+        "op": "with_input",
+        "source": {
+          "op": "read",
+          "path": "",
+          "from": "item"
+        },
+        "body": {
+          "op": "ref",
+          "ref": "semantic-event-texts"
+        }
+      }
+    },
+    "semantic-response-ranges": {
+      "op": "flatmap",
+      "source": {
+        "op": "ref",
+        "ref": "semantic-response-items"
+      },
+      "body": {
+        "op": "with_input",
+        "source": {
+          "op": "read",
+          "path": "",
+          "from": "item"
+        },
+        "body": {
+          "op": "ref",
+          "ref": "semantic-event-ranges"
+        }
+      }
     }
   },
   "directions": {
@@ -27321,6 +27496,26 @@
           "ranges": {
             "op": "ref",
             "ref": "delivery-response-ranges"
+          }
+        }
+      ],
+      "semanticRanges": [
+        {
+          "name": "core-text",
+          "measure": {
+            "op": "utf16_length",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "texts": {
+            "op": "ref",
+            "ref": "semantic-response-texts"
+          },
+          "ranges": {
+            "op": "ref",
+            "ref": "semantic-response-ranges"
           }
         }
       ]

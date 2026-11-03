@@ -31,6 +31,10 @@ func (compiled *Compiled) validateResponseRanges(ctx context.Context, before Val
 	}
 	beforeState := deliveryEvaluation(ctx, prior, compiled.limits)
 	afterState := deliveryEvaluation(ctx, after, compiled.limits)
+	return checkResponseRangeDeclarations(declarations, beforeState, afterState, prior == after)
+}
+
+func checkResponseRangeDeclarations(declarations []compiledDeliveryRange, beforeState, afterState evaluation, unchanged bool) error {
 	for _, declaration := range declarations {
 		afterRanges, err := declaration.readRanges(afterState)
 		if err != nil {
@@ -44,7 +48,7 @@ func (compiled *Compiled) validateResponseRanges(ctx context.Context, before Val
 			return err
 		}
 		afterTexts, beforeRanges := beforeTexts, afterRanges
-		if prior != after {
+		if !unchanged {
 			afterTexts, err = declaration.readTexts(afterState)
 			if err != nil {
 				return err

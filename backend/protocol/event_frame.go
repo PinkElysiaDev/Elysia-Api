@@ -116,8 +116,18 @@ func (compiled *Compiled) EncodeConvertedFrame(ctx context.Context, frame *Event
 	converted := *frame
 	converted.Events = events
 	for index := range events {
-		if events[index].SchemaVersion == ProtocolCoreVersion && events[index].rangeOrigin == nil && len(frame.Events) == len(events) && !sameEventRangeInput(&frame.Events[index], &events[index]) {
-			events[index].rangeOrigin = captureEventRangeOrigin(frame.Events[index])
+		if events[index].SchemaVersion != ProtocolCoreVersion {
+			continue
+		}
+		var original Event
+		if len(frame.Events) == len(events) {
+			original = frame.Events[index]
+		}
+		if events[index].Response != nil && events[index].Response.rangeOrigin == nil {
+			inheritResponseRangeOrigin(original.Response, events[index].Response)
+		}
+		if events[index].rangeOrigin == nil && !sameEventRangeInput(&original, &events[index]) {
+			events[index].rangeOrigin = captureEventRangeOrigin(original)
 		}
 	}
 	if converted.native != nil && compiled.native.Preserve && CanPreserveNative(converted.native.Source, compiled.target(EncodeEvent, options)) {

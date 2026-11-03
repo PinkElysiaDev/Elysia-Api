@@ -6,9 +6,6 @@ import (
 )
 
 func encodePlannedEventFrames(ctx context.Context, compiled *Compiled, direction Direction, event *Event, options EvaluationContext) ([]Value, error) {
-	if err := compiled.checkSemanticEventRanges(ctx, direction, event, options); err != nil {
-		return nil, err
-	}
 	state, limits, err := preparePlannedCoreEncoding(ctx, compiled, direction, event, options)
 	if err != nil {
 		return nil, err

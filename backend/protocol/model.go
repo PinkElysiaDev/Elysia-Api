@@ -276,6 +276,7 @@ type Usage struct {
 
 // Response is the ordered result of one generation operation.
 type Response struct {
+	rangeOrigin   *Response
 	Metadata      []ResponseMetadata `json:"metadata,omitempty"`
 	SchemaVersion int                `json:"schemaVersion"`
 	Source        Identity           `json:"source"`
