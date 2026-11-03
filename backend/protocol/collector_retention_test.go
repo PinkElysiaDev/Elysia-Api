@@ -195,3 +195,31 @@ func TestCollectorCancellationReleasesAccumulationBuffers(t *testing.T) {
 		t.Fatal("cancellation lost bounded diagnostic content", partial, err)
 	}
 }
+
+func TestCollectorSharesByteBudgetWithReplay(t *testing.T) {
+	limits := DefaultLimits()
+	limits.BufferBytes = 512
+	collector, err := NewResponseCollector(replayTarget(), limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := toolStart()
+	if _, _, err := collector.Consume(start); err != nil {
+		t.Fatal(err)
+	}
+	// Each owner fits alone. Together the response copy and replay's unfinished
+	// JSON input exceed one response's capacity, so the delta cannot be published.
+	delta := Event{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(strings.Repeat(" ", 220))}
+	if collector.bytes+220 > limits.BufferBytes || collector.replay.retainedBytes()+220 > limits.BufferBytes {
+		t.Fatal("fixture exceeds a single holder's capacity")
+	}
+	if _, text, err := collector.Consume(delta); !hasIssueCode(err, LimitExceeded) || text != "" {
+		t.Fatal("collector and replay acquired separate byte budgets", text, err)
+	}
+	if len(collector.texts) != 0 || collector.replay.state.buffered != 0 {
+		t.Fatal("combined budget failure retained accumulation buffers")
+	}
+	if _, err := collector.Finish(); err == nil {
+		t.Fatal("combined budget failure produced a successful response")
+	}
+}

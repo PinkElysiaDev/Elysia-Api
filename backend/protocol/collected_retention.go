@@ -31,8 +31,8 @@ func (collector *ResponseCollector) setResponse(response Response, isSnapshot bo
 			snapshotItems = max(0, snapshotItems-len(collector.replay.items)-collector.replay.embeddedItems)
 		}
 	}
-	if retained+collector.replay.usageBytes > collector.limit {
-		return streamIssue(LimitExceeded, "/response", "collected response exceeds buffer limit")
+	if err := collector.checkRetainedBytes(retained); err != nil {
+		return err
 	}
 	additional := snapshotItems - collector.snapshotItems + len(response.Metadata) + len(response.Attributes) - len(collector.response.Metadata) - len(collector.response.Attributes)
 	if err := collector.reserveItems(additional); err != nil {
@@ -74,8 +74,12 @@ func (collector *ResponseCollector) checkRetention() error {
 	if err := collector.reserveItems(0); err != nil {
 		return err
 	}
-	if collector.bytes+collector.replay.usageBytes > collector.limit {
-		return streamIssue(LimitExceeded, "/response", "collected response and usage exceed buffer limit")
+	return collector.checkRetainedBytes(collector.bytes)
+}
+
+func (collector *ResponseCollector) checkRetainedBytes(bytes int) error {
+	if bytes+collector.replay.retainedBytes() > collector.limit {
+		return streamIssue(LimitExceeded, "/response", "collected response and replay state exceed buffer limit")
 	}
 	return nil
 }

@@ -298,8 +298,8 @@ func (collector *ResponseCollector) Consume(event Event) (kind NodeKind, delta s
 // by the shared buffer limit.
 func (collector *ResponseCollector) collectUnmapped(native *Native) error {
 	size := native.Value.Len()
-	if collector.bytes+size > collector.limit {
-		return streamIssue(LimitExceeded, "/unmapped", "unmapped stream extensions exceed buffer limit")
+	if err := collector.checkRetainedBytes(collector.bytes + size); err != nil {
+		return err
 	}
 	if err := collector.reserveItems(1); err != nil {
 		return err
@@ -457,8 +457,8 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 				delta = delta[buffer.Len():]
 			}
 		} // Replay already verified the prefix.
-		if collector.bytes+len(delta) > collector.limit {
-			return "", "", streamIssue(LimitExceeded, "/response", "collected response exceeds buffer limit")
+		if err := collector.checkRetainedBytes(collector.bytes + len(delta)); err != nil {
+			return "", "", err
 		}
 		buffer.WriteString(delta)
 		collector.bytes += len(delta)
@@ -535,8 +535,8 @@ func (collector *ResponseCollector) accountItemMetadata(key string, node Node) e
 	}
 	size := len(encoded.Bytes())
 	bytes := collector.bytes - collector.metadata[key] + size
-	if bytes > collector.limit {
-		return streamIssue(LimitExceeded, "/item", "collected item metadata exceeds buffer limit")
+	if err := collector.checkRetainedBytes(bytes); err != nil {
+		return err
 	}
 	collector.bytes, collector.metadata[key] = bytes, size
 	return nil

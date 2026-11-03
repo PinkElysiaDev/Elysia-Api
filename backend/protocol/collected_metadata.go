@@ -119,7 +119,7 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 		pending.hasArrayItems = pending.hasArrayItems || hasItems
 	}
 	charge += jsonStringBytes(metadata.Path) + jsonStringBytes(metadata.SourceCodec) - jsonStringBytes(previous.Path) - jsonStringBytes(previous.SourceCodec)
-	if charge > collector.limit-collector.bytes-collector.replay.usageBytes {
+	if charge > collector.limit-collector.bytes-collector.replay.retainedBytes() {
 		if metadata.Update == "append" {
 			return streamIssue(LimitExceeded, metadata.Path, "appended metadata exceeds the collection limit")
 		}
