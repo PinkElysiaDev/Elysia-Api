@@ -254,7 +254,8 @@ func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample)
 	return executeEventFixtureWithState(ctx, compiled, sample, options)
 }
 
-func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext) (verificationResult, error) {
+func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext) (result verificationResult, err error) {
+	defer func() { err = resourceIssue(err, compiled.identity, sample.Direction, "verify.event") }()
 	inputs := []Value{sample.Input}
 	if sample.Sequence {
 		var err error
@@ -270,8 +271,29 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		if err != nil {
 			return verificationResult{}, err
 		}
+		defer wireValidation.Release()
 		if !isEventDecoder(sample.Direction) {
 			options = options.WithOutputStream(wireValidation)
+		}
+	}
+	var replay *EventReplay
+	if sample.Sequence {
+		target := compiled.target(sample.Direction, options)
+		target.Direction = EncodeEvent
+		var err error
+		replay, err = NewEventReplay(target, compiled.limits)
+		if err != nil {
+			return verificationResult{}, err
+		}
+		defer replay.Release()
+		if compiled.packagePlan != nil {
+			budget := options.State.retention.budget
+			if budget == nil {
+				budget = NewStreamBudget(compiled.limits)
+			}
+			if err := budget.Bind(options.State, wireValidation, replay); err != nil {
+				return verificationResult{}, err
+			}
 		}
 	}
 	var events []Event
@@ -279,6 +301,7 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 	var frames []*EventFrame
 	buffered := 0
 	for _, input := range inputs {
+		batchStart := len(events)
 		hasOutputFrames := false
 		if isEventDecoder(sample.Direction) {
 			var frame *EventFrame
@@ -324,6 +347,11 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		if buffered > compiled.limits.BufferBytes {
 			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
 		}
+		if wireValidation != nil {
+			if err := consumeVerificationEvents(replay, events[batchStart:]); err != nil {
+				return verificationResult{}, err
+			}
+		}
 		if hasOutputFrames && wireValidation != nil {
 			// This fixture explicitly simulates successful delivery of a fully
 			// validated output batch; Consume alone never records delivery.
@@ -333,20 +361,8 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		}
 	}
 	if sample.Sequence {
-		for _, event := range events {
-			if isSessionControl(event.Type) {
-				return verificationResult{}, streamIssue(IncompleteCoverage, "/samples", "session events require an interleaved sessionSamples trace")
-			}
-		}
-		target := compiled.target(sample.Direction, options)
-		target.Direction = EncodeEvent
-		replay, err := NewEventReplay(target, compiled.limits)
-		if err != nil {
-			return verificationResult{}, err
-		}
-		defer replay.Release()
-		for _, event := range events {
-			if _, err := replay.Consume(event); err != nil {
+		if wireValidation == nil {
+			if err := consumeVerificationEvents(replay, events); err != nil {
 				return verificationResult{}, err
 			}
 		}
@@ -382,8 +398,7 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			return verificationResult{}, err
 		}
 	}
-	result := verificationResult{semantic: events, frames: frames}
-	var err error
+	result = verificationResult{semantic: events, frames: frames}
 	if isEventDecoder(sample.Direction) {
 		result.output, err = comparableSemantic(events)
 	} else if sample.Sequence || compiled.mappings[sample.Direction].frameBatch {

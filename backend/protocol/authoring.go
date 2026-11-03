@@ -253,7 +253,8 @@ func (service *Service) previewCompiled(ctx context.Context, compiled *Compiled,
 	if direction == EncodeResponse {
 		err = compiled.ValidateWireOutput(direction, result.output)
 	}
-	if direction == EncodeEvent {
+	// Package sequence fixtures already checked each final batch and delivery.
+	if direction == EncodeEvent && (!isSequence || compiled.packagePlan == nil) {
 		var frames []Value
 		if result.output.Decode(&frames) == nil {
 			var validator *WireStreamValidation
@@ -269,9 +270,6 @@ func (service *Service) previewCompiled(ctx context.Context, compiled *Compiled,
 				}
 				if validator != nil {
 					err = validator.Consume(ctx, frame)
-					if err == nil && compiled.packagePlan != nil {
-						err = validator.CommitDelivery()
-					}
 				} else {
 					err = compiled.ValidateWireOutput(direction, frame)
 				}

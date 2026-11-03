@@ -445,3 +445,20 @@ Go 全量通过（protocol 4.856、builtin 34.355、server 150.912 秒），定�
 收集中位配对耗时差为 -1.65%、+0.06%，分配字节差为 +0.52%、-0.05%。文本字节配对差在
 -1.19% 至 +2.37% 间变化，当前样本不支持稳定回退结论；保留差异供正式验收复核。原始结果
 及身份在 .tmp-dev/continuation-proof-performance/，仍不替代完整 A/B/C 或真实 HTTP 验收。
+
+## 批次 5k：映射序列预览使用共享预算
+
+dev.146 将当前包序列样例的 wire、Mapping 与语义 replay 绑定同一预算，在每批模拟交付前
+完成语义回放，避免直到所有 wire 处理结束才检查另一份状态。样例退出时显式释放 wire 与
+replay；预算错误保留 limit_exceeded 诊断。编辑器预览复用该边界，不再重建验证器重复回放
+同一当前包序列；独立单帧和旧链所需检查仍保留。
+
+新增解码/编码两方向低容量回归，验证组合超限、合法完整序列、公共预览诊断和返回时资源
+释放。protocol/builtin 全量通过（4.647/30.491 秒），最终相关协议/预览/HTTP/CLI 入口通过
+（0.525/0.794/2.573 秒），定向 race 通过（3.384 秒），相关 vet/staticcheck 通过。日志为
+.tmp-dev/verification-stream-budget-*.log。已精读序列执行、编辑器预览及相关验证调用边界；
+本批不声称多协议组合验证和双向会话预算均已接完，不涉及生产热路径优化。
+
+此前超时的 TestPackageGatewayGeminiContinuationDelivery 已单独使用 8 分钟时限重跑 race，
+171.228 秒通过；其他原组合中的续传和交付用例已在批次 5i/5j 单独通过。保留原超时日志，
+补测日志为 .tmp-dev/gateway-gemini-continuation-race.log，不改业务限额或缩减用例内容。

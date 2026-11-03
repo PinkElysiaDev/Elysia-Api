@@ -1,5 +1,17 @@
 package protocol
 
+func consumeVerificationEvents(replay *EventReplay, events []Event) error {
+	for _, event := range events {
+		if isSessionControl(event.Type) {
+			return streamIssue(IncompleteCoverage, "/samples", "session events require an interleaved sessionSamples trace")
+		}
+		if _, err := replay.Consume(event); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // A stream may split one item delta into several frames, or put its usage in
 // the terminal rather than a tail. Compare complete, independently validated
 // generations instead of requiring identical provider framing.

@@ -2,8 +2,68 @@ package protocol
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 )
+
+func TestPackageEventPreviewSharesStreamBudget(t *testing.T) {
+	wire := []Value{
+		packageStreamFrame(ResponseStarted, 0, ""),
+		packageStreamFrame(ItemStarted, 1, `,"item_id":"t"`),
+		packageStreamFrame(ItemDelta, 2, `,"item_id":"t","text":"hi"`),
+		packageStreamFrame(ItemFinished, 3, `,"item_id":"t"`),
+		packageStreamFrame(ResponseFinished, 4, ""),
+	}
+	events := []Event{
+		{Type: ResponseStarted},
+		{Type: ItemStarted, ItemID: StringValue("t"), Item: &Node{Kind: TextNode}},
+		{Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue("hi")},
+		{Type: ItemFinished, ItemID: StringValue("t")},
+		{Type: ResponseFinished},
+	}
+	for index := range events {
+		events[index].SchemaVersion = ProtocolCoreVersion
+		events[index].ResponseID = StringValue("r")
+		events[index].Sequence = coreInteger(int64(index))
+	}
+	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
+		for _, capacity := range []int{1, 2} {
+			t.Run(fmt.Sprintf("%s/%d", direction, capacity), func(t *testing.T) {
+				document := eventProtocolPackage(t)
+				limits := DefaultLimits()
+				limits.StateItems = capacity
+				document.Mapping.Limits = &limits
+				compiled := compilePackageForTest(t, document)
+				input := fixtureValue(t, wire)
+				if direction == EncodeEvent {
+					input = fixtureValue(t, events)
+				}
+				options := newVerificationContext(Scope{}, nil)
+				defer options.State.Release()
+				result, err := executeEventFixtureWithState(t.Context(), compiled, Sample{Direction: direction, Sequence: true, Input: input}, options)
+				if capacity == 1 {
+					var failure *ResourceLimitError
+					if !errors.As(err, &failure) || failure.Metric != "state_items" || failure.Observed != 2 || !result.output.IsZero() {
+						t.Fatal("fixture gave wire and semantic state separate budgets", err)
+					}
+				} else if err != nil || len(result.semantic.([]Event)) != len(events) {
+					t.Fatal("bounded fixture lost its complete stream", err)
+				}
+				budget := options.State.retention.budget
+				if len(budget.sequences) != 0 || budget.items != options.State.packageStateItems || budget.bytes != options.State.packageStateBytes {
+					t.Fatal("fixture retained wire or replay state after return")
+				}
+				compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+				service := &Service{compiler: compiler}
+				preview := service.Preview(t.Context(), fixtureValue(t, document).Bytes(), direction, input, true, EvaluationContext{})
+				if capacity == 1 && !hasIssueCode(IssuesError(preview.Issues), LimitExceeded) || capacity == 2 && IssuesError(preview.Issues) != nil {
+					t.Fatal("editor preview diverged from fixture retention", preview.Issues)
+				}
+			})
+		}
+	}
+}
 
 func TestPackageEventVerificationChecksWireLifecycle(t *testing.T) {
 	for _, direction := range []Direction{DecodeEvent, EncodeEvent} {
