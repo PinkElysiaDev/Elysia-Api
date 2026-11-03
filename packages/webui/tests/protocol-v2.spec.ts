@@ -117,6 +117,12 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
       valid: false, issues: [{ code: 'invalid_definition', severity: 'error', path: '/mapping/expressions/exact/value', reason: 'Synthetic editor diagnostic' }],
     }
     if (path.endsWith('/protocols/preview')) {
+      if (route.request().postDataJSON().mode === 'count_tokens') {
+        expect(route.request().postDataJSON()).toMatchObject({ mode: 'count_tokens', operation: 'count', conversionContext: { model: 'count-model' } })
+        expect(route.request().postData()).toContain('9007199254740993')
+        await route.fulfill({ contentType: 'application/json', body: '{"ok":true,"data":{"output":{"inputTokens":9007199254740993},"issues":[]}}' })
+        return
+      }
       expect(route.request().postDataJSON()).toMatchObject({ mode: 'models', direction: 'encode_response', operation: 'models', input: { models: [{ id: 'local' }] } })
       data = { output: { available: ['local'] }, issues: [] }
     }
@@ -167,6 +173,23 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   await page.getByRole('textbox', { name: '预览输入 JSON', exact: true }).fill('{"models":[{"id":"local"}]}')
   await page.getByRole('button', { name: '运行转换预览', exact: true }).click()
   await expect(page.getByLabel('转换链路结果')).toContainText('available')
+  await page.getByLabel('预览类型', { exact: true }).selectOption('count_tokens')
+  await page.getByRole('textbox', { name: '计数操作名（独立请求与结果映射）', exact: true }).fill('count')
+  await page.getByRole('textbox', { name: '端点模型名（协议路径含模型时填写）', exact: true }).fill('count-model')
+  const countInput = '{"inputTokens":9007199254740993}'
+  await page.getByRole('textbox', { name: '预览输入 JSON', exact: true }).fill(countInput)
+  for (const direction of ['decode_request', 'encode_request', 'decode_response', 'encode_response']) {
+    await page.getByLabel('转换方向', { exact: true }).selectOption(direction)
+    const request = page.waitForRequest((request) => request.url().endsWith('/protocols/preview'))
+    await page.getByRole('button', { name: '运行转换预览', exact: true }).click()
+    expect((await request).postDataJSON().direction).toBe(direction)
+    await expect(page.getByLabel('转换链路结果')).toContainText('"inputTokens":9007199254740993')
+  }
+  await page.getByRole('tab', { name: '版本与回滚', exact: true }).click()
+  await page.getByRole('tab', { name: '转换预览', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '预览输入 JSON', exact: true })).toHaveValue(countInput)
+  await expect(page.getByLabel('转换方向', { exact: true })).toHaveValue('encode_response')
+  await expect(page.getByLabel('转换链路结果')).toContainText('"inputTokens":9007199254740993')
 })
 
 test('browser creates, verifies, previews, activates and rolls back through the real protocol service', async ({ page, request }) => {

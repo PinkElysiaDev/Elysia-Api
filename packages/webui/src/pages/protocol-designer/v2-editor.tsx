@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
-  CheckCircle2,
   FileCheck2,
-  Play,
-  RotateCcw,
   Save,
   ShieldCheck,
   X,
   Zap,
 } from 'lucide-react'
-import { ProtocolProbe } from './v2-probe'
+import { ProtocolPreview } from './v2-preview'
+import { ProtocolRevisions } from './v2-revisions'
+import { ProtocolVerification } from './v2-verification'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -21,7 +20,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input, Textarea } from '@/components/ui/input'
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ApiError } from '@/lib/api'
 import { ProtocolDocument } from '@/lib/protocol-document'
 import {
@@ -79,10 +77,6 @@ const EMPTY_DEFINITION = JSON.stringify(
   2,
 )
 
-/** 编辑器内原生 select 的统一样式（Input 体系不覆盖 select）。 */
-const selectClass =
-  'h-[34px] rounded-md border border-input bg-card px-2.5 text-sm text-foreground transition-[border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:border-rose focus-visible:ring-[3px] focus-visible:ring-wash disabled:cursor-not-allowed disabled:opacity-50'
-
 /** Edit spec and mapping as one revision; raw JSON remains the source of truth. */
 export function ProtocolV2Editor({
   schema,
@@ -113,18 +107,6 @@ export function ProtocolV2Editor({
   const [report, setReport] = useState<VerificationReport>()
   const [verifiedSource, setVerifiedSource] = useState('')
   const [revisions, setRevisions] = useState<ProtocolRevision[]>([])
-  const [selectedRevision, setSelectedRevision] = useState('')
-  const [direction, setDirection] = useState('decode_request')
-  const [input, setInput] = useState('{}')
-  const [isSequence, setSequence] = useState(false)
-  const [previewMode, setPreviewMode] = useState('mapping')
-  const [workflowSample, setWorkflowSample] = useState('')
-  const [countModel, setCountModel] = useState('')
-  const [taskOperation, setTaskOperation] = useState('')
-  const [taskKind, setTaskKind] = useState('decode')
-  const [taskPurpose, setTaskPurpose] = useState('status')
-  const [output, setOutput] = useState<unknown>()
-  const [target, setTarget] = useState('{}')
   const [focusPath, setFocusPath] = useState('')
   const [pendingSections, setPendingSections] = useState<
     Record<string, { source: string; error: string }>
@@ -172,7 +154,6 @@ export function ProtocolV2Editor({
   const editSection = (key: string, value: string) => {
     setFocusPath('')
     try {
-      new ProtocolDocument(value)
       if (!document) throw new Error('请先修正完整 JSON')
       change('/' + key, value)
       setPendingSections((current) => {
@@ -274,11 +255,6 @@ export function ProtocolV2Editor({
   }, [draft])
 
   const capabilities = document?.locate(`${mappingPrefix}/capabilities`)
-  const mappings = document?.locate(`${mappingPrefix}/directions`)
-  const directionKeys = [...(mappings?.children.keys() ?? [])]
-  const declaredCapabilities = schema.capabilities.filter(
-    (capability) => document?.read(`${mappingPrefix}/capabilities/${capability}`) === 'true',
-  )
 
   return (
     <section className="space-y-6 pt-1" aria-label="协议版本编辑器">
@@ -312,7 +288,6 @@ export function ProtocolV2Editor({
               void run(async () => {
                 const result = await protocolAPI.validate(source)
                 setIssues(result.issues ?? [])
-                setOutput(result)
               })
             }
           >
@@ -598,382 +573,17 @@ export function ProtocolV2Editor({
           </div>
         )}
 
-        {tab === 'preview' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-end gap-4 border-b border-border/40 pb-4">
-              <label className="space-y-1 text-xs font-medium text-foreground">
-                <span className="block">预览类型</span>
-                <select
-                  aria-label="预览类型"
-                  className={selectClass}
-                  value={previewMode}
-                  onChange={(event) => {
-                    setPreviewMode(event.target.value)
-                    if (event.target.value === 'models') setDirection('decode_response')
-                    if (event.target.value === 'count_tokens') setDirection('decode_request')
-                  }}
-                >
-                  <option value="mapping">请求 / 响应 / 事件</option>
-                  <option value="session">完整双向会话</option>
-                  <option value="task">任务操作</option>
-                  <option value="agent">Agent settings</option>
-                  <option value="models">模型目录</option>
-                  <option value="count_tokens">输入 Token 计数</option>
-                </select>
-              </label>
-              <label className="space-y-1 text-xs font-medium text-foreground">
-                <span className="block">转换方向</span>
-                <select
-                  aria-label="转换方向"
-                  className={selectClass}
-                  value={direction}
-                  onChange={(event) => setDirection(event.target.value)}
-                >
-                  {(previewMode === 'models'
-                    ? ['decode_response', 'encode_response']
-                    : previewMode === 'count_tokens'
-                      ? ['decode_request', 'encode_request', 'decode_response', 'encode_response']
-                      : schema.directions).map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="inline-flex h-[34px] cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
-                <input
-                  type="checkbox"
-                  className="accent-primary"
-                  checked={isSequence}
-                  onChange={(event) => setSequence(event.target.checked)}
-                />
-                事件序列
-              </label>
-            </div>
-
-            {(previewMode === 'models' || previewMode === 'count_tokens') && (
-              <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                <span>{previewMode === 'models' ? '目录操作名（decode_response 发现／encode_response 客户端输出）' : '计数操作名（独立请求与结果映射）'}</span>
-                <Input
-                  value={taskOperation}
-                  onChange={(event) => setTaskOperation(event.target.value)}
-                />
-              </label>
-            )}
-            {previewMode === 'session' && (
-              <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                <span>会话样例 ID</span>
-                <Input
-                  value={workflowSample}
-                  onChange={(event) => setWorkflowSample(event.target.value)}
-                />
-              </label>
-            )}
-            {previewMode === 'count_tokens' && (
-              <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                <span>端点模型名（协议路径含模型时填写）</span>
-                <Input value={countModel} onChange={(event) => setCountModel(event.target.value)} />
-              </label>
-            )}
-            {previewMode === 'task' && (
-              <div className="grid gap-3 md:grid-cols-3">
-                <label className="space-y-1.5 text-xs font-medium text-foreground">
-                  <span>提交操作名</span>
-                  <Input
-                    value={taskOperation}
-                    onChange={(event) => setTaskOperation(event.target.value)}
-                  />
-                </label>
-                <label className="space-y-1.5 text-xs font-medium text-foreground">
-                  <span className="block">任务映射</span>
-                  <select
-                    className={cn(selectClass, 'w-full')}
-                    value={taskKind}
-                    onChange={(event) => setTaskKind(event.target.value)}
-                  >
-                    {['decode', 'encode', 'control'].map((kind) => (
-                      <option key={kind}>{kind}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1.5 text-xs font-medium text-foreground">
-                  <span className="block">任务阶段</span>
-                  <select
-                    className={cn(selectClass, 'w-full')}
-                    value={taskPurpose}
-                    onChange={(event) => setTaskPurpose(event.target.value)}
-                  >
-                    {['submit', 'status', 'result', 'cancel'].map((purpose) => (
-                      <option key={purpose}>{purpose}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-2.5">
-                <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                  <span>输入 JSON</span>
-                  <Textarea
-                    aria-label="预览输入 JSON"
-                    rows={7}
-                    className="font-mono text-xs"
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                  />
-                </label>
-                <Button
-                  disabled={hasPendingSections}
-                  onClick={() =>
-                    void run(async () => {
-                      new ProtocolDocument(input)
-                      const result =
-                        previewMode === 'mapping'
-                          ? await protocolAPI.preview(source, direction, input, isSequence)
-                          : await protocolAPI.workflow(
-                              source,
-                              {
-                                mode: previewMode,
-                                direction: previewMode === 'models' || previewMode === 'count_tokens' ? direction : undefined,
-                                sample: workflowSample,
-                                operation: taskOperation,
-                                conversionContext: previewMode === 'count_tokens' ? { model: countModel } : undefined,
-                                kind: taskKind,
-                                purpose: taskPurpose,
-                              },
-                              input,
-                            )
-                      setOutput(result)
-                      setIssues(result.issues)
-                    })
-                  }
-                >
-                  <Play className="h-3.5 w-3.5" aria-hidden />
-                  运行转换预览
-                </Button>
-              </div>
-
-              <div className="space-y-2.5">
-                <label className="block space-y-1.5 text-xs font-medium text-foreground">
-                  <span>目标协议完整 JSON</span>
-                  <Textarea
-                    aria-label="目标协议 JSON"
-                    rows={7}
-                    className="font-mono text-xs"
-                    value={target}
-                    onChange={(event) => setTarget(event.target.value)}
-                  />
-                </label>
-                <Button
-                  disabled={hasPendingSections}
-                  onClick={() =>
-                    void run(async () => {
-                      new ProtocolDocument(target)
-                      const result = await protocolAPI.combine(source, target)
-                      setOutput(result)
-                      setIssues(result.issues)
-                    })
-                  }
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                  验证协议组合
-                </Button>
-              </div>
-            </div>
-
-            <pre
-              aria-label="转换链路结果"
-              className="max-h-96 overflow-auto rounded-lg border border-border/60 bg-[var(--code-bg)] p-3.5 font-mono text-xs leading-relaxed"
-            >
-              {output === undefined
-                ? '预览将显示语义模型、输出与诊断。'
-                : typeof output === 'string'
-                  ? output
-                  : JSON.stringify(output, null, 2)}
-            </pre>
-          </div>
-        )}
+        <ProtocolPreview source={source} schema={schema} isActive={tab === 'preview'}
+          hasPendingSections={hasPendingSections} run={run} onIssues={setIssues} />
 
         {tab === 'verification' && (
-          <div className="space-y-4">
-            <div
-              role="status"
-              className={cn(
-                'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium',
-                report && verifiedSource === source
-                  ? report.passed
-                    ? 'border-[color-mix(in_srgb,var(--jade)_26%,transparent)] bg-[color-mix(in_srgb,var(--jade)_9%,transparent)] text-jade'
-                    : 'border-destructive/30 bg-destructive/10 text-destructive'
-                  : 'border-border/80 bg-secondary/40 text-muted-foreground',
-              )}
-            >
-              离线验证：
-              {report && verifiedSource === source
-                ? report.passed
-                  ? '通过'
-                  : '未通过'
-                : '当前草稿尚未验证'}
-            </div>
-
-            <ProtocolProbe
-              source={source}
-              id={id}
-              hash={verifiedSource === source ? report?.definitionHash : undefined}
-            />
-
-            <p className="text-xs text-muted-foreground">
-              离线报告绑定定义、样例和编译器版本；修改内容后需要重新验证。真实上游验证是独立证据。
-            </p>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <TableHeader>
-                  <TableRow className="border-b border-border/50 hover:bg-transparent">
-                    <TableHead className="py-2.5 pl-3">能力</TableHead>
-                    {directionKeys.map((name) => (
-                      <TableHead key={name} className="py-2.5 text-center font-mono">
-                        {name}
-                      </TableHead>
-                    ))}
-                    <TableHead className="py-2.5 pr-3 text-right">样例证据</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="divide-y divide-border/30">
-                  {declaredCapabilities.map((capability) => (
-                    <TableRow key={capability} className="border-b-0">
-                      <TableCell className="py-2.5 pl-3 font-mono font-medium">
-                        {capability}
-                      </TableCell>
-                      {directionKeys.map((name) => (
-                        <TableCell key={name} className="py-2.5 text-center text-muted-foreground">
-                          {document?.locate(`${mappingPrefix}/directions/${name}/capabilities`)
-                            ? document.read(`${mappingPrefix}/directions/${name}/capabilities/${capability}`) ===
-                              'true'
-                              ? '支持'
-                              : '—'
-                            : '继承声明'}
-                        </TableCell>
-                      ))}
-                      <TableCell className="py-2.5 pr-3 text-right">
-                        {verifiedSource === source && report?.covered?.includes(capability) ? (
-                          <span className="font-medium text-jade">已验证</span>
-                        ) : (
-                          <span className="text-muted-foreground">待验证</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </table>
-            </div>
-
-            {(report?.checks?.length ?? 0) > 0 && (
-              <ul className="flex flex-wrap gap-2 text-xs">
-                {report?.checks?.map((check, index) => (
-                  <li
-                    key={index}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono',
-                      check.passed
-                        ? 'border-[color-mix(in_srgb,var(--jade)_26%,transparent)] bg-[color-mix(in_srgb,var(--jade)_8%,transparent)] text-jade'
-                        : 'border-destructive/30 bg-destructive/10 text-destructive',
-                    )}
-                  >
-                    {check.passed ? '✓' : '×'} {check.sampleId} {check.direction}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <details className="border-t border-border/40 pt-3.5 text-xs">
-              <summary className="cursor-pointer font-medium text-foreground">当前引擎契约</summary>
-              <pre className="mt-3 max-h-96 overflow-auto rounded-md bg-[var(--code-bg)] p-3 font-mono text-xs">
-                {JSON.stringify(
-                  {
-                    engineFeatures: schema.engineFeatures,
-                    events: schema.events,
-                    ...(isPackage
-                      ? { package: schema.packageSchema, spec: schema.specSchema, mapping: schema.mappingSchema }
-                      : { definition: schema.definitionSchema }),
-                    semantic: schema.semanticSchema,
-                  },
-                  null,
-                  2,
-                )}
-              </pre>
-            </details>
-          </div>
+          <ProtocolVerification source={source} id={id} schema={schema} document={document}
+            mappingPrefix={mappingPrefix} report={report} verifiedSource={verifiedSource} />
         )}
 
-        {tab === 'revisions' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-end gap-3 border-b border-border/40 pb-4">
-              <label className="space-y-1.5 text-xs font-medium text-foreground">
-                <span className="block">选择已保存修订</span>
-                <select
-                  aria-label="选择修订"
-                  className={cn('min-w-[260px] max-w-full font-mono', selectClass)}
-                  value={selectedRevision}
-                  onChange={(event) => setSelectedRevision(event.target.value)}
-                >
-                  <option value="">请选择</option>
-                  {revisions.map((revision) => (
-                    <option key={revision.hash} value={revision.hash}>
-                      {revision.hash.slice(0, 16)} · {revision.createdAt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  disabled={!selectedRevision || !activeHash}
-                  onClick={() =>
-                    void run(async () =>
-                      setOutput(await protocolAPI.diff(id, activeHash, selectedRevision)),
-                    )
-                  }
-                >
-                  比较启用版本
-                </Button>
-                <Button
-                  disabled={!selectedRevision || isDirty}
-                  onClick={() => {
-                    const revision = revisions.find((item) => item.hash === selectedRevision)
-                    if (revision) {
-                      setSource(revision.definition)
-                      setTab('json')
-                    }
-                  }}
-                >
-                  载入为草稿
-                </Button>
-                <Button
-                  disabled={!selectedRevision}
-                  onClick={() =>
-                    void run(async () => {
-                      const result = await protocolAPI.verifyRevision(id, selectedRevision)
-                      setIssues(result.issues)
-                      setOutput(result)
-                      if (!result.passed) return
-                      await protocolAPI.activate(id, selectedRevision, activeHash, true)
-                      await onSaved(id)
-                    })
-                  }
-                >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                  验证并回滚至所选修订
-                </Button>
-              </div>
-            </div>
-
-            <pre className="max-h-96 overflow-auto rounded-lg border border-border/60 bg-[var(--code-bg)] p-3.5 font-mono text-xs">
-              {output === undefined
-                ? ''
-                : typeof output === 'string'
-                  ? output
-                  : JSON.stringify(output, null, 2)}
-            </pre>
-          </div>
-        )}
+        <ProtocolRevisions id={id} revisions={revisions} activeHash={activeHash}
+          isActive={tab === 'revisions'} isDirty={isDirty} run={run} onIssues={setIssues}
+          onLoad={(revision) => { setSource(revision); setTab('json') }} onSaved={onSaved} />
       </fieldset>
 
       {!!issues.length && (

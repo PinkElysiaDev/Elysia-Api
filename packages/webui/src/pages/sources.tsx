@@ -140,6 +140,25 @@ export function SourcesPage() {
     return map
   }, [data, modelsBySource])
 
+  const visibleGroupsBySource = useMemo(() => {
+    const views = new Map<string, { groups: Array<ModelGroupView & { visibleModels: Model[] }>; models: Model[] }>()
+    for (const [sourceId, groups] of groupsBySource) {
+      const globalKeyword = (debouncedGlobalSearch[sourceId] ?? '').trim().toLowerCase()
+      const visible = new Map<string, Model>()
+      const filteredGroups = groups.map((group) => {
+        const groupKeyword = (debouncedGroupSearch[`${sourceId}:${group.key}`] ?? '').trim().toLowerCase()
+        const visibleModels = group.models.filter((model) =>
+          (!globalKeyword || matchesModelKeyword(globalKeyword, model)) &&
+          (!groupKeyword || matchesModelKeyword(groupKeyword, model)),
+        )
+        for (const model of visibleModels) visible.set(model.id, model)
+        return { ...group, visibleModels }
+      })
+      views.set(sourceId, { groups: filteredGroups, models: [...visible.values()] })
+    }
+    return views
+  }, [groupsBySource, debouncedGlobalSearch, debouncedGroupSearch])
+
   // bar 搜索：名称 / 平台 / Base URL（输入即时回显，过滤按防抖值触发）。
   const kw = useDebouncedValue(keyword, 160).trim().toLowerCase()
   const filtered = useMemo(() => {
@@ -164,10 +183,6 @@ export function SourcesPage() {
 
   function toggleExpand(id: string) {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
-
-  function selectedModelsOf(sourceId: string): Model[] {
-    return (modelsBySource.get(sourceId) ?? []).filter((m) => selected[`${sourceId}:${m.id}`])
   }
 
   // 以下三个回调供 memo 化的 ModelChip 使用：引用稳定后，选择/搜索/折叠等
@@ -415,26 +430,11 @@ export function SourcesPage() {
                     // 后台拉取进行中：锁定该源的模型相关操作（避免合并期间冲突误操作），
                     // 其余源与页面功能不受影响。
                     const busy = sourceBusy(source)
-                    const groups = groupsBySource.get(source.id) ?? []
-                    const globalKeyword = (debouncedGlobalSearch[source.id] ?? '').trim().toLowerCase()
-                    const matchesGlobal = (m: Model) =>
-                      !globalKeyword ||
-                      matchesModelKeyword(globalKeyword, m)
-                    const selectedCount = selectedModelsOf(source.id).length
-                    // 顶部「全选」的作用范围 = 当前可见模型：
-                    // 各组经组内搜索（及跨组搜索）过滤后的并集，即原组行「全选本组」的合并形态
-                    const allVisibleModels = groups
-                      .map((g) => {
-                        const groupKeyword = (debouncedGroupSearch[`${source.id}:${g.key}`] ?? '').trim().toLowerCase()
-                        return groupKeyword
-                          ? g.models.filter(
-                              (m) =>
-                                matchesGlobal(m) &&
-                                matchesModelKeyword(groupKeyword, m),
-                            )
-                          : g.models.filter(matchesGlobal)
-                      })
-                      .flat()
+                    const { groups, models: allVisibleModels } = visibleGroupsBySource.get(source.id)!
+                    const selectedModels = sourceModels.filter((model) => selected[`${source.id}:${model.id}`])
+                    const selectedCount = selectedModels.length
+                    const lastCheckedAt = sourceModels.reduce((latest, model) =>
+                      model.lastCheckedAt && model.lastCheckedAt > latest ? model.lastCheckedAt : latest, '')
                     return (
                       <Fragment key={source.id}>
                         {/* border-b-0：行间分隔线只由 divide-y 的 /30 淡线承担，
@@ -557,7 +557,7 @@ export function SourcesPage() {
                                   variant="outline"
                                   size="sm"
                                   disabled={busy || selectedCount === 0 || batchBusy}
-                                  onClick={() => batchSetEnabled(selectedModelsOf(source.id), true)}
+                                  onClick={() => batchSetEnabled(selectedModels, true)}
                                 >
                                   <Power /> 启用
                                 </Button>
@@ -565,7 +565,7 @@ export function SourcesPage() {
                                   variant="outline"
                                   size="sm"
                                   disabled={busy || selectedCount === 0 || batchBusy}
-                                  onClick={() => batchSetEnabled(selectedModelsOf(source.id), false)}
+                                  onClick={() => batchSetEnabled(selectedModels, false)}
                                 >
                                   <PowerOff /> 禁用
                                 </Button>
@@ -573,7 +573,7 @@ export function SourcesPage() {
                                   variant="outline"
                                   size="sm"
                                   disabled={busy || selectedCount === 0}
-                                  onClick={() => setQuickCreate({ source, models: selectedModelsOf(source.id) })}
+                                  onClick={() => setQuickCreate({ source, models: selectedModels })}
                                 >
                                   <Plus /> 创建模型组
                                 </Button>
@@ -581,7 +581,7 @@ export function SourcesPage() {
                                   variant="outline"
                                   size="sm"
                                   disabled={busy || selectedCount === 0}
-                                  onClick={() => setAddToGroup(selectedModelsOf(source.id))}
+                                  onClick={() => setAddToGroup(selectedModels)}
                                 >
                                   <ListPlus /> 加入模型组
                                 </Button>
@@ -590,13 +590,7 @@ export function SourcesPage() {
                             {/* 按 key 分组（单 key 源为单一「全部模型」组） */}
                             {groups.map((group) => {
                               const groupStateKey = `${source.id}:${group.key}`
-                              const groupKeyword = (debouncedGroupSearch[groupStateKey] ?? '').trim().toLowerCase()
-                              const groupVisible = group.models.filter(
-                                (m) =>
-                                  matchesGlobal(m) &&
-                                  (!groupKeyword ||
-                                    matchesModelKeyword(groupKeyword, m)),
-                              )
+                              const groupVisible = group.visibleModels
                               const collapsed = !!collapsedGroups[groupStateKey]
                               return (
                                 <div key={group.key}>
@@ -671,15 +665,7 @@ export function SourcesPage() {
                               </span>
                               <span>
                                 可用性检测{' '}
-                                {sourceModels.some((m) => m.lastCheckedAt)
-                                  ? formatRelative(
-                                      sourceModels
-                                        .filter((m) => m.lastCheckedAt)
-                                        .map((m) => m.lastCheckedAt)
-                                        .sort()
-                                        .at(-1),
-                                    )
-                                  : '—'}
+                                {lastCheckedAt ? formatRelative(lastCheckedAt) : '—'}
                               </span>
                             </p>
                           </div>

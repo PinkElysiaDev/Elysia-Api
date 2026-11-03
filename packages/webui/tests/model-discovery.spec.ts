@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { ModelSource } from '../src/lib/types'
 
-async function mockDiscovery(page: Page, apiKeys: ModelSource['apiKeys'], manual = false) {
+async function mockDiscovery(page: Page, apiKeys: ModelSource['apiKeys'], manual = false, models: string[] = []) {
   let source: ModelSource = {
     id: 'discovery', name: 'Discovery source', baseUrl: 'https://upstream.example/v1',
     platform: 'custom:openai-chat-completions', enabled: true, autoFetchModels: !manual,
@@ -25,6 +25,8 @@ async function mockDiscovery(page: Page, apiKeys: ModelSource['apiKeys'], manual
       data = { started: true }
     } else if (path.endsWith('/model-sources')) {
       data = { items: [source] }
+    } else if (path.endsWith('/models')) {
+      data = { items: models.map((id) => ({ id, name: id, sourceId: source.id, platform: source.platform, type: 'llm', enabled: true, available: true, maxTokens: 0 })) }
     }
     await route.fulfill({ json: { ok: true, data } })
   })
@@ -140,4 +142,24 @@ test('failed refresh reports the failing key and retained data', async ({ page }
   await expect(page.getByText('拉取失败，保留原数据', { exact: true })).toBeVisible()
   await expect(page.getByText("Discovery source：1/2 keys failed to fetch models；Key 2（backup）：HTTP 503", { exact: true })).toBeVisible()
   await expect(page.getByText('拉取完成', { exact: true })).not.toBeVisible()
+})
+
+test('source selection uses the same visible models as both key-group filters', async ({ page }) => {
+  await mockDiscovery(page, [
+    { value: 'one', fetchedModels: ['alpha', 'shared'] },
+    { value: 'two', fetchedModels: ['beta', 'shared'] },
+  ], false, ['alpha', 'beta', 'shared'])
+  await page.getByRole('button', { name: '展开', exact: true }).click()
+  const groupSearch = page.getByPlaceholder('组内搜索…')
+  await groupSearch.first().fill('alpha')
+  await page.getByPlaceholder('跨组搜索全部模型…').fill('shared')
+  await expect(page.getByRole('button', { name: 'shared', exact: true })).toHaveCount(1)
+  await expect(page.getByText('没有匹配的模型', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '全选', exact: true }).click()
+  await expect(page.getByText('已选 1', { exact: true })).toBeVisible()
+  await page.getByPlaceholder('跨组搜索全部模型…').fill('')
+  await groupSearch.first().fill('')
+  await expect(page.getByRole('button', { name: 'shared', exact: true })).toHaveCount(2)
+  await page.getByRole('button', { name: '全选', exact: true }).click()
+  await expect(page.getByText('已选 3', { exact: true })).toBeVisible()
 })
