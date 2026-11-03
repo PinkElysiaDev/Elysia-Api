@@ -55,6 +55,28 @@ func TestCoreRetentionCombinesIdentitiesAndToolInput(t *testing.T) {
 	}
 }
 
+func TestCoreReleaseClosesReplay(t *testing.T) {
+	replay, err := NewEventReplay(replayTarget(), DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := toolStart()
+	start.Sequence = coreInteger(1)
+	if _, err := replay.Consume(start); err != nil {
+		t.Fatal(err)
+	}
+	replay.Release()
+	if replay.state != nil || replay.sequence != nil || replay.items != nil || replay.identities != nil {
+		t.Fatal("release retained replay state")
+	}
+	if isAccepted, err := replay.Consume(Event{SchemaVersion: 1, Type: OperationCancelled}); err == nil || isAccepted {
+		t.Fatal("released replay resumed", err)
+	}
+	if err := replay.Finish(); err == nil {
+		t.Fatal("released replay acquired successful completion")
+	}
+}
+
 func TestCoreSequenceWindowYieldsCapacityToSemanticItems(t *testing.T) {
 	limits := DefaultLimits()
 	limits.StateItems = 3

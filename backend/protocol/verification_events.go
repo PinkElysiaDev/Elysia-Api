@@ -30,6 +30,7 @@ func collectVerificationSequence(compiled *Compiled, sample Sample, events []Eve
 	if err != nil {
 		return Value{}, err
 	}
+	defer collector.Release()
 	var failure *Event
 	for _, event := range events {
 		if event.Type == OperationFailed || event.Type == OperationCancelled || failure != nil {

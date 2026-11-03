@@ -21,6 +21,7 @@ type ConversionEventState struct {
 	id         Value
 	model      Value
 	started    bool
+	isReleased bool
 }
 
 func NewConversionEventState(c *CompiledConversion, route ConversionContext) *ConversionEventState {
@@ -46,6 +47,9 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 // PushContext preserves source order while waiting only for declared resources
 // that need a completed, authenticated entity.
 func (s *ConversionEventState) PushContext(ctx context.Context, event Event) ([]Event, error) {
+	if s.isReleased {
+		return nil, streamIssue(InvalidAssociation, "/state", "released conversion events cannot resume")
+	}
 	if s.conversion == nil {
 		return []Event{event}, nil
 	}
@@ -276,10 +280,18 @@ func DeliveryFrameEvents(events []Event) []Event {
 }
 
 func (s *ConversionEventState) Finish() error {
+	if s.isReleased {
+		return streamIssue(InvalidAssociation, "/state", "released conversion events cannot finish")
+	}
 	if len(s.pending) > 0 || len(s.open) > 0 {
 		return streamIssue(InvalidAssociation, "/conversion/events", "stream ended with incomplete waiting nodes")
 	}
 	return nil
+}
+
+// Release discards waiting events without publishing them as completed input.
+func (s *ConversionEventState) Release() {
+	*s = ConversionEventState{isReleased: true}
 }
 
 func ContinuationResourceKey(resource Resource) string {

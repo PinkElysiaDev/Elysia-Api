@@ -115,6 +115,30 @@ func TestEventFailureDiscardsWaitingItems(t *testing.T) {
 	}
 }
 
+func TestEventReleaseDiscardsUnfinishedInput(t *testing.T) {
+	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "release-test", Rules: []ConversionRule{{ID: "wait-tool", Enabled: true, Phase: ConversionEvent, Action: "buffer_node", Match: ConversionMatch{NodeKind: ToolCallNode}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := NewConversionEventState(conversion, ConversionContext{})
+	start := toolStart()
+	for _, event := range []Event{start, {SchemaVersion: start.SchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"partial":`)}} {
+		if output, err := state.PushContext(t.Context(), event); err != nil || len(output) != 0 {
+			t.Fatal("incomplete tool escaped waiting", output, err)
+		}
+	}
+	state.Release()
+	if state.pending != nil || state.open != nil || state.bytes != 0 {
+		t.Fatal("release retained waiting content")
+	}
+	if output, err := state.Drain(); err == nil || len(output) != 0 {
+		t.Fatal("release published unfinished input", output, err)
+	}
+	if _, err := state.PushContext(t.Context(), start); err == nil {
+		t.Fatal("released conversion resumed")
+	}
+}
+
 func TestEventProjectionResponseVersion(t *testing.T) {
 	for _, action := range []string{"anthropic_usage_envelope", "response_shape", "response_envelope"} {
 		rule := ConversionRule{ID: "envelope", Enabled: true, Phase: ConversionEvent, Action: action}

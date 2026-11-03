@@ -223,3 +223,57 @@ func TestCollectorSharesByteBudgetWithReplay(t *testing.T) {
 		t.Fatal("combined budget failure produced a successful response")
 	}
 }
+
+func TestCollectorReleasePreservesReturnedResponses(t *testing.T) {
+	for _, isComplete := range []bool{false, true} {
+		t.Run(fmt.Sprint(isComplete), func(t *testing.T) {
+			collector, err := NewResponseCollector(replayTarget(), DefaultLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			start := toolStart()
+			for _, event := range []Event{
+				start,
+				{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"n":9007199254740993}`)},
+				messageEvent(ItemStarted, "text", "", &Node{Kind: TextNode, Payload: StringValue("visible")}),
+			} {
+				if _, _, err := collector.Consume(event); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var response *Response
+			if isComplete {
+				if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ResponseFinished}); err != nil {
+					t.Fatal(err)
+				}
+				response, err = collector.Finish()
+			} else {
+				response, err = collector.Partial()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := fixtureValue(t, response)
+			collector.Release()
+			collector.Release()
+			if fixtureValue(t, response) != before || !response.Content[1].Payload.IsString("visible") {
+				t.Fatal("release changed a returned response")
+			}
+			if collector.items != nil || collector.texts != nil || collector.metadataDeltas != nil || collector.replay.items != nil || collector.replay.state != nil || collector.replay.sequence != nil {
+				t.Fatal("released collector retained accumulation or validation state")
+			}
+			if !isComplete && len(collector.response.Content) != 0 {
+				t.Fatal("release retained an abandoned response")
+			}
+			if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ResponseFinished}); err == nil {
+				t.Fatal("released collector resumed")
+			}
+			if _, err := collector.Finish(); err == nil {
+				t.Fatal("released collector acquired successful completion")
+			}
+			if _, err := collector.Partial(); err == nil {
+				t.Fatal("released collector produced another snapshot")
+			}
+		})
+	}
+}

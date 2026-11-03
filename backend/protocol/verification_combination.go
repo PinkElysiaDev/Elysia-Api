@@ -318,11 +318,13 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		if err != nil {
 			return err
 		}
+		defer collector.Release()
 		route = route.WithContinuation(evidence.binding, route.requireContinuation)
 		options = options.WithContinuation(route.continuation)
 	}
 	projected := []Event{}
 	eventState := NewConversionEventState(conversion, route)
+	defer eventState.Release()
 	convertedFrames := []*EventFrame{}
 	for _, frame := range result.frames {
 		route, err = conversion.WithFrameUsage(route, frame.Events)
@@ -427,6 +429,7 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	if err != nil {
 		return err
 	}
+	defer replay.Release()
 	for _, event := range decoded {
 		if _, err := replay.Consume(event); err != nil {
 			return err

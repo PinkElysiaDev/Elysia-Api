@@ -344,6 +344,7 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 		if err != nil {
 			return verificationResult{}, err
 		}
+		defer replay.Release()
 		for _, event := range events {
 			if _, err := replay.Consume(event); err != nil {
 				return verificationResult{}, err

@@ -34,6 +34,7 @@ type EventReplay struct {
 	target        Target
 	usage         *Usage
 	isTerminal    bool
+	isReleased    bool
 	terminal      EventType
 }
 
@@ -49,6 +50,9 @@ func NewEventReplay(target Target, limits Limits) (*EventReplay, error) {
 // Consume validates one semantic event. False means an identical, explicitly
 // sequenced event was already observed; callers must not forward it twice.
 func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
+	if replay.isReleased {
+		return false, streamIssue(InvalidAssociation, "/state", "released event replay cannot resume")
+	}
 	defer func() {
 		if err == nil && accepted {
 			err = replay.checkRetainedBytes()
@@ -445,6 +449,9 @@ func (replay *EventReplay) completeTools() error {
 
 // Finish requires a declared terminal; network EOF is not successful completion.
 func (replay *EventReplay) Finish() error {
+	if replay.isReleased {
+		return streamIssue(InvalidAssociation, "/state", "released event replay cannot finish")
+	}
 	if !replay.isTerminal {
 		return streamIssue(UpstreamContractViolation, "/type", "event sequence ended without a terminal")
 	}
@@ -453,3 +460,9 @@ func (replay *EventReplay) Finish() error {
 
 // Usage returns a copy of the merged counters, including usage after terminal.
 func (replay *EventReplay) Usage() *Usage { return MergeUsage(nil, replay.usage) }
+
+// Release drops request-owned identities, history and input buffers. A released
+// replay cannot accept more events or establish successful completion.
+func (replay *EventReplay) Release() {
+	*replay = EventReplay{isReleased: true}
+}

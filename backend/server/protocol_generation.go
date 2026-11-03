@@ -164,6 +164,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err != nil {
 		return nil, err
 	}
+	defer collector.Release()
 	source, err := newProtocolSourceStream(ctx, candidate, candidate.compiled, candidate.conversionContext(candidate.compiled, true), options, record, func(decoded *protocol.EventFrame, _ protocol.Object) error {
 		for _, event := range decoded.Events {
 			if err := candidate.compiled.ValidateEventReferences(ctx, event, options); err != nil {

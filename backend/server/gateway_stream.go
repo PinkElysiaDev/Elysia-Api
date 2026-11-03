@@ -58,11 +58,13 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	route.Delivery = protocol.NewDeliveryState()
 	options = options.WithConversion(candidate.conversion, route)
 	eventState := protocol.NewConversionEventState(candidate.conversion, route)
+	defer eventState.Release()
 	var carriers *builtin.ContinuationStream
 	var collector *protocol.ResponseCollector
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
 		collector, _ = protocol.NewResponseCollector(candidate.sourceEventTarget(), limits)
+		defer collector.Release()
 		if candidate.continuation.isPackage {
 			defer candidate.continuation.binding.Release()
 			options = options.WithContinuation(candidate.continuation.binding)
@@ -78,6 +80,7 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	if err != nil {
 		return err
 	}
+	defer replay.Release()
 	c.Header("Content-Type", protocol.TransportContentType(plan.operation.Transport))
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)

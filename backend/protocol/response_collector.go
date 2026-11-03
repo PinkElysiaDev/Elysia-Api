@@ -33,6 +33,8 @@ type ResponseCollector struct {
 	headerBaseBytes              int
 	headerBytes, snapshotItems   int
 	failure                      error
+	hasResult                    bool
+	isReleased                   bool
 	bytes                        int
 	limit                        int
 }
@@ -146,6 +148,9 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 // Consume returns the newly appended text, if any. Snapshot prefixes and
 // duplicate sequence frames never appear twice in a caller's output.
 func (collector *ResponseCollector) Consume(event Event) (kind NodeKind, delta string, err error) {
+	if collector.isReleased {
+		return "", "", streamIssue(InvalidAssociation, "/state", "released response collector cannot resume")
+	}
 	if collector.failure != nil {
 		return "", "", collector.failure
 	}
@@ -544,6 +549,9 @@ func (collector *ResponseCollector) accountItemMetadata(key string, node Node) e
 
 // Finish requires a real terminal and includes usage arriving after completion.
 func (collector *ResponseCollector) Finish() (*Response, error) {
+	if collector.isReleased {
+		return nil, streamIssue(InvalidAssociation, "/state", "released response collector cannot finish")
+	}
 	if collector.failure != nil {
 		return nil, collector.failure
 	}
@@ -560,12 +568,16 @@ func (collector *ResponseCollector) Finish() (*Response, error) {
 	if _, err := measureSemanticValue(&collector.response, collector.replay.limits); err != nil {
 		return nil, err
 	}
+	collector.hasResult = true
 	return &collector.response, nil
 }
 
 // Partial returns a snapshot for diagnostics after interruption. It is never a
 // successful terminal and cannot authorize execution of incomplete tool calls.
 func (collector *ResponseCollector) Partial() (*Response, error) {
+	if collector.isReleased {
+		return nil, streamIssue(InvalidAssociation, "/state", "released response collector cannot produce a snapshot")
+	}
 	collector.materializeTexts()
 	collector.materializeMetadata()
 	partial := collector.response
@@ -584,6 +596,17 @@ func (collector *ResponseCollector) Partial() (*Response, error) {
 		return nil, err
 	}
 	return &result, nil
+}
+
+// Release drops accumulation and validation state after its consumer settles.
+// A successful Finish result keeps its response storage; Partial owns a copy.
+func (collector *ResponseCollector) Release() {
+	collector.replay.Release()
+	var response Response
+	if collector.hasResult {
+		response = collector.response
+	}
+	*collector = ResponseCollector{response: response, replay: collector.replay, hasResult: collector.hasResult, isReleased: true}
 }
 
 func (collector *ResponseCollector) finishTools() error {

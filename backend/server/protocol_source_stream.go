@@ -107,6 +107,7 @@ func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
 }
 
 func (source *protocolSourceStream) Finish(readErr error) error {
+	defer source.replay.Release()
 	if source.wireValidation != nil {
 		defer source.wireValidation.Release()
 	}
