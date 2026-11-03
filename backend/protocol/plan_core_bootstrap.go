@@ -4,6 +4,9 @@ package protocol
 
 // Generation excludes stale direct field references before importing the model.
 // These entrypoints are never executed by the generator or a production build.
+func readCoreObject(Object, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
 func decodeCoreRequestOutput(JSONOutput) (*Request, error) { panic("coreplan generation") }
 func decodeCoreRequestOutputWithin(JSONOutput, *valueReader) (*Request, error) {
 	panic("coreplan generation")
@@ -14,20 +17,36 @@ func decodeCoreResponseOutputWithin(JSONOutput, *valueReader) (*Response, error)
 func decodeCoreEventOutputWithin(JSONOutput, *valueReader) (*Event, error) {
 	panic("coreplan generation")
 }
-func decodeCoreResponseOutput(JSONOutput) (*Response, error)          { panic("coreplan generation") }
-func decodeCoreEventOutput(JSONOutput) (*Event, error)                { panic("coreplan generation") }
-func decodeCoreEventsOutput(JSONOutput) ([]Event, error)              { panic("coreplan generation") }
-func readCoreRequestOutput(*Request, []string) (JSONOutput, error)    { panic("coreplan generation") }
-func readCoreResponseOutput(*Response, []string) (JSONOutput, error)  { panic("coreplan generation") }
-func readCoreEventOutput(*Event, []string) (JSONOutput, error)        { panic("coreplan generation") }
-func readCoreEventsOutput([]Event, []string) (JSONOutput, error)      { panic("coreplan generation") }
-func readCoreCacheIntent(CacheIntent, []string) (JSONOutput, error)   { panic("coreplan generation") }
-func readCoreNode(Node, []string) (JSONOutput, error)                 { panic("coreplan generation") }
-func readCoreTool(Tool, []string) (JSONOutput, error)                 { panic("coreplan generation") }
-func readCoreProvenance(Provenance, []string) (JSONOutput, error)     { panic("coreplan generation") }
-func readCoreRequest(Request, []string) (JSONOutput, error)           { panic("coreplan generation") }
-func readCoreClientOutput(ClientOutput, []string) (JSONOutput, error) { panic("coreplan generation") }
-func readCoreUsage(Usage, []string) (JSONOutput, error)               { panic("coreplan generation") }
+func decodeCoreResponseOutput(JSONOutput) (*Response, error) { panic("coreplan generation") }
+func decodeCoreEventOutput(JSONOutput) (*Event, error)       { panic("coreplan generation") }
+func decodeCoreEventsOutput(JSONOutput) ([]Event, error)     { panic("coreplan generation") }
+func readCoreRequestOutput(*Request, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreResponseOutput(*Response, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreEventOutput(*Event, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreEventsOutput([]Event, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreCacheIntent(CacheIntent, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreNode(Node, []string, *semanticCache) (JSONOutput, error) { panic("coreplan generation") }
+func readCoreTool(Tool, []string, *semanticCache) (JSONOutput, error) { panic("coreplan generation") }
+func readCoreProvenance(Provenance, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreRequest(Request, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreClientOutput(ClientOutput, []string, *semanticCache) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func readCoreUsage(Usage, []string, *semanticCache) (JSONOutput, error) { panic("coreplan generation") }
 func writeCoreReasoningIntentPointer(JSONOutput, **ReasoningIntent, *valueReader) error {
 	panic("coreplan generation")
 }
@@ -42,7 +61,7 @@ func writeCoreCacheIntentField(jsonOutputField, *CacheIntent, *valueReader) erro
 func writeCoreEvent(JSONOutput, *Event, *valueReader) error           { panic("coreplan generation") }
 func writeCoreNative(JSONOutput, *Native, *valueReader) error         { panic("coreplan generation") }
 func writeCoreProvenance(JSONOutput, *Provenance, *valueReader) error { panic("coreplan generation") }
-func readCoreResponseMetadata(ResponseMetadata, []string) (JSONOutput, error) {
+func readCoreResponseMetadata(ResponseMetadata, []string, *semanticCache) (JSONOutput, error) {
 	panic("coreplan generation")
 }
 func writeCoreCounter(JSONOutput, *Counter, *valueReader) error         { panic("coreplan generation") }

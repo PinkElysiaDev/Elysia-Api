@@ -144,7 +144,7 @@ func checkTypedRequestObjectQuery(t *testing.T, operation string) {
 				reads := 0
 				reader := func(pointer []string) (JSONOutput, error) {
 					reads++
-					return readCoreRequestOutput(tc.request, pointer)
+					return readCoreRequestOutput(tc.request, pointer, nil)
 				}
 				state := evaluation{ctx: ctx, inputReader: reader, rootReader: reader, budget: &evaluationBudget{limits: DefaultLimits(), stepLimit: tc.stepLimit}}
 				if hasRequest {
@@ -259,7 +259,7 @@ func TestKeysTypedRequestKeepsIterationAndBindingScopes(t *testing.T) {
 	})
 	plan, _ := compileOutputPlan(compileTestOutputExpression(t, program))
 	request := &Request{Parameters: Object{"root": Value{raw: "null"}}}
-	reader := func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer) }
+	reader := func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer, nil) }
 	state := evaluation{ctx: t.Context(), coreRequest: request, inputReader: reader, rootReader: reader, budget: &evaluationBudget{limits: DefaultLimits()}}
 	got, err := plan.evaluate(state)
 	want := parseTestValue(t, `{"binding":["bound"],"items":[{"item":["item"],"root":["root"]}],"types":{"binding":"null","item":["array"],"root":"object"},"walk":[{"children":[{"root":["root"]}],"root":["root"]}]}`)

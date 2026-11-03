@@ -60,7 +60,7 @@ func matchCacheDisposition(ctx context.Context, intent CacheIntent, effect compi
 	if effect.kind == "default" && !emptyCacheDefault(intent) {
 		return false, nil
 	}
-	read := func(pointer []string) (JSONOutput, error) { return readCoreCacheIntent(intent, pointer) }
+	read := func(pointer []string) (JSONOutput, error) { return readCoreCacheIntent(intent, pointer, nil) }
 	condition, err := effect.when.evaluate(evaluation{ctx: ctx, inputReader: read, rootReader: read, budget: budget})
 	if err != nil {
 		return false, err

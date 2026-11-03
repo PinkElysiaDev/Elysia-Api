@@ -58,7 +58,7 @@ func (plan *compiledOutputPlan) mergeUsage(state evaluation) (plannedOutput, err
 	if merged == nil {
 		return plannedOutput{}, nil
 	}
-	output, err := readCoreUsage(*merged, nil)
+	output, err := readCoreUsage(*merged, nil, nil)
 	if err != nil {
 		return plannedOutput{}, err
 	}

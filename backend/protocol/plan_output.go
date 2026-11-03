@@ -166,16 +166,20 @@ func (plan *compiledOutputPlan) evaluate(state evaluation) (Value, error) {
 	if err != nil {
 		return Value{}, err
 	}
-	return value.materialize(state.ctx)
+	return value.materializeWithin(state.ctx, state.cache)
 }
 
 func (value plannedOutput) materialize(ctx context.Context) (Value, error) {
+	return value.materializeWithin(ctx, nil)
+}
+
+func (value plannedOutput) materializeWithin(ctx context.Context, cache *semanticCache) (Value, error) {
 	if value.output.node == nil {
 		return value.output.value, nil
 	}
 	// Cancellation belongs to the same expression boundaries as the original
 	// evaluator. Final materialization must not change its error precedence.
-	return value.output.Encode(context.WithoutCancel(ctx))
+	return value.output.encodeWithin(context.WithoutCancel(ctx), cache)
 }
 
 func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, err error) {
@@ -368,7 +372,7 @@ func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, er
 		if logicalBytes > state.budget.limits.BufferBytes {
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
 		}
-		value = value.normalizeForContainer()
+		value = value.normalizeForContainer(state.cache)
 		if len(node.fields) != 0 {
 			encodedBytes++
 		}
@@ -393,7 +397,7 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
 		}
 		if !value.output.IsZero() {
-			encodedBytes += appendPlannedItem(node, value)
+			encodedBytes += appendPlannedItem(node, value, state.cache)
 		}
 	}
 	return plannedOutput{JSONOutput{node: node}, encodedBytes}, nil
@@ -469,11 +473,11 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 					return plannedOutput{}, err
 				}
 				for _, element := range values {
-					encodedBytes += appendPlannedItem(node, plannedOutput{JSONLeaf(element), element.Len()})
+					encodedBytes += appendPlannedItem(node, plannedOutput{JSONLeaf(element), element.Len()}, state.cache)
 				}
 			}
 		} else {
-			encodedBytes += appendPlannedItem(node, value)
+			encodedBytes += appendPlannedItem(node, value, state.cache)
 		}
 		logicalBytes += value.bytes + 1
 		if logicalBytes > state.budget.limits.BufferBytes {
@@ -486,16 +490,16 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 	return plannedOutput{JSONOutput{node: node}, encodedBytes}, nil
 }
 
-func (value plannedOutput) normalizeForContainer() plannedOutput {
+func (value plannedOutput) normalizeForContainer(cache *semanticCache) plannedOutput {
 	if value.output.node == nil {
-		value.output.value.raw = compactValueString(value.output.value.raw)
+		value.output.value = cache.normalize(value.output.value)
 		value.bytes = value.output.value.Len()
 	}
 	return value
 }
 
-func appendPlannedItem(node *jsonOutputNode, value plannedOutput) int {
-	value = value.normalizeForContainer()
+func appendPlannedItem(node *jsonOutputNode, value plannedOutput, cache *semanticCache) int {
+	value = value.normalizeForContainer(cache)
 	bytes := value.bytes
 	if len(node.items) != 0 {
 		bytes++

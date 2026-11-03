@@ -218,7 +218,7 @@ func (plan *compiledOutputPlan) readStreamIndexValues(state evaluation) (planned
 		if value.IsZero() {
 			continue
 		}
-		bytes += appendPlannedItem(node, plannedOutput{output: transaction.indexOutput(slot, key, value), bytes: value.Len()})
+		bytes += appendPlannedItem(node, plannedOutput{output: transaction.indexOutput(slot, key, value), bytes: value.Len()}, state.cache)
 		if bytes > state.budget.limits.BufferBytes {
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}

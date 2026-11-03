@@ -78,7 +78,7 @@ func (each *compiledControlEach) applyNodes(state evaluation, conversion *Compil
 		if each.selection == "tool_result" && node.Kind != ToolResultNode {
 			return nil
 		}
-		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) })
+		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer, nil) })
 		result, err := applyControlSteps(local, conversion, node, route, rule, sink, each.steps, owner)
 		hasChanges = hasChanges || result.hasChanges
 		return err

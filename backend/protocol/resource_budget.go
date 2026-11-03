@@ -245,9 +245,9 @@ func encodeSemanticWithin(value any, limits Limits) (Value, error) {
 	var output JSONOutput
 	switch request := value.(type) {
 	case *Request:
-		output, err = readCoreRequestOutput(request, nil)
+		output, err = readCoreRequestOutput(request, nil, nil)
 	case Request:
-		output, err = readCoreRequestOutput(&request, nil)
+		output, err = readCoreRequestOutput(&request, nil, nil)
 	default:
 		return EncodeValue(value)
 	}

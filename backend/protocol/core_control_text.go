@@ -48,7 +48,7 @@ func (plan *compiledContentLayout) mergeText(state evaluation, conversion *Compi
 
 func (plan *compiledContentLayout) textLocal(state evaluation, node *Node, path string, offset, length int) evaluation {
 	state.input, state.objectReader = Value{}, nil
-	state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) }
+	state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer, nil) }
 	if plan.pathSlot >= 0 {
 		state.bindings[plan.pathSlot] = JSONLeaf(StringValue(path))
 	}
@@ -119,7 +119,7 @@ func (plan *compiledContentLayout) mergeTextChildren(state evaluation, conversio
 			if program == nil {
 				return nil, false, streamIssue(UnsupportedCapability, metadata.Path, "text metadata has no declared aggregation")
 			}
-			local.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreResponseMetadata(metadata, pointer) }
+			local.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreResponseMetadata(metadata, pointer, nil) }
 			value, err := program.build(local)
 			if err != nil {
 				return nil, false, err

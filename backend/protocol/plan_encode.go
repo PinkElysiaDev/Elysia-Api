@@ -39,14 +39,18 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 	if err != nil {
 		return fail(err)
 	}
+	var cache *semanticCache
+	if size.maxRawBytes >= semanticCacheMinBytes {
+		cache = &semanticCache{limits: workLimits}
+	}
 	read := func(pointer []string) (JSONOutput, error) {
 		switch document := input.(type) {
 		case *Request:
-			return readCoreRequestOutput(document, pointer)
+			return readCoreRequestOutput(document, pointer, cache)
 		case *Response:
-			return readCoreResponseOutput(document, pointer)
+			return readCoreResponseOutput(document, pointer, cache)
 		case *Event:
-			return readCoreEventOutput(document, pointer)
+			return readCoreEventOutput(document, pointer, cache)
 		default:
 			return JSONOutput{}, fmt.Errorf("core input plan requires a request, response or event")
 		}
@@ -54,6 +58,7 @@ func preparePlannedCoreEncoding(ctx context.Context, compiled *Compiled, directi
 	reader := valueReader{minimumSharedBytes: minimumSharedValueBytes(size.maxRawBytes), canGrowThreshold: true}
 	state := evaluation{ctx: ctx, context: contextValue, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, inputReader: read, rootReader: read, valueReader: &reader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	state.coreRequest, _ = input.(*Request)
+	state.cache = cache
 	if compiled.packagePlan != nil {
 		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
 			return fail(err)
@@ -77,7 +82,7 @@ func encodePlannedCore(ctx context.Context, compiled *Compiled, direction Direct
 	if err := options.packageTransaction.resolveDispositions(); err != nil {
 		return fail(err)
 	}
-	output, err := planned.materialize(ctx)
+	output, err := planned.materializeWithin(ctx, state.cache)
 	if err != nil {
 		return fail(err)
 	}
@@ -127,7 +132,7 @@ func (compiled *Compiled) checkNativeEventEffects(ctx context.Context, direction
 	if err != nil {
 		return fail(err)
 	}
-	read := func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(&event, pointer) }
+	read := func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(&event, pointer, nil) }
 	state := evaluation{ctx: ctx, context: contextValue, inputReader: read, rootReader: read, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction,
 		budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	if err := compiled.checkPackageEffects(direction, state, inputLimits); err != nil {

@@ -31,7 +31,7 @@ func (each *compiledControlEach) applyTools(state evaluation, conversion *Compil
 			return hasChanges, err
 		}
 		tool := &request.Tools[index]
-		local := each.local(state, "/tools/"+strconv.Itoa(index), func(pointer []string) (JSONOutput, error) { return readCoreTool(*tool, pointer) })
+		local := each.local(state, "/tools/"+strconv.Itoa(index), func(pointer []string) (JSONOutput, error) { return readCoreTool(*tool, pointer, nil) })
 		result, err := applyControlSteps(local, conversion, tool, route, rule, sink, each.steps, owner)
 		if err != nil {
 			return hasChanges, err

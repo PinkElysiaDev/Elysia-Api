@@ -31,12 +31,12 @@ func (plan *compiledOutputPlan) buildRuns(state evaluation) (plannedOutput, erro
 		}
 		if run == nil || isMatch != previous {
 			run = &jsonOutputNode{}
-			bytes += appendPlannedItem(groups, plannedOutput{output: JSONOutput{node: run}, bytes: 2})
+			bytes += appendPlannedItem(groups, plannedOutput{output: JSONOutput{node: run}, bytes: 2}, state.cache)
 			previous = isMatch
 		}
 		// Groups own only the new array containers. Original members remain
 		// immutable views, so a large text or tool payload is not encoded here.
-		bytes += appendPlannedItem(run, plannedOutput{output: item, bytes: normalizedOutputBytes(item)})
+		bytes += appendPlannedItem(run, plannedOutput{output: item, bytes: normalizedOutputBytes(item)}, state.cache)
 		if bytes > state.budget.limits.BufferBytes {
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}

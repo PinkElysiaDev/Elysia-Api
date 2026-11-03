@@ -51,9 +51,9 @@ func readSemanticRangeEvent(event *Event, pointer []string) (JSONOutput, error) 
 	if len(pointer) != 0 {
 		if pointer[0] == "item" && len(pointer) == 1 && event.Item != nil {
 			item := Node{Kind: event.Item.Kind, Payload: event.Item.Payload, Metadata: event.Item.Metadata}
-			return readCoreNode(item, nil)
+			return readCoreNode(item, nil, nil)
 		}
-		return readCoreEventOutput(event, pointer)
+		return readCoreEventOutput(event, pointer, nil)
 	}
 	return readRangeObject([]string{"type", "responseId", "itemId", "parentId", "collection", "delta", "metadata", "item"}, func(path []string) (JSONOutput, error) {
 		return readSemanticRangeEvent(event, path)

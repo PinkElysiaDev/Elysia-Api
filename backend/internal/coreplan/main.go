@@ -62,10 +62,10 @@ func main() {
 	}{{"Request", reflect.TypeFor[p.Request]()}, {"Response", reflect.TypeFor[p.Response]()}, {"Event", reflect.TypeFor[p.Event]()}} {
 		g.line("func decodeCore%sOutput(output JSONOutput) (*%s,error) { return decodeCoreOutput(output, writeCore%s) }", entry.name, local(entry.typeOf), g.name(entry.typeOf))
 		g.line("func decodeCore%sOutputWithin(output JSONOutput,reader *valueReader) (*%s,error) { return decodeCoreOutputWithin(output, writeCore%s,reader) }", entry.name, local(entry.typeOf), g.name(entry.typeOf))
-		g.line("func readCore%sOutput(value *%s,pointer []string) (JSONOutput,error) {return readCore%s(value,pointer)}", entry.name, local(entry.typeOf), g.name(reflect.PointerTo(entry.typeOf)))
+		g.line("func readCore%sOutput(value *%s,pointer []string,cache *semanticCache) (JSONOutput,error) {return readCore%s(value,pointer,cache)}", entry.name, local(entry.typeOf), g.name(reflect.PointerTo(entry.typeOf)))
 	}
 	g.line("func decodeCoreEventsOutput(output JSONOutput) ([]Event,error) { value,err:=decodeCoreOutput(output,writeCore%s);if err!=nil{return nil,err};return *value,nil }", g.name(reflect.TypeFor[[]p.Event]()))
-	g.line("func readCoreEventsOutput(value []Event,pointer []string) (JSONOutput,error) {return readCore%s(value,pointer)}", g.name(reflect.TypeFor[[]p.Event]()))
+	g.line("func readCoreEventsOutput(value []Event,pointer []string,cache *semanticCache) (JSONOutput,error) {return readCore%s(value,pointer,cache)}", g.name(reflect.TypeFor[[]p.Event]()))
 	for index := 0; index < len(g.types); index++ {
 		g.emitWriter(g.name(g.types[index]), g.types[index])
 		g.emitReader(g.name(g.types[index]), g.types[index])
@@ -188,14 +188,14 @@ func (g *generator) emitWriter(name string, t reflect.Type) {
 }
 
 func (g *generator) emitReader(name string, t reflect.Type) {
-	g.line("func readCore%s(value %s,pointer []string)(JSONOutput,error){", name, local(t))
+	g.line("func readCore%s(value %s,pointer []string,cache *semanticCache)(JSONOutput,error){", name, local(t))
 	if t == reflect.TypeFor[p.Value]() {
-		g.line("return readCoreLeaf(value,pointer)\n}")
+		g.line("return readCoreLeaf(value,pointer,cache)\n}")
 		return
 	}
 	switch t.Kind() {
 	case reflect.Pointer:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};return readCore%s(*value,pointer)", g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};return readCore%s(*value,pointer,cache)", g.name(t.Elem()))
 	case reflect.String:
 		g.line("return readCoreScalar(StringValue(string(value)),pointer)")
 	case reflect.Bool:
@@ -203,16 +203,16 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 	case reflect.Int, reflect.Int64:
 		g.line("return readCoreScalar(coreInteger(int64(value)),pointer)")
 	case reflect.Slice:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return JSONOutput{},err};return readCore%s(value[index],pointer[1:])};items:=make([]JSONOutput,len(value));for index,child:=range value {output,err:=readCore%s(child,nil);if err!=nil{return JSONOutput{},err};items[index]=output};return JSONOutput{node:&jsonOutputNode{items:items}},nil", g.name(t.Elem()), g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return JSONOutput{},err};return readCore%s(value[index],pointer[1:],cache)};items:=make([]JSONOutput,len(value));for index,child:=range value {output,err:=readCore%s(child,nil,cache);if err!=nil{return JSONOutput{},err};items[index]=output};return JSONOutput{node:&jsonOutputNode{items:items}},nil", g.name(t.Elem()), g.name(t.Elem()))
 	case reflect.Map:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {key,ok:=coreMapKey(value,pointer[0]);if !ok{return JSONOutput{},nil};return readCore%s(value[key],pointer[1:])};fields:=make([]jsonOutputField,0,len(value));for _,key:=range sortedKeys(value) {output,err:=readCore%s(value[key],nil);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{key,output})};return JSONOutput{node:&jsonOutputNode{object:true,fields:fields}},nil", g.name(t.Elem()), g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {key,ok:=coreMapKey(value,pointer[0]);if !ok{return JSONOutput{},nil};return readCore%s(value[key],pointer[1:],cache)};fields:=make([]jsonOutputField,0,len(value));for _,key:=range sortedKeys(value) {output,err:=readCore%s(value[key],nil,cache);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{key,output})};return JSONOutput{node:&jsonOutputNode{object:true,fields:fields}},nil", g.name(t.Elem()), g.name(t.Elem()))
 	case reflect.Struct:
 		g.line("if len(pointer)!=0 {switch pointer[0] {")
 		for _, field := range fields(t) {
 			if field.condition == "" {
-				g.line("case %q:return readCore%s(value.%s,pointer[1:])", field.key, g.name(field.typeOf), field.name)
+				g.line("case %q:return readCore%s(value.%s,pointer[1:],cache)", field.key, g.name(field.typeOf), field.name)
 			} else {
-				g.line("case %q:if %s {return readCore%s(value.%s,pointer[1:])};return JSONOutput{},nil", field.key, field.condition, g.name(field.typeOf), field.name)
+				g.line("case %q:if %s {return readCore%s(value.%s,pointer[1:],cache)};return JSONOutput{},nil", field.key, field.condition, g.name(field.typeOf), field.name)
 			}
 		}
 		g.line("default:return JSONOutput{},nil\n}};fields:=make([]jsonOutputField,0,%d)", len(fields(t)))
@@ -223,7 +223,7 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 			if field.condition != "" {
 				g.line("if %s {", field.condition)
 			}
-			g.line("output,err=readCore%s(value.%s,nil);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{%q,output})", g.name(field.typeOf), field.name, field.key)
+			g.line("output,err=readCore%s(value.%s,nil,cache);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{%q,output})", g.name(field.typeOf), field.name, field.key)
 			if field.condition != "" {
 				g.line("}")
 			}

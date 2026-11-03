@@ -37,7 +37,7 @@ func (each *compiledControlEach) applyErrors(state evaluation, conversion *Compi
 		if err != nil {
 			return streamIssue(InvalidInput, path, "error controls require an object")
 		}
-		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreObject(fields, pointer) })
+		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreObject(fields, pointer, nil) })
 		result, err := applyControlSteps(local, conversion, &fields, route, rule, sink, each.steps, owner)
 		if err != nil || !result.hasChanges {
 			return err

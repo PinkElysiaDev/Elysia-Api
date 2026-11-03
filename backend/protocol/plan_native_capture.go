@@ -73,7 +73,7 @@ func (plan *compiledOutputPlan) captureNative(state evaluation) (plannedOutput, 
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	selected = selected.normalizeForContainer()
+	selected = selected.normalizeForContainer(state.cache)
 	output := JSONObject(map[string]JSONOutput{"source": source, "value": selected.output})
 	output.node.origin = capturedNativeOrigin
 	return plannedOutput{output: output, bytes: normalizedOutputBytes(output)}, nil
@@ -98,7 +98,7 @@ func (plan *compiledOutputPlan) captureWireValue(state evaluation) (plannedOutpu
 	}
 	origin := state.capture.source
 	origin.Path = location.path
-	source, err := readCoreProvenance(origin, nil)
+	source, err := readCoreProvenance(origin, nil, nil)
 	if err != nil {
 		return plannedOutput{}, JSONOutput{}, err
 	}

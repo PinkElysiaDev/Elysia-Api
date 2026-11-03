@@ -47,7 +47,7 @@ func (c *CompiledConversion) projectRequestIntents(ctx context.Context, request 
 }
 
 func requestFieldDispositionMatches(ctx context.Context, request *Request, effect compiledSemanticEffect, budget *evaluationBudget) (bool, error) {
-	output, err := readCoreRequest(*request, effect.corePointer)
+	output, err := readCoreRequest(*request, effect.corePointer, nil)
 	if err != nil {
 		return false, err
 	}
@@ -145,7 +145,7 @@ func (compiled *Compiled) checkRequestFieldDispositionMatches(ctx context.Contex
 func hasRequestFieldIntents(request *Request, effects []compiledSemanticEffect) bool {
 	for _, effect := range effects {
 		if effect.scope == requestFieldScope {
-			value, _ := readCoreRequest(*request, effect.corePointer)
+			value, _ := readCoreRequest(*request, effect.corePointer, nil)
 			if !value.IsZero() {
 				return true
 			}

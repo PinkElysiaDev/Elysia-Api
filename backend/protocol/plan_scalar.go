@@ -70,7 +70,7 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 			var value JSONOutput
 			var err error
 			if state.runtime.clientOutput != nil {
-				value, err = readCoreClientOutput(*state.runtime.clientOutput, expression.pointer[1:])
+				value, err = readCoreClientOutput(*state.runtime.clientOutput, expression.pointer[1:], state.cache)
 			}
 			if err == nil && expression.isRequired && value.IsZero() {
 				return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
@@ -106,7 +106,7 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 			var value JSONOutput
 			var err error
 			if state.runtime.frameUsage != nil {
-				value, err = readCoreUsage(*state.runtime.frameUsage, expression.pointer[2:])
+				value, err = readCoreUsage(*state.runtime.frameUsage, expression.pointer[2:], state.cache)
 			}
 			if err == nil && expression.isRequired && value.IsZero() {
 				return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
@@ -389,7 +389,7 @@ func (plan *compiledOutputPlan) buildKeyedArray(state evaluation) (plannedOutput
 		keys[index] = key
 	}
 	if plan.expression.op == "associate" {
-		return plan.associateItems(items, keys)
+		return plan.associateItems(items, keys, state.cache)
 	}
 	order := make([]int, len(items))
 	for index := range order {
@@ -407,7 +407,7 @@ func (plan *compiledOutputPlan) buildKeyedArray(state evaluation) (plannedOutput
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	bytes := 2
 	for _, index := range order {
-		bytes += appendPlannedItem(node, plannedOutput{items[index], normalizedOutputBytes(items[index])})
+		bytes += appendPlannedItem(node, plannedOutput{items[index], normalizedOutputBytes(items[index])}, state.cache)
 	}
 	return plannedOutput{JSONOutput{node: node}, bytes}, nil
 }
@@ -419,7 +419,7 @@ func comparePlannedKeys(left, right JSONOutput) (int, error) {
 	return compareValues(left.value, right.value)
 }
 
-func (plan *compiledOutputPlan) associateItems(items, keys []JSONOutput) (plannedOutput, error) {
+func (plan *compiledOutputPlan) associateItems(items, keys []JSONOutput, cache *semanticCache) (plannedOutput, error) {
 	fields := make(map[string]JSONOutput, len(items))
 	for index, item := range items {
 		key, err := readPlannedString(keys[index])
@@ -429,7 +429,7 @@ func (plan *compiledOutputPlan) associateItems(items, keys []JSONOutput) (planne
 		if _, exists := fields[key]; exists {
 			return plannedOutput{}, fmt.Errorf("%s: duplicate association key", plan.expression.path)
 		}
-		value := plannedOutput{item, normalizedOutputBytes(item)}.normalizeForContainer()
+		value := plannedOutput{item, normalizedOutputBytes(item)}.normalizeForContainer(cache)
 		fields[key] = value.output
 	}
 	output := JSONObject(fields)

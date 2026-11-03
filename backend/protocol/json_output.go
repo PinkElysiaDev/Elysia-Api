@@ -59,6 +59,10 @@ func (output JSONOutput) IsZero() bool { return output.node == nil && output.val
 // then writes one owned result. No payload-sized intermediate container strings
 // are built. Plans contain no public mutable nodes and cannot form cycles.
 func (output JSONOutput) Encode(ctx context.Context) (Value, error) {
+	return output.encodeWithin(ctx, nil)
+}
+
+func (output JSONOutput) encodeWithin(ctx context.Context, cache *semanticCache) (Value, error) {
 	if output.node == nil {
 		if err := ctx.Err(); err != nil {
 			return Value{}, err
@@ -69,7 +73,7 @@ func (output JSONOutput) Encode(ctx context.Context) (Value, error) {
 		return output.value, nil
 	}
 	var storage [64]string
-	parts := jsonOutputParts{parts: storage[:0]}
+	parts := jsonOutputParts{parts: storage[:0], cache: cache}
 	if err := parts.prepare(ctx, output); err != nil {
 		return Value{}, err
 	}
@@ -94,6 +98,7 @@ func equalJSONOutputBytes(ctx context.Context, left, right JSONOutput) (bool, er
 type jsonOutputParts struct {
 	parts []string
 	bytes int
+	cache *semanticCache
 }
 
 // prepare borrows exact root spelling; only leaves embedded in containers are
@@ -178,7 +183,7 @@ func (parts *jsonOutputParts) collect(ctx context.Context, output JSONOutput) er
 		if output.value.IsZero() {
 			return fmt.Errorf("absent JSON value requires omission")
 		}
-		return parts.add(compactValueString(output.value.raw))
+		return parts.add(parts.cache.normalize(output.value).raw)
 	}
 	node := output.node
 	open, close := "[", "]"

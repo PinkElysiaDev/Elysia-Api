@@ -42,17 +42,17 @@ func TestCoreOutputPublishedContracts(t *testing.T) {
 					switch sample.Direction {
 					case DecodeRequest:
 						request := assertCoreOutputParity(t, output, decodeCoreRequestOutput)
-						assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer) })
+						assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer, nil) })
 					case DecodeResponse:
 						response := assertCoreOutputParity(t, output, decodeCoreResponseOutput)
-						assertCoreReaderParity(t, response, func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(response, pointer) })
+						assertCoreReaderParity(t, response, func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(response, pointer, nil) })
 					case DecodeEvent:
 						if sample.Expected.IsArray() {
 							events := assertCoreOutputParity(t, output, decodeCoreEventSlice)
-							assertCoreReaderParity(t, events, func(pointer []string) (JSONOutput, error) { return readCoreEventsOutput(*events, pointer) })
+							assertCoreReaderParity(t, events, func(pointer []string) (JSONOutput, error) { return readCoreEventsOutput(*events, pointer, nil) })
 						} else {
 							event := assertCoreOutputParity(t, output, decodeCoreEventOutput)
-							assertCoreReaderParity(t, event, func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(event, pointer) })
+							assertCoreReaderParity(t, event, func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(event, pointer, nil) })
 						}
 					}
 				}
@@ -195,11 +195,11 @@ func TestCoreOutputRawSubtreeOwnership(t *testing.T) {
 
 func TestCoreReaderMapKeysAndPresence(t *testing.T) {
 	request := &Request{SchemaVersion: 1, Content: []Node{{Kind: ReasoningNode, ReasoningContent: []Node{}}}, Parameters: Object{"bad\xff": StringValue("invalid"), "bad�": StringValue("valid"), "null": Value{raw: "null"}}, ClientOutput: &ClientOutput{IncludeUsage: new(bool)}}
-	assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer) })
+	assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer, nil) })
 	for _, pointer := range [][]string{{"content", "00"}, {"content", "-1"}, {"schemaVersion", "child"}} {
 		encoded, _ := EncodeValue(request)
 		_, want := readValuePointer(encoded, pointer)
-		_, got := readCoreRequestOutput(request, pointer)
+		_, got := readCoreRequestOutput(request, pointer, nil)
 		if fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Fatal("pointer error changed", pointer, got, want)
 		}
@@ -218,7 +218,7 @@ func TestLargeCoreRequestEncodingParityAndOwnership(t *testing.T) {
 		Native:     &Native{Value: payload},
 	}
 	assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) {
-		return readCoreRequestOutput(request, pointer)
+		return readCoreRequestOutput(request, pointer, nil)
 	})
 	want, err := EncodeValue(request)
 	if err != nil {
@@ -323,4 +323,67 @@ func expandCoreOutput(t *testing.T, value Value) JSONOutput {
 		return JSONArray(output)
 	}
 	return JSONLeaf(value)
+}
+
+func TestCoreNormalizationPreservesWireAndOwnership(t *testing.T) {
+	raw, err := ParseValue([]byte(` {"text":"<&>\u2028\u2029", "n":9007199254740993,"n":1e100} `))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &Request{SchemaVersion: ProtocolCoreVersion, Model: StringValue("m"), Parameters: Object{"value": raw, "same": raw, "large": StringValue(strings.Repeat("x", 4096))}}
+	before := request.Clone()
+	for _, bounded := range []bool{false, true} {
+		limits := DefaultLimits()
+		if bounded {
+			limits.StateItems, limits.BufferBytes = 1, 1
+		}
+		cache := &semanticCache{limits: limits}
+		for _, changed := range []bool{false, true} {
+			if changed {
+				request.Parameters["value"] = StringValue("replacement<&>")
+			}
+			want, err := EncodeValue(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for range 3 {
+				output, err := readCoreRequestOutput(request, nil, cache)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := output.encodeWithin(t.Context(), cache)
+				if err != nil || got != want {
+					t.Fatalf("cached core encoding changed wire: %v", err)
+				}
+			}
+		}
+		request.Parameters["value"] = raw
+	}
+	if !reflect.DeepEqual(request, before) {
+		t.Fatal("reader modified its caller's core")
+	}
+}
+
+func BenchmarkCoreNormalization(b *testing.B) {
+	request := &Request{SchemaVersion: ProtocolCoreVersion, Model: StringValue("m"), Parameters: Object{"payload": StringValue(strings.Repeat("A", 2<<20))}}
+	for _, cached := range []bool{false, true} {
+		b.Run(fmt.Sprintf("cached=%t", cached), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				var cache *semanticCache
+				if cached {
+					cache = &semanticCache{limits: DefaultLimits()}
+				}
+				for range 4 {
+					output, err := readCoreRequestOutput(request, nil, cache)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if _, err = output.encodeWithin(b.Context(), cache); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+		})
+	}
 }

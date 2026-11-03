@@ -10,7 +10,7 @@ func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, 
 	if plan.expression.op == "merge" {
 		return plan.mergeObjects(operands)
 	}
-	return concatPlannedArrays(operands, state.budget.limits.Nodes)
+	return concatPlannedArrays(operands, state.budget.limits.Nodes, state.cache)
 }
 
 func (plan *compiledOutputPlan) buildOperandValues(state evaluation) (operands []plannedOutput, err error) {
@@ -111,7 +111,7 @@ func plannedArrayItems(output JSONOutput) ([]JSONOutput, error) {
 	return items, nil
 }
 
-func concatPlannedArrays(operands []plannedOutput, nodeLimit int) (plannedOutput, error) {
+func concatPlannedArrays(operands []plannedOutput, nodeLimit int, cache *semanticCache) (plannedOutput, error) {
 	node := &jsonOutputNode{items: []JSONOutput{}}
 	bytes := 2
 	for _, operand := range operands {
@@ -120,7 +120,7 @@ func concatPlannedArrays(operands []plannedOutput, nodeLimit int) (plannedOutput
 			return plannedOutput{}, err
 		}
 		for _, item := range items {
-			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)})
+			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)}, cache)
 		}
 		if len(node.items) > nodeLimit {
 			return plannedOutput{}, resourceFailure("evaluation", "nodes", nodeLimit, len(node.items))
@@ -183,7 +183,7 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 			return plannedOutput{}, err
 		}
 		if isMatch {
-			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)})
+			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)}, state.cache)
 		}
 	}
 	return plannedOutput{JSONOutput{node: node}, bytes}, nil

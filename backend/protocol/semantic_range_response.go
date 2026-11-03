@@ -77,7 +77,7 @@ func readSemanticRangeResponse(response *Response, pointer []string) (JSONOutput
 	case "content":
 		return readRangeNodes(response.Content, pointer[1:])
 	case "id", "metadata":
-		return readCoreResponseOutput(response, pointer)
+		return readCoreResponseOutput(response, pointer, nil)
 	default:
 		return JSONOutput{}, nil
 	}
@@ -114,7 +114,7 @@ func readRangeNode(node Node, pointer []string) (JSONOutput, error) {
 	case "reasoningContent":
 		return readRangeNodes(node.ReasoningContent, pointer[1:])
 	case "id", "kind", "payload", "metadata":
-		return readCoreNode(node, pointer)
+		return readCoreNode(node, pointer, nil)
 	default:
 		return JSONOutput{}, nil
 	}

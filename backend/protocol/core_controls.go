@@ -256,17 +256,17 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 		if current.SchemaVersion != options.CoreVersion {
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
-		read = func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(current, pointer) }
+		read = func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(current, pointer, nil) }
 	case *Response:
 		if current.SchemaVersion != options.CoreVersion {
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
-		read = func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(current, pointer) }
+		read = func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(current, pointer, nil) }
 	case *Event:
 		if current.SchemaVersion != options.CoreVersion {
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
-		read = func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(current, pointer) }
+		read = func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(current, pointer, nil) }
 	default:
 		return false, fmt.Errorf("core controls require their compiled core document")
 	}

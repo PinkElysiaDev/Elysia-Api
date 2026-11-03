@@ -235,7 +235,7 @@ func (plan *compiledContentLayout) apply(state evaluation, conversion *CompiledC
 
 func (plan *compiledContentLayout) local(state evaluation, node *Node, index int, isMoved bool) evaluation {
 	state.input, state.objectReader = Value{}, nil
-	state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) }
+	state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer, nil) }
 	if plan.pathSlot >= 0 {
 		state.bindings[plan.pathSlot] = JSONLeaf(StringValue("/content/" + strconv.Itoa(index)))
 	}

@@ -238,7 +238,7 @@ func coreArrayIndex(key string, length int) (int, error) {
 	return index, nil
 }
 
-func readCoreLeaf(value Value, pointer []string) (JSONOutput, error) {
+func readCoreLeaf(value Value, pointer []string, cache *semanticCache) (JSONOutput, error) {
 	if value.IsZero() {
 		return JSONOutput{}, fmt.Errorf("absent JSON value requires omission")
 	}
@@ -247,7 +247,7 @@ func readCoreLeaf(value Value, pointer []string) (JSONOutput, error) {
 	if err != nil || selected.IsZero() {
 		return JSONOutput{}, err
 	}
-	selected.raw = compactValueString(selected.raw)
+	selected = cache.normalize(selected)
 	return JSONLeaf(selected), nil
 }
 

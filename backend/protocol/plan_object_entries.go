@@ -24,7 +24,7 @@ func (plan *compiledOutputPlan) buildEntries(state evaluation) (plannedOutput, e
 		entry := JSONOutput{node: &jsonOutputNode{object: true, fields: []jsonOutputField{
 			{key: "key", value: JSONLeaf(StringValue(field.key))}, {key: "value", value: field.value},
 		}}}
-		bytes += appendPlannedItem(node, plannedOutput{output: entry, bytes: normalizedOutputBytes(entry)})
+		bytes += appendPlannedItem(node, plannedOutput{output: entry, bytes: normalizedOutputBytes(entry)}, state.cache)
 		if bytes > state.budget.limits.BufferBytes {
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}

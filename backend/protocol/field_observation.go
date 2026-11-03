@@ -166,7 +166,7 @@ func (route ConversionContext) attributeObservedFieldFailure(err error, response
 		if observation.source != route.Source || observation.target != route.Target {
 			continue
 		}
-		core, readErr := readCoreResponseOutput(response, observation.definition.core)
+		core, readErr := readCoreResponseOutput(response, observation.definition.core, nil)
 		if readErr != nil || core.node != nil || core.value != observation.Response.Value {
 			continue
 		}

@@ -415,13 +415,13 @@ func (m ConversionMatch) matchesSemantic(ctx ConversionContext, document any) bo
 	var err error
 	switch value := document.(type) {
 	case *Request:
-		selected, err = readCoreRequestOutput(value, pointer)
+		selected, err = readCoreRequestOutput(value, pointer, nil)
 	case *Response:
-		selected, err = readCoreResponseOutput(value, pointer)
+		selected, err = readCoreResponseOutput(value, pointer, nil)
 	case *Event:
-		selected, err = readCoreEventOutput(value, pointer)
+		selected, err = readCoreEventOutput(value, pointer, nil)
 	case *Node:
-		selected, err = readCoreNode(*value, pointer)
+		selected, err = readCoreNode(*value, pointer, nil)
 	default:
 		panic("presence requires a semantic document")
 	}

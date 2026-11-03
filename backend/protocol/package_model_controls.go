@@ -460,7 +460,7 @@ func (execution *modelControlExecution) validateFinalCore(request *Request) erro
 }
 
 func (execution *modelControlExecution) apply(ctx context.Context, conversion *CompiledConversion, request *Request, route ConversionContext, sink *DiagnosticSink, steps []compiledControlStep, isProjection bool) error {
-	read := func(pointer []string) (JSONOutput, error) { return readCoreRequest(*request, pointer) }
+	read := func(pointer []string) (JSONOutput, error) { return readCoreRequest(*request, pointer, nil) }
 	reader := &valueReader{}
 	state := evaluation{ctx: ctx, coreRequest: request, inputReader: read, rootReader: read, context: execution.context, valueReader: reader, objectReader: execution.contextReader, bindings: execution.bindings, budget: &evaluationBudget{limits: execution.limits, stepLimit: execution.limits.Nodes}}
 	result, err := applyControlSteps(state, conversion, request, route, execution.rule, sink, steps, nil)

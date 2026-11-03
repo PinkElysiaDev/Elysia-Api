@@ -220,7 +220,7 @@ func TestNativeReplayUsesMappingNormalization(t *testing.T) {
 		state := numericTestState(t, fixtureValue(t, native))
 		state.native = &nativeEvaluation{target: target, limits: DefaultLimits()}
 		if isTyped {
-			state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNative(native, pointer) }
+			state.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreNative(native, pointer, nil) }
 		}
 		got, err := plan.evaluate(state)
 		if err != nil || got != want || native.Value != original {

@@ -139,7 +139,7 @@ func (each *compiledControlEach) apply(state evaluation, conversion *CompiledCon
 			if err := validateCoreMetadataValue(owner.CoreVersion, *metadata); err != nil {
 				return err
 			}
-			local := each.local(state, path+"/"+strconv.Itoa(index), func(pointer []string) (JSONOutput, error) { return readCoreResponseMetadata(*metadata, pointer) })
+			local := each.local(state, path+"/"+strconv.Itoa(index), func(pointer []string) (JSONOutput, error) { return readCoreResponseMetadata(*metadata, pointer, nil) })
 			result, err := applyControlSteps(local, conversion, metadata, route, rule, sink, each.steps, owner)
 			if err != nil {
 				return err
@@ -180,7 +180,7 @@ func (each *compiledControlEach) applyUsage(state evaluation, conversion *Compil
 		if err := IssuesError(check.issues); err != nil {
 			return err
 		}
-		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreUsage(*usage, pointer) })
+		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreUsage(*usage, pointer, nil) })
 		result, err := applyControlSteps(local, conversion, usage, route, rule, sink, each.steps, owner)
 		changed = changed || result.hasChanges
 		return err

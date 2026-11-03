@@ -120,7 +120,7 @@ func (options continuationRecoveryOptions) preserves(ctx context.Context, node *
 	if err != nil {
 		return false, err
 	}
-	read := func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer) }
+	read := func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer, nil) }
 	state := evaluation{ctx: ctx, inputReader: read, rootReader: read, context: contextValue, valueReader: &valueReader{}, budget: &evaluationBudget{limits: limits, stepLimit: limits.Nodes}}
 	value, err := options.preserve.evaluate(state)
 	if err != nil {
