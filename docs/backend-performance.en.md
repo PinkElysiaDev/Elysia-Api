@@ -54,6 +54,7 @@ of latency and throughput differences to the gateway.
 - Client semantic validation runs after each request's latency timer but still affects closed-loop throughput; comparisons across versions must also fix the client validator before attributing throughput changes.
 - Cold requests are separate. Formal measurements do not force GC. Memory peaks are sampled every 20ms and can miss short spikes; cumulative allocation, HeapAlloc and RSS are different quantities.
 - Run matching ABBA comparisons serially on the same machine. Preserve regressions and conflicting results; do not generalize small changes or low-sample tail latency.
+- The comparator classifies effects when the 95% interval excludes no change. Five percent only sets `shouldInvestigate`; smaller stable regressions remain regressions.
 
 ## Evidence
 

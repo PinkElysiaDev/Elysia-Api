@@ -50,6 +50,7 @@ node scripts/benchmark-performance.mjs --execution=packages --expect-commit="$re
 - 客户端语义校验发生在每请求延迟计时之后，但仍影响闭环吞吐；跨版本吞吐比较还需固定客户端校验实现。
 - 冷请求单列，正式测量不强制 GC。峰值每 20ms 采样，可能漏掉短尖峰；HeapAlloc、累计分配和 RSS 不能互相替代。
 - 对照在同一机器、相同参数下串行 ABBA 执行，不并行压测或构建。保留相反结果，不把少量样本的尾延迟或微小波动当作普适收益。
+- 比较器按 95% 区间是否跨越无变化值判定回退或改善；5% 仅设置 `shouldInvestigate`，不会把较小但稳定的回退归为无结论。
 
 ## 证据
 

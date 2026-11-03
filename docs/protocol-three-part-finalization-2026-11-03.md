@@ -614,3 +614,11 @@ SHA256 名称，在测量启动前失败；修正后使用新目录，未覆盖�
 本批相关 Go 用例和五项 Node 自测通过，全仓 vet/staticcheck 无诊断；日志为
 .tmp-dev/fixed-provider-{selftest,vet,staticcheck}.log。已精读修改的父子进程启动、身份记录、
 测试覆盖层和 runner；此次没有新增生产逻辑，沿用上一批已通过的 Go 全量结果。
+
+## 验收脚本：区分稳定回退和排查优先级
+
+检查新样本的统计区间时发现，既有 compareSamples 只有整个 95% 区间超过 +5% 才标记
+regression，错误地把小于 5% 的稳定变化归为 inconclusive。现改为区间完全位于无变化值
+一侧即分类，5% 仅控制 shouldInvestigate；吞吐方向仍由已有负载比较器反转。没有更改旧报告，
+也没有用这个脚本的旧分类为当前样本放行。补充 ±3% 稳定效果和排查标记回归，相关五项 Node
+自测通过，记录在 .tmp-dev/performance-threshold-selftest.log。

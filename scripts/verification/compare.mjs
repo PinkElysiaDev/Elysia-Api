@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const median = values => { const sorted = [...values].sort((a,b) => a-b); const middle = Math.floor(sorted.length/2); return sorted.length%2 ? sorted[middle] : (sorted[middle-1]+sorted[middle])/2 }
+const investigationThreshold = 0.05
 
 /** Returns a seeded bootstrap interval for the ratio of independent medians. */
 export function compareSamples(before, after, seed = 20261003) {
@@ -12,8 +13,10 @@ export function compareSamples(before, after, seed = 20261003) {
   const sample = values => Array.from({ length: values.length }, () => values[Math.floor(random() * values.length)])
   const ratios = Array.from({ length: 10000 }, () => median(sample(after)) / median(sample(before))).sort((a, b) => a - b)
   const interval = [ratios[250], ratios[9749]]
-  return { beforeMedian: median(before), afterMedian: median(after), ratio: median(after) / median(before), interval95: interval, samples: [before.length, after.length], seed,
-    assessment: interval[0] > 1.05 ? 'regression' : interval[1] < 0.95 ? 'improvement' : 'inconclusive' }
+  const ratio = median(after) / median(before)
+  return { beforeMedian: median(before), afterMedian: median(after), ratio, interval95: interval, samples: [before.length, after.length], seed,
+    shouldInvestigate: Math.abs(ratio - 1) >= investigationThreshold,
+    assessment: interval[0] > 1 ? 'regression' : interval[1] < 1 ? 'improvement' : 'inconclusive' }
 }
 
 export async function comparePerformance(beforeDirectory, afterDirectory, output) {
