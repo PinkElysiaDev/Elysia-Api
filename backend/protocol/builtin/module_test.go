@@ -9,7 +9,7 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-func testValue(t *testing.T, text string) p.Value {
+func testValue(t testing.TB, text string) p.Value {
 	t.Helper()
 	value, err := p.ParseValue([]byte(text))
 	if err != nil {

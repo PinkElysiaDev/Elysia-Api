@@ -23,7 +23,7 @@ type packageMigrationGap struct {
 	isApprovedRepresentation bool
 }
 
-func compileBuiltinPackage(t *testing.T, name string) *p.Compiled {
+func compileBuiltinPackage(t testing.TB, name string) *p.Compiled {
 	t.Helper()
 	read := func(part string) []byte {
 		t.Helper()

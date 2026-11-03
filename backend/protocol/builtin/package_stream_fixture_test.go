@@ -6,7 +6,7 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-func decodePackageStream(t *testing.T, compiled *p.Compiled, raws []string, scope p.Scope) ([]*p.EventFrame, *p.Response) {
+func decodePackageStream(t testing.TB, compiled *p.Compiled, raws []string, scope p.Scope) ([]*p.EventFrame, *p.Response) {
 	t.Helper()
 	options := p.EvaluationContext{Scope: scope, State: p.NewEvaluationState()}
 	defer options.State.Release()
@@ -44,12 +44,12 @@ func decodePackageStream(t *testing.T, compiled *p.Compiled, raws []string, scop
 	return frames, response
 }
 
-func encodePackageStream(t *testing.T, compiled *p.Compiled, frames []*p.EventFrame, scope p.Scope, preserve bool) []string {
+func encodePackageStream(t testing.TB, compiled *p.Compiled, frames []*p.EventFrame, scope p.Scope, preserve bool) []string {
 	t.Helper()
 	return encodePackageStreamWithOptions(t, compiled, frames, p.EvaluationContext{Scope: scope}, preserve)
 }
 
-func encodePackageStreamWithOptions(t *testing.T, compiled *p.Compiled, frames []*p.EventFrame, options p.EvaluationContext, preserve bool) []string {
+func encodePackageStreamWithOptions(t testing.TB, compiled *p.Compiled, frames []*p.EventFrame, options p.EvaluationContext, preserve bool) []string {
 	t.Helper()
 	validation, err := compiled.NewWireStreamValidation(options.Scope)
 	if err != nil {
