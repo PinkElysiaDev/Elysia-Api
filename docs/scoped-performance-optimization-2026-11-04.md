@@ -104,3 +104,9 @@ requires a completed manifest and retains the normal minimum sample counts.
 Identity self-tests reject changes to each identity component and GC settings;
 the standalone and counter identities remain distinct. The resume mechanism only
 schedules existing measurements; it does not add gateway instrumentation.
+
+Offline flame rendering now uses four workers with independent pprof processes,
+ports and files. The parent publishes the manifest only after all workers finish.
+Two self-tests verify concurrent output isolation, deterministic manifest ordering
+and propagation of rendering failures. This parallelism runs after profiling,
+never alongside a timed or sampled gateway.

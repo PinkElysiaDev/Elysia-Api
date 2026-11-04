@@ -1,6 +1,7 @@
 """Normalize profile evidence, attribute disjoint allocation stacks, render flames."""
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import hashlib
 import html
@@ -122,7 +123,7 @@ def flame(command, destination):
             child.wait(timeout=5)
 
 
-def render_micro(output, manifest):
+def render_micro(output, jobs):
     source = BASE / 'micro/manifest.json'
     if not source.exists():
         return
@@ -132,13 +133,23 @@ def render_micro(output, manifest):
         for sample in ['cpu', 'alloc_space', 'alloc_objects', 'inuse_space']:
             profile = BASE / 'micro' / name / ('cpu.pprof' if sample == 'cpu' else 'memory.pprof')
             destination = output / f'micro-{name}-{sample}.html'
-            flame(['-sample_index=' + sample, binary, str(profile)], destination)
+            arguments = ['-sample_index=' + sample, binary, str(profile)]
             top = subprocess.check_output(['go', 'tool', 'pprof', '-top', '-nodecount=60', '-sample_index=' + sample,
                 binary, str(profile)], stderr=subprocess.STDOUT)
             destination.with_suffix('.top.txt').write_bytes(top)
-            manifest.append({'file': destination.name, 'kind': sample, 'scene': name, 'version': 'C-micro',
-                'unit': 'whole fixed-iteration batch including fixture construction; see micro/manifest.json',
-                'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
+            jobs.append((arguments, destination, {'file': destination.name, 'kind': sample, 'scene': name, 'version': 'C-micro',
+                'unit': 'whole fixed-iteration batch including fixture construction; see micro/manifest.json'}))
+
+
+def render_flames(jobs):
+    def render(job):
+        arguments, destination, record = job
+        flame(arguments, destination)
+        return record | {'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()}
+    # Each worker owns a separate pprof process, listener and output file. The
+    # calling thread alone publishes the index, after every worker has exited.
+    with ThreadPoolExecutor(max_workers=4) as workers:
+        return list(workers.map(render, jobs))
 
 
 def write_index(output, manifest):
@@ -156,7 +167,7 @@ def main(comparisons=None):
         comparisons = [('R-build', 'A'), ('A', 'C-default'), ('C-default', 'C-package'), ('R-release', 'C-package')]
     output = BASE / 'profiles'
     output.mkdir(exist_ok=True)
-    profiles, attribution, cpu_groups, manifest = {}, {}, {}, []
+    profiles, attribution, cpu_groups, jobs = {}, {}, {}, []
     for mode in ['cpu', 'memory']:
         for directory in sorted((BASE / ('standalone-' + mode)).iterdir()):
             run = read_json(directory / 'run.json')
@@ -202,10 +213,9 @@ def main(comparisons=None):
                 subprocess.run(command + ['-proto', '-sample_index=' + sample, '-output=' + str(normalized)] + normalize + base + [run['binary'], str(sampled)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 profiles[(scene, version, sample)] = normalized
                 destination = output / (prefix + '-' + sample + '.html')
-                flame(['-sample_index=' + sample, str(normalized)], destination)
-                manifest.append({'file': destination.name, 'kind': sample, 'scene': scene, 'version': version,
-                                 'unit': 'retained bytes' if sample == 'inuse_space' else 'per 1000 completed requests',
-                                 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
+                jobs.append((['-sample_index=' + sample, str(normalized)], destination,
+                             {'file': destination.name, 'kind': sample, 'scene': scene, 'version': version,
+                              'unit': 'retained bytes' if sample == 'inuse_space' else 'per 1000 completed requests'}))
                 top = subprocess.check_output(command + ['-top', '-nodecount=60', '-sample_index=' + sample, str(normalized)], stderr=subprocess.STDOUT)
                 destination.with_suffix('.top.txt').write_bytes(top)
             print('rendered', prefix, mode, flush=True)
@@ -213,10 +223,10 @@ def main(comparisons=None):
         for before, after in comparisons:
             for sample in ['cpu', 'alloc_space', 'alloc_objects', 'inuse_space']:
                 destination = output / f'{scene}-{before}-to-{after}-{sample}.html'
-                flame(['-sample_index=' + sample, '-diff_base', str(profiles[(scene, before, sample)]), str(profiles[(scene, after, sample)])], destination)
-                manifest.append({'file': destination.name, 'kind': 'difference-' + sample, 'scene': scene, 'before': before, 'after': after,
-                                 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()})
-    render_micro(output, manifest)
+                jobs.append((['-sample_index=' + sample, '-diff_base', str(profiles[(scene, before, sample)]), str(profiles[(scene, after, sample)])], destination,
+                             {'file': destination.name, 'kind': 'difference-' + sample, 'scene': scene, 'before': before, 'after': after}))
+    render_micro(output, jobs)
+    manifest = render_flames(jobs)
     (output / 'attribution.json').write_text(json.dumps(attribution, indent=2), encoding='utf-8')
     (output / 'cpu-groups.json').write_text(json.dumps(cpu_groups, indent=2), encoding='utf-8')
     write_index(output, manifest)
