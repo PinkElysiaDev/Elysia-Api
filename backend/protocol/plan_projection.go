@@ -28,7 +28,7 @@ func (expression *compiledExpression) projectObject(source JSONOutput) (plannedO
 	if isInclude {
 		capacity = min(capacity, len(expression.keys))
 	}
-	node := &jsonOutputNode{object: true, fields: make([]jsonOutputField, 0, capacity)}
+	node := &jsonOutputNode{object: true, hasCanonicalKeys: true, hasSortedFields: true, fields: make([]jsonOutputField, 0, capacity)}
 	for _, field := range fields {
 		_, isSelected := slices.BinarySearch(expression.keys, field.key)
 		if isSelected == isInclude {
@@ -36,7 +36,8 @@ func (expression *compiledExpression) projectObject(source JSONOutput) (plannedO
 		}
 	}
 	output := JSONOutput{node: node}
-	return plannedOutput{output, normalizedOutputBytes(output)}, nil
+	node.encodedBytes = normalizedOutputBytes(output)
+	return plannedOutput{output, node.encodedBytes}, nil
 }
 
 func (expression *compiledExpression) projectRawObject(source Value) (plannedOutput, error) {
@@ -51,7 +52,7 @@ func (expression *compiledExpression) projectRawObject(source Value) (plannedOut
 	if isInclude {
 		capacity = min(capacity, len(expression.keys))
 	}
-	node := &jsonOutputNode{object: true, fields: make([]jsonOutputField, 0, capacity)}
+	node := &jsonOutputNode{object: true, hasCanonicalKeys: true, hasSortedFields: true, fields: make([]jsonOutputField, 0, capacity)}
 	for _, key := range sortedKeys(fields) {
 		_, isSelected := slices.BinarySearch(expression.keys, key)
 		if isSelected != isInclude {
@@ -62,5 +63,6 @@ func (expression *compiledExpression) projectRawObject(source Value) (plannedOut
 		node.fields = append(node.fields, jsonOutputField{key, JSONLeaf(value)})
 	}
 	output := JSONOutput{node: node}
-	return plannedOutput{output, normalizedOutputBytes(output)}, nil
+	node.encodedBytes = normalizedOutputBytes(output)
+	return plannedOutput{output, node.encodedBytes}, nil
 }

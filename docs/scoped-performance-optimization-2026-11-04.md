@@ -128,3 +128,27 @@ qualification is introduced, and no new ownership metadata or broader compiler
 proof is smuggled into this candidate. A later statically qualified transport
 experiment is possible, but its scope and benefits remain unproven. This rejects
 the blanket switch, not every potential future transport optimization.
+
+## Canonical projection facts
+
+Projection already folds decoded duplicate keys and sorts fields. Its output now
+retains those facts and the logical encoded length; subsequent field consumers
+do not rebuild maps or sort again. No input/output, permissions or provenance
+check is removed. Protocol suite and relevant race pass.
+
+Ten alternating 30,000-iteration rounds (`scoped-projection-micro`) improve
+project/field time 17.18%, bytes 19.64%, objects 23.08%; project/merge shapes
+improve time 5.80–9.19%, bytes 6.43%, objects 13.64%. Control shapes have no
+stable regressions. Five HTTP pairs for short/tools/stream/cross-stream initially
+show a short-request p95 increase of 0.18%. The one allowed five-pair short
+confirmation is merged with the original data, making that difference
+inconclusive. No stable standalone regression remains; HTTP speed is not claimed.
+Both original and confirmed comparisons remain in `scoped-projection-http`.
+
+The separate five-round three-condition SSE counter batch
+(`scoped-stage-counters`) finds scope reuse unchanged within uncertainty, and
+projection allocation 15,222,112 → 15,171,416 B/request (ratio 0.99667,
+95% interval 0.99647–0.99720), objects 205,912.7 → 205,132.7 (ratio 0.99621,
+interval 0.99619–0.99624). These small whole-request gains are not presented as
+the larger isolated microbenchmark improvement. Counter-build timings are not
+substituted for standalone timing acceptance.
