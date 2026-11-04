@@ -27,3 +27,25 @@ test('reports preserve command failures, timeout and unexecuted environment sepa
   assert.equal(report.source.baseCommit, report.commit)
   for (const step of report.steps) assert.equal(step.source.baseCommit, report.commit)
 })
+
+test('parallel tasks respect slots, group exclusion, barriers and failed dependencies', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'elysia-verification-batch-'))
+  const run = await VerificationRun.create(root, directory, 'batch-test')
+  const task = (name, options = {}) => ({ name, command: process.execPath, args: ['-e', 'setTimeout(() => {}, 150)'], ...options })
+  const tasks = [task('left', { slots: 2, group: 'package' }), task('right', { slots: 2 }), task('same-package', { group: 'package' }),
+    task('measure', { exclusive: true }), task('after'), task('fail', { args: ['-e', 'process.exit(7)'] }), task('blocked', { after: ['fail'] })]
+  assert.equal(await run.executeTasks(tasks), false)
+  const records = await Promise.all(run.report.tasks.filter(task => task.report).map(async task => {
+    const report = JSON.parse(await readFile(task.report, 'utf8'))
+    return { ...task, step: report.steps[0] }
+  }))
+  const events = records.flatMap(record => [{ time: Date.parse(record.step.startedAt), slots: record.slots }, { time: Date.parse(record.step.finishedAt), slots: -record.slots }]).sort((a, b) => a.time - b.time || a.slots - b.slots)
+  let used = 0
+  for (const event of events) { used += event.slots; assert(used >= 0 && used <= 4) }
+  const byName = Object.fromEntries(records.map(record => [record.name, record.step]))
+  assert(Date.parse(byName['same-package'].startedAt) >= Date.parse(byName.left.finishedAt))
+  assert(Date.parse(byName.measure.startedAt) >= Date.parse(byName['same-package'].finishedAt))
+  assert(Date.parse(byName.after.startedAt) >= Date.parse(byName.measure.finishedAt))
+  assert.equal(run.report.tasks.at(-1).status, 'not_run')
+  assert.equal(new Set(records.map(record => record.report)).size, records.length)
+})

@@ -87,4 +87,68 @@ export class VerificationRun {
     await this.save()
     console.log(`Verification evidence: ${join(this.directory, 'report.json')}`)
   }
+
+  /** Runs isolated child reports with bounded slots; exclusive tasks form barriers. */
+  async executeTasks(tasks, slots = 4) {
+    const names = new Set()
+    for (const task of tasks) {
+      if (!/^[\w-]+$/.test(task.name) || names.has(task.name) || (task.after || []).some(name => !names.has(name))) throw new Error('Tasks require unique names and preceding dependencies')
+      task.slots = task.exclusive ? slots : task.slots || 1
+      if (!Number.isInteger(task.slots) || task.slots < 1 || task.slots > slots) throw new Error('Invalid task slot count')
+      names.add(task.name)
+    }
+    const queuedAt = performance.now()
+    const results = new Map()
+    const running = new Map()
+    let used = 0
+    let interrupted = false
+    const interrupt = () => { interrupted = true }
+    process.once('SIGINT', interrupt)
+    process.once('SIGTERM', interrupt)
+    const start = async task => {
+      const waitedMillis = Math.round(performance.now() - queuedAt)
+      const child = await VerificationRun.create(this.root, join(this.directory, task.name), task.name)
+      child.report.scheduling = { slots: task.slots, exclusive: !!task.exclusive, waitedMillis }
+      if (interrupted) {
+        await child.finish('not_run', 'Interrupted before process launch')
+        return { name: task.name, status: 'not_run', reason: 'interrupted' }
+      }
+      const passed = await child.execute(task.name, task.command, task.args || [], task.options)
+      await child.finish(passed ? 'passed' : 'failed', 'Isolated verification task')
+      return { name: task.name, status: child.report.status, report: join(child.directory, 'report.json'), ...child.report.scheduling }
+    }
+    try {
+      const pending = [...tasks]
+      while (pending.length || running.size) {
+        for (let index = 0; index < pending.length;) {
+          const task = pending[index]
+          const dependencies = task.after || []
+          if (interrupted || dependencies.some(name => results.has(name) && results.get(name).status !== 'passed')) {
+            results.set(task.name, { name: task.name, status: 'not_run', reason: interrupted ? 'interrupted' : 'dependency failed' })
+            pending.splice(index, 1)
+            continue
+          }
+          if (task.exclusive && running.size) break
+          const isBlocked = dependencies.some(name => !results.has(name)) || used + task.slots > slots || [...running.values()].some(entry => task.group && entry.task.group === task.group)
+          if (isBlocked) { if (task.exclusive) break; index++; continue }
+          pending.splice(index, 1)
+          used += task.slots
+          const promise = start(task).catch(error => ({ name: task.name, status: 'failed', reason: error.message })).then(result => {
+            results.set(task.name, result)
+            used -= task.slots
+            running.delete(task.name)
+          })
+          running.set(task.name, { task, promise })
+          if (task.exclusive) break
+        }
+        if (running.size) await Promise.race([...running.values()].map(entry => entry.promise))
+      }
+    } finally {
+      process.off('SIGINT', interrupt)
+      process.off('SIGTERM', interrupt)
+    }
+    this.report.tasks = tasks.map(task => results.get(task.name))
+    await this.save()
+    return this.report.tasks.every(task => task.status === 'passed')
+  }
 }
