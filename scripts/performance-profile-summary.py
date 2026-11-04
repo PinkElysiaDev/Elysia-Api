@@ -6,6 +6,7 @@ from datetime import datetime
 import hashlib
 import html
 import json
+import os
 from pathlib import Path
 import re
 import socket
@@ -119,8 +120,19 @@ def flame(command, destination):
                     time.sleep(.1)
             raise RuntimeError('pprof viewer did not start')
         finally:
-            child.terminate()
-            child.wait(timeout=5)
+            stop_viewer(child)
+
+
+def stop_viewer(child):
+    # On Windows go tool launches pprof as a child. Stop only this viewer's tree
+    # so rendering does not leave listeners and retained profiles behind.
+    if os.name == 'nt':
+        subprocess.run(['taskkill', '/PID', str(child.pid), '/T', '/F'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=subprocess.CREATE_NO_WINDOW, check=False)
+    else:
+        child.terminate()
+    child.wait(timeout=5)
 
 
 def render_micro(output, jobs):

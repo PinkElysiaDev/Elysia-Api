@@ -4,6 +4,8 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('resume', Path(__file__).with_name('allocation-resume.py'))
 resume = importlib.util.module_from_spec(spec)
@@ -11,6 +13,24 @@ spec.loader.exec_module(resume)
 
 
 class ResumeIdentityTest(unittest.TestCase):
+    def test_micro_uses_each_test_packages_working_directory(self):
+        allocation = resume.allocation
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            stage = base / 'candidate'
+            stage.mkdir()
+            build = dict(source=str(base / 'source'), protocol='protocol.exe',
+                         instrumented='server.exe', builtin='builtin.exe')
+            allocation.versions.save_json(stage / 'builds.json', {'versions': {'C': build}})
+            directories = []
+            def execute(command, cwd, log):
+                directories.append(cwd)
+                log.write_text('', encoding='utf-8')
+            with patch.object(allocation, 'BASE', base), patch.object(allocation.versions, 'execute', execute):
+                allocation.micro(['candidate'], 'measure', '^BenchmarkFixture$', 1, 1)
+            self.assertEqual(directories, [base / 'source/backend' / package for package in
+                                          ['protocol', 'server', 'protocol/builtin']])
+
     def test_identity_and_environment(self):
         build = {'C': {'sha256': 'binary', 'instrumentedSHA256': 'counter'}, 'driver': {'sha256': 'driver'}}
         record = dict(stage='candidate', scenario='short', phase='standalone', mode='measure', version='C-package',

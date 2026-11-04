@@ -193,7 +193,7 @@ func (reader *planObjectReader) probeRead(value Value) {
     (OUTPUT / 'overlay.json').write_text(json.dumps({'Replace': changes}, indent=2), encoding='utf-8')
     manifest = {name: {'overlay': target, 'sha256': hashlib.sha256(Path(target).read_bytes()).hexdigest()} for name, target in changes.items()}
     (OUTPUT / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
-    command = ['go', 'test', '-c', '-buildvcs=false', '-pgo=off', '-overlay=' + str(OUTPUT / 'overlay.json'),
+    command = ['go', 'test', '-c', '-p=2', '-buildvcs=false', '-pgo=off', '-overlay=' + str(OUTPUT / 'overlay.json'),
                '-ldflags=-X github.com/elysia-api/backend/server.AppVersion=1.7.0 -X github.com/elysia-api/backend/server.AppCommit=' + identity,
                '-o', str(OUTPUT / 'gateway.test.exe'), './server']
     with (OUTPUT / 'build.log').open('wb') as log:

@@ -75,7 +75,8 @@ def micro(stages, label, pattern, iterations, rounds):
                 binary = build[package]
                 log = output / f'{repeat+1:02}-{stage}-{package}.log'
                 command = [binary, '-test.run=^$', '-test.bench=' + pattern, '-test.benchtime=' + str(iterations) + 'x', '-test.count=1', '-test.timeout=8m']
-                versions.execute(command, Path(build['source']) / 'backend', log)
+                package_directory = {'protocol': 'protocol', 'instrumented': 'server', 'builtin': 'protocol/builtin'}[package]
+                versions.execute(command, Path(build['source']) / 'backend' / package_directory, log)
                 for line in log.read_text(encoding='utf-8').splitlines():
                     match = re.match(r'(Benchmark\S+)-\d+\s+(\d+)\s+([\d.]+) ns/op\s+(\d+) B/op\s+(\d+) allocs/op', line)
                     if match:

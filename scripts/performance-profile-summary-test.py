@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('summary', Path(__file__).with_name('performance-profile-summary.py'))
 summary = importlib.util.module_from_spec(spec)
@@ -13,6 +13,14 @@ spec.loader.exec_module(summary)
 
 
 class RenderTest(unittest.TestCase):
+    def test_windows_viewer_cleanup_includes_its_children(self):
+        child = Mock(pid=123)
+        with patch.object(summary.os, 'name', 'nt'), patch.object(summary.subprocess, 'run') as run:
+            summary.stop_viewer(child)
+        self.assertEqual(run.call_args.args[0], ['taskkill', '/PID', '123', '/T', '/F'])
+        child.terminate.assert_not_called()
+        child.wait.assert_called_once_with(timeout=5)
+
     def test_independent_outputs_and_stable_manifest_order(self):
         barrier = threading.Barrier(4, timeout=5)
         def render(arguments, destination):
