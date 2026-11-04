@@ -29,6 +29,34 @@ func TestInputViewReaderOwnership(t *testing.T) {
 	}
 }
 
+func TestScopedMemberSelectionOwnsSmallResults(t *testing.T) {
+	for _, raw := range []string{
+		`{"a":0,"\u0061":9007199254740993,"child":{"text":"<&>😀"}}`,
+		"{\"bad\xff\":0,\"bad�\":1,\"child\":{\"text\":\"last\"}}",
+		`{"a":1e100,"child":{"text":"small"},"large":"` + strings.Repeat("x", 128<<10) + `"}`,
+	} {
+		input := parseTestValue(t, raw)
+		objects := newPlanObjectReader(input, objectReuseReads)
+		reader := requestValueReader(input)
+		for range 2 {
+			for _, pointer := range [][]string{{"a"}, {"bad�"}, {"child", "text"}, {"missing"}} {
+				want, wantErr := readValuePointer(input, pointer)
+				got, err := readValuePointerWithObjectReader(input, pointer, reader, objects)
+				if got != want || fmt.Sprint(err) != fmt.Sprint(wantErr) {
+					t.Fatal("scoped selection changed", pointer, err, wantErr)
+				}
+				if !got.IsZero() && sharesValueStorage(input, got) {
+					t.Fatal("small result retained its large input")
+				}
+			}
+		}
+		objects.releaseItem(nil)
+		if !reflect.DeepEqual(*objects, planObjectReader{}) {
+			t.Fatal("scope retained input after release")
+		}
+	}
+}
+
 func TestInputViewValidationReceipts(t *testing.T) {
 	limits := DefaultLimits()
 	contract, err := compileWireContractSpec(WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}}, "/spec/document", limits)

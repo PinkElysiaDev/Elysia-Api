@@ -42,3 +42,26 @@ build, never retains original text, and resets with the owning reader. These
 counts describe live-scope storage, not content equivalence or cache permission.
 The Q0 overlay builds successfully. Diagnostic instrumentation is absent from
 all standalone and exact-counter acceptance binaries.
+
+## Rejected: explicit field borrowing
+
+The proposed duplicate-copy explanation is disproved. `&valueReader{}` already
+borrows every fragment because its sharing threshold is zero. Setting
+`isBorrowed: true` changes no ownership or allocation behavior. Ten alternating
+20,000-iteration rounds (`scoped-fields-micro`) show identical bytes/objects on
+all field/read shapes and no definite field-read timing gain. Three unrelated
+scalar shapes show timing regressions (4.4–7.1%); no benefit warrants further
+HTTP measurement. The production change is removed, not relabelled as a win.
+The independent small-result ownership regression remains.
+
+Protocol/builtin suites and targeted protocol race pass. The first parallel
+batch failed because a test still called the renamed private method; the fixed
+batch passes, and both batches remain archived. The builtin result is reused
+because its production source was unchanged by that test-only correction.
+
+Q0 diagnostic SSE counts are 58,630 scoped reads, 52,904 repeated storage reads,
+34,933 root hits and 17,971 child hits per request. Existing caching therefore
+already serves those repeats; table construction counts are not all redundancy.
+Merge runs 795 times/request (1,592 total operands); field consumers observe
+783 fold, 1,318 raw, 1,071 ready and 2 sort cases. These are call counts, not
+allocation bytes. Raw diagnostics are in `scoped-q0-attribution`.
