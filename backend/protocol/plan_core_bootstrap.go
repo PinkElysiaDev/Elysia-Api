@@ -4,7 +4,8 @@ package protocol
 
 import "reflect"
 
-func cloneCoreSemantic(any) reflect.Value { panic("coreplan generation") }
+func cloneCoreSemantic(any) reflect.Value                 { panic("coreplan generation") }
+func normalizeCoreSemantic(reflect.Value, *semanticCache) { panic("coreplan generation") }
 
 // Generation excludes stale direct field references before importing the model.
 // These entrypoints are never executed by the generator or a production build.

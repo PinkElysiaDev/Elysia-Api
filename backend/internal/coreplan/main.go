@@ -79,6 +79,7 @@ func main() {
 	}
 	g.writeSource("plan_core_generated.go")
 	g.emitSemanticClones()
+	g.emitSemanticNormalizers()
 }
 
 func (g *generator) writeSource(path string) {

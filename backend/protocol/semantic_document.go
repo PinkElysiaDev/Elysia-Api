@@ -20,55 +20,9 @@ func normalizeMappingSemantic[T any](input T, limits Limits) T {
 	return owned.Interface().(T)
 }
 
-// normalizeDocument reproduces the intervening JSON encode/decode boundary
-// without copying unchanged payloads. The caller owns all mutable containers.
-func (cache *semanticCache) normalizeDocument(value reflect.Value, plan *typedPlan) {
-	if plan.isJSON {
-		original := value.Interface().(Value)
-		if !original.IsZero() {
-			value.Set(reflect.ValueOf(cache.normalize(original)))
-		}
-		return
-	}
-	switch plan.kind {
-	case reflect.Pointer:
-		if !value.IsNil() {
-			cache.normalizeDocument(value.Elem(), plan.element)
-		}
-	case reflect.Struct:
-		for _, field := range plan.fields {
-			child := value.Field(field.index)
-			if field.omitEmpty && isEmptyJSONField(child) || field.omitZero && child.IsZero() {
-				child.SetZero()
-				continue
-			}
-			cache.normalizeDocument(child, field.plan)
-		}
-	case reflect.Slice:
-		for index := range value.Len() {
-			cache.normalizeDocument(value.Index(index), plan.element)
-		}
-	case reflect.Map:
-		normalizeSemanticMapKeys(value)
-		if object, ok := value.Interface().(Object); ok {
-			cache.normalizeObject(object)
-			return
-		}
-		iter := value.MapRange()
-		for iter.Next() {
-			child := reflect.New(value.Type().Elem()).Elem()
-			child.Set(iter.Value())
-			cache.normalizeDocument(child, plan.element)
-			value.SetMapIndex(iter.Key(), child)
-		}
-	case reflect.String:
-		if !utf8.ValidString(value.String()) {
-			raw, _ := sonic.ConfigStd.Marshal(value.String())
-			var normalized string
-			_ = sonic.ConfigStd.Unmarshal(raw, &normalized)
-			value.SetString(normalized)
-		}
-	}
+// normalizeDocument preserves the semantic JSON boundary on owned containers.
+func (cache *semanticCache) normalizeDocument(value reflect.Value, _ *typedPlan) {
+	normalizeCoreSemantic(value, cache)
 }
 
 func (cache *semanticCache) normalizeObject(object Object) {
@@ -82,32 +36,39 @@ func (cache *semanticCache) normalizeObject(object Object) {
 	}
 }
 
-func normalizeSemanticMapKeys(value reflect.Value) {
+func normalizeSemanticString(value string) string {
+	if utf8.ValidString(value) {
+		return value
+	}
+	raw, _ := sonic.ConfigStd.Marshal(value)
+	var normalized string
+	_ = sonic.ConfigStd.Unmarshal(raw, &normalized)
+	return normalized
+}
+
+// Preserve the encoder's sorted-key collision order when invalid UTF-8 keys
+// normalize to the same decoded spelling. Values keep their existing ownership.
+func normalizeSemanticKeys[M ~map[string]V, V any](value M) M {
 	hasInvalidKey := false
-	iter := value.MapRange()
-	for iter.Next() {
-		if !utf8.ValidString(iter.Key().String()) {
+	for key := range value {
+		if !utf8.ValidString(key) {
 			hasInvalidKey = true
 			break
 		}
 	}
 	if !hasInvalidKey {
-		return
+		return value
 	}
-	keys := make([]string, 0, value.Len())
-	iter = value.MapRange()
-	for iter.Next() {
-		keys = append(keys, iter.Key().String())
+	keys := make([]string, 0, len(value))
+	for key := range value {
+		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	normalized := reflect.MakeMapWithSize(value.Type(), value.Len())
+	normalized := make(M, len(value))
 	for _, key := range keys {
-		wire, _ := sonic.ConfigStd.Marshal(key)
-		var name string
-		_ = sonic.ConfigStd.Unmarshal(wire, &name)
-		normalized.SetMapIndex(reflect.ValueOf(name), value.MapIndex(reflect.ValueOf(key)))
+		normalized[normalizeSemanticString(key)] = value[key]
 	}
-	value.Set(normalized)
+	return normalized
 }
 
 // cloneSemantic owns mutable Core containers while sharing immutable Values.

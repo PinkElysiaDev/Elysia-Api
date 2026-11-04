@@ -261,5 +261,37 @@ in these batches. Heap and goroutine profiles are archived under
 retention diagnostic, not the standalone release startup used for formal HTTP
 timings. Forced GC results are never mixed into throughput or allocation rates.
 
-Remaining candidates and final acceptance are still in progress. These results
+### Generated semantic normalization
+
+Frozen `normalize` (`620879c5-source-6bc731d23cf5`) is compared with the
+unchanged cloning implementation using `clone-normalize-fixture`. Typed
+normalizers share the existing Value cache and Unicode rules. Invalid map keys
+retain the original sorted collision order; nil, empty and omitted containers
+remain distinct. Cloning and normalization are separate traversals. The original
+reflection normalizer is retained only as a test oracle.
+
+All four ten-round batches pass without stable regression. `normalize-micro`
+(10000 iterations) reduces the 128-node copy/normalize boundary from 59415 to
+40311.5 ns/op, 90752 to 84560 B/op and 647 to 260 objects/op. Unchanged cloning
+controls remain inconclusive. `normalize-formats` (100000) improves ASCII,
+Unicode, escaped and invalid-UTF-8 time by 36.80%, 36.69%, 21.83% and 33.01%,
+respectively, with lower allocation. The 2 MiB `normalize-media` batch (1000)
+has inconclusive timing, 1072 to 1024 B/op and eight to five objects/op.
+`normalize-event` (100000) changes 438.8 to 232.35 ns/op, 592 to 528 B/op and
+six to two objects/op.
+
+Six scenarios have five standalone pairs (`normalize-http`). History initially
+shows a peak-working-set regression, so exactly one five-pair history confirmation
+is added (`normalize-confirm`). All ten history pairs remain in
+`confirmed-comparison.json`: peak RSS median ratio 1.02738, CI [0.93781,
+1.05384], inconclusive. No metric retains a stable regression in the combined
+report. Several throughput gains are approximately 1–2%; micro gains are not
+substituted for HTTP timings. Exact allocation and profile follow-ups are pending.
+
+Protocol/builtin suites pass (2.112 / 19.990 s), covering populated and empty
+roots against the old implementation, key collisions, absent Values and private
+host fields. Frozen targeted protocol race passes (12.106 s). Held/cancelled
+retention results above use this same frozen candidate.
+
+Final acceptance and evidence collection are still in progress. These results
 do not establish production-switch acceptance.
