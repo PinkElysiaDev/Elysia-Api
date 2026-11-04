@@ -110,3 +110,21 @@ ports and files. The parent publishes the manifest only after all workers finish
 Two self-tests verify concurrent output isolation, deterministic manifest ordering
 and propagation of rendering failures. This parallelism runs after profiling,
 never alongside a timed or sampled gateway.
+
+## Transport ownership counterexample
+
+The unconditional Value/string transport switch is rejected before performance
+measurement. A compiled package with a valid emit effect can select
+`/parameters/container/wire`: its ~256 KiB outgoing JSON shares storage with a
+~768 KiB parameter. `EncodeRequestValue` and the immutable Value contract permit
+this large view. Holding a strings.Reader until upload completes would retain
+~512 KiB of unrelated input that the existing `Value.Bytes()` copy detaches.
+`TestEncodedRequestValueMayShareLargeParameterStorage` reproduces this through
+the public package encode boundary and verifies byte-copy independence.
+
+The generic gateway and counting entrypoints cannot infer standalone backing
+storage from Value alone. No unused transport API is added, no provider-specific
+qualification is introduced, and no new ownership metadata or broader compiler
+proof is smuggled into this candidate. A later statically qualified transport
+experiment is possible, but its scope and benefits remain unproven. This rejects
+the blanket switch, not every potential future transport optimization.
