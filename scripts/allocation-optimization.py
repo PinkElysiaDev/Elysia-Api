@@ -100,7 +100,7 @@ def http(stages, label, scenes, rounds, phase, mode, chain):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['freeze', 'micro', 'http'])
+    parser.add_argument('action', choices=['freeze', 'micro', 'http', 'render'])
     parser.add_argument('--stages', required=True)
     parser.add_argument('--label')
     parser.add_argument('--pattern', default='^Benchmark(Continuation|SemanticOwnership|Allocation|NativeThinkingContinuation|ReferenceLayoutRewrite)')
@@ -117,6 +117,12 @@ def main():
     if args.action == 'freeze':
         for stage in stages:
             freeze(stage)
+    elif args.action == 'render':
+        renderer_spec = importlib.util.spec_from_file_location('profile_summary', ROOT / 'scripts/performance-profile-summary.py')
+        renderer = importlib.util.module_from_spec(renderer_spec)
+        renderer_spec.loader.exec_module(renderer)
+        renderer.BASE = BASE / args.label
+        renderer.main(list(zip(stages, stages[1:])))
     elif args.action == 'micro':
         micro(stages, args.label, args.pattern, args.iterations, args.rounds or 10)
     else:

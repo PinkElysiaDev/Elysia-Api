@@ -55,12 +55,12 @@ func TestContinuationRecoveryEligibility(t *testing.T) {
 			}
 			if !test.want {
 				// No store is available: an unnecessary persistent lookup would fail.
-				if err := (&Server{}).restoreGatewayContinuation(t.Context(), g, continuationHistoryFixture(64), nil); err != nil {
+				if err := (&Server{}).restoreGatewayContinuation(t.Context(), g, continuationHistoryFixture(64), nil, nil); err != nil {
 					t.Fatal(err)
 				}
 			}
 			if test.hasCarrier {
-				if err := (&Server{}).restoreGatewayContinuation(t.Context(), g, continuationHistoryFixture(8), tokens); err == nil {
+				if err := (&Server{}).restoreGatewayContinuation(t.Context(), g, continuationHistoryFixture(8), tokens, nil); err == nil {
 					t.Fatal("invalid carrier bypassed authentication")
 				}
 			}
@@ -105,7 +105,7 @@ func BenchmarkContinuationRecovery(b *testing.B) {
 				for b.Loop() {
 					request := original.Clone()
 					g.restored = map[string]bool{}
-					if err := server.restoreGatewayContinuation(b.Context(), g, request, tokens); err != nil {
+					if err := server.restoreGatewayContinuation(b.Context(), g, request, tokens, nil); err != nil {
 						b.Fatal(err)
 					}
 				}

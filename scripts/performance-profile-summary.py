@@ -143,7 +143,9 @@ def write_index(output, manifest):
         '</ul>', encoding='utf-8')
 
 
-def main():
+def main(comparisons=None):
+    if comparisons is None:
+        comparisons = [('R-build', 'A'), ('A', 'C-default'), ('C-default', 'C-package'), ('R-release', 'C-package')]
     output = BASE / 'profiles'
     output.mkdir(exist_ok=True)
     profiles, attribution, cpu_groups, manifest = {}, {}, {}, []
@@ -153,7 +155,7 @@ def main():
             if run['status'] != 'passed':
                 raise ValueError('incomplete profile: ' + str(directory))
             row, = read_json(directory / 'measurements.json')
-            version, scene = run['version'], run['scenario']
+            version, scene = run.get('stage', run['version']), run['scenario']
             prefix = f'{scene}-{version}'
             profile = directory / ('cpu.pprof' if mode == 'cpu' else 'alloc-after.pprof')
             base_args = [] if mode == 'cpu' else ['-base', str(directory / 'alloc-before.pprof')]
@@ -200,7 +202,7 @@ def main():
                 destination.with_suffix('.top.txt').write_bytes(top)
             print('rendered', prefix, mode, flush=True)
     for scene in sorted({key[0] for key in profiles}):
-        for before, after in [('R-build', 'A'), ('A', 'C-default'), ('C-default', 'C-package'), ('R-release', 'C-package')]:
+        for before, after in comparisons:
             for sample in ['cpu', 'alloc_space', 'alloc_objects', 'inuse_space']:
                 destination = output / f'{scene}-{before}-to-{after}-{sample}.html'
                 flame(['-sample_index=' + sample, '-diff_base', str(profiles[(scene, before, sample)]), str(profiles[(scene, after, sample)])], destination)

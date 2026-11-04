@@ -104,6 +104,7 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 	}
 	var issues []protocol.ConversionIssue
 	var eligible []gatewayCandidate
+	var history *continuationHistory
 	for _, candidate := range plan.candidates {
 		if plan.operation.Transport == protocol.WebSocket {
 			if err := protocol.CheckSessionCompatibility(plan.operation, candidate.operation); err != nil {
@@ -132,8 +133,11 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		restored := request
 		if candidate.continuation.needsRecovery(plan.carriers) {
 			restored = request.Clone()
+			if history == nil {
+				history = &continuationHistory{}
+			}
 		}
-		if err = s.restoreGatewayContinuation(ctx, candidate.continuation, restored, plan.carriers); err != nil {
+		if err = s.restoreGatewayContinuation(ctx, candidate.continuation, restored, plan.carriers, history); err != nil {
 			return nil, err
 		}
 		candidate.prepared, err = candidate.conversion.Request(ctx, restored, candidate.conversionContext(ingress, false), sink)

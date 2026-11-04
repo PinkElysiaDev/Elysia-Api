@@ -85,7 +85,9 @@ func (g *gatewayContinuation) prepareParent(nodes []protocol.Node) {
 	if g.isPackage && !g.conversion.HasContinuationRecovery(g.phase, g.route) {
 		return
 	}
-	g.parent = g.historyDigest(nodes)
+	if g.parent == "" {
+		g.parent = g.historyDigest(nodes)
+	}
 }
 
 func (g *gatewayContinuation) warning(reason string) error {
@@ -130,7 +132,7 @@ func (g *gatewayContinuation) historyDigest(nodes []protocol.Node) string {
 	return g.codec.Digest(strings.Join(parts, "\n"))
 }
 
-func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayContinuation, request *protocol.Request, tokens []string) error {
+func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayContinuation, request *protocol.Request, tokens []string, history *continuationHistory) error {
 	if g == nil {
 		return nil
 	}
@@ -164,8 +166,15 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 		}
 		records = append(records, r)
 	}
-	var visit func([]protocol.Node, string, *int) error
-	visit = func(nodes []protocol.Node, parent string, ordinal *int) error {
+	if history == nil {
+		history = &continuationHistory{}
+	}
+	if err := history.prepare(ctx, request.Content); err != nil {
+		return err
+	}
+	parents := history.parents(g.codec)
+	var visit func([]protocol.Node, []continuationHistoryNode, string, *int) error
+	visit = func(nodes []protocol.Node, history []continuationHistoryNode, parent string, ordinal *int) error {
 		for i := range nodes {
 			n := &nodes[i]
 			if n.Kind == protocol.MessageNode {
@@ -174,14 +183,14 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 				if role != "assistant" {
 					continue
 				}
-				if err := visit(n.Children, parent, ordinal); err != nil {
+				if err := visit(n.Children, history[i].children, parent, ordinal); err != nil {
 					return err
 				}
 				continue
 			}
 			position := *ordinal
 			*ordinal++
-			digest := protocol.ContinuationNodeDigest(*n)
+			digest := history[i].digest
 			// Tool identity and arguments are in the authenticated digest. Clients
 			// may insert a null/empty text block before a tool; that changes only its
 			// display position. Text and media still require the exact ordinal.
@@ -247,11 +256,11 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 			continue
 		}
 		if !inAssistant {
-			parent = g.historyDigest(request.Content[:i])
+			parent = parents[i]
 			ordinal = 0
 			inAssistant = true
 		}
-		if err := visit(request.Content[i:i+1], parent, &ordinal); err != nil {
+		if err := visit(request.Content[i:i+1], history.nodes[i:i+1], parent, &ordinal); err != nil {
 			return err
 		}
 	}
@@ -260,6 +269,7 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 			return g.recoveryFailure("authenticated continuation no longer matches an unchanged history node, position and parent")
 		}
 	}
+	g.parent = parents[len(request.Content)]
 	if g.isPackage {
 		return request.AcceptContinuations(tokens)
 	}
