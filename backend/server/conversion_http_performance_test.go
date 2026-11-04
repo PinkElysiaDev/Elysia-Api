@@ -322,6 +322,12 @@ func TestConversionHTTPProcess(t *testing.T) {
 			group.Models = append(group.Models, model)
 		}
 		server := newTestServerWithStore(t, []config.ModelGroupConfig{group})
+		if os.Getenv("ELYSIA_FLAME_MASTER_KEY") == "1" {
+			server.config.SecretKeyPath = filepath.Join(t.TempDir(), ".master-key")
+			if len(server.config.GetDBEncryptionKey()) == 0 {
+				t.Fatal("isolated continuation master key was not created")
+			}
+		}
 		configureConversionExecution(t, server, []config.ModelGroupConfig{group})
 		// Include production request ownership and logging, not only the router.
 		server.engine.Use(server.requestLifecycle(), server.requestLogging())

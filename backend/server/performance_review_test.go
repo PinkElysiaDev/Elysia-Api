@@ -344,8 +344,8 @@ func TestReviewHeldProfiles(t *testing.T) {
 			}
 		}
 		held := reviewMetrics(t, gateway.Metrics, "reset")
-		if held.ActiveRequests != 4 {
-			t.Fatal("not four held streams", held.ActiveRequests)
+		if held.ActiveRequests != 4 || held.Preparation.Active != 0 || held.Preparation.ReservedBodyBytes != 0 {
+			t.Fatal("held streams retained preparation", held)
 		}
 		if batch == 0 {
 			reviewProfile(t, gateway, "heap-held.pprof", "heap")

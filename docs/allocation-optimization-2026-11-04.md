@@ -243,5 +243,23 @@ protocol race passed (4.110 s). Native profile browser smoke passes eight
 representative kinds, including differences, hover details and interactive
 pivoting; all twelve figure files are present.
 
+### Held stream and cancellation diagnosis
+
+`allocation-held.py` overlays only the existing test harness on frozen `p0`
+and `normalize` production. Each runs five batches of four simultaneous 2 MiB
+media streams. An opt-in test setting creates an isolated master-key file, so
+continuation preparation is enabled. The fixed provider holds the stream until
+cancellation. Admission and reserved request-body bytes must already be zero
+while four streams remain active; after cancellation, active requests and
+queued/retained log payloads must be zero. Both candidates pass all batches.
+
+GC-observed held heaps (MiB) are P0 56.828/56.853/56.854/56.855/56.857 and
+candidate 56.831/56.856/56.856/56.855/56.857. Cancelled heaps settle near 48.58
+MiB in both. No additional body lifetime or accumulating retention is observed
+in these batches. Heap and goroutine profiles are archived under
+`held-retention/{p0,normalize}`. This existing isolated test gateway is a
+retention diagnostic, not the standalone release startup used for formal HTTP
+timings. Forced GC results are never mixed into throughput or allocation rates.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.

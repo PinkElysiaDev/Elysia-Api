@@ -137,7 +137,7 @@ def render_micro(output, manifest):
 
 def write_index(output, manifest):
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
-    (output / 'index.html').write_text('<!doctype html><meta charset="utf-8"><h1>Three-version profiles</h1>'
+    (output / 'index.html').write_text('<!doctype html><meta charset="utf-8"><h1>Protocol performance profiles</h1>'
         '<p>HTTP CPU/allocations normalized per 1000 completed requests; inuse is retained process heap. '
         'Normalized CPU profiles retain the original duration: their displayed samples/duration ratio is not CPU utilization. '
         'Micro profiles include fixture construction and use whole fixed batches. Timing runs are separate.</p><ul>' +
