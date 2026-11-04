@@ -688,6 +688,7 @@
     "backend/protocol/runtime_test.go",
     "backend/protocol/schema.go",
     "backend/protocol/schema_test.go",
+    "backend/protocol/scoped_allocation_bench_test.go",
     "backend/protocol/semantic_cache.go",
     "backend/protocol/semantic_cache_test.go",
     "backend/protocol/semantic_compare.go",

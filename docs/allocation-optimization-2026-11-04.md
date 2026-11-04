@@ -116,5 +116,25 @@ duplicate and escaped keys, invalid UTF-8, exact integers and exponents.
 Frozen-candidate protocol/server race passed (2.569 / 159.839 s), including
 authenticated/persisted/encrypted gateway recovery and preparation release.
 
+### Compact field views: rejected
+
+`fields-micro` compares ten alternating 50,000-iteration rounds against the
+matched `digest-fields-fixture` parent. Four-key objects improve, but eight-key
+owned/borrowed reads regress 6.28% / 8.41%, and nine-key map promotion increases
+allocation. The candidate passed protocol, builtin and selected server tests;
+correctness alone does not qualify it for adoption.
+
+A revised candidate (`fields-lookup`, ten rounds of 100,000 iterations) avoids
+copying field values during lookup and reduces map reservation on promotion.
+Nine-key allocation improves from 1304 to 1048 B/op (owned) and 1016 to 760
+(borrowed). However, eight-key lookup still regresses 6.06% / 6.33%, with time
+ratio intervals [1.0317, 1.0998] / [1.0285, 1.0896]. This revised algorithm was
+measured as a distinct candidate, not substituted into the first batch.
+
+Both source snapshots, binaries and results are retained in the evidence
+directory. Neither implementation is retained in production; the scoped-read
+benchmark is retained for future alternatives. No HTTP or race acceptance is
+claimed for a candidate already rejected by its targeted measurement.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.
