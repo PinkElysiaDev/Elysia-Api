@@ -364,3 +364,47 @@ The strengthened history-sharing regression separately rejects changed owner,
 provider scope and restored-node content after a successful cached preparation.
 It passes with the related history tests under race. Production source is
 unchanged by this supplemental fixture.
+
+### Expanded-leaf regression found during final acceptance
+
+The first complete same-window matrix (`final-http`, 280 standalone runs;
+`final-counters`, 240 exact-counter runs) completed with verified outputs and
+stable identities. It is retained as **intermediate evidence**, not final
+acceptance: package history showed a higher uncollected one-second heap boundary,
+and SSE first-frame latency showed a 26.7 µs regression. Both require resolution;
+neither is waived by a five-percent threshold. History GC counts fell from about
+128 to 45 per batch; boundary heap is not automatically retained memory.
+
+The separate ten-round large escaped-leaf benchmark then found a real digest
+regression that ordinary base64 media did not expose: 9.7711 → 12.6418 ms/op,
+ratio 1.29379 [1.28343, 1.30186]. Its unchanged ~25.2 MB/op reflects the exceptional
+leaf's codec buffers, unlike ordinary media's eliminated whole-Node buffers.
+`escaped-profile` CPU samples identify rescanning the expanded normalized string
+(`utf8.ValidString` contributes 25.23% cumulatively in the candidate sample).
+These profiles locate the issue; fixed-iteration timings establish the regression.
+
+Candidate `digest-leaves` retains the normalized leaf identities already produced
+by the private digest projection. Once projection finishes, only its normalized
+output is consumed; original lookup keys can be retired without increasing cache
+capacity or retaining a request. The digest cache has no typed-meter facts.
+Inline/map entries stay under the existing budget; uncached values retain the
+existing behavior. Mixed repeated/escaped leaves are checked against the original
+digest oracle, with input ownership preserved.
+
+Ten alternating large-payload rounds compare the original implementation,
+the preceding final candidate and this correction in one batch. Escaped-leaf
+time changes 12.7533 → 10.1815 ms against the preceding candidate, ratio 0.79834
+[0.79412, 0.80173]. Against the original implementation it changes 10.3101 →
+10.1815 ms, ratio 0.98753 [0.98208, 0.99018]. Ordinary media keeps 3440 B/op and
+has inconclusive timing change. Four small-node shapes (ten ×100000 iterations)
+also have no stable regression. Exact exceptional-leaf allocations remain about
+25.2 MB/op; no large allocation saving is claimed for those leaves.
+
+Protocol/builtin suites and targeted digest race pass. Five standalone HTTP pairs
+for short/history/media (`digest-leaves-http`) have no stable regression. History
+CPU ratio is 0.98529 [0.93627, 0.99510]; ordinary-media timings are noisy and
+inconclusive, with no claimed gain. The correction is retained for its definite
+escaped-leaf benefit. A newly frozen final comparison is still in progress. The
+earlier 520-run matrix and its anomalies remain archived; it is not relabelled as
+the corrected binary's result. Browser smoke passes all newly rendered profile
+groups, including hover, pivot, difference graphs and held/cancelled heaps.

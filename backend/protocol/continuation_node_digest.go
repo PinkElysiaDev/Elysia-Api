@@ -35,6 +35,7 @@ func hasLargeContinuationPayload(node *Node) bool {
 func hashContinuationNode(node Node) string {
 	cache := &semanticCache{limits: DefaultLimits()}
 	output, err := readCoreNode(node, nil, cache)
+	retainContinuationLeaves(cache)
 	var storage [64]string
 	parts := jsonOutputParts{parts: storage[:0], cache: cache}
 	if err != nil || parts.prepare(context.Background(), output) != nil {
@@ -53,6 +54,28 @@ func hashContinuationNode(node Node) string {
 		sum = hashContinuationParts(parts.parts)
 	}
 	return hex.EncodeToString(sum[:])
+}
+
+// Projection has finished: the hash consumes only its normalized leaves. Keep
+// their existing facts instead of scanning an expanded escaped string again.
+// This cache is private to the digest and contains no semantic meter results.
+func retainContinuationLeaves(cache *semanticCache) {
+	cache.retainedBytes = 0
+	for index := range cache.inlineCount {
+		entry := &cache.inline[index]
+		entry.value = spanIdentity(entry.entry.normalized.raw)
+		cache.retainedBytes += entry.value.bytes
+	}
+	for source, entry := range cache.entries {
+		target := spanIdentity(entry.normalized.raw)
+		if source != target {
+			delete(cache.entries, source)
+			cache.entries[target] = entry
+		}
+	}
+	for value := range cache.entries {
+		cache.retainedBytes += value.bytes
+	}
 }
 
 func hashContinuationParts(parts []string) [sha256.Size]byte {

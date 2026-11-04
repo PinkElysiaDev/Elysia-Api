@@ -63,6 +63,23 @@ func TestContinuationDigestEncodingCompatibility(t *testing.T) {
 	}
 }
 
+func TestContinuationDigestMixedNormalizedLeaves(t *testing.T) {
+	node := Node{Kind: ToolResultNode, CallID: StringValue("call")}
+	for index := range 8 {
+		raw := fmt.Sprintf(` {"index":%d,"text":"%s"} `, index, strings.Repeat("<>&😀", 1024))
+		node.Children = append(node.Children, Node{Kind: TextNode, Payload: parseTestValue(t, raw)})
+	}
+	node.Children = append(node.Children, node.Children[0], Node{Kind: TextNode, Payload: StringValue(strings.Repeat("A", 4096))})
+	before, _ := EncodeValue(node)
+	if ContinuationNodeDigest(node) != originalContinuationDigest(node) {
+		t.Fatal("mixed normalization changed the authenticated digest")
+	}
+	after, _ := EncodeValue(node)
+	if before != after {
+		t.Fatal("digest modified input leaves")
+	}
+}
+
 func BenchmarkContinuationNodeDigest(b *testing.B) {
 	for _, size := range []int{32, 1024, 2048, 4096, 2 << 20} {
 		node := Node{Kind: TextNode, Payload: StringValue(strings.Repeat("A", size))}
@@ -86,6 +103,19 @@ func BenchmarkContinuationMediaDigest(b *testing.B) {
 	for b.Loop() {
 		if ContinuationNodeDigest(node) != want {
 			b.Fatal("media digest changed")
+		}
+	}
+}
+
+func BenchmarkContinuationEscapedDigest(b *testing.B) {
+	const text = "<>&\u2028😀"
+	payload := Value{raw: `"` + strings.Repeat(text, (2<<20)/len(text)) + `"`}
+	node := Node{Kind: TextNode, Payload: payload}
+	want := originalContinuationDigest(node)
+	b.ReportAllocs()
+	for b.Loop() {
+		if ContinuationNodeDigest(node) != want {
+			b.Fatal("escaped digest changed")
 		}
 	}
 }

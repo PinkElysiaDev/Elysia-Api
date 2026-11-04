@@ -50,11 +50,17 @@ def parse_raw(text):
     return [(values, [symbol for location in stack for symbol in locations[location]]) for values, stack in samples]
 
 
+def is_continuation_stack(stack):
+    frames = ('ContinuationNodeDigest', 'gatewayContinuation).historyDigest',
+              'continuationHistory).', 'ContinuationHistoryDigest).')
+    return any(frame in symbol for symbol in stack for frame in frames)
+
+
 def category(stack):
     joined = '\n'.join(stack)
     if 'runtime/pprof.' in joined:
         return 'profiler'
-    if 'ContinuationNodeDigest' in joined or 'gatewayContinuation).historyDigest' in joined:
+    if is_continuation_stack(stack):
         return 'continuation-digests'
     if any(name in joined for name in ['.cloneCore', '.cloneSemantic', '.normalizeDocument', '.normalizeCore']):
         return 'semantic-ownership'
@@ -169,7 +175,7 @@ def main(comparisons=None):
                 groups = defaultdict(int)
                 for values, stack in parse_raw(raw):
                     group = ('gc' if any(name.startswith('runtime.gcDrain') or name == 'runtime.gcAssistAlloc' for name in stack)
-                        else 'continuation' if any('ContinuationNodeDigest' in name or 'gatewayContinuation).historyDigest' in name for name in stack)
+                        else 'continuation' if is_continuation_stack(stack)
                         else 'other')
                     groups[group] += values['cpu']
                 cpu_groups[prefix] = {name: value / row['Requests'] / 1e6 for name, value in groups.items()}
