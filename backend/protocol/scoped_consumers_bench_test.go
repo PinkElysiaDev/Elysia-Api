@@ -83,3 +83,60 @@ func benchmarkScopedConsumer(b *testing.B, expression Expression, input Value) {
 		}
 	}
 }
+
+func BenchmarkScopedMergeCore(b *testing.B) {
+	for _, dense := range []bool{false, true} {
+		node := Node{Kind: TextNode, Payload: StringValue("text😀")}
+		if dense {
+			node.Role, node.ID, node.CallID = StringValue("assistant"), StringValue("n"), StringValue("call")
+			node.Name, node.Status = StringValue("name"), StringValue("completed")
+			node.Children = []Node{{Kind: TextNode, Payload: StringValue("child")}}
+			node.Attributes = Object{"n": {raw: "9007199254740993"}, "text": StringValue("<&>😀")}
+		}
+		input, err := readCoreNode(node, nil, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		for _, policy := range []string{"first", "last", "reject"} {
+			b.Run(fmt.Sprintf("dense-%t/%s", dense, policy), func(b *testing.B) {
+				plan, _ := compileOutputPlan(compileTestOutputExpression(b, Expression{Op: "merge", Policy: policy, Items: []Expression{objectExpression(nil), objectExpression(nil)}}))
+				right := JSONObject(map[string]JSONOutput{"extra": JSONLeaf(StringValue("added"))})
+				operands := []plannedOutput{{output: input}, {output: right}}
+				b.ReportAllocs()
+				for b.Loop() {
+					output, err := plan.mergeObjects(operands)
+					if err != nil || output.output.IsZero() {
+						b.Fatal("core merge failed", err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkScopedMergeOverlap(b *testing.B) {
+	for _, count := range []int{0, 1, 4, 8, 32} {
+		fields := map[string]JSONOutput{}
+		for index := range count {
+			fields[fmt.Sprintf("field%d", index)] = JSONLeaf(StringValue("same"))
+		}
+		left := JSONObject(fields)
+		for _, policy := range []string{"first", "last", "reject"} {
+			b.Run(fmt.Sprintf("fields-%d/%s", count, policy), func(b *testing.B) {
+				plan, _ := compileOutputPlan(compileTestOutputExpression(b, Expression{Op: "merge", Policy: policy, Items: []Expression{objectExpression(nil), objectExpression(nil)}}))
+				operands := []plannedOutput{{output: left}, {output: left}}
+				b.ReportAllocs()
+				for b.Loop() {
+					result, err := plan.mergeObjects(operands)
+					if policy == "reject" && count > 0 {
+						if err == nil {
+							b.Fatal("collision accepted")
+						}
+					} else if err != nil || len(result.output.node.fields) != count {
+						b.Fatal("overlap changed output", err)
+					}
+				}
+			})
+		}
+	}
+}

@@ -139,6 +139,30 @@ def main():
 
     edit('protocol/value.go', lambda text: text.replace('func (value Value) Bytes() []byte {',
         'func (value Value) Bytes() []byte { ' + count('wire.bytes-copies') + '; ' + count('wire.bytes-copied', 'len(value.raw)') + ';'))
+    edit('server/gateway_protocol.go', lambda text: text.replace(
+        'wireValue, err = candidate.finalizeRequestWire',
+        'encodedProbe := protocol.ProbeEncodedWire(wireValue)\n\twireValue, err = candidate.finalizeRequestWire').replace(
+        'record.OutgoingBody = record.sanitizeBodyText(wireValue.JSONString())',
+        'protocol.ProbeFinalWire(encodedProbe, wireValue)\n\trecord.OutgoingBody = record.sanitizeBodyText(wireValue.JSONString())\n\tprotocol.ProbeLogWire(wireValue, record.OutgoingBody.Content)'))
+    wire_probe = '''
+func ProbeEncodedWire(value Value) [2]uintptr {
+    if !allocationProbeEnabled.Load() { return [2]uintptr{} }
+    ENCODE
+    return [2]uintptr{uintptr(unsafe.Pointer(unsafe.StringData(value.raw))), uintptr(len(value.raw))}
+}
+func ProbeFinalWire(before [2]uintptr, value Value) {
+    if !allocationProbeEnabled.Load() { return }
+    FINAL
+    if before == [2]uintptr{uintptr(unsafe.Pointer(unsafe.StringData(value.raw))), uintptr(len(value.raw))} { SAME } else { CHANGED }
+}
+func ProbeLogWire(value Value, log string) {
+    if !allocationProbeEnabled.Load() { return }
+    LOG
+    if len(log) > 0 && unsafe.StringData(log) == unsafe.StringData(value.raw) { SHARED }
+}
+'''.replace('ENCODE', count('gateway.encoded-wires') + '; ' + count('gateway.encoded-bytes', 'value.Len()')).replace(
+        'FINAL', count('gateway.final-bytes', 'value.Len()')).replace('SAME', count('gateway.final-same-storage')).replace(
+        'CHANGED', count('gateway.final-new-storage')).replace('LOG', count('gateway.log-bytes', 'len(log)')).replace('SHARED', count('gateway.log-shares-wire'))
     scope_probe = '''
 type allocationProbeSpan struct { address uintptr; bytes int }
 func (reader *planObjectReader) probeRead(value Value) {
@@ -150,7 +174,7 @@ func (reader *planObjectReader) probeRead(value Value) {
         count('scoped.distinct-storage-reads') + '; ' + count('scoped.distinct-storage-bytes', 'value.Len()'))
 
     helper = OUTPUT / 'allocation_probe.go'
-    helper.write_text('package protocol\nimport ("sync/atomic"; "unsafe")\n' + scope_probe +
+    helper.write_text('package protocol\nimport ("sync/atomic"; "unsafe")\n' + scope_probe + wire_probe +
         'var allocationProbeEnabled atomic.Bool\nvar allocationProbeCounts [' + str(len(labels)) + ']atomic.Uint64\n' + history_probe +
         'func allocationProbe(index int, amount uint64) { if allocationProbeEnabled.Load() { allocationProbeCounts[index].Add(amount) } }\n' +
         'func ResetAllocationProbe() { allocationProbeEnabled.Store(false); for index := range allocationProbeCounts { allocationProbeCounts[index].Store(0) }; allocationProbeEnabled.Store(true) }\n' +

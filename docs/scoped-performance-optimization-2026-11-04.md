@@ -152,3 +152,29 @@ projection allocation 15,222,112 → 15,171,416 B/request (ratio 0.99667,
 interval 0.99619–0.99624). These small whole-request gains are not presented as
 the larger isolated microbenchmark improvement. Counter-build timings are not
 substituted for standalone timing acceptance.
+
+## Rejected merge capacity experiment and correction
+
+The first linear pair-merge candidate (`scoped-merge`) passes semantic/race
+checks and five HTTP pairs per short/tools/stream/cross-stream scene. However,
+the additional ten-round overlap fixture disproves its allocation gate: reserving
+both input lengths increases bytes 12.5%/33.3%/50% for 1/4/8 identical keys.
+Rejected collisions allocate an output unnecessarily and slow down 17.8–33.4%.
+Those failures are retained in `scoped-overlap-micro`; the first candidate is
+not adopted despite its nonoverlap and HTTP gains.
+
+The correction counts the sorted union and resolves reject collisions before
+allocating the output. It then fills exactly that capacity; this is sizing work,
+not a second input validation. Operand evaluation, error ordering and logical
+budgets are unchanged. Ten rounds (`scoped-merge-union-micro`) cover raw,
+projected, constructed, sparse/dense Core and 0/1/4/8/32 overlapping fields with
+all policies. No shape has a stable time/bytes/object regression. For 1/4/8-key
+replacement merges, bytes fall 12.5%/22.2%/25%; small collision rejects retain
+the original allocation count and improve time. Corrected HTTP acceptance is
+still in progress and is not inferred from the first candidate's measurements.
+
+One attempted full check in the backend-only source archive fails because
+published documentation examples are outside that archive. It is an incomplete
+test environment, not a passing suite. The corrected workspace protocol suite
+and targeted race both pass (`scoped-merge-union-checks`). Its frozen production
+source is the input for all corrected measurements.
