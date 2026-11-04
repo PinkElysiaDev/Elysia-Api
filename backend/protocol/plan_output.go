@@ -12,6 +12,7 @@ type compiledOutputPlan struct {
 	hasCanonicalFields     bool
 	hasStreamWrites        bool
 	borrowsScalarInput     bool
+	hasRecursion           bool
 	expression             *compiledExpression
 	fields                 []outputPlanField
 	items                  []*compiledOutputPlan
@@ -82,6 +83,7 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	plan.hasStreamWrites = expression.op == "require_disposition" || expression.op == "resolve_item" || expression.op == "track_text" || expression.op == "track_array" || expression.op == "track_position" || expression.op == "track_tool" || expression.op == "buffer_text" || expression.op == "buffer_array" || expression.op == "resume_text" || expression.op == "resume_tool" || expression.op == "remember" && expression.isStreamIndex
 	plan.hasCapture = expression.op == "capture_native"
 	plan.hasSourceCapture = expression.op == "capture_source" || expression.op == "is_carrier"
+	plan.hasRecursion = expression.op == "recur"
 	plan.hasNativeTarget = expression.op == "replay_native" || expression.op == "native_matches"
 	plan.hasOutputStreamRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && (expression.pointer[0] == "stream" || expression.pointer[0] == "emission")
 	plan.hasEncodingStateRead = expression.op == "read" && expression.from == "runtime" && len(expression.pointer) == 2 && expression.pointer[0] == "encoding"
@@ -174,6 +176,7 @@ func (plan *compiledOutputPlan) mergeRequirements(child *compiledOutputPlan, has
 	plan.hasStreamWrites = plan.hasStreamWrites || child.hasStreamWrites
 	plan.hasCapture = plan.hasCapture || child.hasCapture
 	plan.hasSourceCapture = plan.hasSourceCapture || child.hasSourceCapture
+	plan.hasRecursion = plan.hasRecursion || child.hasRecursion
 	plan.hasNativeTarget = plan.hasNativeTarget || child.hasNativeTarget
 	plan.hasOutputStreamRead = plan.hasOutputStreamRead || child.hasOutputStreamRead
 	plan.hasEncodingStateRead = plan.hasEncodingStateRead || child.hasEncodingStateRead
@@ -457,6 +460,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	logicalBytes, encodedBytes := 0, 2
 	isWalk := expression.op == "walk" || expression.op == "recur"
+	shouldCapture := body.needsItemCapture(state.capture, state.walkBody)
 	var itemReader *planObjectReader
 	for index, item := range items {
 		if isWalk {
@@ -466,7 +470,8 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 			}
 		}
 		child := state
-		if state.capture != nil {
+		child.capture = nil
+		if shouldCapture {
 			child.capture = state.capture.forItem(plan.source.expression, index)
 		}
 		child.itemIndex = index

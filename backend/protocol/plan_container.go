@@ -186,9 +186,11 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 	}
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	bytes := 2
+	shouldCapture := plan.when.needsItemCapture(state.capture, state.walkBody)
 	for index, item := range items {
 		child := state
-		if state.capture != nil {
+		child.capture = nil
+		if shouldCapture {
 			child.capture = state.capture.forItem(plan.source.expression, index)
 		}
 		child.itemIndex = index

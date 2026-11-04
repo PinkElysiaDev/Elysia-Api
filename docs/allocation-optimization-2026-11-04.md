@@ -162,5 +162,32 @@ discarding its initial observations, frozen builds record `go version -m`, and
 diagnostic call-count overlays accept a frozen stage identity instead of a
 hardcoded current commit. These are measurement-only changes.
 
+### Skip unused Native iteration scopes
+
+Frozen `native` (`5508fb5b-source-9042d1fbdd37`) is compared with the accepted
+`digest-select` production parent; `digest-native-fixture` overlays only the
+matching micro fixtures. Capture requirements include source capture,
+`is_carrier`, lexical bindings, input scopes and the active recursive walk body.
+The recursion flag occupies existing plan padding; no new cache is introduced.
+
+Ten alternating 10,000-iteration rounds (`native-micro`) reduce a 32-item plain
+read from 6906.5 to 3716.5 ns/op, 13264 to 4304 B/op and 137 to 41 allocs/op.
+Disabled Native preservation similarly improves. Required source/Native
+capture keeps its original allocation and has no stable timing regression.
+
+Five standalone pairs for short/tools/SSE/cross-protocol SSE (`native-http`)
+show no stable regression; their timing differences remain inconclusive. Five
+separate exact-counter pairs (`native-counters`) show short allocation
+269224.71 to 265204.94 B/request, ratio 0.98507 [0.97984, 0.98619]. SSE changes
+15955246.13 to 15290197.13 B/request, ratio 0.95832 [0.95827, 0.95841], and
+212795.40 to 210199.30 objects/request. This is a definite allocation improvement,
+not a claim of established HTTP latency improvement.
+
+Twelve CPU/alloc/inuse and difference flamegraphs are indexed at
+`native-profiles/profiles/index.html`. Protocol/builtin suites passed (4.242 /
+20.380 s), and frozen-candidate targeted protocol race passed (6.307 s).
+The added indirect-recursion regression checks exact nested wire positions
+with Native disabled and source capture enabled.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.

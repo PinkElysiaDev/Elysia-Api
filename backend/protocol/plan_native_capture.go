@@ -65,6 +65,18 @@ func (capture *nativeCaptureState) forItem(source *compiledExpression, index int
 	return &child
 }
 
+// A recur consumer executes the enclosing walk body, which is not a child in
+// its compiled graph. Keep that body's capture requirements in the decision.
+func (plan *compiledOutputPlan) needsItemCapture(capture *nativeCaptureState, walkBody *compiledOutputPlan) bool {
+	if capture == nil {
+		return false
+	}
+	if plan.hasSourceCapture || plan.hasCapture && !capture.isNativeDisabled {
+		return true
+	}
+	return plan.hasRecursion && (walkBody == nil || walkBody.hasSourceCapture || walkBody.hasCapture && !capture.isNativeDisabled)
+}
+
 func (plan *compiledOutputPlan) captureNative(state evaluation) (plannedOutput, error) {
 	if state.capture == nil || state.capture.isNativeDisabled {
 		return plannedOutput{}, nil
