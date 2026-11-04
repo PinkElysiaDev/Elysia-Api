@@ -189,3 +189,26 @@ production merge change is restored. No extra repetitions are used to search
 for a passing result. The old-map oracle, overlap benchmarks, failed candidate
 archives and both comparisons remain available. Further GC/retention attribution
 is diagnostic only and cannot turn these measurements into acceptance.
+
+## Immediate array consumers
+
+Length reads constructed array sizes directly; validated raw arrays are counted
+with existing span scanning. Source-array join consumes members locally without
+the Value/JSONOutput/plannedOutput adapter slices. The result remains owned;
+expression-list join still evaluates all operands before string/type failures.
+The previous array consumption is retained as a test oracle for bytes, errors,
+logical steps and budgets, including Unicode, null, nested objects and cancellation.
+Protocol suite and targeted race pass (`scoped-array-checks`).
+
+Ten alternating 20,000-iteration rounds (`scoped-array-micro`) improve raw
+256-element length time 61.5%, bytes 97.7%; raw join time 43.3%, bytes 68.7%.
+Constructed joins improve too. A 32-element constructed length control initially
+regresses 1.82%; one same-size confirmation is merged, giving ratio 1.01537,
+95% interval [1.00000, 1.02899], inconclusive. No combined stable regression
+remains. All original observations are retained.
+
+Five HTTP pairs for short/tools/stream/cross-stream have no stable time or memory
+regression (`scoped-array-http`). Tools throughput improves 0.48%; other timing
+changes are inconclusive. Five separate SSE counter pairs find bytes/objects
+unchanged within uncertainty (`scoped-array-counters`). No whole-SSE allocation
+improvement is inferred from the isolated array benefits.

@@ -20,11 +20,11 @@ func (plan *compiledOutputPlan) countArrayMembers(state evaluation) (plannedOutp
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	items, err := plannedArrayItems(source.output)
+	count, err := countPlannedArray(source.output)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	return plannedLeaf(coreInteger(int64(len(items)))), nil
+	return plannedLeaf(coreInteger(int64(count))), nil
 }
 
 func plannedLeaf(value Value) plannedOutput {
@@ -343,41 +343,45 @@ func (plan *compiledOutputPlan) buildJSONScalar(state evaluation) (plannedOutput
 }
 
 func (plan *compiledOutputPlan) buildJoin(state evaluation) (plannedOutput, error) {
-	var operands []plannedOutput
+	var result strings.Builder
 	if plan.source != nil {
 		source, err := plan.source.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		items, err := plannedArrayItems(source.output)
+		items, err := newScalarArrayReader(source.output)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-		operands = make([]plannedOutput, len(items))
-		for index, item := range items {
-			operands[index] = plannedOutput{item, normalizedOutputBytes(item)}
+		for item, ok := items.next(); ok; item, ok = items.next() {
+			if err := appendJoinedText(&result, item, state.budget.limits.BufferBytes); err != nil {
+				return plannedOutput{}, err
+			}
 		}
 	} else {
-		var err error
-		operands, err = plan.buildOperandValues(state)
+		operands, err := plan.buildOperandValues(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
-	}
-	var result strings.Builder
-	for _, operand := range operands {
-		// The builder owns the joined output before any borrowed fragment can
-		// leave this call, just as text comparison consumes its fragments locally.
-		text, err := readComparisonText(operand.output)
-		if err != nil {
-			return plannedOutput{}, err
+		for _, operand := range operands {
+			if err := appendJoinedText(&result, operand.output, state.budget.limits.BufferBytes); err != nil {
+				return plannedOutput{}, err
+			}
 		}
-		if result.Len()+len(text) > state.budget.limits.BufferBytes {
-			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, result.Len()+len(text))
-		}
-		result.WriteString(text)
 	}
 	return plannedLeaf(StringValue(result.String())), nil
+}
+
+func appendJoinedText(result *strings.Builder, output JSONOutput, limit int) error {
+	text, err := readComparisonText(output)
+	if err != nil {
+		return err
+	}
+	if result.Len()+len(text) > limit {
+		return resourceFailure("evaluation", "bytes", limit, result.Len()+len(text))
+	}
+	result.WriteString(text)
+	return nil
 }
 
 func (plan *compiledOutputPlan) buildKeyedArray(state evaluation) (plannedOutput, error) {
