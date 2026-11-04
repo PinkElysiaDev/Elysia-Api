@@ -80,19 +80,28 @@ def main():
     edit('protocol/plan_object_reader.go', field_views)
     edit('protocol/plan_native_capture.go', lambda text: insert_entry(text, 'forItem', count('native.child-scopes')))
 
+    def capture_scopes(text, consumer, kind):
+        assignment = 'child.capture = state.capture.forItem(plan.source.expression, index)'
+        needed = count('native.' + kind + '-needing-capture')
+        skipped = count('native.' + kind + '-without-capture')
+        if 'if shouldCapture {' in text:
+            block = 'if shouldCapture {\n\t\t\t' + assignment + '\n\t\t}'
+            if text.count(block) != 1:
+                raise RuntimeError('capture qualification boundary changed')
+            return text.replace(block, 'if shouldCapture { ' + needed + '; ' + assignment +
+                ' } else if state.capture != nil { ' + skipped + ' }')
+        return text.replace(assignment, 'if ' + consumer + '.hasCapture || ' + consumer + '.hasSourceCapture { ' +
+            needed + ' } else { ' + skipped + ' }\n\t\t\t' + assignment)
+
     def output_plans(text):
         text = insert_entry(text, 'buildObject', count('plan.objects') + '; ' + count('plan.object-field-capacity', 'len(plan.fields)'))
         text = insert_entry(text, 'buildArray', count('plan.arrays') + '; ' + count('plan.array-capacity', 'len(plan.items)'))
-        text = text.replace('child.capture = state.capture.forItem(plan.source.expression, index)',
-            'if body.hasCapture || body.hasSourceCapture { ' + count('native.iterations-needing-capture') + ' } else { ' + count('native.iterations-without-capture') + ' }\n\t\t\tchild.capture = state.capture.forItem(plan.source.expression, index)')
-        return text
+        return capture_scopes(text, 'body', 'iterations')
     edit('protocol/plan_output.go', output_plans)
 
     def containers(text):
         text = insert_entry(text, 'buildOperandValues', count('plan.operand-slices') + '; ' + count('plan.operand-capacity', 'len(plan.items)'))
-        text = text.replace('child.capture = state.capture.forItem(plan.source.expression, index)',
-            'if plan.when.hasCapture || plan.when.hasSourceCapture { ' + count('native.filters-needing-capture') + ' } else { ' + count('native.filters-without-capture') + ' }\n\t\t\tchild.capture = state.capture.forItem(plan.source.expression, index)')
-        return text
+        return capture_scopes(text, 'plan.when', 'filters')
     edit('protocol/plan_container.go', containers)
 
     def output_parts(text):
@@ -110,7 +119,13 @@ def main():
     edit('protocol/continuation.go', lambda text: insert_entry(text, 'ContinuationNodeDigest', count('continuation.node-digests')))
     history_probe = ('func ProbeHistoryDigest(nodes int) { ' + count('continuation.history-digests') + '; ' +
         count('continuation.history-prefix-nodes', 'nodes') + ' }\n')
-    edit('server/continuation.go', lambda text: insert_entry(text, 'historyDigest', 'protocol.ProbeHistoryDigest(len(nodes))'))
+    history_probe += 'func ProbeHistoryNodeDigest() { ' + count('continuation.history-node-digests') + ' }\n'
+    edit('server/continuation.go', lambda text: insert_entry(text, 'historyDigest', 'protocol.ProbeHistoryDigest(len(nodes))').replace(
+        'parts = append(parts, role+":"+protocol.ContinuationNodeDigest(n))',
+        'protocol.ProbeHistoryNodeDigest()\n\t\t\t\tparts = append(parts, role+":"+protocol.ContinuationNodeDigest(n))'))
+    if (SOURCE / 'server/continuation_history.go').exists():
+        edit('server/continuation_history.go', lambda text: text.replace('digest := protocol.ContinuationNodeDigest(node)',
+            'protocol.ProbeHistoryNodeDigest()\n\t\tdigest := protocol.ContinuationNodeDigest(node)'))
     edit('protocol/package_stream_state.go', lambda text: text.replace('transaction.owner.packageStates[transaction.key] = &packageStreamState{',
         count('stream.committed-state-objects') + '\n\ttransaction.owner.packageStates[transaction.key] = &packageStreamState{'))
 

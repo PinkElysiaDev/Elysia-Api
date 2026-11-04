@@ -293,5 +293,27 @@ roots against the old implementation, key collisions, absent Values and private
 host fields. Frozen targeted protocol race passes (12.106 s). Held/cancelled
 retention results above use this same frozen candidate.
 
-Final acceptance and evidence collection are still in progress. These results
-do not establish production-switch acceptance.
+### Final correctness and structural counters
+
+The frozen final implementation is `c0c2c249-source-6bc731d23cf5`; its complete
+backend source hash matches `normalize`. The final Go full suite, vet,
+staticcheck v0.8.2, relevant protocol/builtin/server race, measurement and audit
+self-tests, both generator checks and source inventory check pass. Full server
+tests include `TestDefaultPackagesGatewayMatrix` (16 JSON/SSE directions).
+Commands, elapsed times and individual logs are in `final-checks`.
+
+Separate test-only attribution overlays in `final-attribution` confirm that
+64-message history changes from 33 history calculations and 1120 node digests
+to one history calculation and 64 node digests. The original total consists of
+1088 prefix nodes plus 32 recovery-node probes; the no-carrier fixture has no
+authenticated restoration or response signature to count. This distinction is
+preserved rather than calling all 1120 operations prefix hashing.
+
+For the 256-frame SSE fixture, Native child scopes change from 2855 to 260 per
+request. The 2595 skipped scopes comprise 1551 iteration and 1044 filter scopes;
+all 260 consumers requiring capture retain their scopes. The diagnostics are
+compiled only into frozen test overlays; their timing and allocation totals
+are excluded from acceptance.
+
+Final performance acceptance and evidence collection are still in progress.
+These results do not establish production-switch acceptance.
