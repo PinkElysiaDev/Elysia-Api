@@ -2,6 +2,10 @@
 
 package protocol
 
+import "reflect"
+
+func cloneCoreSemantic(any) reflect.Value { panic("coreplan generation") }
+
 // Generation excludes stale direct field references before importing the model.
 // These entrypoints are never executed by the generator or a production build.
 func coreRequestFieldIndex(string) uint8 { panic("coreplan generation") }

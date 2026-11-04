@@ -77,15 +77,19 @@ func main() {
 			g.emitObjectSelector(g.name(kind), kind, objectTypes)
 		}
 	}
+	g.writeSource("plan_core_generated.go")
+	g.emitSemanticClones()
+}
+
+func (g *generator) writeSource(path string) {
 	source, err := format.Source(g.output.Bytes())
 	if err != nil {
 		panic(err)
 	}
-	const path = "plan_core_generated.go"
 	if len(os.Args) > 1 && os.Args[1] == "--check" {
 		old, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(old, source) {
-			panic("core plan accessors are stale; run go generate ./protocol")
+			panic(path + " is stale; run go generate ./protocol")
 		}
 		return
 	}

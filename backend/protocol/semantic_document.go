@@ -110,61 +110,9 @@ func normalizeSemanticMapKeys(value reflect.Value) {
 	value.Set(normalized)
 }
 
-// cloneSemantic owns all mutable containers, including nested Native pointers.
-// Unlike a JSON round trip, copying an immutable Value never copies its bytes.
-func cloneSemantic(value reflect.Value, plan *typedPlan) reflect.Value {
-	if plan.isJSON {
-		return value
-	}
-	switch plan.kind {
-	case reflect.Pointer:
-		if value.IsNil() {
-			return value
-		}
-		result := reflect.New(value.Type().Elem())
-		cloneSemanticInto(result.Elem(), value.Elem(), plan.element)
-		return result
-	case reflect.Struct:
-		result := reflect.New(value.Type()).Elem()
-		cloneSemanticInto(result, value, plan)
-		return result
-	case reflect.Slice:
-		if value.IsNil() {
-			return value
-		}
-		result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
-		for index := range value.Len() {
-			cloneSemanticInto(result.Index(index), value.Index(index), plan.element)
-		}
-		return result
-	case reflect.Map:
-		if value.IsNil() {
-			return value
-		}
-		result := reflect.MakeMapWithSize(value.Type(), value.Len())
-		iter := value.MapRange()
-		for iter.Next() {
-			result.SetMapIndex(iter.Key(), cloneSemantic(iter.Value(), plan.element))
-		}
-		return result
-	default:
-		// Scalars are copied by the owning container's Set. A separate
-		// addressable reflect.New holder adds no ownership or isolation.
-		return value
-	}
-}
-
-// Populate already-owned struct storage directly. Pointer destinations and slice
-// elements need no additional temporary struct allocation before assignment.
-func cloneSemanticInto(destination, value reflect.Value, plan *typedPlan) {
-	if plan.kind != reflect.Struct || plan.isJSON {
-		destination.Set(cloneSemantic(value, plan))
-		return
-	}
-	destination.Set(value)
-	for _, field := range plan.fields {
-		cloneSemanticInto(destination.Field(field.index), value.Field(field.index), field.plan)
-	}
+// cloneSemantic owns mutable Core containers while sharing immutable Values.
+func cloneSemantic(value reflect.Value, _ *typedPlan) reflect.Value {
+	return cloneCoreSemantic(value.Interface())
 }
 
 // Value is already valid JSON. Only whitespace outside strings and the HTML /

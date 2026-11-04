@@ -210,5 +210,38 @@ The runner also supports a same-window rotating matrix containing release
 1.7.0, rebuilt 1.7.0, A, and both default/package paths of the frozen starting
 and final states. Previous percentages must not substitute for that batch.
 
+### Generated semantic cloning
+
+The post-Native SSE profile still samples approximately 184360 B/request in
+semantic ownership stacks. This is a secondary cost, not the main allocation
+growth source. Frozen `clone` (`5508fb5b-source-0e8edde2ee01`) changes cloning
+alone; normalization still uses the preceding implementation in this snapshot.
+The generator shares the closed Core field catalogue, preserves private host
+receipts by whole-struct assignment and shares immutable Value storage. Value
+roots remain addressable for the existing normalization boundary. Recursive
+reflection cloning is retained only as a test oracle.
+
+Ten 10000-iteration rounds (`clone-micro`) improve 1/32/128-node copying by
+49.58% / 48.84% / 48.91%. The 128-node case changes 48107 to 24578 ns/op,
+88712 to 84560 B/op and 519 to 260 objects/op. Nested 128-message history
+changes 60354 to 22312 ns/op, 81176 to 78080 B/op and 259 to 130 objects/op.
+Ten 100000-iteration event rounds (`clone-event-micro`) reduce the combined
+copy/unchanged-normalization boundary from 671.6 to 426.8 ns/op; its 592 B/op
+and six objects are unchanged. Every measured micro shape has no stable
+regression.
+
+Fifty standalone runs (`clone-http`) cover five pairs of short/history/tools/
+SSE/cross-protocol SSE. None of the collected metrics shows stable regression.
+Tools throughput improves 1.80%; most HTTP timing differences, including SSE,
+remain inconclusive. Independent exact counters and profile follow-ups remain
+part of final acceptance; the micro gains are not treated as HTTP allocation
+or latency gains.
+
+Protocol/builtin suites passed (1.830 / 20.397 s), including all-root parity
+with the reflection oracle and mutable-container ownership. Frozen targeted
+protocol race passed (4.110 s). Native profile browser smoke passes eight
+representative kinds, including differences, hover details and interactive
+pivoting; all twelve figure files are present.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.
