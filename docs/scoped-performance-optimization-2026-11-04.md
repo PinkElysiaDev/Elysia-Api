@@ -178,3 +178,14 @@ published documentation examples are outside that archive. It is an incomplete
 test environment, not a passing suite. The corrected workspace protocol suite
 and targeted race both pass (`scoped-merge-union-checks`). Its frozen production
 source is the input for all corrected measurements.
+
+Corrected merge is also rejected. Its five-pair HTTP batch has no stable timing
+regression, but the unforced one-second cross-stream heap boundary increases
+39.19%. The single five-pair confirmation is combined with the first batch;
+the ten-observation ratio remains 1.3877 with a regression interval. This is an
+uncollected boundary heap, not proof of a leak or retained-body growth. It is
+nevertheless a stable measured memory regression under the agreed gate, so the
+production merge change is restored. No extra repetitions are used to search
+for a passing result. The old-map oracle, overlap benchmarks, failed candidate
+archives and both comparisons remain available. Further GC/retention attribution
+is diagnostic only and cannot turn these measurements into acceptance.
