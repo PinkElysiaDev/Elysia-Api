@@ -68,9 +68,24 @@ func newContinuationOwner(codec *protocol.ContinuationCodec, token string, plan 
 		g.owner = codec.Digest(hex.EncodeToString(sum[:]))
 		scopeValue, _ := protocol.EncodeValue(candidate.scope)
 		g.scopeKey = codec.Digest(scopeValue.JSONString())
-		g.parent = g.historyDigest(plan.request.Content)
 	}
 	return g
+}
+
+func (g *gatewayContinuation) needsRecovery(tokens []string) bool {
+	return g != nil && (len(tokens) > 0 || g.codec != nil && g.settings.Persist && g.session != "")
+}
+
+// Finish the outgoing association before preparation releases request history.
+// Delivery retains only the digest, including during a slow upstream stream.
+func (g *gatewayContinuation) prepareParent(nodes []protocol.Node) {
+	if g == nil || g.codec == nil || !g.settings.ClientCarrier && !(g.settings.Persist && g.session != "") {
+		return
+	}
+	if g.isPackage && !g.conversion.HasContinuationRecovery(g.phase, g.route) {
+		return
+	}
+	g.parent = g.historyDigest(nodes)
 }
 
 func (g *gatewayContinuation) warning(reason string) error {
@@ -117,6 +132,12 @@ func (g *gatewayContinuation) historyDigest(nodes []protocol.Node) string {
 
 func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayContinuation, request *protocol.Request, tokens []string) error {
 	if g == nil {
+		return nil
+	}
+	if !g.needsRecovery(tokens) {
+		if g.isPackage {
+			return request.AcceptContinuations(tokens)
+		}
 		return nil
 	}
 	if g.codec == nil {

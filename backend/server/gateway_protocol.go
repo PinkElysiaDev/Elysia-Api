@@ -228,6 +228,7 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	record.OutgoingBody = record.sanitizeBodyText(wireValue.JSONString())
 	// Keep transport storage out of the log cleaning lifetime.
 	body := wireValue.Bytes()
+	candidate.continuation.prepareParent(plan.request.Content)
 	candidate.prepared = nil
 	candidate.releaseRequestEncoding()
 	candidate.encoding = nil

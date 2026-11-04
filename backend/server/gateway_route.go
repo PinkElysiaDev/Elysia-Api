@@ -130,7 +130,7 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		// Conversion owns its output. Only authenticated recovery needs a
 		// mutable candidate-local input before that ownership boundary.
 		restored := request
-		if candidate.continuation != nil {
+		if candidate.continuation.needsRecovery(plan.carriers) {
 			restored = request.Clone()
 		}
 		if err = s.restoreGatewayContinuation(ctx, candidate.continuation, restored, plan.carriers); err != nil {
