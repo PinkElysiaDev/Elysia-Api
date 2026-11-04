@@ -8,7 +8,7 @@ import (
 // Exercise the unchanged consumer boundary, so this fixture also compiles
 // against a parent with map-backed field tables.
 func BenchmarkScopedFieldReads(b *testing.B) {
-	for _, count := range []int{4, 8, 9, 16, 64} {
+	for _, count := range []int{1, 4, 8, 9, 32, 64} {
 		fields := Object{}
 		paths := make([][]string, count)
 		values := make([]Value, count)

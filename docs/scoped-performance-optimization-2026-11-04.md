@@ -26,3 +26,19 @@ The runner self-tests pass, covering failures, missing commands, timeout cleanup
 weighted overlap, group exclusion, exclusive ordering and failed dependencies.
 Synthetic failure cases intentionally exit unsuccessfully. Production runtime
 and performance settings are unchanged. No speedup is inferred from these tests.
+
+## Diagnostic fixtures
+
+The scoped consumer fixture isolates merge read/project/constructed producers,
+projection consumers, raw/constructed length and join (0/1/8/32/256 elements),
+same-input scopes and filter item reads. Existing field reads now cover
+1/4/8/9/32/64 keys. One-iteration execution verifies the fixtures compile and
+produce output; those timings are not performance evidence.
+
+The attribution overlay adds per-active-reader distinct/repeated storage reads,
+operand operation/arity, ready/sort/fold/raw field categories and Value.Bytes
+copies. Identity bookkeeping uses numeric addresses only in the diagnostic
+build, never retains original text, and resets with the owning reader. These
+counts describe live-scope storage, not content equivalence or cache permission.
+The Q0 overlay builds successfully. Diagnostic instrumentation is absent from
+all standalone and exact-counter acceptance binaries.

@@ -75,6 +75,8 @@ def main():
         count('raw.detached-fragments') + '\n\t' + count('raw.detached-bytes', 'len(raw)') + '\n\treturn strings.Clone(raw)'))
     def field_views(text):
         text = insert_entry(text, 'readFields', count('scoped.field-reads'))
+        text = text.replace('type planObjectReader struct {', 'type planObjectReader struct {\n probeSeen map[allocationProbeSpan]bool')
+        text = insert_entry(text, 'readFields', 'if allocationProbeEnabled.Load() && reader != nil { reader.probeRead(value) }')
         text = text.replace('return reader.fields, nil', count('scoped.root-hits') + '\n\t\treturn reader.fields, nil')
         return text.replace('return child.fields, nil', count('scoped.child-hits') + '\n\t\t\treturn child.fields, nil')
     edit('protocol/plan_object_reader.go', field_views)
@@ -101,6 +103,12 @@ def main():
 
     def containers(text):
         text = insert_entry(text, 'buildOperandValues', count('plan.operand-slices') + '; ' + count('plan.operand-capacity', 'len(plan.items)'))
+        for operation in ['merge', 'concat', 'all', 'any', 'equal', 'integer', 'join', 'merge_usage']:
+            text = insert_entry(text, 'buildOperandValuesInto', 'if plan.expression.op == "' + operation + '" { ' +
+                count('operands.' + operation + '.calls') + '; ' + count('operands.' + operation + '.arity', 'len(plan.items)') + ' }')
+        text = insert_entry(text, 'plannedObjectFields', 'if output.node == nil { ' + count('fields.raw') +
+            ' } else if !output.node.hasCanonicalKeys { ' + count('fields.fold') +
+            ' } else if !output.node.hasSortedFields { ' + count('fields.sort') + ' } else { ' + count('fields.ready') + ' }')
         return capture_scopes(text, 'plan.when', 'filters')
     edit('protocol/plan_container.go', containers)
 
@@ -129,8 +137,20 @@ def main():
     edit('protocol/package_stream_state.go', lambda text: text.replace('transaction.owner.packageStates[transaction.key] = &packageStreamState{',
         count('stream.committed-state-objects') + '\n\ttransaction.owner.packageStates[transaction.key] = &packageStreamState{'))
 
+    edit('protocol/value.go', lambda text: text.replace('func (value Value) Bytes() []byte {',
+        'func (value Value) Bytes() []byte { ' + count('wire.bytes-copies') + '; ' + count('wire.bytes-copied', 'len(value.raw)') + ';'))
+    scope_probe = '''
+type allocationProbeSpan struct { address uintptr; bytes int }
+func (reader *planObjectReader) probeRead(value Value) {
+    if reader.probeSeen == nil { reader.probeSeen = map[allocationProbeSpan]bool{}; SCOPE }
+    identity := allocationProbeSpan{uintptr(unsafe.Pointer(unsafe.StringData(value.raw))), len(value.raw)}
+    if reader.probeSeen[identity] { REPEAT } else { DISTINCT; reader.probeSeen[identity] = true }
+}
+'''.replace('SCOPE', count('scoped.active-scopes')).replace('REPEAT', count('scoped.repeated-storage-reads')).replace('DISTINCT',
+        count('scoped.distinct-storage-reads') + '; ' + count('scoped.distinct-storage-bytes', 'value.Len()'))
+
     helper = OUTPUT / 'allocation_probe.go'
-    helper.write_text('package protocol\nimport "sync/atomic"\n' +
+    helper.write_text('package protocol\nimport ("sync/atomic"; "unsafe")\n' + scope_probe +
         'var allocationProbeEnabled atomic.Bool\nvar allocationProbeCounts [' + str(len(labels)) + ']atomic.Uint64\n' + history_probe +
         'func allocationProbe(index int, amount uint64) { if allocationProbeEnabled.Load() { allocationProbeCounts[index].Add(amount) } }\n' +
         'func ResetAllocationProbe() { allocationProbeEnabled.Store(false); for index := range allocationProbeCounts { allocationProbeCounts[index].Store(0) }; allocationProbeEnabled.Store(true) }\n' +
