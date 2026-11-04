@@ -40,6 +40,23 @@ func (reader *planObjectReader) ownerFor(value Value) *planObjectReader {
 	return nil
 }
 
+// Entering a nested scope may reuse a table already held by an active owner.
+// The child owns only its reader; the shared field table stays immutable.
+func (reader *planObjectReader) fieldsFor(value Value) Object {
+	identity := spanIdentity(value.raw)
+	for ; reader != nil; reader = reader.parent {
+		if reader.root == identity {
+			return reader.fields
+		}
+		for _, child := range reader.children {
+			if child.identity == identity {
+				return child.fields
+			}
+		}
+	}
+	return nil
+}
+
 func (reader *planObjectReader) readOwnedMember(value Value, key string) (Value, error) {
 	if reader == nil {
 		if value.Len() <= objectMemberScanBytes {

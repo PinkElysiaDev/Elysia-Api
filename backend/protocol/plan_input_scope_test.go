@@ -1,9 +1,47 @@
 package protocol
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
+
+func TestInputScopeKeepsEnclosingFieldOwner(t *testing.T) {
+	input := parseTestValue(t, `{"a":"one","b":"two","child":{"a":"inner","b":"nested"}}`)
+	view := newInputView(input)
+	if _, err := view.objects.readFields(input, &view.borrowed); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"", "/child"} {
+		body := objectExpression(map[string]Expression{"a": readExpression("input", "/a"), "b": readExpression("input", "/b")})
+		plan, _ := compileOutputPlan(compileTestOutputExpression(t, Expression{Op: "with_input", Source: expressionPointer(readExpression("input", path)), Body: &body}))
+		state := numericTestState(t, input)
+		state.objectReader, state.valueReader = &view.objects, &view.borrowed
+		if _, err := plan.evaluate(state); err != nil {
+			t.Fatal(err)
+		}
+		if view.objects.root != spanIdentity(input.raw) || view.objects.fields["a"].raw != `"one"` {
+			t.Fatal("nested scope released its parent")
+		}
+	}
+}
+
+func TestFilterScopedReadsKeepErrorOrder(t *testing.T) {
+	when := Expression{Op: "all", Items: []Expression{
+		{Op: "equal", Items: []Expression{readExpression("item", "/a"), literalExpression("one")}},
+		{Op: "equal", Items: []Expression{readExpression("item", "/b"), literalExpression("two")}},
+	}}
+	compiled := compileTestOutputExpression(t, Expression{Op: "filter", Source: expressionPointer(readExpression("input", "")), When: &when})
+	plan, _ := compileOutputPlan(compiled)
+	for _, raw := range []string{`[{"a":"bad","b":"two"},{"a":"one","b":"two"}]`, `[{"a":"one","a":null,"b":"two"},null]`} {
+		input := parseTestValue(t, raw)
+		want, wantErr := compiled.evaluate(numericTestState(t, input))
+		got, gotErr := plan.evaluate(numericTestState(t, input))
+		if got.raw != want.raw || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) {
+			t.Fatal("filter changed eager evaluation", got, want, gotErr, wantErr)
+		}
+	}
+}
 
 func TestInputScopePreservesRootAndWireLocations(t *testing.T) {
 	program := Expression{Op: "with_input", Source: expressionPointer(readExpression("input", "/response")), Body: expressionPointer(objectExpression(map[string]Expression{

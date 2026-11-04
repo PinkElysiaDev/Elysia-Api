@@ -12,8 +12,8 @@ func (plan *compiledOutputPlan) buildInputScope(state evaluation) (plannedOutput
 	}
 	state.input, state.coreRequest = selected.output.value, nil
 	var reader *planObjectReader
-	if selected.output.node == nil && plan.body.rootObjectReads >= objectReuseReads && selected.output.value.IsObject() {
-		reader = &planObjectReader{root: spanIdentity(selected.output.value.raw), parent: state.objectReader}
+	if selected.output.node == nil && plan.body.rootObjectReads >= objectReuseReads && selected.output.value.IsObject() && state.objectReader.ownerFor(selected.output.value) == nil {
+		reader = &planObjectReader{root: spanIdentity(selected.output.value.raw), fields: state.objectReader.fieldsFor(selected.output.value), parent: state.objectReader}
 		state.objectReader = reader
 	}
 	state.inputReader = func(pointer []string) (JSONOutput, error) {

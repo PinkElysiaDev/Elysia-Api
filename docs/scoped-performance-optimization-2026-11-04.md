@@ -65,3 +65,30 @@ already serves those repeats; table construction counts are not all redundancy.
 Merge runs 795 times/request (1,592 total operands); field consumers observe
 783 fold, 1,318 raw, 1,071 ready and 2 sort cases. These are call counts, not
 allocation bytes. Raw diagnostics are in `scoped-q0-attribution`.
+
+## Active input scopes
+
+The combined filter/input candidate (`scoped-scopes`) is rejected: the filter
+fixture becomes 8.53% slower with 33.33% more bytes and 35.71% more objects.
+Two small span lookups are cheaper than creating its proposed item table.
+The filter production path is restored; its eager-evaluation oracle remains.
+
+The isolated `with_input` candidate (`scoped-input`, source `10874d1b2f46`)
+reuses an enclosing root or already cached descendant table. Only newly created
+readers are released. Ten alternating 30,000-iteration rounds save 64 B and one
+object per same-input invocation (2.51% bytes, 7.14% objects); time is inconclusive.
+All measured scalar/filter controls have no stable regression. Protocol tests
+and targeted race pass (`scoped-input-checks`).
+
+Five standalone HTTP pairs each for short/tools/stream/cross-stream pass without
+stable CPU, throughput, latency or memory-boundary regression. CPU ratios are
+1.0000/1.0252/0.9976/0.9855; all are inconclusive. No HTTP speedup is claimed.
+One admin-verify connection timed out before measurement, with both child
+processes exiting zero. Its failed evidence remains in `scoped-input-http`.
+`scoped-input-http-resumed/runs.json` references the 16 already completed tasks,
+the remaining fresh runs and the failed preparation separately. No completed
+timing is overwritten or selectively replaced. The preparation timeout's cause
+is unresolved; loopback proxy bypass was enabled, and no proxy setting changed.
+The comparison consumes all five observations per condition, normalized to the
+same completed request counts. Retention and aggregate allocations are checked
+again at final acceptance; this stage's allocation saving is microbenchmark-only.
