@@ -317,3 +317,50 @@ are excluded from acceptance.
 
 Final performance acceptance and evidence collection are still in progress.
 These results do not establish production-switch acceptance.
+
+### Authenticated recovery and semantic allocation supplements
+
+All supplements use five alternating pairs, separate standalone timing and
+exact-counter batches, fully consumed responses and verified restored upstream
+signatures. `recovery-http` / `recovery-counters` compare P0 with frozen final:
+
+| Scene | CPU ms/request, before → after | Throughput ratio [95% CI] | Bytes/request, before → after |
+| --- | ---: | ---: | ---: |
+| Authenticated carrier | 23.3765 → 11.5967 | 1.9002 [1.8861, 1.9224] | 27,409,289 → 9,549,179 |
+| Persistent session | 26.5503 → 13.6108 | 1.7162 [1.7029, 1.7369] | 27,457,986 → 9,596,131 |
+
+CPU ratios are 0.49608 [0.46835, 0.50653] and 0.51264 [0.50575, 0.52204].
+Allocation ratios are 0.34839 [0.34824, 0.34849] and 0.34948 [0.34943, 0.34956].
+No collected standalone metric has a stable regression.
+
+`digest-recovery-http` / `digest-recovery-counters` independently compare
+`history-local` with `digest-select` using a real carrier and the full 2 MiB
+media body. CPU/request changes 57.7393 → 36.1328 ms, ratio 0.62579 [0.60888,
+0.64271]; throughput improves 29.29%. Exact allocation changes 63,013,148 →
+22,452,614 B/request, ratio 0.35632 [0.35595, 0.35689]. Thus the buffering
+improvement also applies during authenticated recovery, independently of
+skipping recovery when no carrier/session exists. No standalone metric regresses.
+
+`semantic-counters` rotates `native`, `clone` and `normalize` in five rounds.
+Clone-only SSE bytes remain inconclusive (15,293,858 → 15,292,150 B/request),
+while objects improve slightly (210,199.14 → 210,171.59). Generated normalization
+then reduces SSE bytes to 15,219,167, ratio 0.99523 [0.99510, 0.99548], and objects
+to 205,909.80. Short-request normalization changes 263,439 → 262,206 B/request,
+ratio 0.99532 [0.98421, 0.99729]. These smaller independent effects are not
+presented as the main allocation reduction. Counter-build timing is excluded
+from standalone timing conclusions.
+
+The added candidate benchmark runs ten alternating 100-iteration rounds with
+one/four attempted dispatch parents, with/without a valid carrier. It always
+clones candidate inputs and excludes transport time. Each authenticated attempt
+must report its restored node and unchanged parent. Four-carrier candidates
+change 27.3159 → 0.3429 ms/op, 70,788,444 → 832,225 B/op and 79,570.5 → 4,182
+objects/op. All four shapes improve without stable regression. The P0 overlay
+adapts only the old method signature and eager outgoing-parent calculation;
+both frozen implementations and the common benchmark hash are recorded under
+`{p0,final}-candidate-fixture` and `candidate-micro`.
+
+The strengthened history-sharing regression separately rejects changed owner,
+provider scope and restored-node content after a successful cached preparation.
+It passes with the related history tests under race. Production source is
+unchanged by this supplemental fixture.

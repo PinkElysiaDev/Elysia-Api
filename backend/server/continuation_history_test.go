@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -62,9 +63,9 @@ func TestContinuationHistorySharesOnlyPreparationDigests(t *testing.T) {
 	if err := history.prepare(t.Context(), request.Content); err != nil {
 		t.Fatal(err)
 	}
-	g := &gatewayContinuation{codec: codec, strict: true, restored: map[string]bool{}, settings: protocol.ContinuationSettings{ClientCarrier: true, RecordBytes: 1 << 20}}
+	g := &gatewayContinuation{codec: codec, owner: "fixture", scope: protocol.Scope{Provider: "provider"}, strict: true, restored: map[string]bool{}, settings: protocol.ContinuationSettings{ClientCarrier: true, RecordBytes: 1 << 20}}
 	node := request.Content[7].Children[0]
-	record := protocol.ContinuationRecord{Version: 1, ID: "fixture", Parent: g.historyDigest(request.Content[:7]), Digest: protocol.ContinuationNodeDigest(node), Node: node, ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	record := protocol.ContinuationRecord{Version: 1, ID: "fixture", Owner: g.owner, Scope: g.scope, Parent: g.historyDigest(request.Content[:7]), Digest: protocol.ContinuationNodeDigest(node), Node: node, ExpiresAt: time.Now().Add(time.Hour).Unix()}
 	token, err := codec.Seal(record, g.settings.RecordBytes)
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +78,64 @@ func TestContinuationHistorySharesOnlyPreparationDigests(t *testing.T) {
 		candidate.prepareParent(request.Content)
 		if candidate.parent != g.historyDigest(request.Content) {
 			t.Fatal("candidate parent changed")
+		}
+	}
+	for _, changed := range []string{"owner", "scope", "content"} {
+		t.Run(changed, func(t *testing.T) {
+			candidate := *g
+			candidate.restored = map[string]bool{}
+			modified := request.Clone()
+			switch changed {
+			case "owner":
+				candidate.owner = "other"
+			case "scope":
+				candidate.scope.Provider = "other"
+			case "content":
+				modified.Content[7].Children[0].Payload = protocol.StringValue("rewritten")
+			}
+			if err := (&Server{}).restoreGatewayContinuation(t.Context(), &candidate, modified, []string{token}, history); err == nil {
+				t.Fatal("history cache bypassed candidate authentication")
+			}
+		})
+	}
+}
+
+// Candidate preparation and retry attempts share only the immutable ingress
+// digest table. Each attempt still authenticates its carrier and owns its copy.
+func BenchmarkContinuationCandidateRecovery(b *testing.B) {
+	codec, _ := protocol.NewContinuationCodec([]byte("isolated-candidate-key"))
+	original := continuationHistoryFixture(64)
+	owner := gatewayContinuation{codec: codec, owner: "candidate-fixture"}
+	parent := owner.historyDigest(original.Content)
+	node := original.Content[63].Children[0]
+	record := protocol.ContinuationRecord{Version: 1, ID: "fixture", Owner: owner.owner, Parent: owner.historyDigest(original.Content[:63]), Digest: protocol.ContinuationNodeDigest(node), Node: node, ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	token, err := codec.Seal(record, 1<<20)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, count := range []int{1, 4} {
+		for _, hasCarrier := range []bool{false, true} {
+			b.Run(fmt.Sprintf("candidates-%d/carrier-%t", count, hasCarrier), func(b *testing.B) {
+				var tokens []string
+				if hasCarrier {
+					tokens = []string{token}
+				}
+				server := &Server{}
+				b.ReportAllocs()
+				for b.Loop() {
+					history := &continuationHistory{}
+					for range count {
+						candidate := gatewayContinuation{codec: codec, owner: owner.owner, strict: true, restored: map[string]bool{}, settings: protocol.ContinuationSettings{ClientCarrier: true, RecordBytes: 1 << 20}}
+						if err := server.restoreGatewayContinuation(b.Context(), &candidate, original.Clone(), tokens, history); err != nil {
+							b.Fatal(err)
+						}
+						candidate.prepareParent(original.Content)
+						if candidate.parent != parent || hasCarrier && !candidate.restored[record.Digest] {
+							b.Fatal("candidate lost its authenticated parent or node")
+						}
+					}
+				}
+			})
 		}
 	}
 }
