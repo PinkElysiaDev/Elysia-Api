@@ -189,5 +189,26 @@ Twelve CPU/alloc/inuse and difference flamegraphs are indexed at
 The added indirect-recursion regression checks exact nested wire positions
 with Native disabled and source capture enabled.
 
+### Supplemental recovery measurement contract
+
+`allocation-recovery.py` reuses the same application lifecycle, metrics proxy,
+driver consumption and profile collection as the primary runner. Its separate
+Go provider requires every follow-up to restore the signed Gemini text, all
+63 earlier messages and roles, and (for the media variant) the complete 2 MiB
+payload. Client responses must preserve text, usage, termination and the newly
+issued carrier. No production endpoint or per-request diagnostic was added.
+
+The `recovery-driver-media` overlay is built against frozen `native` production
+with two test fixtures only. Its SHA-256 is
+`78f3d4ee975db099458e625e4e196105bdc79e4656bfe1003b46762817c2d3bd`.
+The carrier, persistent-session and media-carrier smoke runs each pass one
+initial request plus 32 warmups and 4 consumed follow-ups: 37 upstream calls,
+36 verified recoveries. These small smoke runs validate the fixture, not
+performance. Matched acceptance batches are still required.
+
+The runner also supports a same-window rotating matrix containing release
+1.7.0, rebuilt 1.7.0, A, and both default/package paths of the frozen starting
+and final states. Previous percentages must not substitute for that batch.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.

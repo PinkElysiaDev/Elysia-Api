@@ -56,6 +56,8 @@ def category(stack):
         return 'profiler'
     if 'ContinuationNodeDigest' in joined or 'gatewayContinuation).historyDigest' in joined:
         return 'continuation-digests'
+    if any(name in joined for name in ['.cloneCore', '.cloneSemantic', '.normalizeDocument', '.normalizeCore']):
+        return 'semantic-ownership'
     if 'stringslite.Clone' in joined or 'strings.Clone' in joined:
         return 'owned-fragment-copies'
     if 'readObjectFieldsWithin' in joined or 'planObjectReader).readFields' in joined:

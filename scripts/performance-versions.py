@@ -207,7 +207,7 @@ def configure_gateway(url, upstream, packages, scenario, directory):
             revisions = admin(url, f'protocols/{protocol_id}/revisions')
             save_json(directory / (name + '-revisions.json'), revisions)
             admin(url, f'protocols/{protocol_id}/activate', 'POST', {'revisionHash': verified['revision']['hash'], 'expectedActive': ''})
-    target = 'anthropic-messages' if scenario.get('cross') or scenario.get('image') else 'openai-chat-completions'
+    target = scenario.get('target') or ('anthropic-messages' if scenario.get('cross') or scenario.get('image') else 'openai-chat-completions')
     base = upstream + ('/v1' if target == 'openai-chat-completions' and not packages else '')
     target_id = 'measure-' + target if packages else target
     source = dict(id='s', name='local', baseUrl=base, apiKey='synthetic', platform='custom:' + target_id,
@@ -329,7 +329,7 @@ def serve_metrics(metrics):
     return server
 
 
-def run_case(version, scene, phase, mode, output, requests=None):
+def run_case(version, scene, phase, mode, output, requests=None, provider_fixture=None, prepare_fixture=None):
     output.mkdir(parents=True)
     builds = read_json(EVIDENCE / 'builds.json')['versions']
     variant = 'C' if version.startswith('C-') else version
@@ -357,6 +357,8 @@ def run_case(version, scene, phase, mode, output, requests=None):
     source_id = 'anthropic-messages' if scenario.get('image') else 'openai-chat-completions'
     ingress_path = '/v1/messages' if scenario.get('image') else '/v1/chat/completions' if packages else '/chat/completions'
     env['ELYSIA_FLAME_GATEWAY_PATH'] = '/gateway/' + ('measure-' if packages else '') + source_id + ingress_path
+    if scenario.get('ingress'):
+        env['ELYSIA_FLAME_GATEWAY_PATH'] = '/gateway/' + ('measure-' if packages else '') + scenario['ingress'] + '/v1/messages'
     children, metrics, proxy = Children(), None, None
     record = dict(version=version, scenario=scene, phase=phase, mode=mode, binary=binary, binarySHA256=expected_sha,
                   environment=env, status='running', metricsAvailability={
@@ -370,12 +372,17 @@ def run_case(version, scene, phase, mode, output, requests=None):
     record['environment'] = {k: v for k, v in env.items() if k in RUNTIME or k.startswith('ELYSIA_')}
     save_json(output / 'run.json', record)
     try:
-        provider_build = read_json(ROOT / '.tmp-dev/fixed-provider-build/report.json')
-        provider_binary = ROOT / '.tmp-dev/fixed-provider-build/server.test.exe'
+        provider_build = provider_fixture or read_json(ROOT / '.tmp-dev/fixed-provider-build/report.json')
+        provider_binary = Path(provider_fixture['binary']) if provider_fixture else ROOT / '.tmp-dev/fixed-provider-build/server.test.exe'
         assert digest(provider_binary) == provider_build['binarySHA256']
         ready = output / 'provider-ready.json'
         provider_env = env | {'ELYSIA_CONVERSION_HTTP_ROLE': 'provider', 'ELYSIA_CONVERSION_HTTP_READY': str(ready)}
-        provider = children.start([str(provider_binary), '-test.run=^TestConversionHTTPProcess$', '-test.timeout=20m'],
+        provider_test = 'TestConversionHTTPProcess'
+        if provider_fixture:
+            provider_env['ELYSIA_CONTINUATION_READY'] = str(ready)
+            provider_env['ELYSIA_CONTINUATION_MEDIA'] = '1' if scenario.get('continuation_media') else ''
+            provider_test = 'TestContinuationPerformanceProvider'
+        provider = children.start([str(provider_binary), '-test.run=^' + provider_test + '$', '-test.timeout=20m'],
                     ROOT / '.tmp-dev/fixed-provider-build/source/backend/server', provider_env, output / 'provider.log')
         provider_address = wait_file(ready, provider)
         port = free_port()
@@ -403,6 +410,8 @@ def run_case(version, scene, phase, mode, output, requests=None):
         reloaded = {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')}
         save_json(output / 'reloaded-identity.json', reloaded)
         assert reloaded == record['configuration'], 'reload changed active protocol/binding identity'
+        if prepare_fixture:
+            env.update(prepare_fixture(url, packages, output))
         record['gatewayCommand'] = command
         counter_url = wait_file(gateway_ready, gateway)['Metrics'] if is_instrumented else None
         metrics = ProcessMetrics(gateway.pid, url, counter_url)
@@ -413,11 +422,17 @@ def run_case(version, scene, phase, mode, output, requests=None):
         external = output / 'external.json'
         save_json(external, {'provider': provider_address, 'gateway': gateway_address})
         env['ELYSIA_CONVERSION_HTTP_EXTERNAL'] = str(external)
-        command = [builds['driver']['binary'], '-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=15m']
+        driver = provider_fixture['binary'] if provider_fixture else builds['driver']['binary']
+        record['driverSHA256'] = digest(driver)
+        command = [driver, '-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=15m']
         record['driverCommand'] = command
         record['provider'] = {'binary': str(provider_binary), 'sha256': digest(provider_binary), 'identity': provider_address['Execution']}
         save_json(output / 'run.json', record)
         execute(command, ROOT / 'backend/server', output / 'driver.log', env)
+        if provider_fixture:
+            provider_after = request(provider_address['Metrics'])
+            assert provider_after['Recovered'] == (requests or scenario['requests']) + int(env['ELYSIA_FLAME_WARMUP']), 'recovery did not execute for every measured and warmup request'
+            record['recovery'] = provider_after
         if phase == 'attribution':
             record['attribution'] = request(counter_url)['Attribution']
         after = {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')}

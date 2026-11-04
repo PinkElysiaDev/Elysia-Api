@@ -228,10 +228,17 @@ func TestConversionFlamegraph(t *testing.T) {
 		if endpoint := os.Getenv("ELYSIA_FLAME_GATEWAY_PATH"); endpoint != "" {
 			path = endpoint
 		}
+		continuation := loadContinuationPerformanceFixture(t)
+		if continuation != nil {
+			body = continuation.Body
+		}
 		call := func() (observation flameCallMeasurement, result error) {
 			request, _ := http.NewRequestWithContext(t.Context(), "POST", gateway.URL+path, strings.NewReader(body))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer "+flameToken)
+			if continuation != nil {
+				request.Header.Set("x-elysia-session-id", continuation.Session)
+			}
 			started := time.Now()
 			response, err := client.Do(request)
 			if err != nil {
@@ -254,6 +261,9 @@ func TestConversionFlamegraph(t *testing.T) {
 			}
 			observation.LatencyNS = time.Since(started).Nanoseconds()
 			output := captured.Bytes()
+			if continuation != nil {
+				return observation, continuation.validate(response.StatusCode, output)
+			}
 			if mode != "measure" && stream {
 				observation.Frames = bytes.Count(output, []byte("\ndata:"))
 				if bytes.HasPrefix(output, []byte("data:")) {
