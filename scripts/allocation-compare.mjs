@@ -18,12 +18,18 @@ if (isMicro) {
   }
 } else {
   for (const root of confirmation ? [directory, resolve(confirmation)] : [directory]) {
-    for (const entry of await readdir(root, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const name = entry.name
-      const run = JSON.parse(await readFile(join(root, name, 'run.json'), 'utf8'))
+    const entries = await readdir(root, { withFileTypes: true })
+    let paths
+    if (entries.some(entry => entry.name === 'runs.json')) {
+      const manifest = JSON.parse(await readFile(join(root, 'runs.json'), 'utf8'))
+      if (!manifest.complete) throw new Error('Resumed batch is incomplete')
+      paths = manifest.runs
+    } else paths = entries.filter(entry => entry.isDirectory()).map(entry => join(root, entry.name, 'run.json'))
+    for (const path of paths) {
+      const name = resolve(path, '..')
+      const run = JSON.parse(await readFile(path, 'utf8'))
       if (run.status !== 'passed' || run.mode !== 'measure') throw new Error(`Not a completed timing batch: ${name}`)
-      const rows = JSON.parse(await readFile(join(root, name, 'measurements.json'), 'utf8'))
+      const rows = JSON.parse(await readFile(join(name, 'measurements.json'), 'utf8'))
       if (rows.length !== 1 || rows[0].UpstreamCalls !== rows[0].Requests) throw new Error(`Workload mismatch: ${name}`)
       const row = rows[0]
       const sample = {

@@ -92,3 +92,15 @@ is unresolved; loopback proxy bypass was enabled, and no proxy setting changed.
 The comparison consumes all five observations per condition, normalized to the
 same completed request counts. Retention and aggregate allocations are checked
 again at final acceptance; this stage's allocation saving is microbenchmark-only.
+
+## Interrupted batches
+
+`allocation-resume.py` creates a fresh output directory and a manifest linking
+completed runs instead of copying or overwriting evidence. Reuse requires matching
+stage/scenario/phase/execution, binary/driver/measurement-runner hashes and runtime
+environment. A failure after measurement requires investigation rather than an
+automatic replacement. Original failures are listed separately. The comparator
+requires a completed manifest and retains the normal minimum sample counts.
+Identity self-tests reject changes to each identity component and GC settings;
+the standalone and counter identities remain distinct. The resume mechanism only
+schedules existing measurements; it does not add gateway instrumentation.
