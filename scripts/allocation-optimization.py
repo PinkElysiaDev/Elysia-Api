@@ -39,6 +39,7 @@ def freeze(name):
     flags = '-s -w -X github.com/elysia-api/backend/server.AppVersion=1.7.0 -X github.com/elysia-api/backend/server.AppCommit=' + identity
     commands = []
     binaries = {}
+    build_info = {}
     for key, command in [
         ('binary', ['go', 'build']),
         ('instrumented', ['go', 'test', '-c']),
@@ -52,8 +53,9 @@ def freeze(name):
         versions.execute(command, backend, directory / (key + '-build.log'))
         binaries[key] = str(binary)
         binaries['sha256' if key == 'binary' else key + 'SHA256'] = versions.digest(binary)
+        build_info[key] = subprocess.check_output(['go', 'version', '-m', str(binary)], text=True)
     builds = versions.read_json(HISTORY / 'builds.json')
-    builds['versions']['C'] = dict(binaries, commit=identity, parentCommit=parent, source=str(source), sourceSHA256=source_hash, commands=commands)
+    builds['versions']['C'] = dict(binaries, commit=identity, parentCommit=parent, source=str(source), sourceSHA256=source_hash, commands=commands, buildInfo=build_info)
     # Keep the fixed driver and upstream; new candidates cannot change the load.
     versions.save_json(directory / 'builds.json', builds)
     versions.save_json(directory / 'source-manifest.json', manifest)

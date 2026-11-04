@@ -1,5 +1,6 @@
 """Build a diagnostic-only counter overlay over the pinned current source."""
 
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -13,6 +14,19 @@ OUTPUT = BASE / 'attribution-build'
 
 
 def main():
+    global SOURCE, OUTPUT
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--stage', help='Frozen allocation candidate; omitted uses the original comparison')
+    args = parser.parse_args()
+    identity = 'd7e29817'
+    if args.stage:
+        if not re.fullmatch(r'[a-z0-9-]+', args.stage):
+            parser.error('stage must be a lowercase identifier')
+        stage = ROOT / '.tmp-dev/allocation-optimization-2026-11-04' / args.stage
+        build = json.loads((stage / 'builds.json').read_text(encoding='utf-8'))['versions']['C']
+        SOURCE = Path(build['source']) / 'backend'
+        OUTPUT = stage / 'attribution-build'
+        identity = build['commit']
     OUTPUT.mkdir(exist_ok=True)
     labels = []
 
@@ -121,11 +135,12 @@ def main():
     manifest = {name: {'overlay': target, 'sha256': hashlib.sha256(Path(target).read_bytes()).hexdigest()} for name, target in changes.items()}
     (OUTPUT / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     command = ['go', 'test', '-c', '-buildvcs=false', '-pgo=off', '-overlay=' + str(OUTPUT / 'overlay.json'),
-               '-ldflags=-X github.com/elysia-api/backend/server.AppVersion=1.7.0 -X github.com/elysia-api/backend/server.AppCommit=d7e29817',
+               '-ldflags=-X github.com/elysia-api/backend/server.AppVersion=1.7.0 -X github.com/elysia-api/backend/server.AppCommit=' + identity,
                '-o', str(OUTPUT / 'gateway.test.exe'), './server']
     with (OUTPUT / 'build.log').open('wb') as log:
         subprocess.run(command, cwd=SOURCE, stdout=log, stderr=subprocess.STDOUT, check=True)
-    (OUTPUT / 'build.json').write_text(json.dumps({'command': command, 'labels': labels,
+    (OUTPUT / 'build.json').write_text(json.dumps({'command': command, 'labels': labels, 'commit': identity,
+        'source': str(SOURCE), 'runnerSHA256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         'binarySHA256': hashlib.sha256((OUTPUT / 'gateway.test.exe').read_bytes()).hexdigest(),
         'purpose': 'Diagnostic call counts only; never use its timing/allocation totals for acceptance.'}, indent=2), encoding='utf-8')
     print(OUTPUT)

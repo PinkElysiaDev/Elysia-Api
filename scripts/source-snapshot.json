@@ -411,6 +411,7 @@
     "backend/protocol/core_control_tools.go",
     "backend/protocol/core_control_unfold.go",
     "backend/protocol/core_controls.go",
+    "backend/protocol/core_projection_allocation_test.go",
     "backend/protocol/core_retention_test.go",
     "backend/protocol/core_version.go",
     "backend/protocol/deep_optimization_bench_test.go",

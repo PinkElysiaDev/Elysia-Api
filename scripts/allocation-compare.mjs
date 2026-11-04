@@ -10,9 +10,11 @@ const files = await readdir(directory)
 const groups = {}
 const isMicro = files.includes('samples.json')
 if (isMicro) {
-  for (const row of await read('samples.json')) {
-    const group = groups[row.benchmark] ??= {}
-    ;(group[row.stage] ??= []).push({ ns: row.ns, bytes: row.bytes, objects: row.objects })
+  for (const root of confirmation ? [directory, resolve(confirmation)] : [directory]) {
+    for (const row of JSON.parse(await readFile(join(root, 'samples.json'), 'utf8'))) {
+      const group = groups[row.benchmark] ??= {}
+      ;(group[row.stage] ??= []).push({ ns: row.ns, bytes: row.bytes, objects: row.objects })
+    }
   }
 } else {
   for (const root of confirmation ? [directory, resolve(confirmation)] : [directory]) {

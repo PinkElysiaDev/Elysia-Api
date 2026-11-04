@@ -136,5 +136,31 @@ directory. Neither implementation is retained in production; the scoped-read
 benchmark is retained for future alternatives. No HTTP or race acceptance is
 claimed for a candidate already rejected by its targeted measurement.
 
+### Exact Core projection capacity: rejected
+
+The generator trial `projection` computes presence once and reserves only live
+fields. Ten 100,000-iteration rounds reduce sparse Node allocation 776 to 152
+B/op and dense allocation 5256 to 3608 B/op. Whole-object execution improves,
+but the unchanged single-payload selector regresses 2.89% [2.28%, 3.65%].
+
+Separating full projection into a helper (`projection-split`) retains the large
+allocation benefit. Ten 200,000-iteration rounds plus the one permitted matched
+confirmation batch still show a selector regression: 26.880 to 27.185 ns/op,
+ratio 1.01135 [1.00760, 1.01489]. A distinct pointer-argument helper candidate
+(`projection-pointer`) removes the extra whole-struct argument copy, but its
+selector regresses 2.98% [2.49%, 4.06%]. All candidate source and measurements
+remain archived. These small stable regressions are not waived at a 5% cutoff.
+
+The production generator and generated code are restored to the parent. Dense/
+sparse parity tests and micro fixtures remain; protocol and builtin correctness
+passed. HTTP/profile/race acceptance was not run for these rejected candidates.
+Future projection work must also isolate selector call costs. No projection
+allocation saving is included in the accepted implementation's results.
+
+The measurement comparator now merges a micro confirmation batch without
+discarding its initial observations, frozen builds record `go version -m`, and
+diagnostic call-count overlays accept a frozen stage identity instead of a
+hardcoded current commit. These are measurement-only changes.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.
