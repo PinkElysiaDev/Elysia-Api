@@ -12,9 +12,10 @@ spec.loader.exec_module(allocation)
 versions = allocation.versions
 
 
-def check_completed(record, stage, scene, phase, build):
+def check_completed(record, stage, scene, phase, build, version='C-package'):
     binary_key = 'sha256' if phase == 'standalone' else 'instrumentedSHA256'
-    expected = (stage, scene, phase, 'measure', 'C-package', build['C'][binary_key], build['driver']['sha256'], hashlib.sha256(versions.RUNNER_SOURCE).hexdigest())
+    variant = 'C' if version.startswith('C-') else version
+    expected = (stage, scene, phase, 'measure', version, build[variant][binary_key], build['driver']['sha256'], hashlib.sha256(versions.RUNNER_SOURCE).hexdigest())
     actual = tuple(record.get(key) for key in ['stage', 'scenario', 'phase', 'mode', 'version', 'binarySHA256', 'driverSHA256', 'runnerSHA256'])
     if actual != expected or any(record['environment'].get(key) != value for key, value in versions.RUNTIME.items()):
         raise RuntimeError('Completed task identity differs: ' + stage + '/' + scene)
@@ -28,6 +29,7 @@ def main():
     parser.add_argument('--scenes', required=True)
     parser.add_argument('--rounds', type=int, default=5)
     parser.add_argument('--phase', choices=['standalone', 'counters'], default='standalone')
+    parser.add_argument('--matrix', action='store_true', help='Resume the historical/default/package matrix')
     args = parser.parse_args()
     previous, output = allocation.BASE / args.completed, allocation.BASE / args.label
     output.mkdir(parents=True)
@@ -46,23 +48,31 @@ def main():
                 raise RuntimeError('Investigate failure after measurement before resuming: ' + path)
             manifest['failures'].append(path)
     stages = args.stages.split(',')
-    builds = {stage: versions.read_json(allocation.BASE / stage / 'builds.json')['versions'] for stage in stages}
+    conditions = [(stage, allocation.BASE / stage, 'C-package') for stage in stages]
+    if args.matrix:
+        conditions = [(name, allocation.HISTORY, name) for name in ['R-release', 'R-build', 'A'] if args.phase == 'standalone' or name != 'R-release']
+        for stage in stages:
+            conditions.extend((stage + '-' + chain, allocation.BASE / stage, 'C-' + chain) for chain in ['default', 'package'])
+    builds = {stage: versions.read_json(evidence / 'builds.json')['versions'] for stage, evidence, _ in conditions}
+    provider_hash = versions.read_json(ROOT / '.tmp-dev/fixed-provider-build/report.json')['binarySHA256']
     for scene in args.scenes.split(','):
         for repeat in range(args.rounds):
-            order = stages[repeat % len(stages):] + stages[:repeat % len(stages)]
-            for stage in order:
+            order = conditions[repeat % len(conditions):] + conditions[:repeat % len(conditions)]
+            for stage, evidence, version in order:
                 name = f'{scene}-{repeat+1}-{stage}'
                 if name in completed:
                     path, record = completed[name]
-                    check_completed(record, stage, scene, args.phase, builds[stage])
+                    check_completed(record, stage, scene, args.phase, builds[stage], version)
+                    if record['provider']['sha256'] != provider_hash:
+                        raise RuntimeError('Provider fixture differs: ' + name)
                     manifest['runs'].append(path)
                     print('reuse', name, flush=True)
                 else:
-                    versions.EVIDENCE = allocation.BASE / stage
+                    versions.EVIDENCE = evidence
                     target = output / name
                     print('measure', name, flush=True)
                     try:
-                        versions.run_case('C-package', scene, args.phase, 'measure', target)
+                        versions.run_case(version, scene, args.phase, 'measure', target)
                     except Exception:
                         manifest['failures'].append(str(target / 'run.json'))
                         versions.save_json(output / 'runs.json', manifest)

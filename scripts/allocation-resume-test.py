@@ -26,6 +26,11 @@ class ResumeIdentityTest(unittest.TestCase):
             resume.check_completed(changed, 'candidate', 'short', 'standalone', build)
         record.update(phase='counters', binarySHA256='counter')
         resume.check_completed(record, 'candidate', 'short', 'counters', build)
+        build['A'] = {'sha256': 'historical', 'instrumentedSHA256': 'historical-counter'}
+        record.update(stage='A', version='A', binarySHA256='historical-counter')
+        resume.check_completed(record, 'A', 'short', 'counters', build, 'A')
+        with self.assertRaises(RuntimeError):
+            resume.check_completed(record, 'A', 'short', 'counters', build, 'C-default')
 
 
 if __name__ == '__main__':
