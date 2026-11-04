@@ -40,7 +40,7 @@ func originalContinuationDigest(node Node) string {
 }
 
 func TestContinuationDigestEncodingCompatibility(t *testing.T) {
-	for _, raw := range []string{`null`, `false`, `9007199254740993`, `1e100`, ` {"a":1,"a":2,"\u0061":3} `, `"<>&\u2028\u2029"`, `"\ud800"`, "\"\xff\"", `[]`, `{}`} {
+	for _, raw := range []string{`null`, `false`, `9007199254740993`, `1e100`, ` {"a":1,"a":2,"\u0061":3} `, `"<>&\u2028\u2029"`, `"\ud800"`, "\"\xff\"", `[]`, `{}`, `"` + strings.Repeat("A", 4096) + `"`, ` {"text":"` + strings.Repeat("x<>&😀\u2028", 1024) + `","n":9007199254740993,"n":1e100} `} {
 		payload := parseTestValue(t, raw)
 		for _, node := range []Node{
 			{Kind: TextNode, Payload: payload},
@@ -64,7 +64,7 @@ func TestContinuationDigestEncodingCompatibility(t *testing.T) {
 }
 
 func BenchmarkContinuationNodeDigest(b *testing.B) {
-	for _, size := range []int{32, 4096, 2 << 20} {
+	for _, size := range []int{32, 1024, 2048, 4096, 2 << 20} {
 		node := Node{Kind: TextNode, Payload: StringValue(strings.Repeat("A", size))}
 		want := originalContinuationDigest(node)
 		b.Run(fmt.Sprintf("bytes-%d", size), func(b *testing.B) {
@@ -75,6 +75,18 @@ func BenchmarkContinuationNodeDigest(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func BenchmarkContinuationMediaDigest(b *testing.B) {
+	payload := Value{raw: `{"mimeType":"image/png","data":"` + strings.Repeat("A", 2<<20) + `"}`}
+	node := Node{Kind: ToolResultNode, CallID: StringValue("call"), Children: []Node{{Kind: ImageNode, Payload: payload}}}
+	want := originalContinuationDigest(node)
+	b.ReportAllocs()
+	for b.Loop() {
+		if ContinuationNodeDigest(node) != want {
+			b.Fatal("media digest changed")
+		}
 	}
 }
 

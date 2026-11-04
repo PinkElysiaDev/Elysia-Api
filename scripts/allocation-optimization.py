@@ -82,6 +82,31 @@ def micro(stages, label, pattern, iterations, rounds):
     versions.save_json(output / 'samples.json', records)
 
 
+def fixtures(name, reference, files):
+    directory = BASE / name
+    directory.mkdir(parents=True)
+    builds = versions.read_json(BASE / reference / 'builds.json')
+    build = builds['versions']['C']
+    source = Path(build['source'])
+    replacements = {}
+    manifest = {}
+    for relative in files:
+        raw = (ROOT / relative).read_bytes()
+        target = directory / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        replacements[str(source / relative)] = str(target)
+        manifest[relative] = hashlib.sha256(raw).hexdigest()
+    overlay = directory / 'overlay.json'
+    versions.save_json(overlay, {'Replace': replacements})
+    binary = directory / 'protocol.exe'
+    flags = '-s -w -X github.com/elysia-api/backend/server.AppVersion=1.7.0 -X github.com/elysia-api/backend/server.AppCommit=' + build['commit']
+    command = ['go', 'test', '-c', '-buildvcs=false', '-pgo=off', '-ldflags', flags, '-overlay=' + str(overlay), '-o', str(binary), './protocol']
+    versions.execute(command, source / 'backend', directory / 'build.log')
+    build.update(protocol=str(binary), protocolSHA256=versions.digest(binary), benchmarkOverlay=manifest, benchmarkReference=reference, benchmarkBuild=command)
+    versions.save_json(directory / 'builds.json', builds)
+
+
 def http(stages, label, scenes, rounds, phase, mode, chain):
     output = BASE / label
     for scene in scenes:
@@ -100,9 +125,11 @@ def http(stages, label, scenes, rounds, phase, mode, chain):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['freeze', 'micro', 'http', 'render'])
+    parser.add_argument('action', choices=['freeze', 'fixtures', 'micro', 'http', 'render'])
     parser.add_argument('--stages', required=True)
     parser.add_argument('--label')
+    parser.add_argument('--reference')
+    parser.add_argument('--fixtures', default='backend/protocol/continuation_allocation_test.go')
     parser.add_argument('--pattern', default='^Benchmark(Continuation|SemanticOwnership|Allocation|NativeThinkingContinuation|ReferenceLayoutRewrite)')
     parser.add_argument('--iterations', type=int, default=100)
     parser.add_argument('--rounds', type=int)
@@ -117,6 +144,8 @@ def main():
     if args.action == 'freeze':
         for stage in stages:
             freeze(stage)
+    elif args.action == 'fixtures':
+        fixtures(stages[0], args.reference, args.fixtures.split(','))
     elif args.action == 'render':
         renderer_spec = importlib.util.spec_from_file_location('profile_summary', ROOT / 'scripts/performance-profile-summary.py')
         renderer = importlib.util.module_from_spec(renderer_spec)

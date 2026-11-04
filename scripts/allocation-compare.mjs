@@ -16,31 +16,31 @@ if (isMicro) {
   }
 } else {
   for (const root of confirmation ? [directory, resolve(confirmation)] : [directory]) {
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const name = entry.name
-    const run = JSON.parse(await readFile(join(root, name, 'run.json'), 'utf8'))
-    if (run.status !== 'passed' || run.mode !== 'measure') throw new Error(`Not a completed timing batch: ${name}`)
-    const rows = JSON.parse(await readFile(join(root, name, 'measurements.json'), 'utf8'))
-    if (rows.length !== 1 || rows[0].UpstreamCalls !== rows[0].Requests) throw new Error(`Workload mismatch: ${name}`)
-    const row = rows[0]
-    const sample = {
-      cpuMS: row.Metrics.CPUTimeNS / row.Requests / 1e6,
-      throughput: row.Requests * 1000 / row.ElapsedMS,
-      p50MS: row.LatencyP50P95P99NS[0] / 1e6,
-      p95MS: row.LatencyP50P95P99NS[1] / 1e6,
-      firstFrameMS: row.FirstFrameP50P95P99NS[0] / 1e6,
-      peakRSS: row.Metrics.PeakWorkingSet,
-      recoveryHeap: row.Recovery.at(-1).Metrics.Heap,
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const name = entry.name
+      const run = JSON.parse(await readFile(join(root, name, 'run.json'), 'utf8'))
+      if (run.status !== 'passed' || run.mode !== 'measure') throw new Error(`Not a completed timing batch: ${name}`)
+      const rows = JSON.parse(await readFile(join(root, name, 'measurements.json'), 'utf8'))
+      if (rows.length !== 1 || rows[0].UpstreamCalls !== rows[0].Requests) throw new Error(`Workload mismatch: ${name}`)
+      const row = rows[0]
+      const sample = {
+        cpuMS: row.Metrics.CPUTimeNS / row.Requests / 1e6,
+        throughput: row.Requests * 1000 / row.ElapsedMS,
+        p50MS: row.LatencyP50P95P99NS[0] / 1e6,
+        p95MS: row.LatencyP50P95P99NS[1] / 1e6,
+        firstFrameMS: row.FirstFrameP50P95P99NS[0] / 1e6,
+        peakRSS: row.Metrics.PeakWorkingSet,
+        recoveryHeap: row.Recovery.at(-1).Metrics.Heap,
+      }
+      if (run.phase === 'counters') Object.assign(sample, {
+        bytes: row.Metrics.Allocated / row.Requests,
+        objects: row.Metrics.Allocations / row.Requests,
+        gcPauseNS: row.Metrics.GCPauseNS / row.Requests,
+      })
+      const group = groups[run.scenario] ??= {}
+      ;(group[run.stage] ??= []).push(sample)
     }
-    if (run.phase === 'counters') Object.assign(sample, {
-      bytes: row.Metrics.Allocated / row.Requests,
-      objects: row.Metrics.Allocations / row.Requests,
-      gcPauseNS: row.Metrics.GCPauseNS / row.Requests,
-    })
-    const group = groups[run.scenario] ??= {}
-    ;(group[run.stage] ??= []).push(sample)
-  }
   }
 }
 const report = { before, after, estimator: 'Seeded bootstrap ratio of independent medians; timing and profiling are separate.', comparisons: {} }

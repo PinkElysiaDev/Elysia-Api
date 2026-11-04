@@ -74,5 +74,47 @@ targeted server race passes (130.335 s). Authenticated node-content checking is
 unchanged. The earlier `history` snapshot was superseded before measurement;
 only `history-local` is used in this comparison.
 
+### Hash large payloads without complete JSON buffers
+
+The universal projection trial `digest-all` was rejected after ten rounds:
+32-byte nodes regressed from 504.7 to 840.8 ns/op and 853 to 2,200 B/op.
+It remains archived; no HTTP improvement is claimed for that candidate.
+
+Accepted candidate `digest-select` chooses the projection for encoded payloads
+of at least 2 KiB, including nested media, tool input and metadata. Smaller nodes
+use the existing Sonic encoding directly as SHA input, removing the intermediate
+Value/string conversion. Both choices are made before encoding; errors do not
+re-execute an alternate implementation. Original canonicalization and hashes
+remain compatible. Existing public Value ownership is unchanged.
+
+Matched benchmark overlays `history-fixture` / `digest-fixture` retain frozen
+parent/candidate production code and record the same updated test-source hashes.
+Ten alternating rounds use 100,000 iterations for 32/1024/2048 bytes, 20,000
+for 4096 and 1,000 for 2 MiB and nested media. Small-node time improves 4.98%,
+1024 bytes 13.70%, 2048 bytes 35.51%, 4096 bytes 43.91%; nested media improves
+64.77%, with allocation 12,725,376 → 3,440 B/op. All measured shapes improve
+time and allocation without stable regression. An initial grouped regex omitted
+the pure-text 2 MiB case; its separate `digest-select-text-large` batch completes
+ten rounds, improving time 64.81% and allocation 99.98%. It was not inferred from
+the nested-media case.
+
+Five standalone HTTP pairs (`digest-http`) cover short/history/media/SSE.
+Media CPU/request ratio is 0.7594 and throughput 1.1828, both improvements;
+all collected HTTP metrics have no stable regression. Five independent exact
+counter pairs (`digest-counters`) put media at 44,296,215 → 15,883,193 B/request,
+ratio 0.3586 [0.3583, 0.3593]; history is 9,495,230 → 8,980,501 B/request,
+ratio 0.9458 [0.9445, 0.9459].
+
+Twelve CPU/alloc/inuse and difference graphs are in
+`digest-profiles/profiles/index.html`. The media digest allocation subtree changes
+from an estimated 28,235,895 to 4,097 B/request. CPU profiling locates digest work
+at 5.3125 → 1.875 ms/request and GC at 9.375 → 5.859 ms/request; diagnostic
+profiling is separate from the above timed measurements.
+
+Exact compatibility tests include long HTML/Unicode payloads, nested nodes,
+duplicate and escaped keys, invalid UTF-8, exact integers and exponents.
+Frozen-candidate protocol/server race passed (2.569 / 159.839 s), including
+authenticated/persisted/encrypted gateway recovery and preparation release.
+
 Remaining candidates and final acceptance are still in progress. These results
 do not establish production-switch acceptance.
