@@ -109,3 +109,65 @@ failure needs no confirmation or HTTP run. `backend-fields` and the initial
 This is a targeted implementation/caller review across backend subsystems, not
 a claim that every backend source line was audited. No unrelated naming or
 formatting changes are included.
+
+## Agent conversion preparation
+
+The Agent now prepares its checked candidate from the same immutable conversion
+snapshot used to resolve policy. It reuses the existing bounded compiled-plan
+cache, while each call retains its own provider evidence, diagnostics and execution
+state. Execution copies are created after releasing the cache lock. No new cache,
+pool or supplier-specific path is introduced. The original Agent transport
+preference is preserved, including compatible SSE/NDJSON operation selection.
+
+The gateway changes have five alternating pairs for short/tools/SSE/cross-SSE in
+`backend-agent-http`, against `backend-arrays-only`. The first cross-SSE natural
+one-second heap result is a regression (ratio 1.297, interval 1.078–1.650).
+The single allowed equal-sized confirmation is retained in
+`backend-agent-http-confirm`; combining all ten pairs gives 1.156, interval
+0.932–1.424, inconclusive. No metric has a stable regression in the combined
+comparison. This is not evidence of reduced retained memory, and no further
+confirmation is taken for this comparison.
+
+`backend-agent-calls` and `backend-agent-logged` retain the initial complete Agent
+fixture measurements. Both include a local HTTP provider and synchronous usage
+persistence in the measured process, so their CPU is not gateway-only. Eight
+warmup calls precede 128 measured calls in two-turn histories; every call checks
+text, usage, history, exact upstream count and exactly one persisted usage row.
+Final Agent acceptance uses a fresh frozen source after preserving the original
+transport preference; initial samples are not silently relabelled as that source.
+
+In-flight tests hold the actual provider response while changing either binding
+revocation or request conversion policy. The pinned call completes, while the next
+call observes the update without reaching upstream. The policy test initially
+used a response-rewrite rule, which the Agent's core collector intentionally does
+not execute. That fixture assumption was corrected to a request rejection;
+production response semantics were not changed. The initial full-test failure is
+retained in `backend-final-checks/go-full`; the corrected test passes server race.
+
+The final source is `8e6215e8-source-12803acec795` (`backend-final`), containing
+only wire-array and Agent production changes. `backend-final-agent` and
+`backend-final-agent-logged` each have five alternating pairs against the accepted
+array parent. Both show stable CPU, latency and allocation improvements, without
+a stable regression. Natural recovery heap remains inconclusive.
+
+| Complete local Agent fixture | Before ms/call | After ms/call | Before B/call | After B/call |
+|---|---:|---:|---:|---:|
+| Array parent, body logging off | 8.114 | 1.287 | 7,180,130 | 133,932 |
+| Array parent, body logging on | 8.714 | 1.492 | 7,217,461 | 170,644 |
+| P0, body logging off, combined ten pairs | 8.487 | 1.298 | 7,182,104 | 133,932 |
+
+The initial `backend-final-agent-p0` natural heap comparison regresses (ratio
+1.480, interval 1.176–2.160). Its one equal-sized confirmation in
+`backend-final-agent-p0-confirm`, combined with all ten pairs, gives ratio 1.204,
+interval 0.992–1.488: inconclusive. The median still increases; memory equivalence
+or improvement is not established. No third batch is taken. Combined CPU falls
+from 10.559 to 0.916 ms/call, objects from 25,407 to 2,181. GC pause is below this
+fixture's measurement resolution. All raw runs and both initial decisions remain.
+
+The Agent changes are retained under the agreed no-stable-regression criterion,
+subject to the final gateway matrix. Corrected server full tests pass in
+`backend-fixture-checks` (171.7 seconds for the command). The original complete
+Go run passed every other package and failed only the corrected test assumption.
+Vet, staticcheck v0.8.2 (zero diagnostics), related protocol/server/backend race,
+both generation checks, source inventory and measurement-tool tests pass in
+`backend-final-checks`. These checks ran separately from performance windows.

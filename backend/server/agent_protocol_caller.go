@@ -20,7 +20,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	if err != nil {
 		return nil, err
 	}
-	bindings, err := caller.server.store.ListProtocolBindings(ctx)
+	conversions, err := caller.server.pinGatewayConversions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -30,24 +30,15 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 		return nil, err
 	}
 	view := service.View()
-	readiness := checkAgentModel(view, bindings, model)
+	candidate, readiness := prepareAgentModel(view, conversions.bindings, model)
 	if !readiness.Available {
 		return nil, agentReadinessError{readiness}
 	}
-	entry, _ := selectProtocolBinding(bindings, ref)
-	compiled, _ := view.Pin(entry.Binding.ProtocolID)
-	transport := agentTransport(entry.Binding, compiled)
-	candidate, failure := makeGatewayCandidate(view, bindings, ref, transport, "generate")
-	if failure != nil {
-		return nil, failure
-	}
-	if candidate.operation.Kind != "generate" {
-		return nil, fmt.Errorf("agent requires a synchronous generation operation")
-	}
+	compiled, transport := candidate.compiled, agentTransport(candidate.binding, candidate.compiled)
 	isStream := transport != protocol.HTTPJSON
 	started := time.Now()
 	logConfig := caller.server.usageLogConfig()
-	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: entry.Binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
+	record := &usageRecord{RequestID: usageRequestID(started), StartedAt: started, KeyName: AgentUsageKeyName, RequestedModelGroup: input.Model, ModelName: model.Name, SourceID: model.SourceID, Platform: model.Platform, TargetFormat: candidate.binding.ProtocolID, UpstreamRevision: compiled.Hash(), RelayMode: agentRelayMode, Stream: isStream, StatusCode: http.StatusOK, bodyOpts: usageBodyOptions{maxBytes: logConfig.BodyMaxBytes, externalize: logConfig.ExternalizeMedia}}
 	record.assets = newAssetSink(record.RequestID)
 	if record.bodyOpts.maxBytes > 0 {
 		body, err := sonic.ConfigStd.Marshal(input)
@@ -75,11 +66,7 @@ func (caller *agentStreamCaller) callBoundProtocol(ctx context.Context, input ag
 	if err != nil {
 		return nil, err
 	}
-	policies, _, _, err := caller.server.store.ConversionSnapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	candidate.conversion, err = resolveGatewayConversion(policies, bindings, compiled, compiled, ref, candidate.operationName, transport)
+	candidate.conversion, err = conversions.resolve(compiled, compiled, ref, candidate.operationName, transport)
 	if err != nil {
 		return nil, err
 	}

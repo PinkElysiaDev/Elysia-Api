@@ -9,6 +9,8 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
+const gatewayConversionPlanCapacity = 256
+
 // Snapshots are pinned for the whole request. Only compiled programs are shared;
 // provider evidence, diagnostics, delivery and continuation state remain local.
 type gatewayConversionPlans struct {
@@ -53,20 +55,21 @@ func (s *Server) pinGatewayConversions(ctx context.Context) (*gatewayConversionS
 func (snapshot *gatewayConversionSnapshot) resolve(ingress, upstream *protocol.Compiled, model config.ModelRef, operation string, transport protocol.Transport) (*protocol.CompiledConversion, error) {
 	key := gatewayConversionKey{ingress.ExecutionHash(), upstream.ExecutionHash(), model.SourceID, model.ID, model.Identifier(), operation, transport}
 	snapshot.mu.Lock()
-	defer snapshot.mu.Unlock()
 	compiled := snapshot.plans[key]
 	if compiled == nil {
 		var err error
 		compiled, err = resolveGatewayConversion(snapshot.policies, snapshot.bindings, ingress, upstream, model, operation, transport)
 		if err != nil {
+			snapshot.mu.Unlock()
 			return nil, err
 		}
 		// Bound revisions/model identifiers retained within a generation, including
 		// protocol reloads that do not change the conversion generation.
-		if len(snapshot.plans) >= 256 {
+		if len(snapshot.plans) >= gatewayConversionPlanCapacity {
 			clear(snapshot.plans)
 		}
 		snapshot.plans[key] = compiled
 	}
+	snapshot.mu.Unlock()
 	return compiled.ForExecution(), nil
 }

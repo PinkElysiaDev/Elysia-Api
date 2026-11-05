@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,13 +26,24 @@ const (
 	agentSnapshotLogKB  = 1024
 )
 
-func TestAgentSnapshotPinsInFlightBindingAndSeesRevocation(t *testing.T) {
+func TestAgentSnapshotPinsInFlightConfiguration(t *testing.T) {
+	for _, change := range []string{"binding-revocation", "conversion-policy"} {
+		t.Run(change, func(t *testing.T) {
+			testAgentSnapshotUpdate(t, change)
+		})
+	}
+}
+
+func testAgentSnapshotUpdate(t *testing.T, change string) {
+	const rejectionReason = "policy changed during Agent call"
 	s := newAgentIntegrationServer(t)
 	seedGatewayPackages(t, s)
 	started, release := make(chan struct{}), make(chan struct{})
-	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
-		close(started)
-		<-release
+	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, call int) {
+		if call == 1 {
+			close(started)
+			<-release
+		}
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"id":"pinned","object":"chat.completion","created":1,"model":"fake-model","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}]}`)
 	})
@@ -60,19 +72,30 @@ func TestAgentSnapshotPinsInFlightBindingAndSeesRevocation(t *testing.T) {
 		close(release)
 		t.Fatal("Agent did not reach provider", err)
 	}
-	binding.Unbound = true
+	if change == "binding-revocation" {
+		binding.Unbound = true
+	} else {
+		binding.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{
+			SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "changed-agent-policy",
+			Rules: []protocol.ConversionRule{{ID: "reject-request", Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Reason: rejectionReason}},
+		}}
+	}
 	err = s.store.SaveProtocolBinding(t.Context(), binding)
 	close(release)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
-		t.Fatal("revocation changed an already pinned call", err)
+		t.Fatal("configuration update changed an already pinned call", err)
 	}
 	_, err = caller.Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
-	var readiness agentReadinessError
-	if !errors.As(err, &readiness) || readiness.ReasonCode() != "unbound" || upstream.requestCount() != 1 {
-		t.Fatal("new Agent call reused revoked binding", err, upstream.requestCount())
+	if change == "binding-revocation" {
+		var readiness agentReadinessError
+		if !errors.As(err, &readiness) || readiness.ReasonCode() != "unbound" || upstream.requestCount() != 1 {
+			t.Fatal("new Agent call reused revoked binding", err, upstream.requestCount())
+		}
+	} else if err == nil || !strings.Contains(err.Error(), rejectionReason) || upstream.requestCount() != 1 {
+		t.Fatal("new Agent call ignored updated conversion policy", err, upstream.requestCount())
 	}
 }
 
