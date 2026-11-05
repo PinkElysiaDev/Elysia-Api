@@ -179,6 +179,29 @@ func TestStrictEnvelopeEvidenceRequiresPositiveFixtures(t *testing.T) {
 	}
 }
 
+func TestPackageStrictShapeRequiresPositiveEvidence(t *testing.T) {
+	ingress, upstream := compileBuiltinPackage(t, "openai-chat"), compileBuiltinPackage(t, "openai-responses")
+	policy := p.DefaultConversionPolicy(ingress, upstream)
+	policy.Mode = "strict"
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := p.VerifyBindingCombination(t.Context(), ingress, upstream, p.CapabilitySet{p.TextCapability: true, p.UsageCapability: true}, conversion)
+	hasRejection := false
+	for _, check := range report.Checks {
+		if check.Rejected {
+			hasRejection = true
+			if check.Passed || len(check.Capabilities) != 0 {
+				t.Fatal("declared refusal supplied positive evidence", check)
+			}
+		}
+	}
+	if !hasRejection || report.Passed {
+		t.Fatal("strict message-identity refusal did not require independent positive coverage", report)
+	}
+}
+
 func TestAnthropicUsageEnvelopeProjection(t *testing.T) {
 	from, to := testCompiled(t, Gemini), testCompiled(t, Anthropic)
 	for _, mode := range []string{"compatible", "strict"} {

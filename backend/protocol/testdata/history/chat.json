@@ -1,0 +1,410 @@
+{
+  "schemaVersion": 4,
+  "spec": {
+    "id": "history-prototype-chat",
+    "name": "History control prototype: chat",
+    "version": "1",
+    "family": "history-prototype-chat",
+    "wireVersion": "1",
+    "operations": {
+      "generate": {
+        "kind": "generate",
+        "method": "POST",
+        "path": "/prototype",
+        "transport": "http_json",
+        "request": "generation-request",
+        "response": "provider-response",
+        "auth": {
+          "location": "none"
+        }
+      }
+    },
+    "documents": {
+      "generation-request": {
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        }
+      },
+      "provider-response": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "reply"
+          ],
+          "properties": {
+            "reply": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "client-response": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "reply"
+          ],
+          "properties": {
+            "reply": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "mapping": {
+    "coreVersion": 2,
+    "dslVersion": 2,
+    "capabilities": {
+      "text": true
+    },
+    "native": {
+      "preserve": false
+    },
+    "directions": {
+      "decode_response": {
+        "program": {
+          "op": "object",
+          "fields": {
+            "schemaVersion": {
+              "op": "literal",
+              "value": 2
+            },
+            "status": {
+              "op": "literal",
+              "value": "completed"
+            },
+            "content": {
+              "op": "array",
+              "items": [
+                {
+                  "op": "object",
+                  "fields": {
+                    "kind": {
+                      "op": "literal",
+                      "value": "message"
+                    },
+                    "role": {
+                      "op": "literal",
+                      "value": "assistant"
+                    },
+                    "children": {
+                      "op": "array",
+                      "items": [
+                        {
+                          "op": "object",
+                          "fields": {
+                            "kind": {
+                              "op": "literal",
+                              "value": "text"
+                            },
+                            "payload": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/reply"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": "reply",
+            "kind": "emit",
+            "path": "/content/0/children/0/payload",
+            "target": "/reply"
+          }
+        ],
+        "capabilities": {
+          "text": true
+        },
+        "document": "provider-response"
+      },
+      "encode_response": {
+        "program": {
+          "op": "object",
+          "fields": {
+            "reply": {
+              "op": "read",
+              "from": "input",
+              "path": "/content/0/children/0/payload"
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": "reply",
+            "kind": "emit",
+            "path": "/content/0/children/0/payload",
+            "target": "/reply"
+          }
+        ],
+        "capabilities": {
+          "text": true
+        },
+        "document": "client-response"
+      },
+      "encode_request": {
+        "program": {
+          "op": "object",
+          "fields": {
+            "model": {
+              "op": "read",
+              "from": "input",
+              "path": "/model"
+            },
+            "messages": {
+              "op": "map",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/content"
+              },
+              "body": {
+                "op": "object",
+                "fields": {
+                  "role": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/role"
+                  },
+                  "content": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/children/0/payload"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "effects": [
+          {
+            "id": "unknown-controls",
+            "kind": "reject",
+            "path": "/parameters/wire:claude",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/parameters/wire:claude"
+                  }
+                },
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "equal",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/parameters/wire:claude"
+                      },
+                      {
+                        "op": "literal",
+                        "value": {}
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "reason": "unmapped source controls require an explicit representation"
+          },
+          {
+            "id": "history-rejection",
+            "kind": "reject",
+            "scope": "request_field",
+            "path": "/reasoning/historyRetention",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": "all"
+                }
+              ]
+            },
+            "reason": "target does not declare supplied-history retention"
+          },
+          {
+            "id": "unmapped-generation-controls",
+            "kind": "reject",
+            "path": "/reasoning",
+            "when": {
+              "op": "any",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/mode"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effort"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/effortScope"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/budget"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/summary"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/reasoning/interleaved"
+                  }
+                }
+              ]
+            },
+            "reason": "generation controls are outside this history prototype"
+          }
+        ],
+        "document": "generation-request"
+      }
+    },
+    "samples": [
+      {
+        "id": "request.encode",
+        "direction": "encode_request",
+        "input": {
+          "schemaVersion": 2,
+          "source": {},
+          "model": "m",
+          "content": [
+            {
+              "kind": "message",
+              "role": "user",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "hi"
+                }
+              ]
+            }
+          ],
+          "parameters": {
+            "max_output_tokens": 64,
+            "wire:claude": {}
+          }
+        },
+        "expected": {
+          "model": "m",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi"
+            }
+          ]
+        }
+      },
+      {
+        "id": "response.decode",
+        "direction": "decode_response",
+        "input": {
+          "reply": "ok"
+        },
+        "expected": {
+          "schemaVersion": 2,
+          "source": {},
+          "status": "completed",
+          "content": [
+            {
+              "kind": "message",
+              "role": "assistant",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "ok"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "response.encode",
+        "direction": "encode_response",
+        "input": {
+          "schemaVersion": 2,
+          "source": {},
+          "status": "completed",
+          "content": [
+            {
+              "kind": "message",
+              "role": "assistant",
+              "children": [
+                {
+                  "kind": "text",
+                  "payload": "ok"
+                }
+              ]
+            }
+          ]
+        },
+        "expected": {
+          "reply": "ok"
+        }
+      }
+    ],
+    "operations": {
+      "generate": {
+        "request": "encode_request",
+        "response": "decode_response"
+      }
+    },
+    "conversionDefaults": [
+      {
+        "id": "request-projection",
+        "order": 130,
+        "enabled": true,
+        "phase": "request",
+        "use": "request_projection"
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-import type { ConversionPolicy, ConversionRule } from './conversion-policy'
+import { CONVERSION_POLICY_VERSION, type ConversionPolicy, type ConversionRule } from './conversion-policy'
 import { ProtocolDocument } from './protocol-document'
 
 export const RULE_ORDER_STEP = 1000
@@ -11,6 +11,7 @@ export function parseConversionDocument(source: string): ConversionParseResult {
     const document = new ProtocolDocument(source)
     const policy: unknown = JSON.parse(source)
     if (!isObject(policy)) throw new Error('/：策略必须是对象')
+    if (policy.schemaVersion !== CONVERSION_POLICY_VERSION) throw new Error(`/schemaVersion：仅支持版本 ${CONVERSION_POLICY_VERSION}；历史策略保留原文，不会自动升级`)
     if (typeof policy.id !== 'string') throw new Error('/id：必须是字符串')
     if (policy.name !== undefined && typeof policy.name !== 'string') throw new Error('/name：必须是字符串')
     if (policy.mode !== undefined && policy.mode !== 'compatible' && policy.mode !== 'strict') throw new Error('/mode：必须是 compatible 或 strict')

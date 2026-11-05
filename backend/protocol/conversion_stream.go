@@ -1,23 +1,29 @@
 package protocol
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // ConversionEventState belongs to one upstream attempt. Waiting retains the
 // original event order, including interleaved parallel tools, under fixed caps.
 // A response terminator closes implicit nodes; an error never flushes partial
 // arguments as a successfully completed tool call.
 type ConversionEventState struct {
-	conversion *CompiledConversion
-	route      ConversionContext
-	pending    []Event
-	open       map[string]bool
-	bytes      int
-	Buffered   bool
-	usage      *Usage
-	terminal   *Event
-	id         Value
-	model      Value
-	started    bool
+	retention                            streamReservation
+	conversion                           *CompiledConversion
+	route                                ConversionContext
+	pending                              []Event
+	open                                 map[string]bool
+	bytes                                int
+	openBytes, terminalBytes, usageBytes int
+	Buffered                             bool
+	usage                                *Usage
+	terminal                             *Event
+	id                                   Value
+	model                                Value
+	started                              bool
+	isReleased                           bool
 }
 
 func NewConversionEventState(c *CompiledConversion, route ConversionContext) *ConversionEventState {
@@ -27,23 +33,49 @@ func NewConversionEventState(c *CompiledConversion, route ConversionContext) *Co
 	return &ConversionEventState{conversion: c, route: route, open: map[string]bool{}}
 }
 
+// Standalone projection helpers accept unversioned events; newly synthesized
+// responses retain core1 for those legacy calls without correcting other versions.
+func eventResponseVersion(version int) int {
+	if version == 0 {
+		return SemanticSchemaVersion
+	}
+	return version
+}
+
 func (s *ConversionEventState) Push(event Event) ([]Event, error) {
+	return s.PushContext(context.Background(), event)
+}
+
+// PushContext preserves source order while waiting only for declared resources
+// that need a completed, authenticated entity.
+func (s *ConversionEventState) PushContext(ctx context.Context, event Event) (events []Event, err error) {
+	if s.isReleased {
+		return nil, streamIssue(InvalidAssociation, "/state", "released conversion events cannot resume")
+	}
+	defer func() {
+		if err == nil && s.retention.budget != nil {
+			err = s.commitRetention()
+			if err != nil {
+				events = nil
+			}
+		}
+	}()
 	if s.conversion == nil {
 		return []Event{event}, nil
 	}
 	if s.conversion.hasDeliveryRule(s.route) && !s.started && event.Type != ResponseStarted && (event.Type == ItemStarted || event.Type == ResponseFinished) {
-		start, err := s.Push(Event{SchemaVersion: event.SchemaVersion, Source: event.Source, Type: ResponseStarted, ResponseID: event.ResponseID})
+		start, err := s.PushContext(ctx, Event{SchemaVersion: event.SchemaVersion, Source: event.Source, Type: ResponseStarted, ResponseID: event.ResponseID})
 		if err != nil {
 			return nil, err
 		}
 		s.Buffered = true
-		rest, err := s.Push(event)
+		rest, err := s.PushContext(ctx, event)
 		return append(start, rest...), err
 	}
 	if event.Type == ResponseStarted && s.conversion.hasDeliveryRule(s.route) {
 		s.started = true
 		if event.Response == nil {
-			event.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: event.ResponseID}
+			event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion), ID: event.ResponseID}
 		} else {
 			copy := *event.Response
 			copy.Attributes = copyObject(event.Response.Attributes)
@@ -82,9 +114,16 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 		if event.Response != nil && event.Response.Usage != nil {
 			s.usage = MergeUsage(s.usage, event.Response.Usage)
 		}
+		if s.retention.budget != nil && (event.Usage != nil || event.Response != nil && event.Response.Usage != nil) {
+			size, err := measureSemanticValue(s.usage, s.conversion.limits)
+			if err != nil {
+				return nil, err
+			}
+			s.usageBytes = size.bytes
+		}
 		if event.Type == ResponseStarted {
 			if event.Response == nil {
-				event.Response = &Response{SchemaVersion: SemanticSchemaVersion, ID: event.ResponseID}
+				event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion), ID: event.ResponseID}
 			} else {
 				copy := *event.Response
 				event.Response = &copy
@@ -109,22 +148,34 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 			if s.terminal != nil {
 				return nil, streamIssue(InvalidAssociation, "/event", "duplicate terminal")
 			}
+			if s.retention.budget != nil {
+				size, err := measureSemanticValue(&event, semanticLimits(s.conversion.limits))
+				if err != nil {
+					return nil, err
+				}
+				s.terminalBytes = size.bytes
+			}
 			copy := event
 			s.terminal = &copy
 			s.Buffered = true
 			// Close implicit items but retain terminal until usage tail frames arrive.
 			clear(s.open)
+			s.openBytes = 0
 			out := s.pending
 			s.pending, s.bytes = nil, 0
 			return out, nil
 		}
-		if event.Type == OperationFailed || event.Type == OperationCancelled {
-			s.terminal = nil
-		}
+	}
+	if event.Type == OperationFailed || event.Type == OperationCancelled {
+		// A real failure ends waiting without publishing partial buffered items.
+		clear(s.open)
+		s.openBytes, s.terminalBytes = 0, 0
+		s.pending, s.terminal, s.bytes = nil, nil, 0
+		return []Event{event}, nil
 	}
 	wait := false
 	if event.Type == ItemStarted && event.Item != nil {
-		wait = s.conversion.Policy.Mode == "strict" && s.conversion.SignatureProjectionEnabled(ConversionEvent, s.route) && (s.route.Source.Family != s.route.Target.Family || s.route.Source.WireVersion != s.route.Target.WireVersion)
+		wait = !s.conversion.HasContinuationRecovery(ConversionEvent, s.route) && s.conversion.Policy.Mode == "strict" && s.conversion.SignatureProjectionEnabled(ConversionEvent, s.route) && (s.route.Source.Family != s.route.Target.Family || s.route.Source.WireVersion != s.route.Target.WireVersion)
 		value, _ := EncodeValue(event.Item)
 		for _, r := range s.conversion.Policy.Rules {
 			if r.Enabled && r.Phase == ConversionEvent && r.Action == "buffer_node" && (r.Match.NodeKind == "" || r.Match.NodeKind == event.Item.Kind) && r.Match.matches(s.route, value) {
@@ -140,8 +191,26 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 		if len(s.open) >= s.conversion.limits.StateItems {
 			return nil, streamIssue(LimitExceeded, "/conversion/events", "waiting node limit exceeded")
 		}
-		s.open[key] = true
+		s.setOpen(key, true)
 		s.Buffered = true
+	}
+	if entity := event.continuation; entity != nil {
+		key := "continuation:" + entity.key
+		if entity.isComplete {
+			s.setOpen(key, false)
+		} else if event.Item != nil && HasContinuationState(*event.Item) {
+			needsRecovery, err := s.conversion.NeedsContinuationRecovery(ctx, ConversionEvent, *event.Item, s.route)
+			if err != nil {
+				return nil, err
+			}
+			if needsRecovery && !s.open[key] {
+				if len(s.open) >= s.conversion.limits.StateItems {
+					return nil, streamIssue(LimitExceeded, "/conversion/events", "waiting node limit exceeded")
+				}
+				s.setOpen(key, true)
+				s.Buffered = true
+			}
+		}
 	}
 	if len(s.pending) == 0 && len(s.open) == 0 {
 		return []Event{event}, nil
@@ -156,10 +225,11 @@ func (s *ConversionEventState) Push(event Event) ([]Event, error) {
 	s.bytes += len(raw.Bytes())
 	s.pending = append(s.pending, event)
 	if event.Type == ItemFinished {
-		delete(s.open, key)
+		s.setOpen(key, false)
 	}
 	if event.Type == ResponseFinished {
 		clear(s.open)
+		s.openBytes = 0
 	}
 	if len(s.open) > 0 {
 		return nil, nil
@@ -180,8 +250,10 @@ func (s *ConversionEventState) Drain() ([]Event, error) {
 	}
 	event := *s.terminal
 	s.terminal = nil
+	s.terminalBytes = 0
+	s.retention.commit(s.retainedItems(), s.retainedBytes())
 	if event.Response == nil {
-		event.Response = &Response{SchemaVersion: SemanticSchemaVersion}
+		event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion)}
 	} else {
 		copy := *event.Response
 		event.Response = &copy
@@ -226,7 +298,7 @@ func DeliveryFrameEvents(events []Event) []Event {
 			if counts == nil {
 				continue
 			}
-			response := Response{SchemaVersion: SemanticSchemaVersion}
+			response := Response{SchemaVersion: eventResponseVersion(copy[i].SchemaVersion)}
 			if copy[i].Response != nil {
 				response = *copy[i].Response
 			}
@@ -238,10 +310,24 @@ func DeliveryFrameEvents(events []Event) []Event {
 }
 
 func (s *ConversionEventState) Finish() error {
+	if s.isReleased {
+		return streamIssue(InvalidAssociation, "/state", "released conversion events cannot finish")
+	}
+	if budget := s.retention.budget; budget != nil {
+		if err := budget.Check(); err != nil {
+			return err
+		}
+	}
 	if len(s.pending) > 0 || len(s.open) > 0 {
 		return streamIssue(InvalidAssociation, "/conversion/events", "stream ended with incomplete waiting nodes")
 	}
 	return nil
+}
+
+// Release discards waiting events without publishing them as completed input.
+func (s *ConversionEventState) Release() {
+	s.retention.release()
+	*s = ConversionEventState{isReleased: true}
 }
 
 func ContinuationResourceKey(resource Resource) string {

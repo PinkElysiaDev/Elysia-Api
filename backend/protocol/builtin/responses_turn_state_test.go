@@ -253,7 +253,7 @@ func TestResponsesTurnStateCustomModulesAndProtectedScope(t *testing.T) {
 		t.Fatal("oversized state accepted")
 	}
 	rule := p.ConversionRule{ID: "forge-state", Enabled: true, Phase: p.ConversionEvent, Action: "set", Path: "/responsesTurnState/frame/headers/x-codex-turn-state", Value: p.StringValue("forged")}
-	c, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: 1, ID: "forge", Rules: []p.ConversionRule{rule}})
+	c, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "forge", Rules: []p.ConversionRule{rule}})
 	if err == nil {
 		_, err = c.Event(t.Context(), frame.Events[0], p.ConversionContext{}, nil)
 	}

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/utils"
@@ -101,6 +102,10 @@ func (s *Server) adminConversionVerify(ctx context.Context, c *app.RequestContex
 			respondProtocolError(ctx, c, protocol.ErrRevisionConflict)
 			return
 		}
+		if _, err := protocol.ResolveConversion(record.Policy); err != nil {
+			respondFail(ctx, c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
+			return
+		}
 		view := service.View()
 		for _, source := range view.IDs() {
 			ingress, _ := view.Pin(source)
@@ -117,7 +122,7 @@ func (s *Server) adminConversionVerify(ctx context.Context, c *app.RequestContex
 					respondFail(ctx, c, http.StatusBadRequest, "invalid_conversion_policy", e.Error())
 					return
 				}
-				record.Reports = append(record.Reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, upstream.Definition().Capabilities, policy)...)
+				record.Reports = append(record.Reports, protocol.VerifyBindingProfiles(ctx, ingress, upstream, upstream.DeclaredCapabilities(), policy)...)
 			}
 		}
 		record.CompilerVersion = protocol.CompilerVersion
@@ -165,6 +170,10 @@ func (s *Server) adminConversionActivate(ctx context.Context, c *app.RequestCont
 	}
 	if selected == nil {
 		respondFail(ctx, c, http.StatusNotFound, "not_found", "verified policy revision not found")
+		return
+	}
+	if _, err := protocol.ResolveConversion(selected.Policy); err != nil {
+		respondFail(ctx, c, http.StatusBadRequest, "invalid_conversion_policy", err.Error())
 		return
 	}
 	if selected.CompilerVersion != protocol.CompilerVersion {
@@ -240,6 +249,11 @@ func (s *Server) adminConversionPreview(ctx context.Context, c *app.RequestConte
 	}
 	policy, route, err := service.ResolvePreviewConversion(input.Context, input.Phase, &input.Policy)
 	if err == nil {
+		var operation protocol.EvaluationContext
+		operation, err = operation.WithOperation(c.GetString("requestID"), time.Now().Unix())
+		route = route.WithOperation(operation)
+	}
+	if err == nil {
 		route, err = policy.PreviewRecovery(input.Phase, input.Input, route)
 	}
 	route.ResponseWire = input.Direction == protocol.EncodeResponse || input.Direction == protocol.EncodeEvent
@@ -266,7 +280,10 @@ func (s *Server) adminConversionPreview(ctx context.Context, c *app.RequestConte
 	case protocol.ConversionEvent:
 		var event protocol.Event
 		if err = input.Input.Decode(&event); err == nil {
-			output, err = policy.Event(ctx, event, input.Context, sink)
+			route, err = policy.WithFrameUsage(input.Context, []protocol.Event{event})
+			if err == nil {
+				output, err = policy.Event(ctx, event, route, sink)
+			}
 		}
 	default:
 		output, err = policy.ApplyValue(ctx, input.Phase, input.Input, input.Context, sink)

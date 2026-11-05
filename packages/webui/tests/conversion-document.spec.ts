@@ -3,7 +3,7 @@ import { appendConversionRule, moveConversionRule, parseConversionDocument, patc
 import { ProtocolDocument } from '../src/lib/protocol-document'
 
 const largeInteger = '9007199254740993'
-const policyJSON = `{"schemaVersion":1,"id":"precision-policy","name":"Precision","rules":[{"id":"exact","order":1000,"enabled":true,"phase":"request","match":{},"action":"set","path":"/parameters/audit_integer","value":${largeInteger},"expression":{"op":"literal","value":${largeInteger}}},{"id":"other","order":2000,"enabled":true,"phase":"request","match":{},"action":"warn","reason":"audit"}]}`
+const policyJSON = `{"schemaVersion":2,"id":"precision-policy","name":"Precision","rules":[{"id":"exact","order":1000,"enabled":true,"phase":"request","match":{},"action":"set","path":"/parameters/audit_integer","value":${largeInteger},"expression":{"op":"literal","value":${largeInteger}}},{"id":"other","order":2000,"enabled":true,"phase":"request","match":{},"action":"warn","reason":"audit"}]}`
 
 test('field editing, rule ordering and deletion preserve exact arbitrary JSON', () => {
   expect(parseConversionDocument(policyJSON).ok).toBe(true)
@@ -22,8 +22,13 @@ test('field editing, rule ordering and deletion preserve exact arbitrary JSON', 
 })
 
 test('invalid structures produce a parse failure with no renderable policy', () => {
+  for (const version of [1, 3, null]) {
+    const parsed = parseConversionDocument(`{"schemaVersion":${version},"id":"historical","rules":[]}`)
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.error).toContain('/schemaVersion')
+  }
   for (const rules of ['null', '{}', '[null]', '[42]', '[{"match":42}]', '[{"id":{}}]']) {
-    const parsed = parseConversionDocument(`{"id":"invalid","rules":${rules}}`)
+    const parsed = parseConversionDocument(`{"schemaVersion":2,"id":"invalid","rules":${rules}}`)
     expect(parsed.ok).toBe(false)
     expect('policy' in parsed).toBe(false)
     if (!parsed.ok) expect(parsed.error).toContain('/rules')
@@ -37,7 +42,7 @@ test('invalid structures produce a parse failure with no renderable policy', () 
     '"continuation":{"retentionSeconds":{}}', '"usage":{"collectUpstreamUsage":[]}',
     '"rules":[{"match":{"present":"false"}}]',
   ]) {
-    const parsed = parseConversionDocument(`{"id":"invalid",${fields.startsWith('"rules"') ? '' : '"rules":[],'}${fields}}`)
+    const parsed = parseConversionDocument(`{"schemaVersion":2,"id":"invalid",${fields.startsWith('"rules"') ? '' : '"rules":[],'}${fields}}`)
     expect(parsed.ok).toBe(false)
   }
 })
@@ -53,7 +58,7 @@ test('real backend policy editing and preview preserve large integers and recove
   await page.getByText('完整策略 JSON', { exact: true }).click()
   const editor = page.getByLabel('完整策略 JSON', { exact: true })
   for (const rules of ['null', '{}', '[null]']) {
-    const invalid = `{"id":"invalid","rules":${rules}}`
+    const invalid = `{"schemaVersion":2,"id":"invalid","rules":${rules}}`
     await editor.fill(invalid)
     await expect(page.getByRole('alert')).toContainText('/rules')
     await expect(page.getByRole('button', { name: '保存策略草稿' })).toBeDisabled()
@@ -92,7 +97,7 @@ test('preview completion belongs to the exact current input', async ({ page }) =
   }, { times: 1 })
   await page.getByRole('button', { name: '预览行为', exact: true }).click()
   await received
-  await page.getByLabel('行为预览输入').fill('{"schemaVersion":1,"source":{},"model":"new-input","content":[],"parameters":{"stream":false}}')
+  await page.getByLabel('行为预览输入').fill('{"schemaVersion":2,"source":{},"model":"new-input","content":[],"parameters":{"stream":false}}')
   release()
   await expect(page.getByRole('button', { name: '预览行为', exact: true })).toBeEnabled()
   await expect(page.getByLabel('行为预览结果')).toHaveCount(0)

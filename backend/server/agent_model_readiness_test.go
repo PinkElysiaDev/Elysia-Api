@@ -17,7 +17,7 @@ import (
 func TestAgentReadinessDistinguishesModelBindingAndRevision(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
-	compiled := activateGatewayDefinition(t, s, agentEnvelopeDefinition(t))
+	compiled := activateGatewayPackage(t, s, agentEnvelopePackage(t))
 	model := storage.Model{ID: "grok-4.7", SourceID: "s", Name: "grok-4.7", Enabled: true, CapabilitySource: "catalog"}
 	binding := makeProtocolBinding(storage.BindingKey{Kind: "source", SourceID: "s"}, compiled)
 	check := func(want string) {
@@ -47,6 +47,7 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 	for _, mode := range []string{"success", "missing_tool", "wrong_arguments", "conflict"} {
 		t.Run(mode, func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
+			activateGatewayPackage(t, s, loadGatewayPackage(t, "builtin/packages/openai-chat"))
 			s.setupAgentRoutes(s.engine.Group("/api/admin"))
 			calls := 0
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +135,7 @@ func TestAgentToolProbeOnlyCommitsValidatedCapability(t *testing.T) {
 func TestAgentToolProbeStreamsRelayExtensions(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
+	activateGatewayPackage(t, s, loadGatewayPackage(t, "builtin/packages/openai-chat"))
 	s.setupAgentRoutes(s.engine.Group("/api/admin"))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)

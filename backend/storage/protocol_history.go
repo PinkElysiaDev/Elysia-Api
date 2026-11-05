@@ -67,7 +67,23 @@ func scanProtocolHistory(row interface{ Scan(...any) error }) (ProtocolHistory, 
 		Version string `json:"version"`
 	}
 	if err == nil {
-		err = sonic.ConfigStd.Unmarshal([]byte(raw), &meta)
+		var fields protocol.Object
+		fields, err = value.ReadObject()
+		if err == nil {
+			fields, _, err = protocol.ProtocolIdentityFields(fields)
+		}
+		if err == nil {
+			for _, field := range []struct {
+				name  string
+				value *string
+			}{{"name", &meta.Name}, {"version", &meta.Version}} {
+				if value := fields[field.name]; !value.IsZero() {
+					if err = value.Decode(field.value); err != nil {
+						break
+					}
+				}
+			}
+		}
 	}
 	if err != nil {
 		item.RawDefinition, item.ReadError = raw, err.Error()

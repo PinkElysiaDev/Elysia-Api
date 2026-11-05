@@ -34,19 +34,14 @@ func CheckIngressBinding(binding Binding, compiled *Compiled) []ConversionIssue 
 	return checkBinding(binding, compiled, DecodeRequest, EncodeResponse, EncodeEvent)
 }
 
-func checkBinding(binding Binding, compiled *Compiled, requestDirection, responseDirection, eventDirection Direction) []ConversionIssue {
-	issue := ConversionIssue{Code: InvalidDefinition, Severity: SeverityError, Direction: EncodeRequest, Stage: "binding", Path: "/binding", Suggestion: "Select a verified revision and declare only the model's supported capabilities and transports."}
+func checkBindingContract(binding Binding, compiled *Compiled) []ConversionIssue {
+	issue := bindingDiagnostic(compiled)
 	if compiled == nil {
 		issue.Code, issue.Reason = VerificationRequired, "binding references an inactive protocol"
 		return []ConversionIssue{issue}
 	}
-	issue.Protocol = compiled.Identity()
 	if binding.ProtocolID != compiled.Identity().DefinitionID || binding.RevisionHash != compiled.Hash() {
 		issue.Code, issue.Reason = VerificationMismatch, "binding revision differs from the active protocol"
-		return []ConversionIssue{issue}
-	}
-	if !compiled.Supports(requestDirection) {
-		issue.Reason = fmt.Sprintf("binding requires %s", requestDirection)
 		return []ConversionIssue{issue}
 	}
 	if binding.Capabilities == nil || len(binding.Transports) == 0 {
@@ -71,6 +66,27 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 			entry.Code, entry.Capability, entry.Reason = UnsupportedCapability, Capability(capability), "model binding exceeds protocol capabilities"
 			issues = append(issues, entry)
 		}
+	}
+	return issues
+}
+
+func bindingDiagnostic(compiled *Compiled) ConversionIssue {
+	issue := ConversionIssue{Code: InvalidDefinition, Severity: SeverityError, Direction: EncodeRequest, Stage: "binding", Path: "/binding", Suggestion: "Select a verified revision and declare only the model's supported capabilities and transports."}
+	if compiled != nil {
+		issue.Protocol = compiled.Identity()
+	}
+	return issue
+}
+
+func checkBinding(binding Binding, compiled *Compiled, requestDirection, responseDirection, eventDirection Direction) []ConversionIssue {
+	issues := checkBindingContract(binding, compiled)
+	if len(issues) != 0 {
+		return issues
+	}
+	issue := bindingDiagnostic(compiled)
+	if !compiled.Supports(requestDirection) {
+		issue.Reason = fmt.Sprintf("binding requires %s", requestDirection)
+		return []ConversionIssue{issue}
 	}
 	// This package owns the immutable revision. Binding checks only inspect
 	// metadata; copying schemas and task expressions adds no isolation here.
@@ -104,7 +120,7 @@ func checkBinding(binding Binding, compiled *Compiled, requestDirection, respons
 		}
 		hasTransport := false
 		for _, operation := range operations {
-			if operation.Transport == transport && operation.Kind != "models" {
+			if operation.Transport == transport && operation.Kind != "models" && operation.Kind != "count_tokens" {
 				hasTransport = true
 			}
 		}
@@ -192,7 +208,7 @@ func bindingTarget(compiled *Compiled, binding Binding, direction Direction, sco
 	for capability := range capabilities {
 		capabilities[capability] = capabilities[capability] && binding.Capabilities[capability]
 	}
-	return Target{Codec: compiled.Codec(direction), Protocol: compiled.Identity(), Direction: direction, Scope: scope, Capabilities: capabilities}
+	return Target{Codec: compiled.Codec(direction), Protocol: compiled.Identity(), Direction: direction, Scope: scope, Capabilities: capabilities, coreVersion: compiled.CoreVersion()}
 }
 
 func upstreamBindingIssues(issues []ConversionIssue) []ConversionIssue {

@@ -15,12 +15,12 @@ func TestGeminiSafetySettingsRuleValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rule := base
 			tc.change(&rule)
-			if _, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "safety", Rules: []ConversionRule{rule}}); err == nil {
+			if _, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "safety", Rules: []ConversionRule{rule}}); err == nil {
 				t.Fatal("invalid rule accepted")
 			}
 		})
 	}
-	if _, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "safety", Rules: []ConversionRule{base}}); err != nil {
+	if _, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "safety", Rules: []ConversionRule{base}}); err != nil {
 		t.Fatal(err)
 	}
 }

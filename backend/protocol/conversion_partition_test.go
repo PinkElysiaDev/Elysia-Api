@@ -82,7 +82,7 @@ func TestRequestPartitionRuleParity(t *testing.T) {
 	for i := range rules {
 		rules[i].Order = i
 	}
-	c, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "partition", Mode: "compatible", Rules: rules})
+	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "partition", Mode: "compatible", Rules: rules})
 	if err != nil {
 		t.Fatal(err)
 	}

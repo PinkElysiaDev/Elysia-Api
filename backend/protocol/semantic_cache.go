@@ -105,6 +105,9 @@ func (cache *semanticCache) store(value Value, entry semanticValueEntry) {
 }
 
 func (cache *semanticCache) normalize(value Value) Value {
+	if cache == nil {
+		return Value{raw: compactValueString(value.raw)}
+	}
 	entry, _ := cache.lookup(value)
 	if entry.hasNormalized {
 		return entry.normalized

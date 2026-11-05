@@ -47,7 +47,7 @@ func (transport *ProtocolTransport) SendProtocolRequest(ctx context.Context, bas
 		}
 		return transport.sendStreamRequest(request, time.Duration(idleMillis)*time.Millisecond)
 	}
-	if operation.Kind == "submit" || operation.Kind == "status" || operation.Kind == "result" || operation.Kind == "cancel" || operation.Kind == "models" {
+	if operation.Kind == "submit" || operation.Kind == "status" || operation.Kind == "result" || operation.Kind == "cancel" || operation.Kind == "models" || operation.Kind == "count_tokens" {
 		transport.client.mu.RLock()
 		copy := *transport.client.client
 		transport.client.mu.RUnlock()

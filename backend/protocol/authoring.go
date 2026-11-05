@@ -38,16 +38,61 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 	if input.Mode == "conversion" {
 		sink := &DiagnosticSink{}
 		conversion, route, err := service.ResolvePreviewConversion(input.ConversionContext, input.ConversionPhase, input.ConversionPolicy)
+		// Authoring uses the same explicit synthetic execution as fixture previews.
+		route = route.WithOperation(EvaluationContext{operation: &verificationOperation})
 		route.ResponseWire = input.Direction == EncodeResponse || input.Direction == EncodeEvent
 		var output Value
+		var recoveryTarget *Compiled
 		if err == nil {
-			route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
+			if input.ConversionPhase == ConversionResponse && conversion.HasContinuationRecovery(input.ConversionPhase, route) {
+				var exists bool
+				recoveryTarget, exists = service.View().Pin(route.Target.DefinitionID)
+				var response Response
+				if !exists || recoveryTarget.Identity() != route.Target {
+					err = operationMetadataError("/context", "preview target revision changed")
+				} else {
+					err = input.Input.Decode(&response)
+				}
+				if err == nil {
+					route, err = prepareContinuationEvidence(ctx, conversion, recoveryTarget, ConversionResponse, response.Content, route)
+				}
+			} else {
+				route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
+			}
 		}
 		if err == nil {
 			if input.ConversionPhase == ConversionSourceEvent {
 				output, err = service.PreviewSourceEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
+			} else if input.ConversionPhase == ConversionWire && input.Direction == EncodeEvent {
+				output, err = service.previewWireEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
 			} else {
 				output, err = conversion.ApplyValue(ctx, input.ConversionPhase, input.Input, route, sink)
+			}
+		}
+		if err == nil && input.ConversionPhase == ConversionWire && input.Direction == EncodeResponse {
+			target, exists := service.View().Pin(route.Target.DefinitionID)
+			if !exists || target.Identity() != route.Target {
+				err = operationMetadataError("/context", "preview target revision changed")
+			} else {
+				err = target.ValidateResponseOutput(ctx, input.Input, output, EvaluationContext{Scope: route.Scope, operation: route.operation})
+			}
+		}
+		if err == nil && recoveryTarget != nil && route.continuation != nil {
+			var response Response
+			err = output.Decode(&response)
+			if err == nil {
+				options := (EvaluationContext{Scope: route.Scope, operation: route.operation}).WithContinuation(route.continuation)
+				var wire Value
+				wire, err = recoveryTarget.EncodeResponseValue(ctx, &response, options)
+				if err == nil {
+					wire, err = recoveryTarget.EncodeContinuationResponse(ctx, wire, options)
+				}
+				if err == nil {
+					err = recoveryTarget.ValidateContinuationResponse(ctx, wire, options)
+				}
+				if err == nil {
+					err = route.continuation.CommitDelivery()
+				}
 			}
 		}
 		issues := sink.Issues()
@@ -63,6 +108,33 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 	}
 
 	if input.Mode == "" || input.Mode == "mapping" {
+		if input.Direction == EncodeEvent {
+			compiled, issues := service.compiler.Compile(input.Definition.Bytes())
+			if IssuesError(issues) != nil {
+				return PreviewResult{Issues: issues}
+			}
+			route := input.ConversionContext
+			if route.Source.DefinitionID != "" {
+				source, exists := service.View().Pin(route.Source.DefinitionID)
+				if !exists {
+					return PreviewResult{Issues: []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Stage: "preview", Path: "/conversionContext/source", Reason: "preview source protocol is not active"}}}
+				}
+				route.Source = source.Identity()
+			}
+			route.Target = compiled.Identity()
+			layers := []ConversionPolicy{{SchemaVersion: ConversionPolicySchemaVersion, ID: "mapping-preview", Rules: compiled.defaultConversionRules(ConversionEvent)}}
+			if input.ConversionPolicy != nil {
+				layers = append(layers, *input.ConversionPolicy)
+			}
+			conversion, err := ResolveConversion(layers...)
+			if err != nil {
+				return PreviewResult{Issues: sampleIssues(compiled, Sample{}, "/conversionPolicy", err)}
+			}
+			options := (EvaluationContext{Scope: route.Scope, Diagnostics: &DiagnosticSink{}}).WithConversion(conversion, route)
+			result := service.previewCompiled(ctx, compiled, input.Direction, input.Input, input.Sequence, options)
+			result.Effective = conversion
+			return result
+		}
 		return service.Preview(ctx, input.Definition.Bytes(), input.Direction, input.Input, input.Sequence, EvaluationContext{})
 	}
 	compiled, issues := service.compiler.Compile(input.Definition.Bytes())
@@ -77,12 +149,32 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		var preferences AgentPreferences
 		err = decodeContract(input.Input.Bytes(), &preferences)
 		if err == nil {
-			semantic, err = compiled.BuildAgentParameters(ctx, preferences)
+			if compiled.packagePlan != nil {
+				semantic, err = compiled.prepareAgentSettings(ctx, preferences, nil)
+			} else {
+				semantic, err = compiled.BuildAgentParameters(ctx, preferences)
+			}
 		}
 		if err == nil {
 			output, err = EncodeValue(semantic)
 		}
+	case "count_tokens":
+		var result verificationResult
+		result, err = executeTokenCountSample(ctx, compiled, Sample{Operation: input.Operation, Direction: input.Direction, Input: input.Input, Scope: Scope{Model: input.ConversionContext.Model}})
+		output, semantic = result.output, result.semantic
+		if err == nil && input.Direction == DecodeRequest {
+			output, err = EncodeValue(semantic)
+		}
 	case "models":
+		if input.Direction == EncodeResponse {
+			semantic = input.Input
+			output, err = compiled.previewModelEncoding(ctx, input.Operation, input.Input)
+			break
+		}
+		if input.Direction != "" && input.Direction != DecodeResponse {
+			err = fmt.Errorf("models preview requires decode_response or encode_response")
+			break
+		}
 		semantic, err = compiled.DecodeModelPage(ctx, input.Operation, input.Input)
 		if err == nil {
 			output, err = EncodeValue(semantic)
@@ -92,7 +184,7 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		semantic = input.Input
 	case "session":
 		var sample *SessionSample
-		for _, entry := range compiled.Definition().SessionSamples {
+		for _, entry := range compiled.verificationSessionSamples() {
 			if entry.ID == input.Sample {
 				sample = &entry
 				break
@@ -141,20 +233,36 @@ func (service *Service) Preview(ctx context.Context, raw []byte, direction Direc
 	if IssuesError(issues) != nil {
 		return PreviewResult{Issues: issues}
 	}
+	return service.previewCompiled(ctx, compiled, direction, input, isSequence, options)
+}
+
+func (service *Service) previewCompiled(ctx context.Context, compiled *Compiled, direction Direction, input Value, isSequence bool, options EvaluationContext) PreviewResult {
 	sample := Sample{ID: "preview", Direction: direction, Input: input, Sequence: isSequence, Context: options.Values, Scope: options.Scope}
-	result, err := executeVerificationSample(ctx, compiled, sample)
-	if err != nil {
-		return PreviewResult{Issues: sampleIssues(compiled, sample, "/preview", err)}
+	var result verificationResult
+	var err error
+	if isEventDirection(direction) {
+		options.State, options.operation = NewEvaluationState(), &verificationOperation
+		defer options.State.Release()
+		result, err = executeEventFixtureWithState(ctx, compiled, sample, options)
+	} else {
+		result, err = executeVerificationSample(ctx, compiled, sample)
 	}
-	if direction == EncodeResponse || direction == EncodeRequest {
+	if err != nil {
+		return PreviewResult{Issues: AppendDiagnostics(options.Diagnostics.Issues(), sampleIssues(compiled, sample, "/preview", err)...)}
+	}
+	if direction == EncodeResponse {
 		err = compiled.ValidateWireOutput(direction, result.output)
 	}
-	if direction == EncodeEvent {
+	// Package sequence fixtures already checked each final batch and delivery.
+	if direction == EncodeEvent && (!isSequence || compiled.packagePlan == nil) {
 		var frames []Value
 		if result.output.Decode(&frames) == nil {
 			var validator *WireStreamValidation
 			if isSequence {
 				validator, err = compiled.NewWireStreamValidation(options.Scope)
+				if err == nil {
+					defer validator.Release()
+				}
 			}
 			for _, frame := range frames {
 				if err != nil {
@@ -187,7 +295,7 @@ func (service *Service) Preview(ctx context.Context, raw []byte, direction Direc
 	if direction == DecodeRequest || direction == DecodeResponse || isEventDecoder(direction) {
 		output = semantic
 	}
-	return PreviewResult{Output: output, Semantic: semantic, Issues: []ConversionIssue{}}
+	return PreviewResult{Output: output, Semantic: semantic, Issues: AppendDiagnostics([]ConversionIssue{}, options.Diagnostics.Issues()...)}
 }
 
 // VerifyRevision refreshes offline evidence for an immutable rollback candidate

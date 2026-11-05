@@ -512,10 +512,12 @@ Details: Update a key under server permissions and business policies: rename (ne
 
 ## protocol
 
-All commands use the running v2 engine. Read the vendor documentation and complete
-examples, then `elysia protocol schema`. Declare independent directions,
-transports, capabilities, mappings and expected fixtures in a complete
-`schemaVersion: 2` definition. Legacy shape templates are import-only.
+All commands use the installed compiler. Read the vendor documentation and complete
+examples, then `elysia protocol schema`. Author one `schemaVersion: 4` package:
+`spec` describes external documents and transports; `mapping` declares bidirectional
+conversion, capabilities and samples, with `dslVersion: 2` and `coreVersion: 2`.
+Save and verify the two sources together. Changing a version number does not
+translate an older document into the new format.
 
 The workflow is draft ? validate/preview/verify ? repair ? save ? activate.
 Unsupported mechanisms must be reported; do not delete required fields/tools,
@@ -533,12 +535,14 @@ elysia protocol schema [--section <section>] [--type <type>]
 
 Without a section, return the installed compiler/schema version, features,
 directions, transports, operation kinds and capabilities. Sections are
-`definition`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
+`package`, `spec`, `mapping`, `definition`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
 `events`, `diagnostics`, `modules`. `--type` selects a named type from a section
 containing `$defs`; it is not valid for a list catalog.
 
 ```text
-elysia protocol schema --section definition --type Definition
+elysia protocol schema --section package --type ProtocolPackage
+elysia protocol schema --section spec --type ProtocolSpec
+elysia protocol schema --section mapping --type ProtocolMapping
 elysia protocol schema --section semantic --type Request
 elysia protocol schema --section operations
 ```
@@ -546,20 +550,24 @@ elysia protocol schema --section operations
 ### protocol draft
 
 ```text
-elysia protocol draft '<complete schemaVersion=2 JSON>'
+elysia protocol draft '<schemaVersion=4 spec/mapping JSON>'
 ```
 
-The sole positional argument is the complete definition, not a patch. Retain the
+The sole positional argument is the complete spec/mapping package, not a patch. Retain the
 working draft in this tool context and compile it. A malformed definition is
 retained for repair but reports failure; it is not persisted or activated. Edit
 mode must retain the selected protocol ID. REST/A2A use session context; stateless
 MCP callers keep dependent draft operations in one command batch. `read` returns
 stored content; pass edited content through `draft` to set the working draft.
 
-Complete standalone examples: [text-alpha](../backend/protocol/testdata/text-alpha.json),
-[text-beta](../backend/protocol/testdata/text-beta.json), and
-[cached-text](examples/cached-text-v2.json). See the
-[definition reference](protocol-definition-reference.en.md) for the contract.
+A standalone source-pair fixture is available as
+[session-alpha Spec](../backend/protocol/testdata/sessions/session-alpha/spec.json) and
+[session-alpha Mapping](../backend/protocol/testdata/sessions/session-alpha/mapping.json).
+Supply both as `{"schemaVersion":4,"spec":<spec JSON>,"mapping":<mapping JSON>}`.
+Use the installed package, spec and mapping schema sections for the complete contract.
+The shipped-provider candidates under `backend/protocol/builtin/packages/` still
+require their own functionality and activation evidence; the existence of source
+files does not make them active presets.
 
 ### protocol validate
 
@@ -597,7 +605,7 @@ Use issue codes, directions, paths and suggestions to revise the draft.
 ### protocol preview
 
 ```text
-elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent] [--sample-id <id>] [--operation <name>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
+elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|count_tokens|agent] [--model <name>] [--sample-id <id>] [--operation <name>] [--kind decode|encode|control] [--purpose submit|status|result|cancel]
 ```
 
 Preview the working draft using the shared runtime, without saving or enabling:
@@ -607,9 +615,10 @@ Preview the working draft using the shared runtime, without saving or enabling:
 | `--sample` | Complete input JSON; event arrays for a sequence, semantic input for an encoder |
 | `--direction` | Independent mapping direction from the current schema; required in mapping mode |
 | `--sequence` | Replay the input as an ordered event sequence |
-| `--mode` | `mapping` by default; `session`, `task`, `models` and `agent` select workflow previews |
+| `--mode` | `mapping` by default; `session`, `task`, `models`, `count_tokens` and `agent` select workflow previews |
 | `--sample-id` | Declared session fixture ID; session mode uses this fixture instead of `--sample` |
-| `--operation` | Declared operation name for model/task previews |
+| `--operation` | Declared operation name for model/task/count previews |
+| `--model` | Endpoint model name for count previews whose protocol path contains a model |
 | `--kind` | Task mapping: `decode`, `encode` or `control` |
 | `--purpose` | Task phase: `submit`, `status`, `result` or `cancel` |
 
@@ -618,6 +627,8 @@ For `models`, supply the wire model-list response. For `agent`, supply semantic
 Model discovery requires declared model operations and `modelSamples`. Agent
 use requires tool result input type, parameter policies and thinking-mode
 fixtures. Results include output, semantic data and located issues.
+
+Counting uses a declared `count_tokens` operation, independent `countTokens` request/result mappings, and `tokenCountSamples` covering all four request/response directions. Preview with `--mode count_tokens --operation <name> --direction <direction> --model <endpoint-model>`. Counts report provider-observed input tokens, require no generation budget and are not generated usage. Gemini tool/system inputs use `generateContentRequest`.
 
 ### protocol test
 

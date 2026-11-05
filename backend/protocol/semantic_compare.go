@@ -21,6 +21,11 @@ func comparableSemantic(input any) (Value, error) {
 		return EncodeValue(copy)
 	case Event:
 		value.Metadata = comparableMetadata(value.Metadata)
+		if value.Control != nil {
+			control := *value.Control
+			control.Source, control.FrameNumber = Provenance{}, 0
+			value.Control = &control
+		}
 		value.Source, value.SchemaVersion, value.Native = Identity{}, 0, nil
 		if value.Unmapped != nil {
 			copy := *value.Unmapped
@@ -93,6 +98,9 @@ func observeCapabilities(value any) capabilityEvidence {
 	evidence := capabilityEvidence{observed: CapabilitySet{}}
 	switch semantic := value.(type) {
 	case *Request:
+		if semantic.SchemaVersion == ProtocolCoreVersion && semantic.Reasoning != nil && semantic.Reasoning.HistoryRetention.IsString("all") {
+			evidence.observed[ReasoningHistoryRetentionCapability] = true
+		}
 		evidence.nodes(semantic.Content)
 		evidence.cache(semantic.Cache)
 		evidence.resources(semantic.Resources)
@@ -142,6 +150,9 @@ func observeCapabilities(value any) capabilityEvidence {
 		}
 	case []Event:
 		for _, event := range semantic {
+			if event.Type == ControlUpdated && event.controlReceipt != nil {
+				evidence.observed[ControlStateCapability] = true
+			}
 			if event.Unmapped != nil {
 				evidence.observed[NativeExtensionsCapability] = true
 			}
@@ -191,6 +202,8 @@ func (evidence *capabilityEvidence) nodes(nodes []Node) {
 			evidence.observed[ReasoningCapability] = true
 		case OpaqueNode:
 			evidence.observed[NativeExtensionsCapability] = true
+		case ServerToolNode:
+			evidence.observed[ServerToolsCapability] = true
 		case ToolCallNode:
 			if node.Input != nil && node.Input.Kind == JSONInput {
 				evidence.observed[FunctionToolsCapability] = true
@@ -238,6 +251,10 @@ func (evidence *capabilityEvidence) resources(resources []Resource) {
 			evidence.observed[CacheResourcesCapability] = true
 		case "file", "file_id":
 			evidence.observed[DocumentsCapability] = true
+		case "audio":
+			evidence.observed[AudioCapability] = true
+		case "container":
+			evidence.observed[ServerToolsCapability] = true
 		}
 	}
 }

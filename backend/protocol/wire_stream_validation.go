@@ -1,10 +1,14 @@
 package protocol
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
 
 // WireEventValidator checks cross-frame wire requirements that are not part of
 // the semantic event model (for example an explicit Chat assistant role).
-// It runs on the installed codec's request-owned instance, after wire mappings.
+// It runs on the wire contract's request-owned instance, after wire mappings.
 type WireEventValidator interface {
 	ValidateWireEvent(Value) error
 }
@@ -20,44 +24,126 @@ type TypedObjectEventModule interface {
 }
 
 // WireStreamValidation checks the bytes after after-mappings, wire rules and
-// carrier insertion. It uses the installed target codec, not a user-authored
-// decode mapping that could hide a malformed wire frame.
+// carrier insertion. Its contract is independent of a user-authored decode
+// mapping that could hide a malformed wire frame.
 type WireStreamValidation struct {
-	compiled *Compiled
-	decoder  Module
-	replay   *EventReplay
-	options  EvaluationContext
+	compiled        *Compiled
+	direction       Direction
+	packageStream   *packageStreamValidation
+	decoder         Module
+	replay          *EventReplay
+	options         EvaluationContext
+	deliveryAborted bool
+	deliveryRanges  *deliveryRangeStream
 }
 
+// NewWireStreamValidation checks final event bytes against their output contract.
 func (c *Compiled) NewWireStreamValidation(scope Scope) (*WireStreamValidation, error) {
-	v := &WireStreamValidation{compiled: c, options: EvaluationContext{Scope: scope, identity: c.identity}}
-	if !knownConversionCodec(c.Codec(EncodeEvent)) {
-		return v, nil
+	return c.newWireStreamValidation(EncodeEvent, scope)
+}
+
+// NewWireInputStreamValidation checks source frames independently of the decode
+// mapping, so a mapping cannot hide an invalid sequence or missing terminal.
+// It requires a package stream contract; legacy source validation stays with
+// its existing decoder and replay lifecycle.
+func (c *Compiled) NewWireInputStreamValidation(scope Scope) (*WireStreamValidation, error) {
+	if c.wireContracts[DecodeEvent].packageStream == nil {
+		return nil, fmt.Errorf("source wire validation requires an independent package stream contract")
 	}
-	factory, ok := c.mappings[EncodeEvent].module.(StreamModule)
-	if !ok {
+	return c.newWireStreamValidation(DecodeEvent, scope)
+}
+
+func (c *Compiled) newWireStreamValidation(direction Direction, scope Scope) (*WireStreamValidation, error) {
+	v := &WireStreamValidation{compiled: c, direction: direction, options: EvaluationContext{Scope: scope, identity: c.identity}}
+	contract := c.selectFinalWireContract(direction)
+	if contract.packageStream != nil {
+		var err error
+		v.packageStream, err = newPackageStreamValidation(contract.packageStream, c.target(direction, v.options), c.limits)
+		return v, err
+	}
+	if contract.streamFactory == nil {
 		return v, nil
 	}
 	var err error
-	v.decoder, err = factory.NewStream(DecodeEvent, c.limits)
+	v.decoder, err = contract.streamFactory.NewStream(DecodeEvent, c.limits)
 	if err != nil {
 		return nil, err
 	}
-	v.replay, err = NewEventReplay(Target{Codec: c.Codec(EncodeEvent), Protocol: c.identity, Direction: EncodeEvent, Scope: scope, Capabilities: c.Capabilities(EncodeEvent)}, c.limits)
+	v.replay, err = NewEventReplay(Target{Codec: contract.codec, Protocol: c.identity, Direction: EncodeEvent, Scope: scope, Capabilities: c.Capabilities(EncodeEvent)}, c.limits)
 	return v, err
 }
 
 func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
+	if v.direction == EncodeEvent && len(v.compiled.mappings[EncodeEvent].deliveryRanges) != 0 {
+		return v.ConsumeTransformed(ctx, frame, frame, v.options)
+	}
+	var view *inputView
+	if v.packageStream != nil {
+		view = newInputView(frame)
+	}
+	return v.consume(ctx, frame, view)
+}
+
+// DecodeFrame validates and decodes one source frame using shared immutable
+// reads. Wire lifecycle and mapping state remain independent of each other.
+func (v *WireStreamValidation) DecodeFrame(ctx context.Context, frame Value, options EvaluationContext) (*EventFrame, error) {
+	if v.direction != DecodeEvent {
+		return nil, fmt.Errorf("provider frame decoding requires a provider source validator")
+	}
+	return v.decodeFrame(ctx, frame, options)
+}
+
+func (v *WireStreamValidation) decodeFrame(ctx context.Context, frame Value, options EvaluationContext) (*EventFrame, error) {
+	if !isEventDecoder(v.direction) || v.packageStream == nil {
+		return nil, fmt.Errorf("frame decoding requires source wire stream validation")
+	}
+	if options.Scope != v.options.Scope {
+		return nil, v.compiled.runtimeError(v.direction, streamIssue(ResourceScopeMismatch, "/state", "frame scope does not match source wire stream validation"))
+	}
+	view := newInputView(frame)
+	if err := v.consume(ctx, frame, view); err != nil {
+		return nil, err
+	}
+	options.inputView = view
+	return v.compiled.decodeFrame(ctx, v.direction, frame, options)
+}
+
+func (v *WireStreamValidation) consume(ctx context.Context, frame Value, view *inputView) error {
+	if v.deliveryAborted {
+		return v.compiled.runtimeError(v.direction, operationMetadataError("/delivery", "aborted output cannot accept another frame"))
+	}
+	if v.packageStream != nil {
+		v.packageStream.hasPendingDelivery = false
+	}
 	var fields Object
-	if _, ok := v.compiled.mappings[EncodeEvent].module.(WireObjectOutputValidator); ok && frame.IsObject() {
+	contract := v.compiled.selectFinalWireContract(v.direction)
+	if contract.objectValidator != nil && frame.IsObject() {
 		var err error
 		fields, err = (EvaluationContext{}).WithValueReader(frame).ReadObject(frame)
 		if err != nil {
-			return err
+			return v.rejectPackageFrame(err)
 		}
 	}
-	if err := v.compiled.validateWireOutput(EncodeEvent, frame, fields); err != nil {
-		return err
+	var err error
+	if view != nil {
+		err = v.compiled.validateWireInputView(ctx, v.direction, view, v.compiled.wireLimits(ctx, v.direction), contract)
+	} else {
+		err = v.compiled.validateSelectedWireContract(ctx, v.direction, frame, fields, v.compiled.wireLimits(ctx, v.direction), contract)
+	}
+	if err != nil {
+		return v.rejectPackageFrame(err)
+	}
+	if v.packageStream != nil {
+		err := v.packageStream.consumeInputView(ctx, view)
+		if err != nil {
+			return v.annotatePackageFailure(v.rejectPackageFrame(err))
+		}
+		if isEventDecoder(v.direction) {
+			state := v.packageStream
+			view.sourceReceipt = &sourceFrameReceipt{compiled: v.compiled, contract: state.contract, direction: v.direction, scope: v.options.Scope, frame: frame, class: state.frameClass,
+				responseID: state.frameResponseID, hadResponse: state.frameHadResponse, hasSequence: state.frameHasSequence, sequence: state.frameSequence, frameNumber: state.frameNumber}
+		}
+		return nil
 	}
 	if v.decoder == nil {
 		return nil
@@ -118,7 +204,39 @@ func (v *WireStreamValidation) Consume(ctx context.Context, frame Value) error {
 	return nil
 }
 
+func (v *WireStreamValidation) annotatePackageFailure(err error) error {
+	var failure *ConversionError
+	if errors.As(err, &failure) {
+		for _, issue := range failure.Issues {
+			if issue.Protocol.DefinitionID == "" || issue.Direction == "" {
+				return v.compiled.runtimeError(v.direction, err)
+			}
+		}
+		// Already attributed boundaries may intentionally wrap a resource cause.
+		// Preserve that outer classification instead of reclassifying the cause.
+		return err
+	}
+	return v.compiled.runtimeError(v.direction, err)
+}
+
+func (v *WireStreamValidation) rejectPackageFrame(err error) error {
+	if v.packageStream != nil {
+		v.packageStream.hasRejectedFrame = true
+	}
+	return err
+}
+
 func (v *WireStreamValidation) Finish() error {
+	if v.deliveryAborted {
+		return operationMetadataError("/delivery", "aborted output cannot finish successfully")
+	}
+	if v.packageStream != nil {
+		err := v.packageStream.finish()
+		if err != nil {
+			v.packageStream.hasPendingDelivery = false
+		}
+		return err
+	}
 	if v.replay == nil {
 		return nil
 	}

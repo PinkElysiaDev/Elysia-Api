@@ -81,7 +81,7 @@ func checkAgentModel(view protocol.RegistryView, bindings []storage.ProtocolBind
 	if !found {
 		return fail("protocol_inactive", "/binding", "绑定的协议未启用，请先验证并启用协议")
 	}
-	if !compiled.Capabilities(protocol.EncodeRequest)[protocol.FunctionToolsCapability] || compiled.Definition().Agent == nil {
+	if !compiled.Capabilities(protocol.EncodeRequest)[protocol.FunctionToolsCapability] || !compiled.HasAgentPolicy() {
 		return fail("protocol_mapping_missing", "/binding/protocol", "协议缺少函数工具映射或 Agent 参数映射")
 	}
 	if !model.Enabled {
@@ -216,7 +216,7 @@ func (s *Server) adminVerifyAgentTools(ctx context.Context, c *app.RequestContex
 	nonce := rand.Text()
 	schema, _ := protocol.EncodeValue(map[string]any{"type": "object", "properties": map[string]any{"nonce": map[string]string{"type": "string"}}, "required": []string{"nonce"}, "additionalProperties": false})
 	choice, _ := protocol.EncodeValue(map[string]string{"mode": "required"})
-	request, err := compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Name), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("Call elysia_capability_probe once with nonce " + nonce + ". This is a capability test; no tool will be executed.")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("elysia_capability_probe"), InputSchema: schema}}, ToolChoice: choice}, protocol.AgentPreferences{MaxOutputTokens: 128, Stream: candidate.operation.Transport != protocol.HTTPJSON})
+	request, err := compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: compiled.CoreVersion(), Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Name), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("Call elysia_capability_probe once with nonce " + nonce + ". This is a capability test; no tool will be executed.")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("elysia_capability_probe"), InputSchema: schema}}, ToolChoice: choice}, protocol.AgentPreferences{MaxOutputTokens: 128, Stream: candidate.operation.Transport != protocol.HTTPJSON})
 	if err != nil {
 		respondProtocolError(ctx, c, err)
 		return

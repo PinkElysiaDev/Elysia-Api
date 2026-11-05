@@ -26,8 +26,13 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	for _, direction := range DirectionCatalog() {
 		coverage[direction], hasLifecycle[direction] = CapabilitySet{}, map[Capability]bool{}
 	}
-	for index, sample := range compiled.Definition().Samples {
-		path := fmt.Sprintf("/samples/%d", index)
+	mappingPath, specPath := "", ""
+	if compiled.packagePlan != nil {
+		mappingPath, specPath = "/mapping", "/spec"
+	}
+	samplesPath := mappingPath + "/samples"
+	for index, sample := range compiled.verificationSamples() {
+		path := fmt.Sprintf("%s/%d", samplesPath, index)
 		check := VerificationCheck{SampleID: sample.ID, Direction: sample.Direction}
 		result, err := executeVerificationSample(ctx, compiled, sample)
 		if err == nil && (sample.Direction == DecodeRequest || sample.Direction == EncodeRequest) {
@@ -58,7 +63,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Checks = append(report.Checks, check)
 			continue
 		}
-		expected, err := comparableExpected(sample)
+		expected, err := comparableExpected(compiled, sample)
 		if err != nil {
 			report.Issues = append(report.Issues, verificationIssue(compiled, sample.Direction, path+"/expected", InvalidInput, "invalid expected semantic contract: "+err.Error(), sample.ID))
 			report.Checks = append(report.Checks, check)
@@ -73,6 +78,17 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Issues = append(report.Issues, sampleIssues(compiled, sample, path, err)...)
 			report.Checks = append(report.Checks, check)
 			continue
+		}
+		if sample.Direction == EncodeResponse && compiled.packagePlan != nil {
+			// A component can encode a partial envelope. Activation evidence must
+			// also satisfy the explicitly declared final delivery contract.
+			if _, hasFinalDocument := compiled.packagePlan.finalContracts[sample.Direction]; hasFinalDocument {
+				if err := compiled.ValidateWireOutputContext(ctx, sample.Direction, result.output); err != nil {
+					report.Issues = append(report.Issues, sampleIssues(compiled, sample, path, err)...)
+					report.Checks = append(report.Checks, check)
+					continue
+				}
+			}
 		}
 		evidence := observeCapabilities(result.semantic)
 		if compiled.mappings[sample.Direction].capabilities[NativeExtensionsCapability] && compiled.native.Preserve &&
@@ -106,6 +122,11 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if isEventDecoder(sample.Direction) && compiled.native.Preserve && evidence.observed[NativeExtensionsCapability] && compiled.Supports(eventEncoder(sample.Direction)) {
 			coverage[eventEncoder(sample.Direction)][NativeExtensionsCapability] = true
 		}
+		// Source receipts cannot be authored in an encode fixture. The completed
+		// frame roundtrip is the corresponding target state-channel evidence.
+		if isEventDecoder(sample.Direction) && evidence.observed[ControlStateCapability] && compiled.Supports(eventEncoder(sample.Direction)) {
+			coverage[eventEncoder(sample.Direction)][ControlStateCapability] = true
+		}
 		hasSample[sample.Direction] = true
 		if sample.Direction == DecodeRequest || sample.Direction == EncodeRequest {
 			for name, operation := range compiled.operations {
@@ -122,18 +143,23 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	}
 	for _, name := range sortedKeys(compiled.operations) {
 		if compiled.operations[name].Input != nil && !operationEvidence[name] {
-			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, "/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
+			report.Issues = append(report.Issues, verificationIssue(compiled, DecodeRequest, specPath+"/operations/"+name+"/input", IncompleteCoverage, "operation input schema requires a passing request fixture", ""))
 		}
 	}
-	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 	hasTaskEvidence := verifyTaskSamples(ctx, compiled, &report)
-	verifyModelSamples(ctx, compiled, &report)
+	verifySessionSamples(ctx, compiled, &report, coverage, hasSample, hasSequence, hasLifecycle)
 	verifyAgentSamples(ctx, compiled, &report)
+	verifyModelSamples(ctx, compiled, &report)
+	countCapabilities := verifyTokenCountSamples(ctx, compiled, &report)
 	for _, direction := range DirectionCatalog() {
 		if !compiled.Supports(direction) {
 			continue
 		}
-		path := "/directions/" + string(direction)
+		path := mappingPath + "/directions/" + string(direction)
+		capabilitiesPath := path + "/capabilities"
+		if compiled.packagePlan != nil {
+			capabilitiesPath = mappingPath + "/capabilities"
+		}
 		if !hasSample[direction] {
 			report.Issues = append(report.Issues, verificationIssue(compiled, direction, path, IncompleteCoverage, "implemented direction requires a passing positive fixture", ""))
 		}
@@ -145,12 +171,12 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 				continue
 			}
 			if !coverage[direction][capability] {
-				issue := verificationIssue(compiled, direction, path+"/capabilities", IncompleteCoverage, "declared capability lacks passing semantic evidence", "")
+				issue := verificationIssue(compiled, direction, capabilitiesPath, IncompleteCoverage, "declared capability lacks passing semantic evidence", "")
 				issue.Capability = capability
 				report.Issues = append(report.Issues, issue)
 			}
 			if (direction == DecodeRequest || direction == EncodeRequest || (isEventDirection(direction) && compiled.capabilities[SessionsCapability])) && (capability == FunctionToolsCapability || capability == FreeTextToolsCapability) && !hasLifecycle[direction][capability] {
-				issue := verificationIssue(compiled, direction, path+"/capabilities", IncompleteCoverage, "tool support requires a definition, associated call and result in a complete history fixture", "")
+				issue := verificationIssue(compiled, direction, capabilitiesPath, IncompleteCoverage, "tool support requires a definition, associated call and result in a complete history fixture", "")
 				issue.Capability = capability
 				report.Issues = append(report.Issues, issue)
 			}
@@ -160,14 +186,14 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		if !compiled.capabilities[capability] {
 			continue
 		}
-		isCovered := capability == AsyncJobsCapability && hasTaskEvidence
+		isCovered := countCapabilities[capability] || capability == AsyncJobsCapability && hasTaskEvidence
 		for _, direction := range DirectionCatalog() {
 			isCovered = isCovered || coverage[direction][capability]
 		}
 		if isCovered {
 			report.Covered = append(report.Covered, capability)
 		} else {
-			issue := verificationIssue(compiled, "", "/capabilities", IncompleteCoverage, "capability has no verified direction", "")
+			issue := verificationIssue(compiled, "", mappingPath+"/capabilities", IncompleteCoverage, "capability has no verified direction", "")
 			issue.Capability = capability
 			report.Issues = append(report.Issues, issue)
 		}
@@ -177,22 +203,23 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 }
 
 func executeVerificationSample(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	var result verificationResult
 	var err error
 	switch sample.Direction {
 	case DecodeRequest:
 		result.semantic, err = compiled.DecodeRequest(ctx, sample.Input.Bytes(), options)
 	case EncodeRequest:
-		request, failure := DecodeRequestContract(sample.Input.Bytes())
+		request, failure := decodeRequestContract(sample.Input.Bytes(), compiled.CoreVersion())
 		if failure != nil {
 			return result, failure
 		}
 		result.semantic = request
-		var body []byte
-		body, err = compiled.EncodeRequest(ctx, request, options)
+		options.ClientOutput = request.ClientOutput
+		result.output, err = compiled.EncodeRequestValue(ctx, request, options)
 		if err == nil {
-			result.output, err = ParseValue(body)
+			err = compiled.ValidateRequestOutput(ctx, result.output, options)
 		}
 	case DecodeResponse:
 		result.semantic, err = compiled.DecodeResponse(ctx, sample.Input.Bytes(), options)
@@ -222,11 +249,17 @@ func executeVerificationSample(ctx context.Context, compiled *Compiled, sample S
 }
 
 func executeEventFixture(ctx context.Context, compiled *Compiled, sample Sample) (verificationResult, error) {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	return executeEventFixtureWithState(ctx, compiled, sample, options)
 }
 
 func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext) (verificationResult, error) {
+	return executeEventFixtureStream(ctx, compiled, sample, options, nil)
+}
+
+func executeEventFixtureStream(ctx context.Context, compiled *Compiled, sample Sample, options EvaluationContext, consume func(*EventFrame) error) (result verificationResult, err error) {
+	defer func() { err = resourceIssue(err, compiled.identity, sample.Direction, "verify.event") }()
 	inputs := []Value{sample.Input}
 	if sample.Sequence {
 		var err error
@@ -235,17 +268,61 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			return verificationResult{}, err
 		}
 	}
+	var wireValidation *WireStreamValidation
+	if sample.Sequence && compiled.packagePlan != nil {
+		var err error
+		wireValidation, err = compiled.newWireStreamValidation(sample.Direction, options.Scope)
+		if err != nil {
+			return verificationResult{}, err
+		}
+		defer wireValidation.Release()
+		if !isEventDecoder(sample.Direction) {
+			options = options.WithOutputStream(wireValidation)
+		}
+	}
+	var replay *EventReplay
+	if sample.Sequence {
+		target := compiled.target(sample.Direction, options)
+		target.Direction = EncodeEvent
+		var err error
+		replay, err = NewEventReplay(target, compiled.limits)
+		if err != nil {
+			return verificationResult{}, err
+		}
+		defer replay.Release()
+		if compiled.packagePlan != nil {
+			budget := options.State.retention.budget
+			if budget == nil {
+				budget = NewStreamBudget(compiled.limits)
+			}
+			if err := budget.Bind(options.State, wireValidation, replay); err != nil {
+				return verificationResult{}, err
+			}
+		}
+	}
 	var events []Event
 	var outputs []Value
 	var frames []*EventFrame
 	buffered := 0
 	for _, input := range inputs {
+		batchStart := len(events)
+		var decoded *EventFrame
+		hasOutputFrames := false
 		if isEventDecoder(sample.Direction) {
-			frame, err := compiled.decodeFrame(ctx, sample.Direction, input, options)
+			var frame *EventFrame
+			var err error
+			if wireValidation != nil && wireValidation.packageStream != nil {
+				frame, err = wireValidation.decodeFrame(ctx, input, options)
+			} else {
+				frame, err = compiled.decodeFrame(ctx, sample.Direction, input, options)
+			}
 			if err != nil {
 				return verificationResult{}, err
 			}
-			frames = append(frames, frame)
+			if consume == nil {
+				frames = append(frames, frame)
+			}
+			decoded = frame
 			batch := frame.Events
 			encoded, err := EncodeValue(batch)
 			if err != nil {
@@ -264,29 +341,43 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			}
 			buffered += len(input.raw)
 			for _, frame := range wire {
+				if wireValidation != nil {
+					if err := wireValidation.Consume(ctx, frame); err != nil {
+						return verificationResult{}, err
+					}
+				}
 				buffered += len(frame.raw)
 			}
 			outputs = append(outputs, wire...)
 			events = append(events, event)
+			hasOutputFrames = len(wire) > 0
 		}
 		if buffered > compiled.limits.BufferBytes {
 			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
 		}
-	}
-	if sample.Sequence {
-		for _, event := range events {
-			if isSessionControl(event.Type) {
-				return verificationResult{}, streamIssue(IncompleteCoverage, "/samples", "session events require an interleaved sessionSamples trace")
+		if wireValidation != nil {
+			if err := consumeVerificationEvents(replay, events[batchStart:]); err != nil {
+				return verificationResult{}, err
 			}
 		}
-		target := compiled.target(sample.Direction, options)
-		target.Direction = EncodeEvent
-		replay, err := NewEventReplay(target, compiled.limits)
-		if err != nil {
-			return verificationResult{}, err
+		if consume != nil {
+			if err := consume(decoded); err != nil {
+				return verificationResult{}, err
+			}
+			clear(events)
+			events = events[:0]
 		}
-		for _, event := range events {
-			if _, err := replay.Consume(event); err != nil {
+		if hasOutputFrames && wireValidation != nil {
+			// This fixture explicitly simulates successful delivery of a fully
+			// validated output batch; Consume alone never records delivery.
+			if err := wireValidation.CommitDelivery(); err != nil {
+				return verificationResult{}, err
+			}
+		}
+	}
+	if sample.Sequence {
+		if wireValidation == nil {
+			if err := consumeVerificationEvents(replay, events); err != nil {
 				return verificationResult{}, err
 			}
 		}
@@ -300,15 +391,32 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 			return verificationResult{}, err
 		}
 		for _, frame := range tail {
+			if wireValidation != nil {
+				if err := wireValidation.Consume(ctx, frame); err != nil {
+					return verificationResult{}, err
+				}
+			}
 			buffered += len(frame.raw)
 		}
 		if buffered > compiled.limits.BufferBytes {
 			return verificationResult{}, streamIssue(LimitExceeded, "/samples", "event fixture exceeds replay buffer limit")
 		}
+		if len(tail) > 0 && wireValidation != nil {
+			if err := wireValidation.CommitDelivery(); err != nil {
+				return verificationResult{}, err
+			}
+		}
 		outputs = append(outputs, tail...)
 	}
-	result := verificationResult{semantic: events, frames: frames}
-	var err error
+	if wireValidation != nil {
+		if err := wireValidation.Finish(); err != nil {
+			return verificationResult{}, err
+		}
+	}
+	if consume != nil {
+		return verificationResult{}, nil
+	}
+	result = verificationResult{semantic: events, frames: frames}
 	if isEventDecoder(sample.Direction) {
 		result.output, err = comparableSemantic(events)
 	} else if sample.Sequence || compiled.mappings[sample.Direction].frameBatch {
@@ -319,11 +427,14 @@ func executeEventFixtureWithState(ctx context.Context, compiled *Compiled, sampl
 	return result, err
 }
 
-func comparableExpected(sample Sample) (Value, error) {
+func comparableExpected(compiled *Compiled, sample Sample) (Value, error) {
 	switch sample.Direction {
 	case DecodeRequest:
 		var request Request
 		if err := decodeContract(sample.Expected.Bytes(), &request); err != nil {
+			return Value{}, err
+		}
+		if err := checkExpectedCoreVersion(compiled, request.SchemaVersion); err != nil {
 			return Value{}, err
 		}
 		return comparableSemantic(&request)
@@ -332,16 +443,41 @@ func comparableExpected(sample Sample) (Value, error) {
 		if err := decodeContract(sample.Expected.Bytes(), &response); err != nil {
 			return Value{}, err
 		}
+		if err := checkExpectedCoreVersion(compiled, response.SchemaVersion); err != nil {
+			return Value{}, err
+		}
 		return comparableSemantic(&response)
 	case DecodeEvent, DecodeClientEvent:
 		var events []Event
 		if err := decodeContract(sample.Expected.Bytes(), &events); err != nil {
 			return Value{}, err
 		}
+		for _, event := range events {
+			if err := checkExpectedCoreVersion(compiled, event.SchemaVersion); err != nil {
+				return Value{}, err
+			}
+			if event.Request != nil {
+				if err := checkExpectedCoreVersion(compiled, event.Request.SchemaVersion); err != nil {
+					return Value{}, err
+				}
+			}
+			if event.Response != nil {
+				if err := checkExpectedCoreVersion(compiled, event.Response.SchemaVersion); err != nil {
+					return Value{}, err
+				}
+			}
+		}
 		return comparableSemantic(events)
 	default:
 		return sample.Expected, nil
 	}
+}
+
+func checkExpectedCoreVersion(compiled *Compiled, version int) error {
+	if compiled.packagePlan != nil && version != compiled.CoreVersion() {
+		return fmt.Errorf("unsupported semantic schemaVersion %d", version)
+	}
+	return nil
 }
 
 func capabilityApplies(capability Capability, direction Direction) bool {
@@ -351,7 +487,7 @@ func capabilityApplies(capability Capability, direction Direction) bool {
 		return false // Task workflows have independent mapping fixtures.
 	case UsageCapability:
 		return !isRequest && direction != DecodeClientEvent && direction != EncodeUpstreamEvent
-	case CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability, CacheOptionsCapability, CachePrewarmCapability:
+	case ReasoningHistoryRetentionCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability, CacheOptionsCapability, CachePrewarmCapability:
 		return isRequest
 	case SessionsCapability, RealtimeMediaCapability:
 		return isEventDirection(direction)

@@ -137,8 +137,16 @@ func ContinuationNodeDigest(node Node) string {
 		}
 		node.ReasoningContent = parts
 	}
-	value, _ := EncodeValue(node)
-	return hashValue(value)
+	if hasLargeContinuationPayload(&node) {
+		return hashContinuationNode(node)
+	}
+	// Small nodes need no constructed projection or intermediate immutable Value.
+	raw, err := sonic.ConfigStd.Marshal(node)
+	if err != nil {
+		raw = nil
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 // IsContinuationResource enumerates opaque provider state that can be sealed

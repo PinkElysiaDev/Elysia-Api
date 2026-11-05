@@ -141,14 +141,18 @@ func copyTestStream(conn *testConnection, rec *httptest.ResponseRecorder) {
 	}
 	body, _ := io.ReadAll(r.Body)
 	rec.Code = r.StatusCode
-	rec.HeaderMap = r.Header.Clone()
+	header := rec.Header()
+	clear(header)
+	for key, values := range r.Header {
+		header[key] = values
+	}
 	rec.Body.Reset()
 	rec.Body.Write(body)
 	rec.Flushed = true
 	for k, values := range r.Trailer {
 		rec.Header().Add("Trailer", k)
 		for _, v := range values {
-			rec.Header().Set(k, v)
+			rec.Header().Add(k, v)
 		}
 	}
 }
@@ -165,7 +169,7 @@ func flushTestResponse(c *app.RequestContext) {
 		return
 	}
 	rec.Code = c.Response.StatusCode()
-	rec.HeaderMap = make(http.Header)
+	clear(rec.Header())
 	c.Response.Header.VisitAll(func(k, v []byte) { rec.Header().Add(string(k), string(v)) })
 	rec.Body.Reset()
 	rec.Body.Write(c.Response.Body())

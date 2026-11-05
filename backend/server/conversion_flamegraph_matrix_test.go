@@ -16,6 +16,9 @@ import (
 
 func flameMatrixProtocol(t *testing.T, name string) *protocol.Compiled {
 	t.Helper()
+	if conversionExecution(t) != "legacy" {
+		return conversionPackage(t, name)
+	}
 	return compileFixtureDefinition(t, presetDefinition(t, name))
 }
 
@@ -99,48 +102,87 @@ func flameMatrixResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, [
 	}
 	usage := &protocol.Usage{Input: &protocol.Counter{Count: 100, Origin: protocol.ObservedCount}, Output: &protocol.Counter{Count: 5, Origin: protocol.ObservedCount}, Total: &protocol.Counter{Count: 105, Origin: protocol.ObservedCount}}
 	attributes := protocol.Object{"created_at": mustProtocolValue(t, "1"), "finishReason": protocol.StringValue("stop")}
-	response := &protocol.Response{SchemaVersion: 1, ID: protocol.StringValue("r"), Model: protocol.StringValue("m"), Status: protocol.StringValue("completed"), Content: []protocol.Node{{Kind: protocol.MessageNode, ID: protocol.StringValue("msg"), Role: protocol.StringValue("assistant"), Status: protocol.StringValue("completed"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(responseText)}}}}, Usage: usage, Attributes: attributes}
+	response := &protocol.Response{SchemaVersion: compiled.CoreVersion(), ID: protocol.StringValue("r"), Model: protocol.StringValue("m"), Status: protocol.StringValue("completed"), Content: []protocol.Node{{Kind: protocol.MessageNode, ID: protocol.StringValue("msg"), Role: protocol.StringValue("assistant"), Status: protocol.StringValue("completed"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(responseText)}}}}, Usage: usage, Attributes: attributes}
 	if compiled.Identity().DefinitionID != "openai-responses" {
 		response.Content[0].ID = protocol.Value{}
 		response.Content[0].Status = protocol.Value{}
 	}
-	body, err := compiled.EncodeResponse(t.Context(), response, protocol.EvaluationContext{})
+	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(compiled, compiled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, err := (protocol.EvaluationContext{State: protocol.NewEvaluationState()}).WithOperation("fixture-execution", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer options.State.Release()
+	route := (protocol.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Transport: protocol.HTTPJSON}).WithOperation(options)
+	response, err = conversion.Response(t.Context(), response, route, &protocol.DiagnosticSink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := compiled.EncodeResponse(t.Context(), response, options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	index := 0
-	identity := &protocol.Response{SchemaVersion: 1, ID: response.ID, Model: response.Model, Status: protocol.StringValue("in_progress"), Usage: &protocol.Usage{Input: usage.Input, Output: &protocol.Counter{Count: 0, Origin: protocol.ObservedCount}}, Attributes: protocol.Object{"created_at": mustProtocolValue(t, "1")}}
-	events := []protocol.Event{{SchemaVersion: 1, Type: protocol.ResponseStarted, Response: identity}, {SchemaVersion: 1, Type: protocol.ItemStarted, ItemID: protocol.StringValue("text"), Index: &index, Item: &protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue("")}}}
+	identity := &protocol.Response{SchemaVersion: compiled.CoreVersion(), ID: response.ID, Model: response.Model, Status: protocol.StringValue("in_progress"), Usage: &protocol.Usage{Input: usage.Input, Output: &protocol.Counter{Count: 0, Origin: protocol.ObservedCount}}, Attributes: protocol.Object{"created_at": mustProtocolValue(t, "1")}}
+	events := []protocol.Event{{SchemaVersion: compiled.CoreVersion(), Type: protocol.ResponseStarted, Response: identity}, {SchemaVersion: compiled.CoreVersion(), Type: protocol.ItemStarted, ItemID: protocol.StringValue("text"), Index: &index, Item: &protocol.Node{ID: protocol.StringValue("text"), Kind: protocol.TextNode, Payload: protocol.StringValue("")}}}
 	frameCount, frameBytes, err := flameStreamShape()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range frameCount {
-		event := protocol.Event{SchemaVersion: 1, Type: protocol.ItemDelta, ItemID: protocol.StringValue("text"), Index: &index, Delta: protocol.StringValue(strings.Repeat("x", frameBytes))}
+		event := protocol.Event{SchemaVersion: compiled.CoreVersion(), Type: protocol.ItemDelta, ItemID: protocol.StringValue("text"), Index: &index, Delta: protocol.StringValue(strings.Repeat("x", frameBytes))}
 		if os.Getenv("ELYSIA_REVIEW_LOGPROBS") == "1" {
 			event.Metadata = []protocol.ResponseMetadata{{Codec: "openai-chat", Location: "choice", Name: "logprobs", Value: mustProtocolValue(t, `{"content":[{"token":"x","logprob":-0.5,"bytes":[120],"top_logprobs":[]}]}`)}}
 		}
 		events = append(events, event)
 	}
-	events = append(events, protocol.Event{SchemaVersion: 1, Type: protocol.ItemFinished, ItemID: protocol.StringValue("text"), Index: &index}, protocol.Event{SchemaVersion: 1, Type: protocol.ResponseFinished, Response: &protocol.Response{SchemaVersion: 1, ID: response.ID, Model: response.Model, Status: protocol.StringValue("completed"), Content: []protocol.Node{}, Usage: usage, Attributes: attributes}}, protocol.Event{SchemaVersion: 1, Type: protocol.UsageUpdated, Usage: usage})
-	options := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+	events = append(events, protocol.Event{SchemaVersion: compiled.CoreVersion(), Type: protocol.ItemFinished, ItemID: protocol.StringValue("text"), Index: &index}, protocol.Event{SchemaVersion: compiled.CoreVersion(), Type: protocol.ResponseFinished, Response: &protocol.Response{SchemaVersion: compiled.CoreVersion(), ID: response.ID, Model: response.Model, Status: protocol.StringValue("completed"), Content: []protocol.Node{}, Usage: usage, Attributes: attributes}}, protocol.Event{SchemaVersion: compiled.CoreVersion(), Type: protocol.UsageUpdated, Usage: usage})
+	route.Transport = protocol.SSE
+	options = options.WithConversion(conversion, route)
+	validation, err := compiled.NewWireStreamValidation(options.Scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options = options.WithOutputStream(validation)
 	var frames [][]byte
 	write := func(values []protocol.Value, err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, value := range values {
+			if err := validation.Consume(t.Context(), value); err != nil {
+				t.Fatal(err)
+			}
 			var buffer bytes.Buffer
 			if err := protocol.WriteFrame(&buffer, compiled.Operations()["stream"], value); err != nil {
 				t.Fatal(err)
 			}
 			frames = append(frames, buffer.Bytes())
+			if compiled.CoreVersion() == protocol.ProtocolCoreVersion {
+				if err := validation.CommitDelivery(); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	}
 	for _, event := range events {
+		frameRoute, err := conversion.WithFrameUsage(route, []protocol.Event{event})
+		if err != nil {
+			t.Fatal(err)
+		}
+		event, err = conversion.Event(t.Context(), event, frameRoute, &protocol.DiagnosticSink{})
+		if err != nil {
+			t.Fatal(err)
+		}
 		write(compiled.EncodeFrames(t.Context(), event, options))
 	}
 	write(compiled.FinishEvents(t.Context(), options))
+	if err := validation.Finish(); err != nil {
+		t.Fatal(err)
+	}
 	return frames, body
 }
 
@@ -156,9 +198,11 @@ func flameMatrixRequest(t *testing.T, source *protocol.Compiled, stream bool) (s
 		t.Fatal("invalid matrix request workload")
 	}
 	request := loadRequest(t, workload)
+	request.SchemaVersion = source.CoreVersion()
 	request.Parameters["stream"] = mustProtocolValue(t, fmt.Sprintf("%t", stream))
 	if os.Getenv("ELYSIA_FLAME_MATRIX_TOOLS") == "1" {
 		request = loadRequest(t, "tools32")
+		request.SchemaVersion = source.CoreVersion()
 		request.Parameters["stream"] = mustProtocolValue(t, fmt.Sprintf("%t", stream))
 	}
 	if source.Identity().DefinitionID == "openai-chat-completions" && stream {
@@ -222,12 +266,13 @@ func flameStreamShape() (int, int, error) {
 
 func validateFlameOutput(ctx context.Context, source *protocol.Compiled, body []byte, stream bool, expected string, inputCount, outputCount int64) error {
 	options := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: protocol.Scope{Model: "grp"}}
+	defer options.State.Release()
 	var response *protocol.Response
 	var err error
 	if !stream {
 		response, err = source.DecodeResponse(ctx, body, options)
 	} else {
-		collector, createErr := protocol.NewResponseCollector(protocol.Target{Protocol: source.Identity(), Direction: protocol.EncodeEvent, Capabilities: source.Capabilities(protocol.EncodeEvent)}, protocol.DefaultLimits())
+		collector, createErr := protocol.NewResponseCollector(source.Target(protocol.EncodeEvent, options.Scope), source.ResourceLimits())
 		if createErr != nil {
 			return createErr
 		}
@@ -243,6 +288,9 @@ func validateFlameOutput(ctx context.Context, source *protocol.Compiled, body []
 			}
 			return nil
 		})
+		if err == nil {
+			err = source.FinishInputEvents(ctx, options)
+		}
 		if err == nil {
 			response, err = collector.Finish()
 		}

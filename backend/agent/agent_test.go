@@ -333,11 +333,13 @@ func TestRunTurn_ToolLoopThenFinalReply(t *testing.T) {
 func TestRunTurn_GatedToolPausesAndResumeApproves(t *testing.T) {
 	store := newFakeStore().seed(&Session{ID: "s1", Status: StatusIdle, Settings: Settings{ModelName: "m1", AllowLiveTest: PermissionAsk}})
 	caller := &fakeCaller{responses: []scriptedResponse{
-		{result: &CallResult{Text: "需要真实测试", ToolCalls: []FunctionCall{toolCall("c1", "danger", `{"x":1}`)}}},
+		{result: &CallResult{Text: "需要真实测试", ToolCalls: []FunctionCall{toolCall("read", "lookup", `{}`), toolCall("c1", "danger", `{"x":1}`), toolCall("c2", "tail", `{}`)}}},
 		{result: &CallResult{Text: "测试完成"}},
 	}}
 	danger := &fakeTool{name: "danger", gated: true, permKey: "live_test", result: ToolResult{OK: true, Summary: "已执行"}}
-	engine := newTestEngine(caller, store, danger)
+	lookup := &fakeTool{name: "lookup", result: ToolResult{OK: true, Summary: "已读取"}}
+	tail := &fakeTool{name: "tail", result: ToolResult{OK: true}}
+	engine := newTestEngine(caller, store, danger, lookup, tail)
 
 	events, _ := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "测试一下"})
 	collected := collectEvents(t, events)
@@ -349,16 +351,50 @@ func TestRunTurn_GatedToolPausesAndResumeApproves(t *testing.T) {
 	}
 	// 状态与待定动作
 	session, _ := store.GetSession(context.Background(), "s1")
-	if session.Status != StatusWaitingApproval || session.PendingAction == nil || len(session.PendingAction.Calls) != 1 {
+	if session.Status != StatusWaitingApproval || session.PendingAction == nil || len(session.PendingAction.Calls) != 2 {
 		t.Fatalf("session state = %+v", session)
 	}
 	if danger.executions != 0 {
 		t.Fatalf("gated tool must not run before approval")
 	}
 
-	// 未决状态再发新消息应被拒绝
-	if _, err := engine.RunTurn(context.Background(), "s1", nil); err != nil {
-		t.Fatalf("new turn while waiting approval should be allowed (truncation path): %v", err)
+	// A new instruction closes only the unexecuted tail, before its user message.
+	newEvents, err := engine.RunTurn(t.Context(), "s1", &UserContent{Text: "换个方向"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	continued := collectEvents(t, newEvents)
+	if !hasEvent(continued, EventTurnDone) || hasEvent(continued, EventError) || caller.requestCount() != 2 {
+		t.Fatalf("replacement turn did not complete once: calls=%d events=%+v", caller.requestCount(), continued)
+	}
+	if lookup.executions != 1 || danger.executions != 0 || tail.executions != 0 {
+		t.Fatalf("supersession repeated or executed tools: lookup=%d danger=%d tail=%d", lookup.executions, danger.executions, tail.executions)
+	}
+	request := caller.lastRequest()
+	results := map[string]int{}
+	for _, node := range request.Content[:len(request.Content)-1] {
+		if node.Kind != protocol.ToolResultNode {
+			continue
+		}
+		var id string
+		_ = node.CallID.Decode(&id)
+		results[id]++
+		if id != "read" && !strings.Contains(node.Payload.JSONString(), "未执行") {
+			t.Fatal("pending call was not reported as unexecuted", node)
+		}
+	}
+	lastUser := request.Content[len(request.Content)-1]
+	if results["read"] != 1 || results["c1"] != 1 || results["c2"] != 1 || !lastUser.Role.IsString(RoleUser) || !lastUser.Children[0].Payload.IsString("换个方向") {
+		t.Fatal("replacement request lost ordered tool results", request.Content)
+	}
+	roles := store.roles("s1")
+	wantRoles := []string{RoleUser, RoleAssistant, RoleToolResult, RoleToolResult, RoleToolResult, RoleUser, RoleAssistant}
+	if strings.Join(roles, ",") != strings.Join(wantRoles, ",") {
+		t.Fatal("replacement persistence order changed", roles)
+	}
+	session, _ = store.GetSession(t.Context(), "s1")
+	if session.PendingAction != nil || session.Status != StatusIdle {
+		t.Fatal("replacement retained pending approval", session)
 	}
 
 	// 重新走到暂停状态，再走审批恢复
@@ -1416,13 +1452,4 @@ func hasTestToolCall(nodes []protocol.Node) bool {
 		}
 	}
 	return false
-}
-
-func mustToolData(t *testing.T, result ToolResult) json.RawMessage {
-	t.Helper()
-	data, err := result.MarshalData()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
 }

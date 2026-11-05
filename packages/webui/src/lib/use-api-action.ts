@@ -1,15 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useToast } from '@/components/ui/use-toast'
 
-export interface ActionConfirmOptions {
-  title: string
-  description?: string
-  confirmText?: string
-}
-
 export interface ActionOptions {
-  /** 二次确认文案;省略则直接执行(开关类操作)。 */
-  confirm?: ActionConfirmOptions
   /** 成功提示;省略则只刷新不提示。 */
   success?: { title: string; description?: string }
   /** 成功后需要失效的 SWR 缓存(如 revalidate.models 或页面 mutate)。 */
@@ -19,24 +11,19 @@ export interface ActionOptions {
 }
 
 /**
- * 管理动作的统一外壳:确认弹窗(可选)→ busy 记录 → 调用 → 成功/失败
- * toast → 缓存刷新。收敛此前散布 sources/groups/tokens/protocol-designer
- * 等页的六连抄「confirm→删除→toast」与四连抄「busy→开关→toast」样板。
- *
- * busy 的粒度由调用方给定 key(通常是 id):同一 key 重复触发直接忽略,
- * 不同 key 可并行(批量启停场景)。confirm 需要调用方把 useConfirm 的
- * confirm 注入(把 useConfirm 的 confirm 传入即可),使弹窗 UI 与本 hook 解耦。
+ * 执行动作、刷新缓存并报告结果。同一 key 的重复调用忽略，不同 key 可并行。
+ * 需要确认的动作由调用方在 run 之前展示确认框。
  */
 export function useApiAction() {
   const toast = useToast()
-  const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(() => new Set())
   const running = useRef(new Set<string>())
 
   const run = useCallback(
     async (key: string, action: () => Promise<void>, options: ActionOptions = {}): Promise<boolean> => {
       if (running.current.has(key)) return false
       running.current.add(key)
-      setBusyKey(key)
+      setBusyKeys(new Set(running.current))
       try {
         await action()
         if (options.refresh?.length) await Promise.all(options.refresh.map((refresh) => refresh()))
@@ -47,13 +34,13 @@ export function useApiAction() {
         return false
       } finally {
         running.current.delete(key)
-        setBusyKey(null)
+        setBusyKeys(new Set(running.current))
       }
     },
     [toast],
   )
 
-  const isBusy = useCallback((key: string) => busyKey === key, [busyKey])
+  const isBusy = useCallback((key: string) => busyKeys.has(key), [busyKeys])
 
-  return { run, isBusy, busyKey }
+  return { run, isBusy }
 }

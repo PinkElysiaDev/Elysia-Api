@@ -29,12 +29,14 @@ type ModelPage struct {
 	HasMore bool              `json:"hasMore,omitempty"`
 }
 
-// ModelSample supplies wire-to-catalog evidence for one discovery operation.
+// ModelSample supplies evidence for one catalog operation. An omitted direction
+// means decode_response; encode_response proves the client catalog contract.
 type ModelSample struct {
-	ID        string `json:"id"`
-	Operation string `json:"operation"`
-	Input     Value  `json:"input"`
-	Expected  Value  `json:"expected"`
+	ID        string    `json:"id"`
+	Operation string    `json:"operation"`
+	Direction Direction `json:"direction,omitempty"`
+	Input     Value     `json:"input"`
+	Expected  Value     `json:"expected"`
 }
 
 var modelPageSchema = ValueSchema{Type: ObjectType, Required: []string{"models"}, Properties: map[string]ValueSchema{
@@ -58,12 +60,8 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 			return fmt.Errorf("operation %q: model discovery requires GET HTTP JSON and its own decoder", name)
 		}
 		discovery := operation.Models
-		cursor := discovery.CursorParameter
-		if cursor != "" {
-			_, isStatic := operation.Query[cursor]
-			if strings.TrimSpace(cursor) != cursor || strings.ContainsAny(cursor, "\r\n") || isCredentialField(cursor) || isStatic || (operation.Auth.Location == "query" && cursor == operation.Auth.Name) {
-				return fmt.Errorf("operation %q: pagination conflicts with static routing or credentials", name)
-			}
+		if err := checkModelCursor(operation); err != nil {
+			return fmt.Errorf("operation %q: %w", name, err)
 		}
 		mapping := discovery.Decode
 		if mapping.Module != "" || len(mapping.Rules) > 0 || mapping.Transform == nil || mapping.FrameBatch || mapping.After != nil || mapping.UnknownEvent != "" || mapping.Capabilities != nil {
@@ -75,6 +73,21 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 		}
 		compiled.modelMappings[name] = entry
 	}
+	return compiled.prepareModelEvidence(definition.ModelSamples)
+}
+
+func checkModelCursor(operation Operation) error {
+	cursor := operation.Models.CursorParameter
+	if cursor != "" {
+		_, isStatic := operation.Query[cursor]
+		if strings.TrimSpace(cursor) != cursor || strings.ContainsAny(cursor, "\r\n") || isCredentialField(cursor) || isStatic || (operation.Auth.Location == "query" && cursor == operation.Auth.Name) {
+			return fmt.Errorf("pagination conflicts with static routing or credentials")
+		}
+	}
+	return nil
+}
+
+func (compiled *Compiled) prepareModelEvidence(samples []ModelSample) error {
 	if len(compiled.modelMappings) > 0 {
 		validator, err := compileValueSchema(&modelPageSchema, compiled.limits)
 		if err != nil {
@@ -83,9 +96,13 @@ func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition De
 		compiled.modelPageValidator = validator
 	}
 	seen := map[string]bool{}
-	for _, sample := range definition.ModelSamples {
+	for _, sample := range samples {
 		_, exists := compiled.modelMappings[sample.Operation]
-		if sample.ID == "" || seen[sample.ID] || !exists || sample.Input.IsZero() || sample.Expected.IsZero() {
+		if sample.Direction == EncodeResponse {
+			_, exists = compiled.modelEncoders[sample.Operation]
+		}
+		if sample.ID == "" || seen[sample.ID] || !exists || sample.Input.IsZero() || sample.Expected.IsZero() ||
+			(sample.Direction != "" && sample.Direction != DecodeResponse && sample.Direction != EncodeResponse) {
 			return fmt.Errorf("invalid model sample identity, operation or assertion")
 		}
 		seen[sample.ID] = true
@@ -101,7 +118,13 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 	if !exists {
 		return page, fmt.Errorf("protocol has no model discovery decoder for %q", operation)
 	}
-	output, err := compiled.executeOperationMapping(ctx, mapping, DecodeResponse, "/operations/"+operation+"/models/decode", input, EvaluationContext{})
+	var output Value
+	var err error
+	if compiled.packagePlan != nil {
+		output, err = compiled.executePackageModelMapping(ctx, operation, mapping, input)
+	} else {
+		output, err = compiled.executeOperationMapping(ctx, mapping, DecodeResponse, "/operations/"+operation+"/models/decode", input, EvaluationContext{})
+	}
 	if err != nil {
 		return page, err
 	}
@@ -111,23 +134,27 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 	if err := decodeContract(output.Bytes(), &page); err != nil {
 		return page, err
 	}
+	return page, compiled.validateModelPage(operation, page)
+}
+
+func (compiled *Compiled) validateModelPage(operation string, page ModelPage) error {
 	if page.Models == nil || len(page.Models) > compiled.limits.StateItems {
-		return page, fmt.Errorf("model page requires a bounded models array")
+		return fmt.Errorf("model page requires a bounded models array")
 	}
 	if page.HasMore && strings.TrimSpace(page.Next) == "" {
-		return page, fmt.Errorf("model page requires a continuation cursor when hasMore is true")
+		return fmt.Errorf("model page requires a continuation cursor when hasMore is true")
 	}
 	seen := map[string]bool{}
 	for _, model := range page.Models {
 		if strings.TrimSpace(model.ID) == "" || seen[model.ID] || model.MaxTokens < 0 {
-			return page, fmt.Errorf("model page contains an empty/duplicate identity or invalid token limit")
+			return fmt.Errorf("model page contains an empty/duplicate identity or invalid token limit")
 		}
 		seen[model.ID] = true
 	}
 	if page.Next != "" && compiled.operations[operation].Models.CursorParameter == "" {
-		return page, fmt.Errorf("model page has a next cursor without declared pagination")
+		return fmt.Errorf("model page has a next cursor without declared pagination")
 	}
-	return page, nil
+	return nil
 }
 
 func (compiled *Compiled) executeOperationMapping(ctx context.Context, mapping compiledMapping, direction Direction, path string, input Value, options EvaluationContext) (Value, error) {
@@ -144,8 +171,30 @@ func (compiled *Compiled) executeOperationMapping(ctx context.Context, mapping c
 }
 
 func verifyModelSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) {
-	terminal, continuation := map[string]bool{}, map[string]bool{}
-	for _, sample := range compiled.Definition().ModelSamples {
+	if len(compiled.modelMappings) == 0 {
+		return
+	}
+	terminal, continuation, encoded := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	samplesPath, operationsPath := "/modelSamples/", "/operations/"
+	operationSuffix := "/models"
+	if compiled.packagePlan != nil {
+		samplesPath, operationsPath = "/mapping/modelSamples/", "/mapping/operations/"
+		operationSuffix = "/decodeModels"
+	}
+	for _, sample := range compiled.verificationModelSamples() {
+		if sample.Direction == EncodeResponse {
+			output, err := compiled.previewModelEncoding(ctx, sample.Operation, sample.Input)
+			if err == nil && !equalValues(output, sample.Expected) {
+				err = fmt.Errorf("model sample differs from expected client catalog")
+			}
+			report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Passed: err == nil})
+			if err != nil {
+				report.Issues = append(report.Issues, verificationIssue(compiled, EncodeResponse, samplesPath+sample.ID, VerificationMismatch, err.Error(), sample.ID))
+			} else {
+				encoded[sample.Operation] = true
+			}
+			continue
+		}
 		page, err := compiled.DecodeModelPage(ctx, sample.Operation, sample.Input)
 		if err == nil {
 			actual, encodeErr := EncodeValue(page)
@@ -156,15 +205,34 @@ func verifyModelSamples(ctx context.Context, compiled *Compiled, report *Verific
 		}
 		report.Checks = append(report.Checks, VerificationCheck{SampleID: sample.ID, Passed: err == nil})
 		if err != nil {
-			report.Issues = append(report.Issues, verificationIssue(compiled, "", "/modelSamples/"+sample.ID, VerificationMismatch, err.Error(), sample.ID))
+			report.Issues = append(report.Issues, verificationIssue(compiled, "", samplesPath+sample.ID, VerificationMismatch, err.Error(), sample.ID))
 			continue
 		}
 		terminal[sample.Operation] = terminal[sample.Operation] || page.Next == ""
 		continuation[sample.Operation] = continuation[sample.Operation] || page.Next != ""
 	}
-	for name := range compiled.modelMappings {
+	for _, name := range sortedKeys(compiled.modelMappings) {
 		if !terminal[name] || (compiled.operations[name].Models.CursorParameter != "" && !continuation[name]) {
-			report.Issues = append(report.Issues, verificationIssue(compiled, "", "/operations/"+name+"/models", IncompleteCoverage, "discovery requires terminal and, when paginated, continuation page evidence", ""))
+			report.Issues = append(report.Issues, verificationIssue(compiled, "", operationsPath+name+operationSuffix, IncompleteCoverage, "discovery requires terminal and, when paginated, continuation page evidence", ""))
 		}
 	}
+	for _, name := range sortedKeys(compiled.modelEncoders) {
+		if !encoded[name] {
+			report.Issues = append(report.Issues, verificationIssue(compiled, EncodeResponse, operationsPath+name+"/encodeModels", IncompleteCoverage, "client catalog requires encode_response model evidence", ""))
+		}
+	}
+}
+
+func (compiled *Compiled) previewModelEncoding(ctx context.Context, operation string, input Value) (Value, error) {
+	if _, exists := compiled.modelEncoders[operation]; !exists {
+		return Value{}, operationMetadataError("/operations/"+escapePointer(operation), "operation has no declared client catalog encoder")
+	}
+	if err := compiled.modelPageValidator.validate(input, "/models", compiled.limits); err != nil {
+		return Value{}, err
+	}
+	var page ModelPage
+	if err := decodeContract(input.Bytes(), &page); err != nil {
+		return Value{}, err
+	}
+	return compiled.EncodeModelPage(ctx, operation, page)
 }

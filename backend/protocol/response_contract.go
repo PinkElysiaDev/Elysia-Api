@@ -11,11 +11,12 @@ import (
 // Tool input and usage validation share the same rules as request and event paths.
 func CheckResponse(response *Response, target Target, limits Limits) []ConversionIssue {
 	check := capabilityCheck{target: target, limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
-	if response == nil || response.SchemaVersion != SemanticSchemaVersion {
+	if response == nil || response.SchemaVersion != target.coreSchemaVersion() {
 		check.add(InvalidInput, "/schemaVersion", "", "missing response or unsupported semantic version")
 		return check.issues
 	}
-	check.content(response.Content, "/content", 1)
+	check.metadataSnapshot(response.Metadata, "/metadata")
+	check.content(response.Content, "/content", 1, false)
 	check.usage(response.Usage, "/usage")
 	return check.issues
 }
@@ -53,8 +54,24 @@ func (check *capabilityCheck) usage(usage *Usage, path string) {
 // lifecycle validation belongs to StreamState, which is unique to a session.
 func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	check := capabilityCheck{target: target, limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
-	if event.SchemaVersion != SemanticSchemaVersion {
+	if event.SchemaVersion != target.coreSchemaVersion() {
 		check.add(InvalidInput, "/schemaVersion", "", "unsupported semantic event version")
+		return check.issues
+	}
+	if err := restoreProtectedEvent(&event, event.auxiliary, event.omittedAuxiliary, event.controlReceipt, event.omittedControl, false); err != nil {
+		check.add(UnsupportedNative, "/native", "", err.Error())
+		return check.issues
+	}
+	if event.omittedAuxiliary != nil && !isOmittedAuxiliaryEvent(event, target) {
+		check.add(UnsupportedNative, "/native", "", "auxiliary omission belongs to a different target or scope")
+		return check.issues
+	}
+	if event.omittedControl != nil && !isOmittedControlEvent(event, target) {
+		check.add(UnsupportedNative, "/control", "", "control omission belongs to a different target, mapping or scope")
+		return check.issues
+	}
+	if event.Control != nil && event.Type != ControlUpdated {
+		check.add(InvalidInput, "/control", "", "control state requires its isolated event type")
 		return check.issues
 	}
 	if event.Unmapped != nil {
@@ -88,7 +105,33 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 			check.add(InvalidAssociation, "/parentId", "", "only item lifecycle events can reference a parent")
 		}
 	}
+	if event.Collection != "" {
+		if event.Collection != "summary" && event.Collection != "reasoning_content" {
+			check.add(InvalidAssociation, "/collection", "", "unknown reasoning child collection")
+		}
+		if event.ParentID.IsZero() {
+			check.add(InvalidAssociation, "/collection", "", "reasoning collection requires a parent")
+		}
+		if event.Item != nil && event.Item.Kind != TextNode {
+			check.add(InvalidAssociation, "/item/kind", "", "reasoning collection children must be text")
+		}
+	}
 	switch event.Type {
+	case ControlUpdated:
+		if event.Control == nil || event.controlReceipt == nil {
+			check.add(UnsupportedNative, "/control", "", "control state requires a validated source wire receipt")
+		} else {
+			check.require(ControlStateCapability, "/control")
+			if !CanPreserveNative(event.Control.Source, target) {
+				check.add(UnsupportedNative, "/control", "", "control state requires an explicit target disposition")
+			}
+			if !CheckScope(event.Control.Source.Scope, target.Scope) {
+				check.add(ResourceScopeMismatch, "/control", "", "control state scope differs from target")
+			}
+			if event.Native != nil && (!event.controlReceipt.canReplayNative || event.controlReceipt.encoderHash != target.eventEncoderHash || event.controlReceipt.decoderHash != target.eventDecoderHash) {
+				check.add(UnsupportedNative, "/native", "", "control native replay requires source preservation and equivalent event mappings")
+			}
+		}
 	case SessionStarted, SessionConfigured, SessionConfigure, InputCommit, ResponseCreate, ResponseCancel, SessionClose:
 		check.require(SessionsCapability, "/type")
 	case InputAppend:
@@ -108,8 +151,14 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		if event.ItemID.IsZero() && event.CallID.IsZero() && event.Index == nil {
 			check.add(InvalidAssociation, "/itemId", "", "item events require a stable item, call or index identity")
 		}
-		if event.Type == ItemDelta && event.Delta.IsZero() {
-			check.add(InvalidInput, "/delta", "", "delta event requires a payload")
+		if event.Type == ItemDelta {
+			if event.Item != nil && event.Item.Kind == ServerToolNode {
+				if !event.Delta.IsZero() {
+					check.add(InvalidInput, "/delta", ServerToolsCapability, "server progress cannot also contain input text")
+				}
+			} else if event.Delta.IsZero() {
+				check.add(InvalidInput, "/delta", "", "delta event requires a payload")
+			}
 		}
 	case UsageUpdated:
 		if event.Usage == nil {
@@ -118,9 +167,11 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	case MetadataUpdated:
 		// Projection may remove all recognized metadata. This remains a no-op,
 		// not an observation of zero tokens and not a native extension escape.
-		for _, item := range event.Metadata {
-			if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
-				check.add(InvalidInput, item.Path, "", err.Error())
+		if event.SchemaVersion != ProtocolCoreVersion {
+			for _, item := range event.Metadata {
+				if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
+					check.add(InvalidInput, item.Path, "", err.Error())
+				}
 			}
 		}
 	case OperationFailed:
@@ -138,9 +189,24 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	default:
 		check.add(InvalidInput, "/type", "", fmt.Sprintf("unknown event type %q", event.Type))
 	}
+	for index, metadata := range event.Metadata {
+		check.logprobMetadata(metadata)
+		if metadata.Update == "" {
+			continue
+		}
+		path := fmt.Sprintf("/metadata/%d/update", index)
+		if metadata.Update != "append" || event.Type != ItemDelta || metadata.Location == "response" || metadata.Location == "usage" || strings.HasPrefix(metadata.Location, "event:") {
+			check.add(InvalidInput, path, "", "append metadata requires an item delta and item-owned array")
+		} else if !metadata.Value.IsArray() {
+			check.add(InvalidInput, fmt.Sprintf("/metadata/%d/value", index), "", "append metadata requires an array")
+		}
+	}
 	check.usage(event.Usage, "/usage")
 	if event.Item != nil {
-		if event.Item.Kind == ToolCallNode && event.Type != ItemFinished {
+		if event.Item.Kind == ServerToolNode && event.Type == ItemDelta {
+			check.serverToolHeader(*event.Item, "/item")
+		} else if event.Item.Kind == ToolCallNode && event.Type != ItemFinished {
+			check.metadataSnapshot(event.Item.Metadata, "/item/metadata")
 			if event.Item.Input == nil || (event.Item.Input.Kind != JSONInput && event.Item.Input.Kind != TextInput) {
 				check.add(InvalidInput, "/item/input/kind", "", "streamed tool item requires an input kind")
 			} else if event.Item.Input.Kind == JSONInput {
@@ -151,7 +217,7 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 			check.cache(event.Item.Cache, "/item/cache")
 			check.resources(event.Item.Resources, "/item/resources")
 		} else if event.Item.Kind != ToolResultNode {
-			check.content([]Node{*event.Item}, "/item", 1)
+			check.content([]Node{*event.Item}, "/item", 1, false)
 		}
 	}
 	if event.Response != nil {

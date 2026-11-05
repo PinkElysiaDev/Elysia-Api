@@ -110,10 +110,3 @@ func cliDescriptionOf(handler CLIHandler) string {
 	}
 	return ""
 }
-
-func cliHandlerName(handler CLIHandler) string {
-	if named, ok := handler.(interface{ Name() string }); ok {
-		return named.Name()
-	}
-	return ""
-}

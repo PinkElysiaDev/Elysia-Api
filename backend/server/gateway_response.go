@@ -14,6 +14,14 @@ import (
 // Response delivery uses the same narrow handoff as streaming; request history
 // and retry candidates belong exclusively to preparation and dispatch.
 func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response, responseRoute protocol.ConversionContext, options protocol.EvaluationContext) error {
+	isDeliveryPending := false
+	if continuation := candidate.continuation; continuation != nil && continuation.isPackage {
+		defer func() {
+			if !isDeliveryPending {
+				continuation.binding.Release()
+			}
+		}()
+	}
 	body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 	if err != nil {
 		return protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response")
@@ -23,8 +31,10 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	if err != nil {
 		return err
 	}
-	if err := observeHostedTools(record, candidate.compiled, body); err != nil {
-		return err
+	if candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+		if err := observeLegacyHostedTools(record, candidate.compiled, body); err != nil {
+			return err
+		}
 	}
 	// DecodeResponse has already validated usage arithmetic and capabilities.
 	updateRecordProtocolUsage(record, semantic.Usage)
@@ -39,7 +49,7 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	}
 	// Recovery evidence is created while capturing this response. Only the
 	// outbound model is a dispatch snapshot; refresh mutable recovery context now.
-	route := candidate.conversionContext(plan.ingress, true)
+	route := candidate.conversionContext(plan.ingress, true).WithOperation(options)
 	route.ResponseModel = responseRoute.ResponseModel
 	route, originErr := route.WithObservedResponseModel(body)
 	if originErr != nil {
@@ -52,37 +62,63 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 		}
 	}
 	applyClientModelAlias(semantic, plan.clientModel)
-	body, err = plan.ingress.EncodeResponse(ctx, semantic, options)
+	wireValue, err := plan.ingress.EncodeResponseValue(ctx, semantic, options)
 	if err != nil {
 		return err
 	}
+	beforeWire := wireValue
 	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		body, err = candidate.conversion.Wire(ctx, body, candidate.conversionContext(plan.ingress, true), options.Diagnostics)
+		wireValue, err = candidate.conversion.ApplyValue(ctx, protocol.ConversionWire, wireValue, route, options.Diagnostics)
 		if err != nil {
 			return err
 		}
-		// The target decoder applies its declared structure and capabilities.
-		if _, err = plan.ingress.DecodeResponse(ctx, body, options); err != nil {
-			return err
+		if plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
+			if _, err = plan.ingress.DecodeResponseValue(ctx, wireValue, options); err != nil {
+				return err
+			}
 		}
 	}
-	if candidate.continuation != nil {
-		body, err = builtin.AttachContinuationCarriers(body, plan.ingress.Identity().Family, candidate.continuation.tokens)
+	if candidate.continuation != nil && candidate.continuation.isPackage {
+		options = options.WithContinuation(candidate.continuation.binding)
+		wireValue, err = plan.ingress.EncodeContinuationResponse(ctx, wireValue, options)
 		if err != nil {
 			return err
 		}
+	} else {
+		if candidate.continuation != nil {
+			body, err = builtin.AttachContinuationCarriers(wireValue.Bytes(), plan.ingress.Identity().Family, candidate.continuation.tokens)
+			if err != nil {
+				return err
+			}
+			wireValue, err = protocol.ParseValue(body)
+			if err != nil {
+				return err
+			}
+		}
 	}
-	wireValue, err := protocol.ParseValue(body)
+	err = plan.ingress.ValidateResponseOutput(ctx, beforeWire, wireValue, options)
 	if err != nil {
-		return err
-	}
-	if err := plan.ingress.ValidateWireOutput(protocol.EncodeResponse, wireValue); err != nil {
 		return route.AttributeResponseModelFailure(err, semantic, wireValue)
 	}
-	if len(body) > plan.ingress.ResourceLimits().BufferBytes {
+	if wireValue.Len() > plan.ingress.ResourceLimits().BufferBytes {
 		return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/response", Reason: "response including continuation carriers exceeds target buffer limit"}})
 	}
 	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
-	c.Data(http.StatusOK, "application/json", body)
+	if candidate.continuation != nil && candidate.continuation.isPackage && candidate.continuation.binding.HasPending() {
+		binding := candidate.continuation.binding
+		state := ensureHTTPDeliveryState(c)
+		onHTTPComplete(c, func() {
+			defer binding.Release()
+			if state.result.Outcome == deliveryCompleted {
+				// Validation has confirmed every planned carrier. Failure here is
+				// an internal ownership violation, not a recoverable I/O outcome.
+				if err := binding.CommitDelivery(); err != nil {
+					panic(err)
+				}
+			}
+		})
+		isDeliveryPending = true
+	}
+	c.Data(http.StatusOK, "application/json", wireValue.Bytes())
 	return nil
 }

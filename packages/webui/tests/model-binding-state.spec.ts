@@ -39,7 +39,9 @@ async function mockBindings(page: Page, initial = true, hasPolicies = false) {
       data = { items: ['chat', 'responses'].map((id) => ({ id, name: id, revision: `${id}-rev`, canGenerate: true, capabilities: { 'tools.function': true } })) }
     } else if (path.endsWith('/revisions')) {
       const id = path.split('/').at(-2)
-      data = { items: [{ hash: `${id}-rev`, definition: { operations: { generate: { kind: 'generate', transport: 'http' } } } }] }
+      const operations = { generate: { kind: 'generate', transport: 'http_json' } }
+      const definition = id === 'responses' ? { schemaVersion: 4, spec: { operations }, mapping: {} } : { operations }
+      data = { items: [{ hash: `${id}-rev`, definition }] }
     } else if (path.endsWith('/model-sources')) {
       data = { items: [{ id: 'binding-source', name: 'Binding source', baseUrl: 'https://upstream.example', platform: 'custom:chat', enabled: true }] }
     } else if (path.endsWith('/models')) {
@@ -106,7 +108,7 @@ test('late policy revisions do not replace a newer binding selection', async ({ 
 test('binding overrides keep exact values through child save, reopen and parent save', async ({ page }) => {
   const state = await mockBindings(page)
   const field = state.dialog.getByLabel('绑定转换覆盖 JSON')
-  const overrides = '{"schemaVersion":1,"id":"precise","rules":[{"id":"large","value":9007199254740993}]}'
+  const overrides = '{"schemaVersion":2,"id":"precise","rules":[{"id":"large","value":9007199254740993}]}'
   await field.fill(overrides)
   await state.dialog.getByRole('button', { name: '验证并保存转换覆盖', exact: true }).click()
   await expect(state.dialog.getByText('转换覆盖已验证并保存', { exact: true })).toBeVisible()
@@ -126,7 +128,7 @@ for (const reasoning of [updated, undefined]) {
     const field = dialog.getByLabel('模型思考能力 JSON')
     await expect(field).toHaveValue(JSON.stringify(original, null, 2))
     await field.fill(reasoning ? JSON.stringify(reasoning) : '')
-    const overrides = { schemaVersion: 1, id: 'local', name: 'Local', mode: 'strict', rules: [] }
+    const overrides = { schemaVersion: 2, id: 'local', name: 'Local', mode: 'strict', rules: [] }
     await dialog.getByLabel('绑定转换覆盖 JSON').fill(JSON.stringify(overrides))
     const releaseChild = state.holdNext()
     await dialog.getByRole('button', { name: '验证并保存转换覆盖', exact: true }).click()
@@ -163,6 +165,7 @@ test('creating a model binding and switching protocol reloads the child editor',
   await dialog.getByLabel('模型协议', { exact: true }).selectOption('responses')
   await dialog.getByRole('button', { name: '验证并保存模型绑定', exact: true }).click()
   await expect.poll(() => state.saved()?.binding.protocolId).toBe('responses')
+  expect(state.saved()?.binding.transports).toEqual(['http_json'])
   await dialog.getByText('转换行为覆盖', { exact: true }).click()
   await expect(field).toHaveValue('')
   await field.fill(JSON.stringify(original))

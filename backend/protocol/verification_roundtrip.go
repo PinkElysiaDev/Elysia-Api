@@ -3,7 +3,8 @@ package protocol
 import "context"
 
 func verifyRoundTrip(ctx context.Context, compiled *Compiled, sample Sample, result verificationResult) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	var semantic any
 	var wire Value
 	switch sample.Direction {
@@ -118,7 +119,8 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 	if !compiled.Supports(eventDecoder(sample.Direction)) || !compiled.Supports(eventEncoder(sample.Direction)) {
 		return nil
 	}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	var frames []Value
 	if isEventDecoder(sample.Direction) {
 		for _, frame := range result.frames {
@@ -166,6 +168,11 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 			return err
 		}
 		events = append(events, decoded.Events...)
+	}
+	if sample.Sequence {
+		if err := compiled.finishInputEvents(ctx, eventDecoder(sample.Direction), options); err != nil {
+			return err
+		}
 	}
 	if compiled.native.Preserve && isEventDecoder(sample.Direction) {
 		return compareRoundTrip(compiled, sample, result.semantic, events)

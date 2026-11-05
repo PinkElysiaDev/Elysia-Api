@@ -73,8 +73,24 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 	if err := state.validateContext(phase); err != nil {
 		return Value{}, err
 	}
+	if phase == ConversionEvent && route.frameUsage != nil {
+		facts := route.frameUsage
+		if facts.source != route.Source || facts.target != route.Target || facts.scope != route.Scope {
+			return Value{}, operationMetadataError("/frame/usage", "frame usage belongs to a different route or scope")
+		}
+		if err := state.load(phase, true); err != nil {
+			return Value{}, err
+		}
+		var err error
+		// Select before target rules can replace the response's presentation ID.
+		route.selectedFrameUsage, err = facts.forEvent(*state.document.(*Event))
+		if err != nil {
+			return Value{}, err
+		}
+	}
 	value := input
 	var reasoningTarget string
+	var modelControls *modelControlExecution
 	for _, rule := range c.phases[phase] {
 		activeRule = rule
 		if err := ctx.Err(); err != nil {
@@ -89,6 +105,11 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 			}
 			if target != "" {
 				reasoningTarget = target
+				modelControls = nil
+			}
+			if state.resolvedModelControls != nil {
+				modelControls, state.resolvedModelControls = state.resolvedModelControls, nil
+				reasoningTarget = ""
 			}
 			continue
 		}
@@ -105,6 +126,7 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 			value, resolvedTarget, err = c.applyRequestAction(ctx, value, route, rule, sink)
 			if resolvedTarget != "" {
 				reasoningTarget = resolvedTarget
+				modelControls = nil
 			}
 		case rule.Action == "chat_response_model" || rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
 			if rule.Match.matches(route, value) {
@@ -123,7 +145,12 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		if err = checkResourceValue(value, limits, "semantic"); err != nil {
 			return Value{}, err
 		}
-		*state = conversionState{wire: value, limits: limits}
+		*state = conversionState{wire: value, limits: limits, auxiliary: state.auxiliary, omittedAuxiliary: state.omittedAuxiliary, control: state.control, omittedControl: state.omittedControl}
+		if phase == ConversionEvent && (state.auxiliary != nil || state.omittedAuxiliary != nil || state.control != nil || state.omittedControl != nil) {
+			if err := state.load(phase, true); err != nil {
+				return Value{}, err
+			}
+		}
 	}
 	if returnValue {
 		var flushErr error
@@ -136,6 +163,22 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		return Value{}, candidateFailure(err)
 	}
 	// Later authored rules must not invalidate the resolved target controls.
+	if modelControls != nil {
+		if err := state.load(ConversionRequest, false); err != nil {
+			return Value{}, err
+		}
+		if err := modelControls.apply(ctx, c, state.document.(*Request), route, sink, modelControls.plan.checks, false); err != nil {
+			return Value{}, candidateFailure(err)
+		}
+		if err := modelControls.validateFinalCore(state.document.(*Request)); err != nil {
+			return Value{}, candidateFailure(err)
+		}
+		if request := state.document.(*Request); request.Reasoning != nil {
+			if err := modelControls.apply(ctx, c, request, route, sink, modelControls.plan.renderChecks, false); err != nil {
+				return Value{}, candidateFailure(err)
+			}
+		}
+	}
 	if reasoningTarget != "" {
 		if err := state.load(ConversionRequest, false); err != nil {
 			return Value{}, err
@@ -168,7 +211,7 @@ func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value
 	if err := decodeContract(value.Bytes(), &request); err != nil {
 		return Value{}, "", err
 	}
-	target, err := c.applyRequestObject(&request, route, rule, sink)
+	target, err := c.applyRequestObject(ctx, &request, route, rule, sink)
 	if err != nil {
 		return Value{}, "", err
 	}
@@ -176,7 +219,7 @@ func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value
 	return value, target, err
 }
 
-func (c *CompiledConversion) applyRequestObject(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (string, error) {
+func (c *CompiledConversion) applyRequestObject(ctx context.Context, request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (string, error) {
 	var err error
 	var reasoningTarget string
 	switch rule.Action {
@@ -198,7 +241,7 @@ func (c *CompiledConversion) applyRequestObject(request *Request, route Conversi
 	case "gemini_safety_settings":
 		err = c.geminiSafetySettings(request, route, rule, sink)
 	case "request_projection":
-		err = c.requestProjection(request, route, rule, sink)
+		err = c.requestProjection(ctx, request, route, rule, sink)
 	case "responses_context":
 		err = c.responsesContext(request, route, rule, sink)
 	case "stream_options":
@@ -313,14 +356,20 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 			}
 			var v Value
 			isBuiltin := rule.Action == "signatures" || rule.Action == "provider_signature" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
-			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && (rule.Match.Present != nil || !isBuiltin) {
-				var err error
-				v, err = EncodeValue(n)
-				if err != nil {
-					return err
+			isMatch := false
+			if rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind {
+				if isBuiltin {
+					isMatch = rule.Match.matchesSemantic(route, n)
+				} else {
+					var err error
+					v, err = EncodeValue(n)
+					if err != nil {
+						return err
+					}
+					isMatch = rule.Match.matches(route, v)
 				}
 			}
-			if (rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind) && rule.Match.matches(route, v) {
+			if isMatch {
 				if rule.Action == "signatures" {
 					foreign := route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion
 					restored := n.Source != nil && n.Source.Protocol.Family == route.Target.Family && n.Source.Protocol.WireVersion == route.Target.WireVersion
@@ -421,10 +470,10 @@ func protectConversionProvenance(before, after Value) error {
 		return nil
 	}
 	allowed := map[string]int{}
-	var collect func(Value, bool) error
-	collect = func(v Value, checking bool) error {
+	var collect func(Value, bool, *valueReader) error
+	collect = func(v Value, checking bool, reader *valueReader) error {
 		if v.IsObject() {
-			fields, err := v.ReadObject()
+			fields, err := v.readObjectWithin(reader)
 			if err != nil {
 				return err
 			}
@@ -451,25 +500,27 @@ func protectConversionProvenance(before, after Value) error {
 					}
 					continue
 				}
-				if err := collect(child, checking); err != nil {
+				if err := collect(child, checking, reader); err != nil {
 					return err
 				}
 			}
 		} else if strings.HasPrefix(strings.TrimSpace(v.raw), "[") {
-			items, err := v.readArray()
+			items, err := v.readArrayWithin(reader)
 			if err != nil {
 				return err
 			}
 			for _, item := range items {
-				if err := collect(item, checking); err != nil {
+				if err := collect(item, checking, reader); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	}
-	if err := collect(before, false); err != nil {
+	// Only fixed-size digests escape this synchronous traversal. Keep original
+	// spelling for protection checks without cloning every enclosing payload.
+	if err := collect(before, false, newNativeComparisonReader(before)); err != nil {
 		return err
 	}
-	return collect(after, true)
+	return collect(after, true, newNativeComparisonReader(after))
 }

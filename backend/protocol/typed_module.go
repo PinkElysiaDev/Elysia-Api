@@ -63,6 +63,10 @@ func (compiled *Compiled) encodeEventValue(ctx context.Context, direction Direct
 }
 
 func (compiled *Compiled) encodeEventOutput(ctx context.Context, direction Direction, event Event, options EvaluationContext, batch bool) (eventOutput, error) {
+	if compiled.mappings[direction].hasCoreInputPlan {
+		value, err := encodePlannedCore(ctx, compiled, direction, &event, options)
+		return eventOutput{value: value}, err
+	}
 	if !compiled.hasTypedMapping(direction) {
 		input, err := EncodeSemantic(ctx, direction, event)
 		if err != nil {
@@ -146,6 +150,9 @@ func (compiled *Compiled) hasTypedRequestMapping(direction Direction) bool {
 // outputs need no strict JSON reparse; capability/provenance checks follow in
 // the caller exactly as they do for declarative mappings.
 func decodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input Value, options EvaluationContext, decode func(TypedModule, EvaluationContext) (*T, error)) (*T, error) {
+	if compiled.mappings[direction].hasCoreOutputPlan {
+		return decodePlannedCore[T](ctx, compiled, direction, input, options)
+	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
@@ -268,6 +275,9 @@ func finishIdentityRequestDecode[T any](ctx context.Context, compiled *Compiled,
 }
 
 func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {
+	if compiled.mappings[direction].hasCoreInputPlan {
+		return encodePlannedCore(ctx, compiled, direction, input, options)
+	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		if module, ok := compiled.mappings[direction].module.(TypedModule); ok {
@@ -300,6 +310,9 @@ func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direc
 }
 
 func (compiled *Compiled) decodeEventValues(ctx context.Context, direction Direction, frame Value, options EvaluationContext) ([]Event, error) {
+	if compiled.mappings[direction].hasCoreOutputPlan {
+		return decodePlannedEvents(ctx, compiled, direction, frame, options)
+	}
 	inputLimits, outputLimits, _ := compiled.mappingLimits(ctx, direction)
 	if compiled.hasTypedMapping(direction) {
 		instance, err := options.State.resolve(compiled, direction, compiled.mappings[direction].module)

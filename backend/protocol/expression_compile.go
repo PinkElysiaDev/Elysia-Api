@@ -1,32 +1,75 @@
 package protocol
 
 import (
-	"encoding/json"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/bytedance/sonic"
 )
 
-type compiledExpression struct {
-	op                                  string
-	path                                string
-	pointer                             []string
-	from                                string
-	value                               Value
+// expressionCompileFacts is detached after all type, permission and semantic
+// proofs succeed. Runtime instructions retain diagnostics and Native metadata,
+// but never the duplicate expression graph or inferred schemas.
+type expressionCompileFacts struct {
+	outputPlan                          *compiledOutputPlan
 	fields                              map[string]*compiledExpression
-	keys                                []string
 	items                               []*compiledExpression
 	source, body, when, then, otherwise *compiledExpression
 	cases                               map[string]*compiledExpression
-	values                              map[string]Value
-	to                                  JSONType
-	policy                              string
-	isRequired                          bool
 	result                              JSONType
 	schema                              *ValueSchema
+	coreType                            reflect.Type
+}
+
+type compiledExpression struct {
+	*expressionCompileFacts
+	*expressionDetails
+	op            string
+	path          string
+	pointer       []string
+	from          string
+	bindingSlot   int
+	stateSlot     int
+	indexSlot     int
+	isStreamIndex bool
+	value         Value
+	literalText   string
+	keys          []string
+	values        map[string]Value
+	to            JSONType
+	policy        string
+	isRequired    bool
+	requestField  uint8
+}
+
+// Only operations that use these fields retain the cold metadata. The wrapper
+// shares one allocation with its instruction, without per-node indirection tables.
+type expressionDetails struct {
+	trackerName     string
+	streamNamespace string
+	operation       string
+	nativeLocation  *nativeLocationPattern
+	onConflict      *MergeConflictDiagnostic
+	fieldCheck      *compiledObjectFieldCheck
+	rejection       *declaredRejectionError
+}
+
+func newCompiledExpression(op string) *compiledExpression {
+	switch op {
+	case "track_tool", "track_text", "track_array", "track_position", "project_range",
+		"buffer_text", "buffer_array", "read_delivered_item", "resume_text", "resume_tool",
+		"reject", "check_fields", "native_matches", "merge_deep", "from_entries", "integer":
+		storage := &struct {
+			compiledExpression
+			details expressionDetails
+		}{}
+		storage.expressionDetails = &storage.details
+		storage.op = op
+		return &storage.compiledExpression
+	default:
+		return &compiledExpression{op: op}
+	}
 }
 
 // isInputIdentity recognizes a compiled leaf, including an expanded reference.
@@ -36,25 +79,114 @@ func (expression *compiledExpression) isInputIdentity() bool {
 }
 
 type expressionCompiler struct {
-	limits            Limits
-	nodes             int
-	references        map[string]Expression
-	resolving         map[string]bool
-	used              map[string]bool
-	mappingReferences map[string]Expression
+	compiledExpressions []*compiledExpression
+	compileFacts        []expressionCompileFacts
+	streamDispositions  map[string]bool
+	maximumDepth        int
+	instances           map[referenceContext][]compiledReference
+	limits              Limits
+	nodes               int
+	references          map[string]Expression
+	resolving           map[string]bool
+	used                map[string]bool
+	mappingReferences   map[string]Expression
+	constraints         *wireConstraintCompiler
+}
+
+const compileFactsBatch = 64
+
+// Facts share short-lived batches; individual runtime instructions survive
+// publication independently. Old batches remain owned by their live facts.
+func (compiler *expressionCompiler) newCompileFacts(result JSONType) *expressionCompileFacts {
+	if len(compiler.compileFacts) == cap(compiler.compileFacts) {
+		compiler.compileFacts = make([]expressionCompileFacts, 0, min(compileFactsBatch, compiler.limits.Nodes-compiler.nodes+1))
+	}
+	compiler.compileFacts = append(compiler.compileFacts, expressionCompileFacts{result: result})
+	return &compiler.compileFacts[len(compiler.compileFacts)-1]
+}
+
+func newExpressionCompiler(limits Limits, references map[string]Expression) *expressionCompiler {
+	return &expressionCompiler{limits: limits, references: references, resolving: make(map[string]bool), used: make(map[string]bool)}
+}
+
+func releaseExpressionGraphs(expressions []*compiledExpression) {
+	for _, expression := range expressions {
+		expression.expressionCompileFacts = nil
+		if expression.op == "object" {
+			expression.keys = nil // The runtime plan owns its compiled field order.
+		}
+	}
+}
+
+func (compiler *expressionCompiler) releaseGraph() {
+	releaseExpressionGraphs(compiler.compiledExpressions)
+	compiler.compiledExpressions = nil
+	compiler.compileFacts = nil
 }
 
 type expressionScope struct {
-	input       *ValueSchema
-	item        *ValueSchema
-	isIteration bool
+	canRequireDisposition  bool
+	isWireContract         bool
+	canReadNativeFrame     bool
+	trackerChannels        map[string]bool
+	walkCoreItem           reflect.Type
+	streamPrimitiveUsed    *bool
+	canUseStreamPrimitives bool
+	input                  *ValueSchema
+	root                   *ValueSchema
+	item                   *ValueSchema
+	coreInput              reflect.Type
+	coreRoot               reflect.Type
+	hasInputScope          bool
+	coreItem               reflect.Type
+	isIteration            bool
+	isSingleVisit          bool
+	isWalk                 bool
+	wireCapture            bool
+	canReadRuntime         bool
+	canReadClientOutput    bool
+	canReadEncodingState   bool
+	canReadContinuation    bool
+	canSelectCarrier       bool
+	canReadOperation       bool
+	canReadFrameUsage      bool
+	canReadOutputStream    bool
+	outputNamespaces       map[string]int
+	canReadNative          bool
+	bindings               map[string]expressionBinding
+	stateSlots             map[string]expressionBinding
+	streamIndexes          map[string]int
+	canWriteStreamIndexes  bool
+	bindingDepth           int
+	indexes                map[string]int
+	indexDepth             int
+}
+
+type expressionBinding struct {
+	slot     int
+	result   JSONType
+	schema   *ValueSchema
+	coreType reflect.Type
+}
+
+func (compiler *expressionCompiler) compilePlan(expression Expression, path string, scope expressionScope, depth int) (*compiledOutputPlan, error) {
+	compiled, err := compiler.compile(expression, path, scope, depth)
+	if err != nil {
+		return nil, err
+	}
+	plan, ok := compileOutputPlan(compiled)
+	if !ok {
+		return nil, fmt.Errorf("%s: expression has no compiled execution plan", path)
+	}
+	return plan, nil
 }
 
 func (compiler *expressionCompiler) compile(expression Expression, path string, scope expressionScope, depth int) (result *compiledExpression, err error) {
 	defer func() { err = locateMappingError(path, err) }()
 	compiler.nodes++
+	compiler.maximumDepth = max(compiler.maximumDepth, depth)
 	if depth > compiler.limits.Depth || compiler.nodes > compiler.limits.Nodes {
-		return nil, fmt.Errorf("%s exceeds expression depth or node limit", path)
+		return nil, fmt.Errorf("%s exceeds expression depth or node limit (depth %d/%d, nodes %d/%d)", path, depth, compiler.limits.Depth, compiler.nodes, compiler.limits.Nodes)
 	}
 	var operation *OperationInfo
 	for index := range expressionOperations {
@@ -70,23 +202,29 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		return nil, err
 	}
 	if expression.Op == "ref" {
-		definition, exists := compiler.references[expression.Ref]
-		if !exists {
-			return nil, fmt.Errorf("%s/ref: unknown expression %q", path, expression.Ref)
-		}
-		if compiler.resolving[expression.Ref] {
-			return nil, fmt.Errorf("%s/ref: recursive expression %q", path, expression.Ref)
-		}
-		compiler.used[expression.Ref] = true
-		if compiler.mappingReferences != nil {
-			compiler.mappingReferences[expression.Ref] = definition
-		}
-		compiler.resolving[expression.Ref] = true
-		compiled, err := compiler.compile(definition, path+"/@"+expression.Ref, scope, depth+1)
-		delete(compiler.resolving, expression.Ref)
-		return compiled, err
+		return compiler.compileReference(expression.Ref, path, scope, depth)
 	}
-	compiled := &compiledExpression{op: expression.Op, path: path, from: expression.From, value: expression.Value, to: expression.To, policy: expression.Policy, isRequired: expression.Required, result: operation.Result}
+	compiled := newCompiledExpression(expression.Op)
+	compiled.expressionCompileFacts = compiler.newCompileFacts(operation.Result)
+	compiled.path, compiled.from, compiled.value = path, expression.From, expression.Value
+	compiled.to, compiled.policy, compiled.isRequired = expression.To, expression.Policy, expression.Required
+	if expression.Operation != "" {
+		compiled.operation = expression.Operation
+	}
+	compiler.compiledExpressions = append(compiler.compiledExpressions, compiled)
+	if scope.isWireContract && compiled.op == "check_usage" {
+		return nil, fmt.Errorf("%s: core usage checks belong to Mapping, not an external wire contract", path)
+	}
+	if compiled.op == "is_carrier" && !scope.canSelectCarrier {
+		return nil, fmt.Errorf("%s: carrier selection requires a source request mapping", path)
+	}
+	if expression.present.has("onConflict") || expression.OnConflict != nil {
+		var err error
+		compiled.onConflict, err = compileMergeConflictDiagnostic(expression.OnConflict, path+"/onConflict")
+		if err != nil {
+			return nil, err
+		}
+	}
 	if compiled.op == "read" {
 		pointer, err := parsePointer(expression.Path)
 		if err != nil {
@@ -96,18 +234,102 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if compiled.from == "" {
 			compiled.from = "input"
 		}
-		if !slices.Contains([]string{"input", "root", "item", "context"}, compiled.from) {
+		if !slices.Contains([]string{"input", "root", "item", "context", "binding", "runtime", "state"}, compiled.from) {
 			return nil, fmt.Errorf("%s/from: unknown input scope", path)
 		}
 		if compiled.from == "item" && !scope.isIteration {
 			return nil, fmt.Errorf("%s/from: item requires an array iteration", path)
 		}
-		schema := scope.input
-		if compiled.from == "item" {
-			schema = scope.item
+		schema, coreType := scope.input, scope.coreInput
+		switch compiled.from {
+		case "root":
+			if scope.hasInputScope {
+				schema, coreType = scope.root, scope.coreRoot
+			} else if scope.root != nil {
+				schema = scope.root
+			}
+		case "item":
+			schema, coreType = scope.item, scope.coreItem
+		case "context":
+			schema, coreType = nil, nil
+		case "state":
+			if len(pointer) == 0 {
+				return nil, fmt.Errorf("%s/path: state reads require a declared slot", path)
+			}
+			slot, exists := scope.stateSlots[pointer[0]]
+			if !exists {
+				return nil, fmt.Errorf("%s/path: state slot is not declared in this event direction", path)
+			}
+			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
+			pointer, compiled.pointer = pointer[1:], pointer[1:]
+		case "runtime":
+			isContinuation := scope.canReadContinuation && len(pointer) == 2 && pointer[0] == "continuation" && pointer[1] == "tokens"
+			isOutputPosition := scope.canReadOutputStream && len(pointer) == 2 && (pointer[0] == "stream" || pointer[0] == "emission" || pointer[0] == "delivered")
+			isClientOutput := scope.canReadClientOutput && len(pointer) > 0 && pointer[0] == "clientOutput"
+			isEncodingState := scope.canReadEncodingState && len(pointer) == 2 && pointer[0] == "encoding" && pointer[1] == "hasRendered"
+			isFrameUsage := scope.canReadFrameUsage && len(pointer) >= 2 && pointer[0] == "frame" && pointer[1] == "usage"
+			isOperation := scope.canReadOperation && len(pointer) == 2 && pointer[0] == "operation" && (pointer[1] == "id" || pointer[1] == "startedAt")
+			if !scope.canReadRuntime && !isClientOutput && !isEncodingState && !isFrameUsage && !isOperation && !isContinuation && !isOutputPosition {
+				return nil, fmt.Errorf("%s/from: runtime metadata requires a package mapping program or effect", path)
+			}
+			switch {
+			case isEncodingState:
+				compiled.result = BooleanType
+			case isContinuation:
+				compiled.result = ArrayType
+			case isFrameUsage:
+				if !validFrameUsagePointer(pointer[2:]) {
+					return nil, fmt.Errorf("%s/path: frame usage exposes only declared numeric counters", path)
+				}
+				compiled.result = AnyType
+			case len(pointer) > 0 && pointer[0] == "clientOutput":
+				compiled.result = AnyType
+			case len(pointer) > 0 && pointer[0] == "nativeFrame" && scope.canReadNativeFrame:
+				compiled.result = AnyType
+			case len(pointer) == 1 && pointer[0] == "interleavedThinking":
+				compiled.result = BooleanType
+			case len(pointer) == 2 && pointer[0] == "scope" && pointer[1] == "model":
+				compiled.result = StringType
+			case len(pointer) == 2 && pointer[0] == "operation" && pointer[1] == "id":
+				compiled.result = StringType
+			case len(pointer) == 2 && pointer[0] == "operation" && pointer[1] == "startedAt":
+				compiled.result = IntegerType
+			case len(pointer) == 2 && pointer[0] == "emission" && pointer[1] == "offset" && scope.canReadOutputStream:
+				compiled.result = IntegerType
+			case len(pointer) == 2 && pointer[0] == "delivered" && pointer[1] == "maxItemIndex" && scope.canReadOutputStream:
+				compiled.result = IntegerType
+			case len(pointer) == 2 && pointer[0] == "stream" && scope.canReadOutputStream:
+				switch pointer[1] {
+				case "responseId":
+					compiled.result = StringType
+				case "sequence":
+					compiled.result = IntegerType
+				case "started", "terminal":
+					compiled.result = BooleanType
+				default:
+					return nil, fmt.Errorf("%s/path: unknown output stream field", path)
+				}
+			default:
+				return nil, fmt.Errorf("%s/path: unknown runtime metadata field", path)
+			}
+			schema, coreType = nil, nil
+			if isFrameUsage {
+				coreType, pointer = reflect.TypeFor[Usage](), pointer[2:]
+			}
+		case "binding":
+			binding, exists := scope.bindings[expression.Name]
+			if !exists {
+				return nil, fmt.Errorf("%s/name: binding is not declared in this scope", path)
+			}
+			compiled.bindingSlot, schema = binding.slot, binding.schema
+			coreType = binding.coreType
+			if len(pointer) == 0 {
+				compiled.result = binding.result
+			}
 		}
-		if compiled.from == "context" {
-			schema = nil
+		hasName := expression.present.has("name")
+		if compiled.from != "binding" && (expression.Name != "" || hasName) {
+			return nil, fmt.Errorf("%s/name: name requires the binding scope", path)
 		}
 		fieldSchema, err := schemaAtPointer(schema, pointer)
 		if err != nil {
@@ -117,9 +339,92 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			compiled.result = fieldSchema.Type
 			compiled.schema = fieldSchema
 		}
+		if coreType == reflect.TypeFor[Request]() && len(pointer) != 0 && (compiled.from == "input" || compiled.from == "root") {
+			compiled.requestField = coreRequestFieldIndex(pointer[0])
+		}
+		compiled.coreType = coreTypeAtPointer(coreType, pointer)
 	}
 	if compiled.op == "literal" {
 		compiled.result = valueType(expression.Value)
+	}
+	if compiled.op == "index" && (!scope.isIteration || scope.isSingleVisit) {
+		return nil, fmt.Errorf("%s: index requires an array iteration", path)
+	}
+	if compiled.op == "recur" && !scope.isWalk {
+		return nil, fmt.Errorf("%s: recur requires an enclosing walk body", path)
+	}
+	if (compiled.op == "capture_native" || compiled.op == "capture_source") && !scope.wireCapture {
+		return nil, fmt.Errorf("%s: native capture requires a package wire decoder", path)
+	}
+	if (compiled.op == "replay_native" || compiled.op == "native_matches") && !scope.canReadNative {
+		return nil, fmt.Errorf("%s: native target operations require a package encode program", path)
+	}
+	if compiled.op == "read_delivered_item" || compiled.op == "resume_text" || compiled.op == "resume_tool" {
+		if !scope.canReadOutputStream || scope.canReadNativeFrame {
+			return nil, fmt.Errorf("%s: delivered item access requires an event encoder, outside native observation", path)
+		}
+		if !definitionIdentifier.MatchString(expression.Namespace) {
+			return nil, fmt.Errorf("%s/namespace: requires a fixed namespace identifier", path)
+		}
+		if _, exists := scope.outputNamespaces[expression.Namespace]; !exists {
+			return nil, fmt.Errorf("%s/namespace: namespace is not declared by the final wire contract", path)
+		}
+		compiled.streamNamespace = expression.Namespace
+	}
+	if compiled.op == "require_disposition" {
+		if !scope.canRequireDisposition || !compiler.streamDispositions[expression.Name] {
+			return nil, fmt.Errorf("%s/name: requires a declared stream disposition in a target event program", path)
+		}
+		compiled.literalText = expression.Name
+		*scope.streamPrimitiveUsed = true
+	}
+	if compiled.op == "resolve_item" || compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_position" || compiled.op == "project_range" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
+		if !scope.canUseStreamPrimitives || !scope.canWriteStreamIndexes {
+			return nil, fmt.Errorf("%s: stream primitives require an event program", path)
+		}
+		*scope.streamPrimitiveUsed = true
+		if compiled.op == "track_text" || compiled.op == "track_array" || compiled.op == "track_position" || compiled.op == "project_range" || compiled.op == "track_tool" || compiled.op == "resume_text" || compiled.op == "resume_tool" || compiled.op == "buffer_text" || compiled.op == "buffer_array" {
+			if !definitionIdentifier.MatchString(expression.Name) {
+				return nil, fmt.Errorf("%s/name: expected a fixed tracker channel identifier", path)
+			}
+			channel := compiled.op + ":" + expression.Name
+			if compiled.op == "project_range" {
+				channel = "track_position:" + expression.Name
+			} else if compiled.op == "resume_text" {
+				channel = "track_text:" + expression.Name
+			} else if compiled.op == "resume_tool" {
+				channel = "track_tool:" + expression.Name
+			}
+			if !scope.trackerChannels[channel] && len(scope.trackerChannels) >= streamTrackersPerItem {
+				return nil, fmt.Errorf("%s/name: stream programs support at most %d fixed tracker channels", path, streamTrackersPerItem)
+			}
+			scope.trackerChannels[channel] = true
+			compiled.trackerName = expression.Name
+		}
+	}
+	if compiled.op == "index_values" {
+		slot, exists := scope.streamIndexes[expression.Name]
+		if !exists {
+			return nil, fmt.Errorf("%s/name: index_values requires a declared persistent index", path)
+		}
+		compiled.indexSlot, compiled.isStreamIndex = slot, true
+	}
+	if compiled.op == "remember" || compiled.op == "recall" || compiled.op == "forget" || compiled.op == "index_size" {
+		slot, exists := scope.indexes[expression.Name]
+		if !exists {
+			if compiled.op == "forget" {
+				return nil, fmt.Errorf("%s/name: %s requires a lexical index", path, compiled.op)
+			}
+			slot, exists = scope.streamIndexes[expression.Name]
+			if !exists {
+				return nil, fmt.Errorf("%s/name: index is not declared in this scope", path)
+			}
+			if compiled.op == "remember" && !scope.canWriteStreamIndexes {
+				return nil, fmt.Errorf("%s/name: persistent index writes require the event program", path)
+			}
+			compiled.isStreamIndex = true
+		}
+		compiled.indexSlot = slot
 	}
 	if expression.Source != nil {
 		child, err := compiler.compile(*expression.Source, path+"/source", scope, depth+1)
@@ -128,22 +433,66 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.source = child
 	}
+	if compiled.op == "recur" && scope.walkCoreItem != nil && coreArrayElement(compiled.source.coreType) != scope.walkCoreItem {
+		return nil, fmt.Errorf("%s/source: typed visit recursion requires an original array of the same core type", path)
+	}
 	childScope := scope
-	if slices.Contains([]string{"map", "flatmap", "filter"}, compiled.op) {
+	if compiled.op == "with_input" {
+		if !scope.hasInputScope {
+			childScope.coreRoot = scope.coreInput
+			if childScope.root == nil {
+				childScope.root = scope.input
+			}
+			childScope.hasInputScope = true
+		}
+		childScope.input, childScope.coreInput = compiled.source.schema, compiled.source.coreType
+	}
+	if compiled.op == "with_index" {
+		if !definitionIdentifier.MatchString(expression.Name) {
+			return nil, fmt.Errorf("%s/name: expected an index identifier", path)
+		}
+		compiled.indexSlot = scope.indexDepth
+		childScope.indexDepth++
+		childScope.indexes = make(map[string]int, len(scope.indexes)+1)
+		for name, slot := range scope.indexes {
+			childScope.indexes[name] = slot
+		}
+		childScope.indexes[expression.Name] = compiled.indexSlot
+	}
+	if compiled.op == "walk" || compiled.op == "visit" {
+		childScope.isWalk = true
+		childScope.walkCoreItem = nil
+	}
+	if compiled.op == "visit" {
+		childScope.isIteration, childScope.item, childScope.coreItem = true, compiled.source.schema, compiled.source.coreType
+		childScope.walkCoreItem = compiled.source.coreType
+		childScope.isSingleVisit = true
+	}
+	if compiled.op == "let" {
+		if !definitionIdentifier.MatchString(expression.Name) {
+			return nil, fmt.Errorf("%s/name: expected a binding identifier", path)
+		}
+		compiled.bindingSlot = scope.bindingDepth
+		childScope.bindingDepth++
+		childScope.bindings = make(map[string]expressionBinding, len(scope.bindings)+1)
+		for name, binding := range scope.bindings {
+			childScope.bindings[name] = binding
+		}
+		childScope.bindings[expression.Name] = expressionBinding{slot: compiled.bindingSlot, result: compiled.source.result, schema: compiled.source.schema, coreType: compiled.source.coreType}
+	}
+	if slices.Contains([]string{"map", "flatmap", "filter", "walk", "group_runs"}, compiled.op) {
 		if !isAssignable(compiled.source.result, ArrayType) {
 			return nil, fmt.Errorf("%s/source must produce an array", path)
 		}
 		childScope.isIteration = true
+		childScope.isSingleVisit = false
 		childScope.item = nil
-		if expression.Source.Op == "read" {
-			base := scope.input
-			if expression.Source.From == "item" {
-				base = scope.item
-			}
-			if expression.Source.From == "context" {
-				base = nil
-			}
-			arraySchema, _ := schemaAtPointer(base, compiled.source.pointer)
+		childScope.coreItem = nil
+		if compiled.op != "walk" {
+			childScope.coreItem = coreArrayElement(compiled.source.coreType)
+		}
+		if expression.Source.Op == "read" || compiled.source.op == "keys" {
+			arraySchema := compiled.source.schema
 			if arraySchema != nil {
 				childScope.item = arraySchema.Items
 			}
@@ -164,7 +513,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		*child.output = value
 	}
-	compiled.fields = make(map[string]*compiledExpression, len(expression.Fields))
+	if len(expression.Fields) != 0 {
+		compiled.fields = make(map[string]*compiledExpression, len(expression.Fields))
+	}
 	compiled.keys = sortedKeys(expression.Fields)
 	for _, key := range compiled.keys {
 		child, err := compiler.compile(expression.Fields[key], path+"/fields/"+escapePointer(key), scope, depth+1)
@@ -180,7 +531,9 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.items = append(compiled.items, child)
 	}
-	compiled.cases = make(map[string]*compiledExpression, len(expression.Cases))
+	if len(expression.Cases) != 0 {
+		compiled.cases = make(map[string]*compiledExpression, len(expression.Cases))
+	}
 	for _, key := range sortedKeys(expression.Cases) {
 		child, err := compiler.compile(expression.Cases[key], path+"/cases/"+escapePointer(key), scope, depth+1)
 		if err != nil {
@@ -188,41 +541,17 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		}
 		compiled.cases[key] = child
 	}
-	compiled.values = make(map[string]Value, len(expression.Values))
+	if len(expression.Values) != 0 {
+		compiled.values = make(map[string]Value, len(expression.Values))
+	}
 	for key, value := range expression.Values {
 		compiled.values[key] = value
 	}
 	if err := checkCompiledExpression(compiled, expression); err != nil {
 		return nil, err
 	}
+	compiled.inheritCoreType()
 	return compiled, nil
-}
-
-func checkExpressionFields(expression Expression, operation OperationInfo, path string) error {
-	encoded, err := sonic.ConfigStd.Marshal(expression)
-	if err != nil {
-		return err
-	}
-	var object map[string]json.RawMessage
-	if err := sonic.ConfigStd.Unmarshal(encoded, &object); err != nil {
-		return err
-	}
-	for key := range expression.present {
-		if _, exists := object[key]; !exists {
-			object[key] = nil
-		}
-	}
-	for key := range object {
-		if key != "op" && !slices.Contains(operation.Fields, key) {
-			return fmt.Errorf("%s/%s: field is not allowed for %s", path, key, operation.Name)
-		}
-	}
-	for _, key := range operation.Required {
-		if value, exists := object[key]; !exists || len(value) == 0 || (string(value) == "null" && key != "value") {
-			return fmt.Errorf("%s/%s is required for %s", path, key, operation.Name)
-		}
-	}
-	return nil
 }
 
 func checkCompiledExpression(expression *compiledExpression, source Expression) error {
@@ -231,10 +560,157 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		return fail("condition must produce a boolean")
 	}
 	switch expression.op {
+	case "check_links":
+		if !isAssignable(expression.source.result, ArrayType) || !slices.Contains([]string{"key", "unique_group"}, expression.policy) {
+			return fail("check_links requires an ordered record array and key or unique_group policy")
+		}
+	case "check_usage":
+		if !isAssignable(expression.source.result, ObjectType) && expression.source.result != NullType {
+			return fail("check_usage requires a core usage object or null")
+		}
+		expression.result, expression.schema, expression.coreType = expression.source.result, expression.source.schema, expression.source.coreType
+	case "read_delivered_item":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("read_delivered_item requires a string wire identity")
+		}
+	case "pointer_join":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("pointer_join requires a string pointer prefix")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, StringType) {
+				return fail("pointer_join segments must be strings")
+			}
+		}
+	case "resume_text", "resume_tool":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) {
+			return fail(expression.op + " requires string tracker and wire identities")
+		}
+	case "track_tool":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
+			return fail("track_tool requires a string key and an observation object")
+		}
+	case "buffer_text", "buffer_array":
+		if err := compileBufferOperation(expression); err != nil {
+			return fail(err.Error())
+		}
+	case "track_text":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, StringType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
+			return fail("track_text requires a string key, text body and explicit delta or snapshot policy")
+		}
+	case "track_array":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ArrayType) || !slices.Contains([]string{"delta", "snapshot"}, expression.policy) {
+			return fail("track_array requires a string key, array body and explicit delta or snapshot policy")
+		}
+	case "require_disposition":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("require_disposition requires a diagnostic path string")
+		}
+	case "track_position":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, IntegerType) {
+			return fail("track_position requires a string key and an integer length")
+		}
+	case "project_range":
+		if !isAssignable(expression.source.result, StringType) || !isAssignable(expression.body.result, ObjectType) {
+			return fail("project_range requires a string key and a range object")
+		}
+	case "resolve_item":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("resolve_item requires an identity object")
+		}
+	case "reject":
+		if source.Diagnostic == nil || strings.TrimSpace(source.Reason) == "" {
+			return fail("reject requires a static diagnostic and reason")
+		}
+		hasPath := source.Path != "" || source.present.has("path")
+		if hasPath == (expression.source != nil) {
+			return fail("reject requires exactly one of path or source")
+		}
+		if expression.source != nil && !isAssignable(expression.source.result, StringType) {
+			return fail("reject source must produce a diagnostic pointer string")
+		}
+		if source.Diagnostic.Path != "" {
+			return fail("reject uses path on the expression, not inside diagnostic")
+		}
+		diagnostic := *source.Diagnostic
+		diagnostic.Path = source.Path
+		if err := validateBoundaryDiagnostic(diagnostic, expression.path+"/diagnostic"); err != nil {
+			return err
+		}
+		expression.rejection = &declaredRejectionError{diagnostic: diagnostic, reason: source.Reason}
+	case "check_fields":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("check_fields requires an object source")
+		}
+		var err error
+		expression.fieldCheck, err = compileObjectFieldCheck(source, expression.path)
+		if err != nil {
+			return err
+		}
+	case "replay_native", "native_matches":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("native source must produce an object")
+		}
+		originalType := reflect.TypeFor[Native]()
+		if expression.op == "native_matches" {
+			originalType = reflect.TypeFor[Provenance]()
+		}
+		if expression.source.coreType != originalType {
+			return fail("native target source requires an unchanged core " + originalType.Name() + " read")
+		}
+		if expression.op == "native_matches" {
+			if expression.operation != "array_item" && expression.operation != "array_item_field" {
+				return fail("native_matches requires array_item or array_item_field operation")
+			}
+			if (expression.operation == "array_item_field") != (source.Name != "") {
+				return fail("native_matches name is required only for array_item_field")
+			}
+			if _, err := parsePointer(source.Path); err != nil {
+				return fail("native_matches path must be a parent JSON pointer")
+			}
+			expression.nativeLocation = &nativeLocationPattern{prefix: source.Path + "/"}
+			if expression.operation == "array_item_field" {
+				expression.nativeLocation.suffix = "/" + escapePointer(source.Name)
+			}
+		}
+	case "capture_native", "capture_source", "is_carrier":
+		if expression.source.op != "read" || !slices.Contains([]string{"input", "root", "item", "binding"}, expression.source.from) {
+			return fail("native capture requires a read from the original wire")
+		}
+	case "let", "remember", "visit", "with_input":
+		expression.result, expression.schema = expression.body.result, expression.body.schema
+	case "with_index":
+		if source.KeyMode != "raw_json" || !slices.Contains([]string{"last", "first", "reject"}, expression.policy) {
+			return fail("with_index requires raw_json keys and last, first or reject duplicate policy")
+		}
+		expression.result, expression.schema = expression.body.result, expression.body.schema
+	case "recall":
+		if !slices.Contains([]string{"omit", "reject"}, expression.policy) {
+			return fail("recall requires omit or reject missing-key policy")
+		}
+	case "recur":
+		if !isAssignable(expression.source.result, ArrayType) {
+			return fail("recur source must produce an array")
+		}
 	case "strip_prefix", "trim_prefix":
 		prefix, err := readString(expression.value)
 		if err != nil || prefix == "" || !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " requires a nonempty literal string prefix and a string source")
+		}
+		expression.literalText = prefix
+	case "has_prefix", "contains":
+		text, err := readString(expression.value)
+		if err != nil || !isAssignable(expression.source.result, StringType) {
+			return fail(expression.op + " requires a literal string and a string source")
+		}
+		expression.literalText = text
+	case "lower", "quote_string", "has_control", "utf16_length":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail(expression.op + " source must produce a string")
+		}
+	case "split_data_uri":
+		if !isAssignable(expression.source.result, StringType) {
+			return fail("split_data_uri source must produce a string")
 		}
 	case "choose", "enum":
 		if !isAssignable(expression.source.result, StringType) {
@@ -257,18 +733,75 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 		if !isAssignable(expression.body.result, ArrayType) {
 			return fail("flatmap body must produce an array")
 		}
+	case "equal_text":
+		if len(expression.items) != 2 {
+			return fail("equal_text requires exactly two operands")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, StringType) && !isAssignable(item.result, ArrayType) {
+				return fail("equal_text operands must be strings or arrays of strings")
+			}
+		}
 	case "cast":
 		if !slices.Contains([]JSONType{StringType, NumberType, IntegerType, BooleanType}, expression.to) {
 			return fail("cast supports scalar types only")
 		}
 		expression.result = expression.to
-	case "merge":
-		if !slices.Contains([]string{"reject", "first", "last"}, expression.policy) {
+	case "merge_usage":
+		if len(expression.items) < 2 {
+			return fail("merge_usage requires at least two snapshots")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, ObjectType) && item.result != NullType {
+				return fail("merge_usage snapshots must be core usage objects or null")
+			}
+		}
+	case "merge", "merge_deep":
+		if expression.op == "merge" && !slices.Contains([]string{"reject", "first", "last"}, expression.policy) {
 			return fail("merge requires reject, first or last policy")
 		}
 		for _, item := range expression.items {
 			if !isAssignable(item.result, ObjectType) {
-				return fail("merge inputs must be objects")
+				return fail(expression.op + " inputs must be objects")
+			}
+		}
+	case "keys", "entries":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail(expression.op + " source must be an object")
+		}
+		expression.schema = &ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: StringType}}
+		if expression.op == "entries" {
+			if expression.policy != "" && expression.policy != "preserve" {
+				return fail("entries policy must be preserve or omitted")
+			}
+			expression.schema.Items = &ValueSchema{Type: ObjectType, Required: []string{"key", "value"}, Properties: map[string]ValueSchema{"key": {Type: StringType}, "value": {Type: AnyType}}}
+		}
+	case "from_entries":
+		if !isAssignable(expression.source.result, ArrayType) || !slices.Contains([]string{"reject", "identical", "last"}, expression.policy) {
+			return fail("from_entries requires an array and reject, identical or last duplicate policy")
+		}
+		if expression.policy == "last" && expression.onConflict != nil {
+			return fail("last duplicate policy cannot produce a conflict diagnostic")
+		}
+	case "length":
+		if !isAssignable(expression.source.result, ArrayType) {
+			return fail("length requires an array")
+		}
+	case "project":
+		if !isAssignable(expression.source.result, ObjectType) {
+			return fail("project source must be an object")
+		}
+		if !slices.Contains([]string{"include", "exclude"}, expression.policy) {
+			return fail("project requires include or exclude policy")
+		}
+		expression.keys = slices.Clone(source.Keys)
+		for index, key := range expression.keys {
+			expression.keys[index] = coreJSONKey(key)
+		}
+		slices.Sort(expression.keys)
+		for index := 1; index < len(expression.keys); index++ {
+			if expression.keys[index] == expression.keys[index-1] {
+				return fail("project keys must be unique")
 			}
 		}
 	case "concat":
@@ -278,7 +811,7 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			}
 		}
 	case "join":
-		_, hasItems := source.present["items"]
+		hasItems := source.present.has("items")
 		hasItems = hasItems || source.Items != nil
 		if hasItems == (expression.source != nil) {
 			return fail("join requires exactly one of items or source")
@@ -303,6 +836,29 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 	case "equal":
 		if len(expression.items) != 2 {
 			return fail("equal requires exactly two operands")
+		}
+	case "integer":
+		switch expression.operation {
+		case "add":
+			if len(expression.items) < 2 {
+				return fail("integer add requires at least two operands")
+			}
+			expression.result = IntegerType
+		case "subtract", "multiply", "divide", "remainder", "lt", "lte", "gt", "gte":
+			if len(expression.items) != 2 {
+				return fail("integer " + expression.operation + " requires exactly two operands")
+			}
+			expression.result = BooleanType
+			if slices.Contains([]string{"subtract", "multiply", "divide", "remainder"}, expression.operation) {
+				expression.result = IntegerType
+			}
+		default:
+			return fail("integer operation must be add, subtract, multiply, divide, remainder, lt, lte, gt or gte")
+		}
+		for _, item := range expression.items {
+			if !isAssignable(item.result, NumberType) {
+				return fail("integer operands must produce numbers")
+			}
 		}
 	case "all", "any":
 		for _, item := range expression.items {
@@ -403,6 +959,9 @@ func checkExpressionOutput(expression *compiledExpression, schema *ValueSchema, 
 		}
 	}
 	if schema.Type == ArrayType && schema.Items != nil {
+		if expression.op == "keys" && !isAssignable(StringType, schema.Items.Type) {
+			return fmt.Errorf("%s: keys result items are strings", expression.path)
+		}
 		if expression.op == "map" {
 			return checkExpressionOutput(expression.body, schema.Items, limits)
 		}

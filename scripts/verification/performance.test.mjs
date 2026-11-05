@@ -27,3 +27,13 @@ test('repeatable effects and uncertain small changes stay distinct', () => {
   assert.equal(compareSamples([100, 101, 102], [120, 121, 122]).assessment, 'regression')
   assert.equal(compareSamples([98, 100, 102], [100, 101, 102]).assessment, 'inconclusive')
 })
+
+test('stable effects below five percent are classified independently of investigation priority', () => {
+  const slower = compareSamples([100, 100.1, 99.9, 100, 100], [103, 103.1, 102.9, 103, 103])
+  assert.equal(slower.assessment, 'regression')
+  assert.equal(slower.shouldInvestigate, false)
+  const faster = compareSamples([100, 100.1, 99.9, 100, 100], [97, 97.1, 96.9, 97, 97])
+  assert.equal(faster.assessment, 'improvement')
+  assert.equal(faster.shouldInvestigate, false)
+  assert.equal(compareSamples([100, 101, 102], [120, 121, 122]).shouldInvestigate, true)
+})

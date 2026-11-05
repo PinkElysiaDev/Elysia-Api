@@ -6,7 +6,7 @@ import { RoleWatermark } from '@/components/role-watermark'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Button } from '@/components/ui/button'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { protocolAPI, type EnabledProtocol, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
+import { protocolAPI, protocolIdentityPrefix, type EnabledProtocol, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
 import { protocolLabel } from '@/lib/protocol'
 import { ProtocolV2Editor } from './v2-editor'
 import { ProtocolArchiveDialog } from './archive-dialog'
@@ -35,7 +35,7 @@ function extractDraftName(draft: ProtocolDraft, protocols: readonly EnabledProto
     const rawDef: unknown = draft.definition
     if (typeof rawDef === 'string') {
       const doc = new ProtocolDocument(rawDef)
-      const raw = doc.read('/name')
+      const raw = doc.read(`${protocolIdentityPrefix(doc)}/name`)
       const parsed: unknown = raw ? JSON.parse(raw) : ''
       if (typeof parsed === 'string' && parsed.trim()) return parsed.trim()
     } else if (rawDef && typeof rawDef === 'object' && 'name' in rawDef) {
@@ -84,12 +84,13 @@ export function ProtocolDesignerPage() {
       )
       if (!latest) return
       const document = new ProtocolDocument(latest.definition)
+      const identityPrefix = protocolIdentityPrefix(document)
       const taken = new Set(listing?.drafts.map((draft) => draft.protocolId) ?? [])
       let candidate = `${id}-copy`
       for (let index = 1; taken.has(candidate); index += 1) candidate = `${id}-copy-${index}`
-      const source = new ProtocolDocument(document.set('/id', JSON.stringify(candidate))).set(
-        '/name',
-        JSON.stringify(`${JSON.parse(document.read('/name') ?? JSON.stringify(id))}（副本）`),
+      const source = new ProtocolDocument(document.set(`${identityPrefix}/id`, JSON.stringify(candidate))).set(
+        `${identityPrefix}/name`,
+        JSON.stringify(`${JSON.parse(document.read(`${identityPrefix}/name`) ?? JSON.stringify(id))}（副本）`),
       )
       setSelection({ source })
     },

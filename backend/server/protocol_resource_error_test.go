@@ -23,7 +23,7 @@ func TestResourceFailureEvidenceBoundaries(t *testing.T) {
 	if record.StatusCode != 502 || record.ConversionIssues[0].Direction != protocol.DecodeResponse {
 		t.Fatal("response failure attributed to client", record)
 	}
-	primary := &upstreamHTTPFailure{&gatewayFailure{524, errors.Join(protocol.CheckGenerationOutcome(fallbackHTTPFailure(524, nil)), response)}}
+	primary := &upstreamHTTPFailure{&gatewayFailure{524, errors.Join(protocol.CheckGenerationOutcome(fallbackHTTPFailure(524)), response)}}
 	record = &usageRecord{StatusCode: 524, UpstreamHTTPStatus: 524}
 	setUsageError(record, t.Context(), primary)
 	if record.StatusCode != 524 || record.ErrorKind == "limit_exceeded" || len(record.ConversionIssues) != 1 {

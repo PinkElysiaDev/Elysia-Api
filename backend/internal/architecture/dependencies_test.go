@@ -26,6 +26,7 @@ func TestPackageBoundaries(t *testing.T) {
 		"internal/routing":       {"config", "storage"},
 		"internal/admission":     {},
 		"internal/semanticmeter": {"protocol"},
+		"internal/coreplan":      {"protocol"},
 		"internal/outbound":      {"logging"},
 		"internal/dbpath":        {}, "internal/atomicfile": {}, "internal/clishell": {},
 		"internal/eventstream": {}, "internal/jsonutil": {}, "internal/storagequery": {},

@@ -657,19 +657,25 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 	}
 }
 
-func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
-	t.Parallel()
+func TestAgentPackageResponsesStatelessToolContinuation(t *testing.T) {
 	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE} {
 		t.Run(string(transport), func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
+			seedGatewayPackages(t, s)
 			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
 				var request struct {
 					Store   *bool           `json:"store"`
 					Include []string        `json:"include"`
 					Input   json.RawMessage `json:"input"`
+					Tools   []struct {
+						Strict *bool `json:"strict"`
+					} `json:"tools"`
 				}
 				if err := sonic.ConfigStd.Unmarshal([]byte(body), &request); err != nil {
 					t.Error(err)
+				}
+				if len(request.Tools) != 1 || request.Tools[0].Strict == nil || *request.Tools[0].Strict {
+					t.Error("local Agent tools must preserve disabled schema strictness", body)
 				}
 				if request.Store == nil || *request.Store || len(request.Include) != 1 || request.Include[0] != "reasoning.encrypted_content" {
 					w.Header().Set("Content-Type", "application/json")
@@ -678,13 +684,14 @@ func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
 					return
 				}
 				if call > 1 {
-					for _, want := range []string{`"encrypted_content":"agent-encrypted-state"`, `"type":"function_call"`, `"type":"function_call_output"`, `"call_id":"call-agent"`} {
+					for _, want := range []string{`"encrypted_content":"agent-encrypted-state"`, `"type":"web_search_call"`, `"id":"search"`, `"type":"function_call"`, `"type":"function_call_output"`, `"call_id":"call-agent"`} {
 						if !strings.Contains(string(request.Input), want) {
 							t.Error("missing continuation history", want, string(request.Input))
 						}
 					}
 				}
 				const reasoning = `{"type":"reasoning","id":"thought","status":"completed","summary":[],"encrypted_content":"agent-encrypted-state"}`
+				const search = `{"type":"web_search_call","id":"search","status":"completed","action":{"type":"search","query":"gateway"}}`
 				const tool = `{"type":"function_call","id":"tool","call_id":"call-agent","name":"elysia_cli","arguments":"{\"command\":\"elysia group ls\"}","status":"completed"}`
 				if call > 1 {
 					for _, fixture := range cacheWireFixtures() {
@@ -700,7 +707,7 @@ func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
 					}
 					return
 				}
-				complete := `{"id":"r","object":"response","created_at":1,"model":"fake-model","status":"completed","output":[` + reasoning + `,` + tool + `],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}`
+				complete := `{"id":"r","object":"response","created_at":1,"model":"fake-model","status":"completed","output":[` + reasoning + `,` + search + `,` + tool + `],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}`
 				if transport == protocol.HTTPJSON {
 					w.Header().Set("Content-Type", "application/json")
 					io.WriteString(w, complete)
@@ -711,9 +718,12 @@ func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
 					`{"type":"response.created","response":{"id":"r","object":"response","created_at":1,"model":"fake-model","status":"in_progress","output":[]}}`,
 					`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"thought","status":"in_progress","summary":[]}}`,
 					`{"type":"response.output_item.done","output_index":0,"item":` + reasoning + `}`,
-					`{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"tool","call_id":"call-agent","name":"elysia_cli","arguments":"","status":"in_progress"}}`,
-					`{"type":"response.function_call_arguments.delta","output_index":1,"item_id":"tool","delta":"{\"command\":\"elysia group ls\"}"}`,
-					`{"type":"response.output_item.done","output_index":1,"item":` + tool + `}`,
+					`{"type":"response.output_item.added","output_index":1,"item":{"type":"web_search_call","id":"search","status":"in_progress"}}`,
+					`{"type":"response.web_search_call.searching","output_index":1,"item_id":"search"}`,
+					`{"type":"response.output_item.done","output_index":1,"item":` + search + `}`,
+					`{"type":"response.output_item.added","output_index":2,"item":{"type":"function_call","id":"tool","call_id":"call-agent","name":"elysia_cli","arguments":"","status":"in_progress"}}`,
+					`{"type":"response.function_call_arguments.delta","output_index":2,"item_id":"tool","delta":"{\"command\":\"elysia group ls\"}"}`,
+					`{"type":"response.output_item.done","output_index":2,"item":` + tool + `}`,
 					`{"type":"response.completed","response":` + complete + `}`,
 				}
 				for i, frame := range frames {
@@ -751,6 +761,25 @@ func TestAgentCallerResponsesStatelessToolContinuation(t *testing.T) {
 			}
 			if upstream.requestCount() != 2 {
 				t.Fatal("tool round did not complete", upstream.requestCount())
+			}
+			s.stopUsageWriter()
+			logs := latestUsageRecords(t, s)
+			if len(logs) != 2 {
+				t.Fatal("tool round did not settle once per model call", len(logs))
+			}
+			searches := 0
+			for _, log := range logs {
+				var record usageRecord
+				if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, log.RequestID)), &record); err != nil {
+					t.Fatal(err)
+				}
+				searches += record.BuiltinToolUsage.WebSearchCalls
+				if record.BuiltinToolUsage.WebSearchCalls != 0 && (record.ProtocolUsage == nil || record.ProtocolUsage.Details["tools.web_search_calls"].Origin != protocol.InferredCount) {
+					t.Fatal("declared server execution count lost its inferred provenance", record.ProtocolUsage)
+				}
+			}
+			if searches != 1 {
+				t.Fatal("server execution was lost or counted again in the next request history", searches)
 			}
 		})
 	}

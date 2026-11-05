@@ -6,7 +6,12 @@ import (
 	"reflect"
 )
 
+// Request applies ingress and request rules to an owned result, then resolves
+// gateway usage settings. ApplyValue executes only its selected rule phase.
 func (c *CompiledConversion) Request(ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
+	if request != nil && request.continuationInput != nil && !request.continuationsAccepted {
+		return nil, operationMetadataError("/continuation", "selected continuation carriers have not been authenticated")
+	}
 	if c != nil {
 		if err := checkSemanticValue(request, c.phaseLimits(ctx, ConversionRequest)); err != nil {
 			return nil, resourceIssue(err, route.Source, DecodeRequest, "conversion.request")
@@ -30,12 +35,10 @@ func (c *CompiledConversion) Request(ctx context.Context, request *Request, rout
 	if err = decodeContract(v.Bytes(), &result); err != nil {
 		return nil, err
 	}
-	if c.Policy.Usage != nil {
-		if result.ClientOutput == nil {
-			result.ClientOutput = &ClientOutput{}
-		}
-		result.ClientOutput.CollectUsage = c.Policy.Usage.CollectUpstreamUsage
+	if request != nil {
+		result.inheritContinuations(request)
 	}
+	applyClientOutputSettings(&result, c.Policy.Usage)
 	return &result, nil
 }
 
@@ -61,13 +64,23 @@ func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *R
 	if _, err := c.applyConversionState(ctx, ConversionRequest, Value{}, route, sink, &state, false); err != nil {
 		return nil, err
 	}
-	if c.Policy.Usage != nil {
-		if owned.ClientOutput == nil {
-			owned.ClientOutput = &ClientOutput{}
-		}
-		owned.ClientOutput.CollectUsage = c.Policy.Usage.CollectUpstreamUsage
-	}
+	applyClientOutputSettings(owned, c.Policy.Usage)
 	return owned, nil
+}
+
+func applyClientOutputSettings(request *Request, settings *ConversionUsageSettings) {
+	if settings == nil {
+		return
+	}
+	if request.ClientOutput == nil {
+		request.ClientOutput = &ClientOutput{}
+	}
+	output := request.ClientOutput
+	output.CollectUsage = settings.CollectUpstreamUsage
+	if settings.DefaultIncludeUsage && output.IncludeUsage == nil {
+		includeUsage := true
+		output.IncludeUsage = &includeUsage
+	}
 }
 
 func (c *CompiledConversion) Response(ctx context.Context, response *Response, route ConversionContext, sink *DiagnosticSink) (*Response, error) {
@@ -82,10 +95,44 @@ func (c *CompiledConversion) Response(ctx context.Context, response *Response, r
 	if err = decodeContract(v.Bytes(), &result); err != nil {
 		return nil, err
 	}
+	inheritResponseRangeOrigin(response, &result)
 	return &result, nil
 }
 
-func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
+func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (result Event, err error) {
+	origin := event.rangeOrigin
+	defer func() {
+		if err == nil && event.SchemaVersion == ProtocolCoreVersion {
+			inheritResponseRangeOrigin(event.Response, result.Response)
+			if origin == nil && !sameEventRangeInput(&event, &result) {
+				origin = captureEventRangeOrigin(event)
+			}
+			result.rangeOrigin = origin
+		}
+	}()
+	entity := event.continuation
+	if entity == nil {
+		return c.convertEvent(ctx, event, route, sink)
+	}
+	route.continuationEvent = &continuationEventObservation{original: event, entity: entity}
+	result, err = c.convertEvent(ctx, event, route, sink)
+	if err != nil {
+		return Event{}, err
+	}
+	if !sameContinuationEvent(event, result) {
+		entity.isChanged = true
+		if entity.isRecovering {
+			return Event{}, operationMetadataError("/continuation", "conversion changed content bound to authenticated continuation")
+		}
+	}
+	result.continuation = entity
+	return result, nil
+}
+
+func (c *CompiledConversion) convertEvent(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (Event, error) {
+	if event.auxiliary != nil || event.omittedAuxiliary != nil || event.controlReceipt != nil || event.omittedControl != nil {
+		return c.convertProtectedEvent(ctx, event, route, sink)
+	}
 	if c != nil && c.canOwnPhase(ConversionEvent) {
 		budget := semanticLimits(DefaultLimits())
 		if err := checkSemanticValue(event, budget); err != nil {
@@ -139,18 +186,7 @@ func (c *CompiledConversion) streamOptions(request *Request, route ConversionCon
 		delete(tool.Options, "eager_input_streaming")
 	}
 	output := request.ClientOutput
-	if output == nil {
-		if c.Policy.Usage == nil || !c.Policy.Usage.DefaultIncludeUsage {
-			return nil
-		}
-		output = &ClientOutput{}
-		request.ClientOutput = output
-	}
-	if output.IncludeUsage == nil && c.Policy.Usage != nil && c.Policy.Usage.DefaultIncludeUsage {
-		v := true
-		output.IncludeUsage = &v
-	}
-	if output.RawStreamOptions.IsZero() {
+	if output == nil || output.RawStreamOptions.IsZero() {
 		return nil
 	}
 	if _, err := ParseClientOutput(output.RawStreamOptions); err != nil {

@@ -2,8 +2,6 @@ package protocol
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -19,6 +17,8 @@ var definitionIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}
 // EvaluationContext contains gateway-owned metadata. Scope is supplied by the
 // selected model/account binding and cannot be changed by a mapping expression.
 type EvaluationContext struct {
+	conversion          *streamConversionBinding
+	observedNativeFrame Value
 	InterleavedThinking bool
 	ClientOutput        *ClientOutput
 	Scope               Scope
@@ -26,12 +26,20 @@ type EvaluationContext struct {
 	State               *EvaluationState
 	// Diagnostics collects non-blocking conversion issues for this request.
 	// It is gateway-owned; mappings can report through it but cannot read it.
-	Diagnostics      *DiagnosticSink
-	identity         Identity
-	compoundFrame    bool
-	transportControl *bool
-	wireLimits       Limits
-	valueReader      *valueReader
+	Diagnostics        *DiagnosticSink
+	identity           Identity
+	compoundFrame      bool
+	transportControl   *bool
+	wireLimits         Limits
+	valueReader        *valueReader
+	inputView          *inputView
+	continuationInput  *continuationInput
+	continuation       *ContinuationBinding
+	requestReplay      *requestReplay
+	outputStream       *WireStreamValidation
+	operation          *operationMetadata
+	emissionOffset     int
+	packageTransaction *packageStreamTransaction
 	// ResolveRequestScope is supplied by the gateway after model/authorization
 	// lookup. Definitions cannot execute it or replace its returned binding.
 	ResolveRequestScope func(*Request) (Scope, error)
@@ -122,41 +130,61 @@ func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler,
 }
 
 type compiledMapping struct {
-	capabilities   CapabilitySet
-	module         Module
-	transform      *compiledExpression
-	after          *compiledExpression
-	initial        *compiledExpression
-	input, output  *runtimeValueSchema
-	rules          []compiledEventRule
-	frameBatch     bool
-	definitionHash string
+	preservesDynamicNative bool
+	nativeWhen             *compiledOutputPlan
+	finalCheck             *compiledOutputPlan
+	deliveryRanges         []compiledDeliveryRange
+	semanticRanges         []compiledDeliveryRange
+	streamObserver         *compiledOutputPlan
+	capabilities           CapabilitySet
+	module                 Module
+	outputPlan             *compiledOutputPlan
+	streamState            *compiledPackageState
+	streamFinalizer        *compiledOutputPlan
+	hasCoreInputPlan       bool
+	hasCoreOutputPlan      bool
+	after                  *compiledOutputPlan
+	initial                *compiledOutputPlan
+	input, output          *runtimeValueSchema
+	rules                  []compiledEventRule
+	frameBatch             bool
+	isEventBatch           bool
+	canDeferEvents         bool
+	definitionHash         string
 }
 
-type compiledEventRule struct{ when, emit *compiledExpression }
+type compiledEventRule struct{ when, emit *compiledOutputPlan }
 
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
-	identity           Identity
-	definition         Value
-	hash               string
-	samplesHash        string
-	limits             Limits
-	explicitLimits     bool
-	capabilities       CapabilitySet
-	native             NativePolicy
-	mappings           map[Direction]compiledMapping
-	operations         map[string]Operation
-	operationSchemas   map[string]*runtimeValueSchema
-	modelPageValidator *runtimeValueSchema
-	taskMappings       map[string]map[string]compiledMapping
-	modelMappings      map[string]compiledMapping
-	agentMapping       *compiledMapping
-	agentEfforts       []string
+	compileExpressions     []*compiledExpression
+	canReusePackageRequest bool
+	identity               Identity
+	definition             Value
+	hash                   string
+	executionHash          string
+	samplesHash            string
+	limits                 Limits
+	explicitLimits         bool
+	capabilities           CapabilitySet
+	native                 NativePolicy
+	mappings               map[Direction]compiledMapping
+	wireContracts          map[Direction]compiledWireContract
+	operations             map[string]Operation
+	operationSchemas       map[string]*runtimeValueSchema
+	modelPageValidator     *runtimeValueSchema
+	taskMappings           map[string]map[string]compiledMapping
+	modelMappings          map[string]compiledMapping
+	modelEncoders          map[string]compiledMapping
+	agentMapping           *compiledMapping
+	agentClientOutput      []compiledAgentOutputField
+	agentEfforts           []string
+	agentToolResults       InputKind
+	packagePlan            *compiledPackagePlan
 }
 
-// Compile strictly parses one v2 definition and compiles every direction.
+// Compile strictly parses one authored document and compiles every direction.
 // Successful compilation alone does not authorize activation; verification is
 // a separate service that binds evidence to Hash and CompilerVersion.
 func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
@@ -169,6 +197,15 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	}
 	if err := checkValueLimits(value, compiler.limits); err != nil {
 		return nil, definitionIssues(Identity{}, "/", err)
+	}
+	version, err := readValuePointer(value, []string{"schemaVersion"})
+	var schemaVersion int
+	if err == nil && version.Decode(&schemaVersion) == nil && schemaVersion == ProtocolPackageSchemaVersion {
+		var document ProtocolPackage
+		if err := decodeContract(raw, &document); err != nil {
+			return nil, definitionIssues(Identity{}, "/", err)
+		}
+		return compiler.compilePackage(document)
 	}
 	var definition Definition
 	if err := decodeContract(raw, &definition); err != nil {
@@ -185,7 +222,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
-	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), operations: definition.Operations}
+	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), wireContracts: make(map[Direction]compiledWireContract), operations: definition.Operations}
 	compiled.operationSchemas = make(map[string]*runtimeValueSchema)
 	for _, name := range sortedKeys(definition.Operations) {
 		input := definition.Operations[name].Input
@@ -201,7 +238,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 	for capability, supported := range definition.Capabilities {
 		compiled.capabilities[capability] = supported
 	}
-	expressions := &expressionCompiler{limits: limits, references: definition.Expressions, resolving: make(map[string]bool), used: make(map[string]bool)}
+	expressions := newExpressionCompiler(limits, definition.Expressions)
 	for _, direction := range DirectionCatalog() {
 		mapping, exists := definition.Directions[direction]
 		if !exists {
@@ -223,6 +260,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 			}
 		}
 		compiled.mappings[direction] = entry
+		compiled.wireContracts[direction] = bindModuleWireContract(entry.module)
 	}
 	if err := compiler.compileTaskMappings(compiled, definition, expressions); err != nil {
 		return fail("/operations", err)
@@ -254,6 +292,7 @@ func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
 		return fail("/samples", err)
 	}
 	compiled.samplesHash = hashValue(samples)
+	expressions.releaseGraph()
 	return compiled, nil
 }
 
@@ -304,11 +343,11 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		if mapping.Module == "" {
 			return entry, fmt.Errorf("after requires an installed module")
 		}
-		after, err := expressions.compile(*mapping.After, path+"/after", expressionScope{}, 1)
+		after, err := expressions.compilePlan(*mapping.After, path+"/after", expressionScope{}, 1)
 		if err != nil {
 			return entry, err
 		}
-		if err := checkExpressionOutput(after, mapping.Output, expressions.limits); err != nil {
+		if err := checkExpressionOutput(after.expression, mapping.Output, expressions.limits); err != nil {
 			return entry, err
 		}
 		entry.after = after
@@ -318,24 +357,24 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		if !isEventDecoder(direction) || mapping.Module != "" {
 			return entry, fmt.Errorf("initial requires a declarative event decoder")
 		}
-		initial, err := expressions.compile(*mapping.Initial, path+"/initial", scope, 1)
+		initial, err := expressions.compilePlan(*mapping.Initial, path+"/initial", scope, 1)
 		if err != nil {
 			return entry, err
 		}
-		if !isAssignable(initial.result, ObjectType) && !isAssignable(initial.result, ArrayType) {
+		if !isAssignable(initial.expression.result, ObjectType) && !isAssignable(initial.expression.result, ArrayType) {
 			return entry, fmt.Errorf("initial must produce an event or ordered event array")
 		}
 		entry.initial = initial
 	}
 	if mapping.Transform != nil {
-		expression, err := expressions.compile(*mapping.Transform, path+"/transform", scope, 1)
+		plan, err := expressions.compilePlan(*mapping.Transform, path+"/transform", scope, 1)
 		if err != nil {
 			return entry, err
 		}
-		if err := checkExpressionOutput(expression, mapping.Output, expressions.limits); err != nil {
+		if err := checkExpressionOutput(plan.expression, mapping.Output, expressions.limits); err != nil {
 			return entry, err
 		}
-		entry.transform = expression
+		entry.outputPlan = plan
 	}
 	if len(mapping.Rules) > 0 {
 		if !isEventDirection(direction) {
@@ -346,14 +385,14 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 		}
 		for index, rule := range mapping.Rules {
 			rulePath := fmt.Sprintf("%s/rules/%d", path, index)
-			when, err := expressions.compile(rule.When, rulePath+"/when", scope, 1)
+			when, err := expressions.compilePlan(rule.When, rulePath+"/when", scope, 1)
 			if err != nil {
 				return entry, err
 			}
-			if !isAssignable(when.result, BooleanType) {
+			if !isAssignable(when.expression.result, BooleanType) {
 				return entry, fmt.Errorf("%s condition must be boolean", rulePath)
 			}
-			emit, err := expressions.compile(rule.Emit, rulePath+"/emit", scope, 1)
+			emit, err := expressions.compilePlan(rule.Emit, rulePath+"/emit", scope, 1)
 			if err != nil {
 				return entry, err
 			}
@@ -371,6 +410,10 @@ func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction
 			return entry, err
 		}
 		entry.definitionHash = hashValue(identity)
+	}
+	if entry.outputPlan != nil && entry.module == nil && entry.after == nil && entry.initial == nil {
+		entry.hasCoreOutputPlan = entry.output == nil && (direction == DecodeRequest || direction == DecodeResponse || isEventDecoder(direction))
+		entry.hasCoreInputPlan = entry.input == nil && (direction == EncodeRequest || direction == EncodeResponse || direction == EncodeEvent || direction == EncodeUpstreamEvent)
 	}
 	return entry, nil
 }
@@ -475,20 +518,26 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 			}
 		}
 	}
-	for _, sample := range definition.SessionSamples {
+	return checkSessionSamples(definition.SessionSamples, definition.Operations, func(direction Direction) bool {
+		return hasDefinitionDirections(definition, direction)
+	}, compiler.limits.StateItems, seen)
+}
+
+func checkSessionSamples(samples []SessionSample, operations map[string]Operation, supports func(Direction) bool, stepLimit int, seen map[string]bool) error {
+	for _, sample := range samples {
 		if sample.ID == "" || seen[sample.ID] {
 			return fmt.Errorf("session samples require unique nonempty IDs")
 		}
 		seen[sample.ID] = true
-		operation, exists := definition.Operations[sample.Operation]
+		operation, exists := operations[sample.Operation]
 		if !exists || operation.Transport != WebSocket {
 			return fmt.Errorf("session sample %q requires a WebSocket operation", sample.ID)
 		}
-		if len(sample.Steps) == 0 || len(sample.Steps) > compiler.limits.StateItems {
+		if len(sample.Steps) == 0 || len(sample.Steps) > stepLimit {
 			return fmt.Errorf("session sample %q has an invalid step count", sample.ID)
 		}
 		for _, step := range sample.Steps {
-			if !isEventDirection(step.Direction) || !hasDefinitionDirections(definition, step.Direction) || step.Input.IsZero() || step.Expected.IsZero() {
+			if !isEventDirection(step.Direction) || !supports(step.Direction) || step.Input.IsZero() || step.Expected.IsZero() {
 				return fmt.Errorf("session sample %q requires implemented event directions, inputs and expectations", sample.ID)
 			}
 		}
@@ -497,31 +546,12 @@ func (compiler *Compiler) checkDefinition(definition Definition) error {
 }
 
 func (compiler *Compiler) checkOperation(name string, operation Operation, definition Definition) error {
-	if !definitionIdentifier.MatchString(name) {
-		return fmt.Errorf("invalid operation name %q", name)
-	}
-	if !slices.Contains(OperationKindCatalog(), operation.Kind) {
-		return fmt.Errorf("operation %q has unsupported kind", name)
-	}
-	if !slices.Contains(operationMethodWhitelist, operation.Method) {
-		return fmt.Errorf("operation %q has unsupported method", name)
-	}
-	path, err := url.Parse(operation.Path)
-	if err != nil || path.IsAbs() || path.Host != "" || !strings.HasPrefix(operation.Path, "/") || strings.HasPrefix(operation.Path, "//") || path.Fragment != "" || strings.Contains(operation.Path, "\\") {
-		return fmt.Errorf("operation %q requires a relative absolute-path endpoint", name)
-	}
-	if !slices.Contains(TransportCatalog(), operation.Transport) {
-		return fmt.Errorf("operation %q has unknown transport", name)
-	}
 	limits := compiler.limits
 	if definition.Limits != nil {
 		limits = *definition.Limits
 	}
-	if err := validateSchema(operation.Input, "/operations/"+name+"/input", 1, limits); err != nil {
+	if err := checkOperationEndpoint(name, operation, limits); err != nil {
 		return err
-	}
-	if operation.Input != nil && (operation.Kind != "generate" || operation.Transport == WebSocket) {
-		return fmt.Errorf("operation %q input schema requires HTTP generation; task and session inputs use their own mappings", name)
 	}
 	if err := checkSessionOperation(operation, definition, limits); err != nil {
 		return fmt.Errorf("operation %q: %w", name, err)
@@ -546,6 +576,60 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 			return fmt.Errorf("operation %q requires an event direction", name)
 		}
 	}
+	if err := checkOperationFraming(name, operation); err != nil {
+		return err
+	}
+	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
+		return fmt.Errorf("operation %q request must select a request direction", name)
+	}
+	if operation.Response != "" && operation.Response != DecodeResponse && operation.Response != EncodeResponse && operation.Response != DecodeEvent && operation.Response != EncodeEvent {
+		return fmt.Errorf("operation %q response must select a response/event direction", name)
+	}
+	if err := checkOperationHeaders(name, operation); err != nil {
+		return err
+	}
+	if operation.Task != nil {
+		if operation.Kind != "submit" {
+			return fmt.Errorf("operation %q has a task flow without submit kind", name)
+		}
+		for _, reference := range []string{operation.Task.Status, operation.Task.Result, operation.Task.Cancel} {
+			if reference != "" {
+				if _, exists := definition.Operations[reference]; !exists {
+					return fmt.Errorf("operation %q has an unknown task reference", name)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func checkOperationEndpoint(name string, operation Operation, limits Limits) error {
+	if !definitionIdentifier.MatchString(name) {
+		return fmt.Errorf("invalid operation name %q", name)
+	}
+	if !slices.Contains(OperationKindCatalog(), operation.Kind) {
+		return fmt.Errorf("operation %q has unsupported kind", name)
+	}
+	if !slices.Contains(operationMethodWhitelist, operation.Method) {
+		return fmt.Errorf("operation %q has unsupported method", name)
+	}
+	path, err := url.Parse(operation.Path)
+	if err != nil || path.IsAbs() || path.Host != "" || !strings.HasPrefix(operation.Path, "/") || strings.HasPrefix(operation.Path, "//") || path.Fragment != "" || strings.Contains(operation.Path, "\\") {
+		return fmt.Errorf("operation %q requires a relative absolute-path endpoint", name)
+	}
+	if !slices.Contains(TransportCatalog(), operation.Transport) {
+		return fmt.Errorf("operation %q has unknown transport", name)
+	}
+	if err := validateSchema(operation.Input, "/operations/"+name+"/input", 1, limits); err != nil {
+		return err
+	}
+	if operation.Input != nil && (operation.Kind != "generate" || operation.Transport == WebSocket) {
+		return fmt.Errorf("operation %q input schema requires HTTP generation; task and session inputs use their own mappings", name)
+	}
+	return nil
+}
+
+func checkOperationFraming(name string, operation Operation) error {
 	if operation.Auth.Location != "none" && operation.Auth.Location != "header" && operation.Auth.Location != "query" {
 		return fmt.Errorf("operation %q requires auth location none, header or query", name)
 	}
@@ -568,12 +652,10 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 			return fmt.Errorf("operation %q has an invalid event name pointer: %w", name, err)
 		}
 	}
-	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
-		return fmt.Errorf("operation %q request must select a request direction", name)
-	}
-	if operation.Response != "" && operation.Response != DecodeResponse && operation.Response != EncodeResponse && operation.Response != DecodeEvent && operation.Response != EncodeEvent {
-		return fmt.Errorf("operation %q response must select a response/event direction", name)
-	}
+	return nil
+}
+
+func checkOperationHeaders(name string, operation Operation) error {
 	for key, value := range operation.Headers {
 		if strings.ContainsAny(key+value, "\r\n") || strings.Contains(key, ":") {
 			return fmt.Errorf("operation %q has invalid HTTP headers", name)
@@ -581,18 +663,6 @@ func (compiler *Compiler) checkOperation(name string, operation Operation, defin
 	}
 	if strings.ContainsAny(operation.Auth.Name+operation.Auth.Prefix, "\r\n") {
 		return fmt.Errorf("operation %q has invalid credential injection", name)
-	}
-	if operation.Task != nil {
-		if operation.Kind != "submit" {
-			return fmt.Errorf("operation %q has a task flow without submit kind", name)
-		}
-		for _, reference := range []string{operation.Task.Status, operation.Task.Result, operation.Task.Cancel} {
-			if reference != "" {
-				if _, exists := definition.Operations[reference]; !exists {
-					return fmt.Errorf("operation %q has an unknown task reference", name)
-				}
-			}
-		}
 	}
 	return nil
 }
@@ -602,6 +672,15 @@ func (compiled *Compiled) Identity() Identity { return compiled.identity }
 
 // Hash identifies the normalized definition including samples and metadata.
 func (compiled *Compiled) Hash() string { return compiled.hash }
+
+// ExecutionHash distinguishes an operation's request programs within the same
+// pinned package revision. Ordinary revisions use their complete package hash.
+func (compiled *Compiled) ExecutionHash() string {
+	if compiled.executionHash != "" {
+		return compiled.executionHash
+	}
+	return compiled.hash
+}
 
 // ResourceLimits returns the immutable revision's bounded execution contract.
 func (compiled *Compiled) ResourceLimits() Limits { return compiled.limits }
@@ -736,6 +815,13 @@ func (compiled *Compiled) mappingError(direction Direction, err error) error {
 	if errors.As(err, &conversion) {
 		return err
 	}
+	var classified interface {
+		error
+		issue(Identity, Direction) ConversionIssue
+	}
+	if errors.As(err, &classified) {
+		return &ConversionError{cause: err, Issues: []ConversionIssue{classified.issue(compiled.identity, direction)}}
+	}
 	code := InvalidInput
 	if direction == DecodeResponse || direction == DecodeEvent {
 		code = UpstreamContractViolation
@@ -745,7 +831,12 @@ func (compiled *Compiled) mappingError(direction Direction, err error) error {
 
 // executeMapping retains causes for runtime consumers; Execute exposes diagnostics
 // for authoring callers whose API returns a report instead of a Go error.
-func (compiled *Compiled) executeMapping(ctx context.Context, direction Direction, input Value, options EvaluationContext) (Value, error) {
+func (compiled *Compiled) executeMapping(ctx context.Context, direction Direction, input Value, options EvaluationContext) (result Value, err error) {
+	options, transaction, err := compiled.beginPackageTransaction(direction, options)
+	if err != nil {
+		return Value{}, compiled.mappingError(direction, err)
+	}
+	defer func() { transaction.finish(err) }()
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)
@@ -755,7 +846,10 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if !exists {
 		return fail(fmt.Errorf("direction is not implemented"))
 	}
-	if err := checkResourceValue(input, inputLimits, "mapping_input"); err != nil {
+	if compiled.packagePlan != nil && isPackageDecodeDirection(direction) {
+		options = options.withInputView(input)
+	}
+	if err := options.inputView.checkResources(ctx, input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
 	if err := mapping.input.validate(input, "/input", inputLimits); err != nil {
@@ -765,7 +859,20 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err != nil {
 		return fail(err)
 	}
-	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, inputView: options.inputView, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
+	var packageState *packageExecution
+	if compiled.packagePlan != nil {
+		if isPackageDecodeDirection(direction) {
+			state.objectReader = state.inputView.objectReader()
+		}
+		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits, options)
+		if err != nil {
+			return fail(err)
+		}
+		state.valueReader = packageState.reader
+		state.capture = compiled.newNativeCapture(direction, options)
+		state.native = compiled.newNativeEvaluation(ctx, direction, options)
+	}
 	var output Value
 	switch {
 	case mapping.module != nil:
@@ -776,8 +883,15 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 			return fail(resolveErr)
 		}
 		output, err = instance.Convert(ctx, direction, input, options)
-	case mapping.transform != nil:
-		output, err = mapping.transform.evaluate(state)
+	case mapping.outputPlan != nil:
+		var planned plannedOutput
+		planned, err = mapping.outputPlan.build(state)
+		if err == nil {
+			err = options.packageTransaction.resolveDispositions()
+		}
+		if err == nil {
+			output, err = planned.materialize(ctx)
+		}
 	default:
 		output, err = evaluateEventRules(mapping, state)
 	}
@@ -807,6 +921,14 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err := mapping.output.validate(output, "/output", outputLimits); err != nil {
 		return fail(err)
 	}
+	if packageState != nil {
+		if err := compiled.finishPackageExecution(ctx, direction, output, outputLimits); err != nil {
+			return fail(err)
+		}
+	}
+	if err := options.packageTransaction.stage(state, true); err != nil {
+		return fail(err)
+	}
 	if isInitial {
 		options.State.initialized[moduleStateKey{compiled: compiled, direction: direction}] = true
 	}
@@ -832,8 +954,4 @@ func evaluateEventRules(mapping compiledMapping, state evaluation) (Value, error
 
 func definitionIssues(identity Identity, path string, err error) []ConversionIssue {
 	return []ConversionIssue{{Code: InvalidDefinition, Severity: SeverityError, Protocol: identity, Stage: "compile", Path: mappingErrorPath(path, err), Reason: err.Error(), Suggestion: "Correct the definition at this location before verification."}}
-}
-func hashValue(value Value) string {
-	sum := sha256.Sum256(value.Bytes())
-	return hex.EncodeToString(sum[:])
 }

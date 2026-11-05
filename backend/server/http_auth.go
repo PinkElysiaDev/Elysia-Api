@@ -18,6 +18,7 @@ import (
 
 func (s *Server) authMiddleware() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
+		s.pinIngress(c)
 		token := extractAccessToken(c)
 		accessToken, ok := s.findAccessToken(token)
 		message := ""
@@ -29,7 +30,7 @@ func (s *Server) authMiddleware() app.HandlerFunc {
 		if message != "" {
 			c.Abort()
 			// Inference authentication errors use the caller's wire protocol.
-			writeProtocolError(ctx, c, inputFormatFromPath(string(c.Path())), &builtin.GatewayError{
+			s.writeIngressError(ctx, c, &builtin.GatewayError{
 				Class: builtin.ErrorClassAuthentication, Message: message,
 			})
 			return

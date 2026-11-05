@@ -64,7 +64,7 @@ func TestSourceBindingUpdatePersistsInheritedEvidence(t *testing.T) {
 		t.Fatal("child has no evidence matching its inherited policy")
 	}
 	save(child)
-	parent.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "override", Rules: []protocol.ConversionRule{{ID: "warning", Order: 2000000, Enabled: true, Phase: protocol.ConversionRequest, Action: "warn", Reason: "test"}}}}
+	parent.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "override", Rules: []protocol.ConversionRule{{ID: "warning", Order: 2000000, Enabled: true, Phase: protocol.ConversionRequest, Action: "warn", Reason: "test"}}}}
 	save(parent)
 	assertEvidence()
 

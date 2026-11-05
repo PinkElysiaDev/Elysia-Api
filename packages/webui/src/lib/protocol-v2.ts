@@ -3,8 +3,14 @@ import type { ConversionRegistry, ConversionSelection } from './conversion-polic
 import { ProtocolDocument } from './protocol-document'
 
 export interface ConversionIssue { code: string; severity: string; direction?: string; stage?: string; path: string; capability?: string; reason: string; suggestion: string; evidence?: string; ruleId?: string; policyHash?: string; policyRevision?: string; fidelity?: string; protocol?: { definitionId: string; revision: string; family: string; wireVersion: string } }
-export interface ProtocolSchema { conversion: ConversionRegistry; compilerVersion: string; transports: string[]; operationKinds: string[]; directions: string[]; capabilities: string[]; engineFeatures: string[]; modules: { name: string; directions: string[] }[]; events: string[]; definitionSchema: unknown; semanticSchema: unknown; mappingOperations: { name: string; description: string }[] }
+export interface ProtocolSchema { packageVersion: number; packageSchema: unknown; specSchema: unknown; mappingSchema: unknown; conversion: ConversionRegistry; compilerVersion: string; transports: string[]; operationKinds: string[]; directions: string[]; capabilities: string[]; engineFeatures: string[]; modules: { name: string; directions: string[] }[]; events: string[]; definitionSchema: unknown; semanticSchema: unknown; mappingOperations: { name: string; description: string }[] }
 export interface ProtocolDraft { protocolId: string; hash: string; definition: string; updatedAt: string }
+
+/** Locate authored identity fields without converting or normalizing either source. */
+export function protocolIdentityPrefix(document: ProtocolDocument): string {
+  const version = document.read('/schemaVersion')
+  return version === '3' || version === '4' ? '/spec' : ''
+}
 export interface ProtocolRevision { protocolId: string; hash: string; definition: string; createdAt: string }
 export interface Activation { protocolId: string; revisionHash: string }
 export interface ProtocolHistoryItem { id: string; protocolId: string; hash: string; name: string; version: string; reason: 'preset_replaced' | 'custom_deleted' | 'identity_recovered' | 'preset_repaired' | 'preset_draft_replaced'; isDraft: boolean; createdAt: string; archivedAt: string; definition?: string; rawDefinition?: string; readError?: string }
@@ -75,7 +81,7 @@ export const protocolAPI = {
   verifyRevision: (id: string, hash: string) => request<VerificationReport>(`${base}/${identifier(id)}/revisions/${identifier(hash)}/verify`, { method: 'POST' }),
   diff: (id: string, from: string, to: string) => request<{ changes: { path: string; before?: unknown; after?: unknown }[] }>(`${base}/${identifier(id)}/diff`, { query: { from, to } }),
   preview: (definition: string, direction: string, input: string, sequence: boolean) => previewRequest(`{"definition":${definition},"direction":${JSON.stringify(direction)},"input":${input},"sequence":${sequence}}`),
-  workflow: (definition: string, options: { mode: string; sample?: string; operation?: string; kind?: string; purpose?: string }, input: string) => previewRequest(`{"definition":${definition},"input":${input},${JSON.stringify(options).slice(1)}`),
+  workflow: (definition: string, options: { mode: string; direction?: string; sample?: string; operation?: string; kind?: string; purpose?: string; conversionContext?: { model: string } }, input: string) => previewRequest(`{"definition":${definition},"input":${input},${JSON.stringify(options).slice(1)}`),
   combine: (ingress: string, upstream: string) => request<{ passed: boolean; checks: unknown[]; issues: ConversionIssue[] }>(`${base}/combinations`, { method: 'POST', rawBody: `{"ingress":${ingress},"upstream":${upstream}}` }),
   probe: (definition: string, semanticRequest: string, target: { operation: string; baseUrl: string; apiKey: string }) => request<{ report: VerificationReport }>(`${base}/test`, { method: 'POST', rawBody: `{"definition":${definition},"request":${semanticRequest},${JSON.stringify(target).slice(1)}` }),
   upstreamReports: (id: string, hash: string) => request<VerificationReport[]>(`${base}/${identifier(id)}/revisions/${identifier(hash)}/upstream-reports`),

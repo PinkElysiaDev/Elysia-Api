@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -64,7 +65,7 @@ func TestTransportFailureAttribution(t *testing.T) {
 			}))
 			defer provider.Close()
 			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []p.Transport{p.SSE}}}
-			record := &usageRecord{}
+			record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}
 			_, err := s.collectProtocolGeneration(ctx, candidate, request, record, nil)
 			if err == nil || calls.Load() != 1 {
 				t.Fatal("missing failure or generation repeated", err, calls.Load())

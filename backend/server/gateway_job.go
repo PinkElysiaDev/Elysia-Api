@@ -210,7 +210,12 @@ func (s *Server) writeGatewayJobReceipt(ctx context.Context, c *app.RequestConte
 	var wire protocol.Value
 	var err error
 	if ingress.Operations()[job.IngressOperation].Kind == "submit" {
-		wire, err = ingress.EncodeTaskReceipt(ctx, job.IngressOperation, purpose, receipt)
+		options, bindErr := jobEvaluationContext(job, protocol.Scope{Provider: job.Task.ModelSourceID, Account: job.SourceAccount, Model: job.Model})
+		if bindErr != nil {
+			respondProtocolError(ctx, c, bindErr)
+			return
+		}
+		wire, err = ingress.EncodeTaskReceipt(ctx, job.IngressOperation, purpose, receipt, options)
 	} else {
 		wire, err = protocol.EncodeValue(receipt)
 	}
@@ -233,7 +238,12 @@ func (s *Server) writeGatewayJobResult(ctx context.Context, c *app.RequestContex
 	}
 	response := *job.Task.Result
 	applyClientModelAlias(&response, protocol.StringValue(job.GroupName))
-	body, err := ingress.EncodeResponse(ctx, &response, protocol.EvaluationContext{Scope: protocol.Scope{Provider: job.Task.ModelSourceID, Account: job.SourceAccount, Model: job.Model}})
+	options, err := jobEvaluationContext(job, protocol.Scope{Provider: job.Task.ModelSourceID, Account: job.SourceAccount, Model: job.Model})
+	if err != nil {
+		respondProtocolError(ctx, c, err)
+		return
+	}
+	body, err := ingress.EncodeResponse(ctx, &response, options)
 	if err != nil {
 		respondProtocolError(ctx, c, err)
 		return

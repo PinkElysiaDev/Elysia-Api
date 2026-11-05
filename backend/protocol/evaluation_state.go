@@ -32,9 +32,40 @@ func (compiled *Compiled) FinishEvents(ctx context.Context, options EvaluationCo
 	return compiled.finishEvents(ctx, EncodeEvent, options)
 }
 
+// FinishInputEvents validates EOF for the source stream owned by DecodeFrame.
+// An explicit WireStreamValidation instead finishes through its own Finish.
+func (compiled *Compiled) FinishInputEvents(ctx context.Context, options EvaluationContext) error {
+	return compiled.finishInputEvents(ctx, DecodeEvent, options)
+}
+
+func (compiled *Compiled) finishInputEvents(ctx context.Context, direction Direction, options EvaluationContext) error {
+	if compiled.packagePlan == nil || compiled.wireContracts[direction].packageStream == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if options.State == nil {
+		return fmt.Errorf("source stream finalization requires its EvaluationState")
+	}
+	key := sourceStreamKey{moduleStateKey: moduleStateKey{compiled: compiled, direction: direction}, scope: options.Scope}
+	validator := options.State.sourceStreams[key]
+	if validator == nil {
+		var err error
+		validator, err = compiled.newWireStreamValidation(direction, options.Scope)
+		if err != nil {
+			return err
+		}
+	}
+	return compiled.runtimeError(direction, validator.Finish())
+}
+
 func (compiled *Compiled) finishEvents(ctx context.Context, direction Direction, options EvaluationContext) ([]Value, error) {
 	if options.State == nil {
 		return nil, nil
+	}
+	if compiled.packagePlan != nil {
+		return compiled.finishPackageEvents(ctx, direction, options)
 	}
 	instance := options.State.modules[moduleStateKey{compiled: compiled, direction: direction}]
 	if instance == nil || !instance.executed {
@@ -53,6 +84,11 @@ type moduleStateKey struct {
 	direction Direction
 }
 
+type sourceStreamKey struct {
+	moduleStateKey
+	scope Scope
+}
+
 type streamModuleState struct {
 	module   Module
 	executed bool
@@ -61,8 +97,13 @@ type streamModuleState struct {
 // EvaluationState owns native codec state for one stream/session. It is not
 // shared across requests or goroutines and is inaccessible to expressions.
 type EvaluationState struct {
-	modules     map[moduleStateKey]*streamModuleState
-	initialized map[moduleStateKey]bool
+	retention         streamReservation
+	modules           map[moduleStateKey]*streamModuleState
+	initialized       map[moduleStateKey]bool
+	packageStates     map[moduleStateKey]*packageStreamState
+	packageStateItems int
+	packageStateBytes int
+	sourceStreams     map[sourceStreamKey]*WireStreamValidation
 }
 
 // NewEvaluationState creates independent codec state. Declarative expressions
@@ -71,7 +112,7 @@ func NewEvaluationState() *EvaluationState {
 	return &EvaluationState{modules: map[moduleStateKey]*streamModuleState{}, initialized: map[moduleStateKey]bool{}}
 }
 
-func (state *EvaluationState) prependInitial(compiled *Compiled, direction Direction, initial *compiledExpression, evaluation evaluation, output Value) (Value, bool, error) {
+func (state *EvaluationState) prependInitial(compiled *Compiled, direction Direction, initial *compiledOutputPlan, evaluation evaluation, output Value) (Value, bool, error) {
 	if state == nil {
 		return Value{}, false, fmt.Errorf("initial events require one EvaluationState per stream")
 	}

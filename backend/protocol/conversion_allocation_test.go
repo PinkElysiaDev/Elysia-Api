@@ -10,7 +10,7 @@ import (
 func TestOwnedRulesDoNotCopyUnrelatedPayload(t *testing.T) {
 	for _, count := range []int{1, 8, 32} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
-			policy := ConversionPolicy{SchemaVersion: 1, ID: "allocation", Rules: []ConversionRule{}}
+			policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "allocation", Rules: []ConversionRule{}}
 			for index := range count {
 				policy.Rules = append(policy.Rules, ConversionRule{ID: fmt.Sprintf("rule-%d", index), Order: index, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic")})
 			}

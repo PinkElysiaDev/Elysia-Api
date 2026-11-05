@@ -9,14 +9,19 @@ import (
 // actions. Authored JSON operations synchronize it before observing any value.
 // It is never retained by the compiled policy or shared with another call.
 type conversionState struct {
-	wire              Value
-	document          any
-	limits            Limits
-	isStrict          bool
-	needsEncoding     bool
-	cache             *semanticCache
-	requestNormalized bool
-	requestPartition  *requestPartition
+	wire                  Value
+	document              any
+	limits                Limits
+	isStrict              bool
+	needsEncoding         bool
+	cache                 *semanticCache
+	requestNormalized     bool
+	requestPartition      *requestPartition
+	resolvedModelControls *modelControlExecution
+	auxiliary             *sourceFrameReceipt
+	omittedAuxiliary      *omittedEventReceipt
+	control               *controlEventReceipt
+	omittedControl        *omittedEventReceipt
 }
 
 func (state *conversionState) validateContext(phase ConversionPhase) error {
@@ -30,8 +35,11 @@ func (state *conversionState) validateContext(phase ConversionPhase) error {
 }
 
 func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule) bool {
-	if rule.Match.Present != nil || rule.Match.Path != "" {
-		return false
+	if rule.Action == "auxiliary_event" || rule.Action == "control_event" {
+		return phase == ConversionEvent
+	}
+	if rule.Action == "core_controls" || rule.Action == "continuation_recovery" {
+		return phase == ConversionRequest || phase == ConversionResponse || phase == ConversionEvent
 	}
 	if phase == ConversionResponse || phase == ConversionEvent {
 		switch rule.Action {
@@ -44,7 +52,7 @@ func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule
 		return false
 	}
 	switch rule.Action {
-	case "system_instruction_hoist", "chat_history", "assistant_history", "stream_options", "request_projection", "responses_include", "responses_context", "responses_storage", "gemini_safety_settings", "reasoning_controls", "response_metadata", "signatures", "tool_result_text", "tool_result_object":
+	case "system_instruction_hoist", "chat_history", "assistant_history", "stream_options", "request_projection", "responses_include", "responses_context", "responses_storage", "gemini_safety_settings", "reasoning_controls", "model_controls", "response_metadata", "signatures", "tool_result_text", "tool_result_object":
 		return true
 	}
 	return false
@@ -55,22 +63,39 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 		return nil
 	}
 	var document any
-	switch phase {
-	case ConversionIngress, ConversionRequest:
-		document = &Request{}
-	case ConversionResponse:
-		document = &Response{}
-	case ConversionEvent:
-		document = &Event{}
-	}
 	var err error
 	if strict {
-		err = decodeContract(state.wire.Bytes(), document)
+		// The wire is already validated JSON. Direct writers retain the root's
+		// borrowing threshold and recover the contract decoder's exact errors.
+		output := JSONLeaf(state.wire)
+		switch phase {
+		case ConversionIngress, ConversionRequest:
+			document, err = decodeCoreRequestOutput(output)
+		case ConversionResponse:
+			document, err = decodeCoreResponseOutput(output)
+		case ConversionEvent:
+			document, err = decodeCoreEventOutput(output)
+		default:
+			panic("strict conversion requires a semantic phase")
+		}
 	} else {
+		switch phase {
+		case ConversionIngress, ConversionRequest:
+			document = &Request{}
+		case ConversionResponse:
+			document = &Response{}
+		case ConversionEvent:
+			document = &Event{}
+		}
 		err = state.wire.Decode(document)
 	}
 	if err != nil {
 		return err
+	}
+	if phase == ConversionEvent {
+		if err := restoreProtectedEvent(document.(*Event), state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl, true); err != nil {
+			return err
+		}
 	}
 	state.document, state.isStrict = document, strict
 	state.requestNormalized, state.requestPartition = false, nil
@@ -79,10 +104,10 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 
 func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, phase ConversionPhase, rule ConversionRule, route ConversionContext, sink *DiagnosticSink) (string, error) {
 	isNodeRule := rule.Action == "signatures" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
-	if !isNodeRule && !rule.Match.matches(route, Value{}) {
+	if !isNodeRule && !state.matches(rule.Match, route) {
 		return "", nil
 	}
-	isStrict := isNodeRule || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
+	isStrict := isNodeRule || rule.Action == "core_controls" || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
 	if err := state.load(phase, isStrict); err != nil {
 		return "", err
 	}
@@ -97,12 +122,29 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	var target string
 	var err error
 	shouldEncode := true
-	if isNodeRule {
+	if rule.Action == "control_event" {
+		event := state.document.(*Event)
+		shouldEncode, err = c.applyControlEvent(event, route, rule, sink)
+		state.control, state.omittedControl = event.controlReceipt, event.omittedControl
+	} else if rule.Action == "auxiliary_event" {
+		event := state.document.(*Event)
+		shouldEncode, err = c.applyAuxiliaryEvent(event, route, rule, sink)
+		state.auxiliary, state.omittedAuxiliary = event.auxiliary, event.omittedAuxiliary
+	} else if rule.Action == "continuation_recovery" {
+		err = c.applyContinuationRecovery(ctx, state.document, route, rule, sink)
+	} else if rule.Action == "core_controls" {
+		shouldEncode, err = c.applyCoreControls(ctx, state.document, route, rule, sink)
+		if event, ok := state.document.(*Event); ok {
+			state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl = event.auxiliary, event.omittedAuxiliary, event.controlReceipt, event.omittedControl
+		}
+	} else if isNodeRule {
 		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
 	} else if rule.Action == "response_metadata" {
 		err = c.metadataObject(phase, state.document, route, rule, sink)
+	} else if rule.Action == "model_controls" {
+		state.resolvedModelControls, err = c.applyModelControls(ctx, state.document.(*Request), route, rule, sink)
 	} else if phase == ConversionRequest {
-		target, err = c.applyRequestObject(state.document.(*Request), route, rule, sink)
+		target, err = c.applyRequestObject(ctx, state.document.(*Request), route, rule, sink)
 	} else {
 		shouldEncode, err = c.applyResponseObject(phase, state.document, route, rule, sink)
 	}
@@ -124,9 +166,23 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		state.cache.normalizeDocument(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
 	}
 	state.requestNormalized = phase == ConversionRequest
+	if phase == ConversionEvent {
+		if err := restoreProtectedEvent(state.document.(*Event), state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl, true); err != nil {
+			return "", err
+		}
+	}
 	state.needsEncoding, state.isStrict = true, true
 	state.wire = Value{} // The owned document now contains the complete current value.
 	return target, nil
+}
+
+func (state *conversionState) matches(match ConversionMatch, route ConversionContext) bool {
+	if !state.needsEncoding {
+		// A validation-only decode may have discarded unknown fields. Until a
+		// typed action replaces the wire, presence still observes that wire.
+		return match.matches(route, state.wire)
+	}
+	return match.matchesSemantic(route, state.document)
 }
 
 func (c *CompiledConversion) applyResponseObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {

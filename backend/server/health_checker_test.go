@@ -19,6 +19,7 @@ import (
 func newHealthTestServer(t *testing.T) *Server {
 	t.Helper()
 	server := newTestServer(t, nil)
+	activateGatewayPackage(t, server, loadGatewayPackage(t, "builtin/packages/openai-chat"))
 	server.config.HealthCheck = config.HealthCheckConfig{Enabled: true, FailureThreshold: 2}
 	return server
 }
@@ -34,18 +35,18 @@ func bindHealthModel(t *testing.T, server *Server, platform, endpoint string) st
 }
 
 func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
-	cases := []struct{ id, path, auth, key, request, response string }{
-		{"openai-chat-completions", "/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop","index":0}],"id":"r1","model":"m","created":1,"object":"chat.completion"}`},
-		{"openai-responses", "/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi","annotations":[]}],"id":"item_0","status":"completed"}],"id":"r1","model":"m","object":"response","created_at":1}`},
-		{"anthropic-messages", "/v1/messages", "x-api-key", "probe-key", `"messages"`, `{"role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`},
+	cases := []struct{ name, path, auth, key, request, response string }{
+		{"openai-chat", "/v1/chat/completions", "Authorization", "Bearer probe-key", `"messages"`, `{"choices":[{"message":{"role":"assistant","content":"hi"},"finish_reason":"stop","index":0}],"id":"r1","model":"m","created":1,"object":"chat.completion"}`},
+		{"openai-responses", "/v1/responses", "Authorization", "Bearer probe-key", `"input"`, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi","annotations":[]}],"id":"item_0","status":"completed"}],"id":"r1","model":"m","object":"response","created_at":1}`},
+		{"anthropic", "/v1/messages", "x-api-key", "probe-key", `"messages"`, `{"role":"assistant","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn"}`},
 		{"google-generate-content", "/v1beta/models/model:generateContent", "x-goog-api-key", "probe-key", `"contents"`, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}]}`},
 	}
 	for _, tc := range cases {
-		t.Run(tc.id, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			server := newHealthTestServer(t)
-			definition := presetDefinition(t, tc.id)
-			definition.ID = "User-" + tc.id
-			activateGatewayDefinition(t, server, definition)
+			document := loadGatewayPackage(t, "builtin/packages/"+tc.name)
+			document.Spec.ID = "User-" + tc.name
+			activateGatewayPackage(t, server, document)
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
@@ -54,18 +55,103 @@ func TestHealthProbeUsesVerifiedWireAndCredentials(t *testing.T) {
 				if r.URL.Path != tc.path || r.Header.Get(tc.auth) != tc.key || !strings.Contains(string(body), tc.request) {
 					t.Errorf("unexpected probe: path=%s headers=%v body=%s", r.URL.Path, r.Header, body)
 				}
-				if tc.id == "anthropic-messages" && r.Header.Get("anthropic-version") == "" {
+				if tc.name == "anthropic" && r.Header.Get("anthropic-version") == "" {
 					t.Error("missing wire version header")
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, tc.response)
 			}))
 			defer upstream.Close()
-			model := bindHealthModel(t, server, "custom:"+definition.ID, upstream.URL)
+			model := bindHealthModel(t, server, "custom:"+document.Spec.ID, upstream.URL)
 			if result := newHealthChecker(server).probe(t.Context(), model, 5); result != probeHealthy {
 				t.Fatalf("valid probe result = %v", result)
 			}
 		})
+	}
+}
+
+func TestHealthProbeUsesTargetCoreVersion(t *testing.T) {
+	server := newHealthTestServer(t)
+	document := sourceStreamPackage(t)
+	for direction, mapping := range document.Mapping.Directions {
+		if direction != protocol.EncodeRequest && direction != protocol.DecodeResponse {
+			delete(document.Mapping.Directions, direction)
+			delete(document.Spec.Documents, mapping.Document)
+		}
+	}
+	read := func(path string) protocol.Expression {
+		return protocol.Expression{Op: "read", From: "input", Path: path}
+	}
+	requestMapping := document.Mapping.Directions[protocol.EncodeRequest]
+	for _, field := range []struct{ name, path string }{
+		{"prompt", "/content/0/children/0/payload"},
+		{"limit", "/parameters/max_output_tokens"},
+		{"stream", "/parameters/stream"},
+	} {
+		requestMapping.Program.Fields[field.name] = read(field.path)
+		requestMapping.Effects = append(requestMapping.Effects, protocol.ProtocolSemanticEffect{ID: field.name, Kind: "emit", Path: field.path, Target: "/" + field.name})
+	}
+	document.Mapping.Directions[protocol.EncodeRequest] = requestMapping
+	responseMapping := document.Mapping.Directions[protocol.DecodeResponse]
+	responseMapping.Program.Fields["status"] = protocol.Expression{Op: "literal", Value: protocol.StringValue("completed")}
+	for _, field := range []string{"content", "usage"} {
+		responseMapping.Program.Fields[field] = read("/" + field)
+		responseMapping.Effects = append(responseMapping.Effects, protocol.ProtocolSemanticEffect{ID: field, Kind: "emit", Path: "/" + field, Target: "/" + field})
+	}
+	document.Mapping.Directions[protocol.DecodeResponse] = responseMapping
+	operation := document.Spec.Operations["generate"]
+	operation.Auth = protocol.Credential{Location: "header", Name: "Authorization", Prefix: "Bearer "}
+	document.Spec.Operations["generate"] = operation
+	compiled := compileSourceStreamPackage(t, document)
+
+	const modelName = "probe-target"
+	expected := mustEncodedProtocolValue(t, map[string]any{"model": modelName, "prompt": "ping", "limit": HealthProbeMaxTokens, "stream": false})
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != operation.Path || r.Header.Get("Authorization") != "Bearer probe-key" || string(body) != expected.JSONString() {
+			t.Errorf("unexpected core2 probe: method=%s path=%s headers=%v body=%s", r.Method, r.URL.Path, r.Header, body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"content":[{"kind":"text","payload":"pong"}],"usage":{"input":{"count":7,"origin":"observed"},"output":{"count":1,"origin":"observed"},"total":{"count":8,"origin":"observed"}}}`)
+	}))
+	defer upstream.Close()
+	boundOperation, exists := compiled.Operation("generate")
+	if !exists {
+		t.Fatal("compiled probe operation missing")
+	}
+	candidate := gatewayCandidate{compiled: compiled, operation: boundOperation, operationName: "generate",
+		model:   config.ModelRef{ID: "probe-model", Name: modelName, BaseURL: upstream.URL, APIKey: "probe-key"},
+		binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: document.Mapping.Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+	// Package activation is a separate migration boundary; exercise the same
+	// preparation used after production routing has pinned its candidate.
+	options, err := (protocol.EvaluationContext{}).WithOperation("health-probe-fixture", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := prepareHealthProbeRequest(t.Context(), candidate, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.SchemaVersion != protocol.ProtocolCoreVersion || !request.Model.IsString(modelName) || calls.Load() != 0 {
+		t.Fatal("probe preparation changed its target or sent a request", request, calls.Load())
+	}
+	response, err := server.collectProtocolGenerationAttempt(t.Context(), candidate, request, nil, nil, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.SchemaVersion != protocol.ProtocolCoreVersion || len(response.Content) != 1 || !response.Content[0].Payload.IsString("pong") {
+		t.Fatal("core2 probe lost its response", response)
+	}
+	usage := response.Usage
+	if usage == nil || usage.Input == nil || usage.Output == nil || usage.Total == nil || usage.Input.Count != 7 || usage.Output.Count != 1 || usage.Total.Count != 8 || calls.Load() != 1 {
+		t.Fatal("core2 probe lost usage or sent more than one request", usage, calls.Load())
 	}
 }
 
@@ -151,8 +237,7 @@ func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// feat 起探测要求可解析凭据（resolveModelSource 无 Key 即跳过），
-	// 补一个 Key 使探测真正发出，测试意图（关停取消在途探测）不变。
+	// A verified binding and usable credential let shutdown cancel a real probe.
 	source := storage.ModelSource{ID: "slow", Name: "slow", BaseURL: upstream.URL, Platform: "custom:openai-chat-completions", Enabled: true, APIKeys: []storage.SourceAPIKey{{Value: "probe-key"}}}
 	if err := s.store.UpsertSource(context.Background(), source); err != nil {
 		t.Fatal(err)
@@ -160,8 +245,6 @@ func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
 	if err := s.store.ReplaceSourceModels(context.Background(), source, []storage.Model{{ID: "first", Name: "first"}, {ID: "second", Name: "second"}}); err != nil {
 		t.Fatal(err)
 	}
-	// feat 起探测走协议引擎，要求源有已验证的协议绑定；迁移在测试服务器
-	// 构造时已完成，新建的源直接按生产同构方式补存绑定（见 agent_protocol_v2_test）。
 	service, err := s.protocolService()
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +253,7 @@ func TestHealthCheckerShutdownCancelsActiveProbe(t *testing.T) {
 	if !ok {
 		t.Fatal("openai-chat-completions preset not active")
 	}
-	if err := s.store.SaveProtocolBinding(context.Background(), storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}); err != nil {
+	if err := s.store.SaveProtocolBinding(context.Background(), storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: protocol.CapabilitySet{protocol.TextCapability: true}, Transports: []protocol.Transport{protocol.HTTPJSON}}}); err != nil {
 		t.Fatal(err)
 	}
 	hc := newHealthChecker(s)

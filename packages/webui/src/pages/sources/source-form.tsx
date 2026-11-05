@@ -29,15 +29,17 @@ import { customPlatformValue, customProtocolID, isCustomPlatform, protocolLabel 
 import { api } from '@/lib/api'
 import { protocolAPI, type EnabledProtocol } from '@/lib/protocol-v2'
 import { revalidate } from '@/lib/hooks'
+import { useApiAction } from '@/lib/use-api-action'
 import {
   KEY_STRATEGIES,
   PROTOCOL_DEFAULTS,
   emptySource,
+  initializeSourceForm,
   isProtocolDefaultField,
-  normalizePlatform,
-  normalizeKeyStrategy,
+  remapKeySelection,
   compileApiKeysPayload,
   buildSourcePayload,
+  type ManualKeySelection,
   type SourceForm,
 } from './source-form/helpers'
 import type {
@@ -58,66 +60,24 @@ export function SourceFormDialog({
   source: ModelSource | null
 }) {
   const toast = useToast()
+  const { run, isBusy } = useApiAction()
+  const isSaving = isBusy('save')
   const isEdit = !!source
   const [form, setForm] = useState<SourceForm>(emptySource())
-  const [saving, setSaving] = useState(false)
   // 「自定义模型拉取地址」开关（默认关闭）：关闭 = 拉取走 API 地址。
   const [fetchUrlEnabled, setFetchUrlEnabled] = useState(false)
-  // 手动模式下每个手动模型选中的 key 下标集合（key 数 >1 时）。
-  const [manualKeySelection, setManualKeySelection] = useState<Record<number, number[]>>({})
+  const [manualKeySelection, setManualKeySelection] = useState<ManualKeySelection>({})
   const [registeredProtocols, setRegisteredProtocols] = useState<EnabledProtocol[]>([])
   const [protocolError, setProtocolError] = useState('')
 
   const keyCount = form.apiKeys.filter((k) => k.value.trim()).length
 
   useEffect(() => {
-    if (open) {
-      // 服务端数据边界归一化：可选列表字段只在这里兜底一次，之后全程为数组。
-      const sourceKeys = source?.apiKeys ?? []
-      const sourceModels = source?.manualModels ?? []
-      // 单 key 存量源：把旧 apiKey 带进列表第一行，自然成为单 key 配置。
-      const initialKeys =
-        sourceKeys.length > 0
-          ? sourceKeys.map((k) => ({ ...k }))
-          : source?.apiKey
-            ? [{ value: source.apiKey }]
-            : []
-      // 编辑时不回填明文 apiKey（后端按 secret 处理），留空表示保持原值；
-      // platform 归一化到新 apiFormat，旧源（openai/claude…）也能正确回显。
-      setForm(
-        source
-          ? {
-              ...source,
-              platform: normalizePlatform(source.platform),
-              apiKey: '',
-              manualModels: sourceModels,
-              apiKeys: initialKeys,
-              keyStrategy: normalizeKeyStrategy(source.keyStrategy),
-            }
-          : emptySource(),
-      )
-      setFetchUrlEnabled(!!(source?.fetchBaseUrl ?? '').trim())
-      // 初始化手动模式的「模型 ↔ key」选择。任何 key 都有显式
-      // allowedModels 时按其还原；否则视为未配置（全部 key 选中）。
-      const allKeyIndexes = sourceKeys
-        .map((k, i) => (k.value.trim() ? i : -1))
-        .filter((i) => i >= 0)
-      const hasRestriction = !source?.autoFetchModels && sourceKeys.some((k) => Array.isArray(k.allowedModels))
-      const initialSelection: Record<number, number[]> = {}
-      sourceModels.forEach((model, index) => {
-        if (hasRestriction && model.id) {
-          const selected = sourceKeys
-            .map((k, ki) =>
-              k.value.trim() && (k.allowedModels ?? []).includes(model.id) ? ki : -1,
-            )
-            .filter((ki) => ki >= 0)
-          initialSelection[index] = selected.length > 0 ? selected : allKeyIndexes
-        } else {
-          initialSelection[index] = allKeyIndexes
-        }
-      })
-      setManualKeySelection(initialSelection)
-    }
+    if (!open) return
+    const initial = initializeSourceForm(source)
+    setForm(initial.form)
+    setFetchUrlEnabled(initial.fetchUrlEnabled)
+    setManualKeySelection(initial.manualKeySelection)
   }, [open, source])
 
   function update<K extends keyof ModelSource>(key: K, value: ModelSource[K]) {
@@ -139,38 +99,17 @@ export function SourceFormDialog({
 
   function removeApiKey(index: number) {
     setForm((prev) => ({ ...prev, apiKeys: prev.apiKeys.filter((_, i) => i !== index) }))
-    // manualKeySelection 存的是 key 数组下标：删行后所有引用整体前移，
-    // 被删下标丢弃——否则模型会静默绑到用户从未勾选的 key（错凭证服务）。
-    setManualKeySelection((prev) => {
-      const next: Record<number, number[]> = {}
-      for (const [modelKey, keyIndexes] of Object.entries(prev)) {
-        const remapped = (keyIndexes as number[])
-          .filter((i) => i !== index)
-          .map((i) => (i > index ? i - 1 : i))
-        next[Number(modelKey)] = remapped
-      }
-      return next
-    })
+    setManualKeySelection((prev) => remapKeySelection(prev, (i) => i === index ? undefined : i > index ? i - 1 : i))
   }
 
   function moveApiKey(index: number, delta: -1 | 1) {
     const target = index + delta
     setForm((prev) => {
       const keys = [...prev.apiKeys]
-      if (target < 0 || target >= keys.length) return prev
       ;[keys[index], keys[target]] = [keys[target], keys[index]]
       return { ...prev, apiKeys: keys }
     })
-    // 行交换 = 两个下标互换，选择状态同步重映射。
-    setManualKeySelection((prev) => {
-      const next: Record<number, number[]> = {}
-      for (const [modelKey, keyIndexes] of Object.entries(prev)) {
-        next[Number(modelKey)] = (keyIndexes as number[]).map((i) =>
-          i === index ? target : i === target ? index : i,
-        )
-      }
-      return next
-    })
+    setManualKeySelection((prev) => remapKeySelection(prev, (i) => i === index ? target : i === target ? index : i))
   }
 
   function setKeyStrategy(strategy: SourceKeyStrategy) {
@@ -240,18 +179,13 @@ export function SourceFormDialog({
     }
     // 协议未声明模型发现配置时，custom 源强制手动模型（后端保存校验同样拒绝）。
     const autoFetch = !form.platform || (custom && !customDiscovery) ? false : form.autoFetchModels
-    const keysResult = compileApiKeysPayload(form, manualKeySelection, autoFetch)
-    if ('error' in keysResult) {
-      toast.error('请为每个手动模型至少选择一个 Key', keysResult.error)
-      return
-    }
-    setSaving(true)
-    try {
+    const apiKeys = compileApiKeysPayload(form, manualKeySelection, autoFetch)
+    await run('save', async () => {
       const payload = buildSourcePayload(form, {
         protocolID: custom ? protocolID : '',
         autoFetch,
         fetchUrlEnabled,
-        apiKeys: keysResult.keys,
+        apiKeys,
       })
       // 编辑时若 apiKey 留空则不覆盖（作为旧数据的回退冗余字段，后端以 apiKeys 优先）。
       if (isEdit && !payload.apiKey) delete payload.apiKey
@@ -281,11 +215,7 @@ export function SourceFormDialog({
         )
       }
       onOpenChange(false)
-    } catch (err) {
-      toast.error('保存失败', (err as Error).message)
-    } finally {
-      setSaving(false)
-    }
+    }, { errorTitle: '保存失败' })
   }
 
   const custom = isCustomPlatform(form.platform)
@@ -630,7 +560,7 @@ export function SourceFormDialog({
                         结构化输出
                       </ToggleChip>
                     </div>
-                    {keyCount > 1 && (
+                    {keyCount > 0 && (
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-2xs text-muted-foreground">可用 Key</span>
                         {form.apiKeys.map((sourceKey, keyIndex) =>
@@ -645,6 +575,7 @@ export function SourceFormDialog({
                             </ToggleChip>
                           ) : null,
                         )}
+                        <span className="text-2xs text-muted-foreground">不选则此模型没有可用 Key</span>
                       </div>
                     )}
                   </div>
@@ -654,13 +585,13 @@ export function SourceFormDialog({
           )}
         </div>
 
-        {source && <BindingConversionEditor sourceId={source.id} disabled={saving} />}
+        {source && <BindingConversionEditor sourceId={source.id} disabled={isSaving} />}
       <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             取消
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? '保存中…' : '保存'}
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? '保存中…' : '保存'}
           </Button>
         </DialogFooter>
       </DialogContent>

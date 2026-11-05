@@ -7,6 +7,8 @@ import type { AgentSession } from "@/lib/agent/types";
 
 /** 配置页：协议草稿的结构化详情（请求/响应/流式映射 + 完整 JSON）+ 跳转设计器。 */
 const DRAFT_SECTIONS: { key: string; label: string }[] = [
+  { key: "spec", label: "外部协议 spec.json" },
+  { key: "mapping", label: "转换说明 mapping.json" },
   { key: "request", label: "请求构造（网关 → 上游）" },
   { key: "response", label: "响应解析（上游 → 网关）" },
   { key: "stream", label: "流式解析（SSE 帧）" },
@@ -39,8 +41,13 @@ export function DraftView({
     draft && typeof draft === "object" && !Array.isArray(draft)
       ? (draft as Record<string, unknown>)
       : null;
-  const protocolId = draftObject ? String(draftObject.id ?? "") : "";
-  const protocolName = draftObject ? String(draftObject.name ?? "") : "";
+  const isPackage = draftObject?.schemaVersion === 3 || draftObject?.schemaVersion === 4;
+  const identityValue = isPackage ? draftObject.spec : draftObject;
+  const identity = identityValue && typeof identityValue === "object" && !Array.isArray(identityValue)
+    ? identityValue as Record<string, unknown>
+    : null;
+  const protocolId = identity ? String(identity.id ?? "") : "";
+  const protocolName = identity ? String(identity.name ?? "") : "";
   const restoreText = session.restoreJSON ?? (
     session.draftRestore == null ? "" : JSON.stringify(session.draftRestore));
   const canRestore =
@@ -102,7 +109,7 @@ export function DraftView({
           onClick={() =>
             navigate("/protocols", {
               state: {
-                ...(draftObject?.schemaVersion === 2 ? { definitionJSON: draftText } : { draft }),
+                ...((draftObject?.schemaVersion === 2 || isPackage) ? { definitionJSON: draftText } : { draft }),
               },
             })
           }

@@ -34,6 +34,9 @@ func validateRequestContext(request *Request) error {
 	if err := ValidateReasoningIntent(request.Reasoning); err != nil {
 		return err
 	}
+	if request.SchemaVersion == ProtocolCoreVersion {
+		return nil
+	}
 	if _, err := ParseGeminiSafetySettings(request.Parameters["gemini_safety_settings"]); err != nil {
 		return err
 	}

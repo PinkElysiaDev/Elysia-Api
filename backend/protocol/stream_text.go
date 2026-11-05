@@ -7,19 +7,23 @@ import (
 	"hash"
 )
 
+const textTrackerScratchBytes = 256
+
+type textTrackerScratch [textTrackerScratchBytes]byte
+
 // TextTracker verifies cumulative snapshots against the prefix already sent.
 // It retains a digest and byte count, not the entire forwarded text.
 type TextTracker struct {
 	digest  hash.Hash
 	length  int
-	scratch *[256]byte
+	scratch *textTrackerScratch
 }
 
 // Append records a delta without retaining its payload.
 func (tracker *TextTracker) Append(delta string) {
 	if tracker.digest == nil {
 		tracker.digest = sha256.New()
-		tracker.scratch = new([256]byte)
+		tracker.scratch = new(textTrackerScratch)
 	}
 	for offset := 0; offset < len(delta); {
 		n := copy(tracker.scratch[:], delta[offset:])
@@ -34,6 +38,16 @@ func (tracker *TextTracker) Append(delta string) {
 // Snapshot returns only a new suffix. An incompatible rewrite is an error;
 // an append-only downstream cannot retract a prefix it has already received.
 func (tracker *TextTracker) Snapshot(snapshot string) (string, error) {
+	delta, err := tracker.snapshotSuffix(snapshot)
+	if err == nil {
+		tracker.Append(delta)
+	}
+	return delta, err
+}
+
+// snapshotSuffix checks the existing digest without advancing it. A staged
+// mapping appends only when the complete event has succeeded.
+func (tracker *TextTracker) snapshotSuffix(snapshot string) (string, error) {
 	if len(snapshot) < tracker.length {
 		return "", streamIssue(UpstreamContractViolation, "snapshot", "cumulative content shortened an already forwarded prefix")
 	}
@@ -45,9 +59,7 @@ func (tracker *TextTracker) Snapshot(snapshot string) (string, error) {
 			return "", streamIssue(UpstreamContractViolation, "snapshot", "cumulative content rewrote an already forwarded prefix")
 		}
 	}
-	delta := snapshot[tracker.length:]
-	tracker.Append(delta)
-	return delta, nil
+	return snapshot[tracker.length:], nil
 }
 
 // Length reports the number of bytes already forwarded.

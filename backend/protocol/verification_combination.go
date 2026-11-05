@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"slices"
@@ -94,7 +93,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	if len(report.Issues) > 0 {
 		return report
 	}
-	for _, sample := range ingress.Definition().Samples {
+	for _, sample := range ingress.verificationSamples() {
 		if sample.Direction != DecodeRequest || sample.ExpectedIssue != "" {
 			continue
 		}
@@ -104,7 +103,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		err := verifyRequestCombination(ctx, ingress, upstream, sample)
-		if recordEnvelopeRejection(conversion, err, check, &report) {
+		if recordDeclaredRejection(conversion, err, check, &report) {
 			continue
 		}
 		check.Passed = err == nil
@@ -114,7 +113,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 		}
 		report.Checks = append(report.Checks, check)
 	}
-	for _, sample := range upstream.Definition().Samples {
+	for _, sample := range upstream.verificationSamples() {
 		if !hasHTTP || sample.Direction != DecodeResponse || sample.ExpectedIssue != "" {
 			continue
 		}
@@ -124,7 +123,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 			continue
 		}
 		err := verifyResponseCombination(ctx, ingress, upstream, sample)
-		if recordEnvelopeRejection(conversion, err, check, &report) {
+		if recordDeclaredRejection(conversion, err, check, &report) {
 			continue
 		}
 		check.Passed = err == nil
@@ -136,7 +135,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	}
 	if hasHTTP && ((len(sessionOperations(ingress)) == 0 && len(sessionOperations(upstream)) == 0) || (hasHTTPStream(upstream) && hasHTTPStream(ingress))) && upstream.Supports(DecodeEvent) && ingress.Supports(EncodeEvent) {
 		hasSequence := false
-		for _, sample := range upstream.Definition().Samples {
+		for _, sample := range upstream.verificationSamples() {
 			if sample.Direction != DecodeEvent || !sample.Sequence || sample.ExpectedIssue != "" {
 				continue
 			}
@@ -152,7 +151,7 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 				continue
 			}
 			err = verifyEventCombination(ctx, ingress, upstream, sample)
-			if recordEnvelopeRejection(conversion, err, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent}, &report) {
+			if recordDeclaredRejection(conversion, err, VerificationCheck{SampleID: sample.ID, Direction: EncodeEvent}, &report) {
 				continue
 			}
 			if err != nil && !hasSameWire(ingress, upstream) && slices.Contains(observed, NativeExtensionsCapability) && hasIssueCode(err, UnsupportedNative) {
@@ -223,10 +222,9 @@ func verifyCombination(ctx context.Context, ingress, upstream *Compiled, capabil
 	return report
 }
 
-// Storage intent and required counters are value-dependent policy boundaries,
-// not extra model capabilities. A rejected fixture supplies no positive coverage;
-// independent passing request/response/stream fixtures are still mandatory.
-func recordEnvelopeRejection(conversion *CompiledConversion, err error, check VerificationCheck, report *CombinationReport) bool {
+// A declared policy refusal is negative evidence, never positive capability
+// coverage. Structure, mapping, I/O and resource failures remain failures.
+func recordDeclaredRejection(conversion *CompiledConversion, err error, check VerificationCheck, report *CombinationReport) bool {
 	var failure *ConversionError
 	if conversion == nil || !errors.As(err, &failure) || len(failure.Issues) == 0 {
 		return false
@@ -235,7 +233,8 @@ func recordEnvelopeRejection(conversion *CompiledConversion, err error, check Ve
 		allowed := false
 		for _, rule := range conversion.Policy.Rules {
 			if rule.Enabled && rule.ID == issue.RuleID && issue.Code == ConversionRejected && issue.PolicyHash == conversion.Hash {
-				allowed = (rule.Action == "responses_storage" && issue.Path == "/store") ||
+				allowed = (rule.Action == "core_controls" && issue.Fidelity == "rejected" && issue.Stage == "conversion."+string(rule.Phase)) ||
+					(rule.Action == "responses_storage" && issue.Path == "/store") ||
 					(rule.Action == "anthropic_usage_envelope" && conversion.Policy.Mode == "strict" &&
 						slices.Contains([]string{"/usage/input", "/usage/output", "/response/usage/input", "/response/usage/output"}, issue.Path))
 			}
@@ -290,171 +289,41 @@ func prepareCombinationSourceEvents(ctx context.Context, ingress, upstream *Comp
 	return sample, nil
 }
 
-func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
-	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
-	route := ConversionContext{Source: upstream.Identity(), Target: ingress.Identity(), Transport: SSE, Scope: sample.Scope}
-	if conversion != nil {
-		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
-		route.Scope = sample.Scope
-	}
-	result, err := executeEventFixture(ctx, upstream, sample)
-	if err != nil {
-		return err
-	}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
-	// This suite verifies transport usage independently of a particular client's
-	// presentation preference.
-	yes := true
-	options.ClientOutput = &ClientOutput{IncludeUsage: &yes}
-	projected := []Event{}
-	eventState := NewConversionEventState(conversion, route)
-	convertedFrames := []*EventFrame{}
-	for _, frame := range result.frames {
-		original, _ := EncodeValue(frame.Events)
-		events := []Event{}
-		deliveryEvents := frame.Events
-		if conversion.HasAnthropicEnvelope(ConversionEvent, route) {
-			deliveryEvents = DeliveryFrameEvents(frame.Events)
-		}
-		for _, event := range deliveryEvents {
-			queued, err := eventState.Push(event)
-			if err != nil {
-				return err
-			}
-			for _, next := range queued {
-				if conversion != nil {
-					value, encodeErr := EncodeValue(next)
-					if encodeErr != nil {
-						return encodeErr
-					}
-					proofRoute, proofErr := conversion.PreviewRecovery(ConversionEvent, value, route)
-					if proofErr != nil {
-						return proofErr
-					}
-					next, err = conversion.Event(ctx, next, proofRoute, verificationDiagnostics(ctx))
-					if err != nil {
-						return err
-					}
-				}
-				events = append(events, next)
-				projected = append(projected, next)
-			}
-		}
-		if len(frame.Events) > 0 && len(events) == 0 {
-			continue
-		}
-		updated, _ := EncodeValue(events)
-		if eventState.Buffered || !bytes.Equal(original.Bytes(), updated.Bytes()) {
-			frame = &EventFrame{Events: events}
-		}
-		convertedFrames = append(convertedFrames, frame)
-	}
-	tailEvents, err := eventState.Drain()
-	if err != nil {
-		return err
-	}
-	for _, event := range tailEvents {
-		event, err = conversion.Event(ctx, event, route, verificationDiagnostics(ctx))
-		if err != nil {
-			return err
-		}
-		projected = append(projected, event)
-		convertedFrames = append(convertedFrames, &EventFrame{Events: []Event{event}})
-	}
-	result.semantic = projected
-	var frames []Value
-	var decoded []Event
-	for _, frame := range convertedFrames {
-		wire, err := ingress.EncodeFrame(ctx, frame, options)
-		if err != nil {
-			return err
-		}
-		frames = append(frames, wire...)
-	}
-	tail, err := ingress.FinishEvents(ctx, options)
-	if err != nil {
-		return err
-	}
-	frames = append(frames, tail...)
-	finalValidation, err := ingress.NewWireStreamValidation(options.Scope)
-	if err != nil {
-		return err
-	}
-	for _, wire := range frames {
-		if conversion != nil && conversion.HasPhase(ConversionWire) {
-			route.ResponseWire = true
-			wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
-			if err != nil {
-				return err
-			}
-		}
-		if err := finalValidation.Consume(ctx, wire); err != nil {
-			return err
-		}
-		if !ingress.Supports(DecodeEvent) {
-			continue
-		}
-		frame, err := ingress.DecodeFrame(ctx, wire, options)
-		if err != nil {
-			return err
-		}
-		decoded = append(decoded, frame.Events...)
-	}
-	if err := finalValidation.Finish(); err != nil {
-		return err
-	}
-	if !ingress.Supports(DecodeEvent) {
-		return nil
-	}
-	var comparison error
-	if hasSameWire(ingress, upstream) && ingress.native.Preserve && upstream.native.Preserve && !eventState.Buffered {
-		comparison = compareRoundTrip(ingress, sample, result.semantic, decoded)
-	} else {
-		comparison = compareEventSequence(ingress, sample, result.semantic.([]Event), decoded)
-	}
-	if comparison != nil {
-		return comparison
-	}
-	target := ingress.target(EncodeEvent, options)
-	replay, err := NewEventReplay(target, ingress.limits)
-	if err != nil {
-		return err
-	}
-	for _, event := range decoded {
-		if _, err := replay.Consume(event); err != nil {
-			return err
-		}
-	}
-	return replay.Finish()
-}
-
 func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	request, err := ingress.DecodeRequest(ctx, sample.Input.Bytes(), options)
 	if err != nil {
 		return err
 	}
-	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
-		route := conversion.VerificationRoute(ingress.Identity(), upstream.Identity(), HTTPJSON)
+	conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion)
+	var route ConversionContext
+	if conversion != nil {
+		route = conversion.VerificationRoute(ingress.Identity(), upstream.Identity(), HTTPJSON).WithOperation(options)
 		route.Scope = options.Scope
 		request, err = conversion.Request(ctx, request, route, verificationDiagnostics(ctx))
 		if err != nil {
 			return err
 		}
 	}
-	wire, err := upstream.EncodeRequest(ctx, request, options)
+	options.ClientOutput = request.ClientOutput
+	wire, err := upstream.EncodeRequestValue(ctx, request, options)
 	if err != nil {
 		return err
 	}
-	if v, e := ParseValue(wire); e != nil {
-		return e
-	} else if e = upstream.ValidateWireOutput(EncodeRequest, v); e != nil {
-		return e
+	if conversion.HasPhase(ConversionWire) {
+		wire, err = conversion.ApplyValue(ctx, ConversionWire, wire, route, verificationDiagnostics(ctx))
+		if err != nil {
+			return err
+		}
+	}
+	if err := upstream.ValidateRequestOutput(ctx, wire, options); err != nil {
+		return err
 	}
 	for _, name := range sortedKeys(upstream.operations) {
 		operation := upstream.operations[name]
 		if operation.Kind == "generate" || operation.Kind == "submit" {
-			if err := upstream.CheckOperationInput(ctx, name, wire); err != nil {
+			if err := upstream.CheckOperationValueInput(ctx, name, wire); err != nil {
 				return err
 			}
 		}
@@ -462,7 +331,7 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 	if !upstream.Supports(DecodeRequest) {
 		return nil
 	}
-	decoded, err := upstream.DecodeRequest(ctx, wire, options)
+	decoded, err := upstream.DecodeRequestValue(ctx, wire, options)
 	if err != nil {
 		return err
 	}
@@ -470,13 +339,14 @@ func verifyRequestCombination(ctx context.Context, ingress, upstream *Compiled, 
 }
 
 func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled, sample Sample) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	response, err := upstream.DecodeResponse(ctx, sample.Input.Bytes(), options)
 	if err != nil {
 		return err
 	}
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil {
-		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
+		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON).WithOperation(options)
 		route.Scope = options.Scope
 		if outbound := sample.Context["upstreamRequest"]; !outbound.IsZero() {
 			route, err = route.WithResponseModelOrigin(ingress, upstream, outbound.Bytes(), sample.Input.Bytes())
@@ -488,7 +358,12 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		if encodeErr != nil {
 			return encodeErr
 		}
-		route, err = conversion.PreviewRecovery(ConversionResponse, value, route)
+		if ingress.packagePlan != nil {
+			route, err = prepareContinuationEvidence(ctx, conversion, ingress, ConversionResponse, response.Content, route)
+			options = options.WithContinuation(route.continuation)
+		} else {
+			route, err = conversion.PreviewRecovery(ConversionResponse, value, route)
+		}
 		if err != nil {
 			return err
 		}
@@ -502,6 +377,7 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		return err
 	}
 	wireValue, _ := ParseValue(wire)
+	beforeWire := wireValue
 	if conversion, _ := ctx.Value(conversionVerificationKey{}).(*CompiledConversion); conversion != nil && conversion.HasPhase(ConversionWire) {
 		route := conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), HTTPJSON)
 		route.Scope = options.Scope
@@ -512,7 +388,18 @@ func verifyResponseCombination(ctx context.Context, ingress, upstream *Compiled,
 		}
 		wire = wireValue.Bytes()
 	}
-	if err := ingress.ValidateWireOutput(EncodeResponse, wireValue); err != nil {
+	if options.continuation != nil {
+		actual, err := ingress.EncodeContinuationResponse(ctx, wireValue, options)
+		if err != nil {
+			return err
+		}
+		if err := ingress.ValidateResponseOutput(ctx, beforeWire, actual, options); err != nil {
+			return err
+		}
+		if err := options.continuation.CommitDelivery(); err != nil {
+			return err
+		}
+	} else if err := ingress.ValidateResponseOutput(ctx, beforeWire, wireValue, options); err != nil {
 		return err
 	}
 	if !ingress.Supports(DecodeResponse) {

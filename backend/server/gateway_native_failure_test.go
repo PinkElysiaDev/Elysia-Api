@@ -151,3 +151,35 @@ func TestGatewayFailureEncodingRetainsOriginalCause(t *testing.T) {
 		t.Fatal("no trailer after encoding failed")
 	}
 }
+
+func TestPackageStreamFailureUsesIngressCoreVersion(t *testing.T) {
+	compiled := compileSourceStreamPackage(t, sourceStreamPackage(t))
+	recorder := httptest.NewRecorder()
+	c := newTestContext(recorder)
+	setTestRequest(c, httptest.NewRequest("POST", "/generate", nil))
+	c.Header("Trailer", gatewayStreamErrorTrailer)
+	writer := startStream(c)
+	if _, err := writer.Write(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	defer flushTestResponse(c)
+	cause := errors.New("original source failure")
+	deliveryFailure := errors.New("synthetic delivery failure")
+	for _, writeErr := range []error{nil, deliveryFailure} {
+		emitted := 0
+		err := emitFailureEvent(contextForTest(c), c, &gatewayResponsePlan{ingress: compiled}, protocol.EvaluationContext{}, func(frame protocol.Value) error {
+			fields, err := frame.ReadObject()
+			if err != nil || !fields["type"].IsString(string(protocol.OperationFailed)) || fields["error"].IsZero() {
+				t.Fatal("late failure did not use the declared core2 encoder", frame, err)
+			}
+			emitted++
+			return writeErr
+		}, cause)
+		if emitted != 1 || writeErr == nil && err != nil || writeErr != nil && (!errors.Is(err, cause) || !strings.Contains(err.Error(), writeErr.Error())) {
+			t.Fatal("error delivery lost its primary cause or emitted twice", emitted, err)
+		}
+	}
+}

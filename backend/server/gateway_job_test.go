@@ -32,13 +32,14 @@ func TestGatewayJobExplicitWaitTimeoutPolicies(t *testing.T) {
 	for _, policy := range []string{"cancel", "continue"} {
 		t.Run(policy, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
-			synchronous := loadGatewayDefinition(t, "job-alpha")
-			synchronous.ID, synchronous.Name = "sync-jobs", "sync-jobs"
-			delete(synchronous.Capabilities, protocol.AsyncJobsCapability)
-			synchronous.TaskSamples = nil
-			synchronous.Operations = map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}}
-			activateGatewayDefinition(t, s, synchronous)
-			upstream := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "job-alpha"))
+			synchronous := loadGatewayPackage(t, "testdata/tasks/job-alpha")
+			synchronous.Spec.ID, synchronous.Spec.Name = "sync-jobs", "sync-jobs"
+			delete(synchronous.Mapping.Capabilities, protocol.AsyncJobsCapability)
+			synchronous.Mapping.TaskSamples = nil
+			synchronous.Spec.Operations = map[string]protocol.ProtocolOperationSpec{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Request: "generation-request", Response: "provider-response", Auth: protocol.Credential{Location: "none"}}}
+			synchronous.Mapping.Operations = map[string]protocol.ProtocolOperationMapping{"generate": {Request: protocol.EncodeRequest, Response: protocol.DecodeResponse}}
+			activateGatewayPackage(t, s, synchronous)
+			upstream := activateGatewayPackage(t, s, loadGatewayPackage(t, "testdata/tasks/job-alpha"))
 			var cancellations atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				state := "queued"
@@ -97,9 +98,9 @@ func TestGatewayJobExplicitWaitTimeoutPolicies(t *testing.T) {
 func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
-	ingress := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "job-alpha"))
-	definition := loadGatewayDefinition(t, "job-beta")
-	upstream := activateGatewayDefinition(t, s, definition)
+	ingress := activateGatewayPackage(t, s, loadGatewayPackage(t, "testdata/tasks/job-alpha"))
+	definition := loadGatewayPackage(t, "testdata/tasks/job-beta")
+	upstream := activateGatewayPackage(t, s, definition)
 	var submits, results atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-New-Revision") != "" {
@@ -146,12 +147,12 @@ func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 		t.Fatalf("duplicate: %d %s", duplicate.Code, duplicate.Body)
 	}
 	// New definitions cannot change polling/result mapping for an accepted job.
-	definition.Version = "2"
-	for name, operation := range definition.Operations {
+	definition.Spec.Version = "2"
+	for name, operation := range definition.Spec.Operations {
 		operation.Headers = map[string]string{"X-New-Revision": "yes"}
-		definition.Operations[name] = operation
+		definition.Spec.Operations[name] = operation
 	}
-	activateGatewayDefinition(t, s, definition)
+	activateGatewayPackage(t, s, definition)
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -219,7 +220,7 @@ func TestGatewayJobsIndependentMappingsPinnedRevisionAndUsage(t *testing.T) {
 func TestGatewayJobUncertainOutcomeIsDurableAndNotRetried(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
-	compiled := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "job-alpha"))
+	compiled := activateGatewayPackage(t, s, loadGatewayPackage(t, "testdata/tasks/job-alpha"))
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)

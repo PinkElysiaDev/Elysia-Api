@@ -1,0 +1,295 @@
+package protocol
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const historyRetentionPath = "/reasoning/historyRetention"
+
+func historyPrototype(t *testing.T, name string) ProtocolPackage {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "history", name+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := DecodeProtocolPackage(raw, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return document
+}
+
+func TestHistoryPrototypePreservesWholeValues(t *testing.T) {
+	source := compilePackageForTest(t, historyPrototype(t, "anthropic"))
+	for _, control := range []string{
+		`{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`,
+		`{ "edits" : [ { "type" : "clear_thinking_20251015", "keep" : { "type" : "all" } } ] }`,
+		`{"edits":[{"type":"clear_thinking_20251015","keep":"a\u006cl"}]}`,
+		`{"edits":[{"type":"clear_thinking_20251015","keep":{"type":"all","future":true}}]}`,
+		`{"edits":[{"type":"clear_thinking_20251015","keep":"all"}],"future":true}`,
+		`null`,
+	} {
+		raw := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":` + control + `}`
+		request, err := source.DecodeRequest(t.Context(), []byte(raw), EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		isKnown := !strings.Contains(control, "future") && control != "null"
+		if (request.Reasoning != nil && request.Reasoning.HistoryRetention.IsString("all")) != isKnown {
+			t.Fatal("whole-value recognition changed", control, request.Reasoning)
+		}
+		unmatched, err := readValuePointer(request.Parameters["wire:claude"], []string{"context_management"})
+		if err != nil || unmatched.IsZero() != isKnown {
+			t.Fatal("unmatched control was lost", control, unmatched, err)
+		}
+		wire, err := source.EncodeRequest(t.Context(), request, EvaluationContext{})
+		if err != nil || string(wire) != raw {
+			t.Fatal("native representation changed", err, string(wire))
+		}
+	}
+	for _, name := range []string{"anthropic", "gemini", "chat", "responses"} {
+		compiled := compilePackageForTest(t, historyPrototype(t, name))
+		if report := Verify(t.Context(), compiled); !report.Passed {
+			t.Fatal(name, report.Issues)
+		}
+	}
+}
+
+func TestHistoryPrototypePolicyBoundary(t *testing.T) {
+	source := compilePackageForTest(t, historyPrototype(t, "anthropic"))
+	const raw = `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`
+	request, err := source.DecodeRequest(t.Context(), []byte(raw), EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"gemini", "chat", "responses"} {
+		target := compilePackageForTest(t, historyPrototype(t, name))
+		for _, mode := range []string{"compatible", "strict"} {
+			policy := DefaultConversionPolicy(source, target)
+			policy.Mode = mode
+			conversion, err := ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &DiagnosticSink{}
+			projected, err := conversion.Request(t.Context(), request, ConversionContext{Source: source.Identity(), Target: target.Identity()}, sink)
+			if name != "gemini" {
+				assertPackageRuntimeIssue(t, err, ConversionRejected, historyRetentionPath)
+				continue
+			}
+			if err != nil || projected.Reasoning != nil || !request.Reasoning.HistoryRetention.IsString("all") {
+				t.Fatal("default changed unrelated or source state", projected, err)
+			}
+			if _, err := target.EncodeRequest(t.Context(), projected, EvaluationContext{}); err != nil {
+				t.Fatal(err)
+			}
+			issues := sink.Issues()
+			if len(issues) != 1 || issues[0].Code != ConversionNormalized || issues[0].Fidelity != "preserved" || issues[0].RuleID != "request-projection" || issues[0].PolicyHash != conversion.Hash {
+				t.Fatal(issues)
+			}
+			policy.Rules[0].Enabled = false
+			disabled, err := ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retained, err := disabled.Request(t.Context(), request, ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil)
+			if err != nil || !retained.Reasoning.HistoryRetention.IsString("all") {
+				t.Fatal("disabled default still ran", err)
+			}
+			if _, err := target.EncodeRequest(t.Context(), retained, EvaluationContext{}); err == nil {
+				t.Fatal("encoder repeated disabled default")
+			}
+			override := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "operator", Rules: []ConversionRule{{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "remove", Path: historyRetentionPath}}}
+			replaced, err := ResolveConversion(policy, override)
+			if err != nil {
+				t.Fatal(err)
+			}
+			explicit, err := replaced.Request(t.Context(), request, ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil)
+			if mode == "strict" {
+				assertPackageRuntimeIssue(t, err, ConversionRejected, historyRetentionPath)
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := target.EncodeRequest(t.Context(), explicit, EvaluationContext{}); err != nil {
+				t.Fatal("explicit override did not replace default", err)
+			}
+		}
+	}
+	request.Reasoning.Summary = StringValue("concise")
+	target := compilePackageForTest(t, historyPrototype(t, "gemini"))
+	conversion, _ := ResolveConversion(DefaultConversionPolicy(source, target))
+	projected, err := conversion.Request(t.Context(), request, ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil)
+	if err != nil || projected.Reasoning == nil || !projected.Reasoning.Summary.IsString("concise") || !projected.Reasoning.HistoryRetention.IsZero() {
+		t.Fatal("default swallowed generation controls", err, projected)
+	}
+	if _, err := target.EncodeRequest(t.Context(), projected, EvaluationContext{}); err == nil {
+		t.Fatal("prototype silently dropped unsupported generation controls")
+	}
+}
+
+func TestHistoryDefaultCannotRestoreNativeControl(t *testing.T) {
+	document := historyPrototype(t, "anthropic")
+	target := historyPrototype(t, "gemini")
+	encode := document.Mapping.Directions[EncodeRequest]
+	for _, effect := range target.Mapping.Directions[EncodeRequest].Effects {
+		if effect.Scope == requestFieldScope {
+			encode.Effects = append(encode.Effects, effect)
+		}
+	}
+	document.Mapping.Directions[EncodeRequest] = encode
+	compiled := compilePackageForTest(t, document)
+	for _, hasControl := range []bool{false, true} {
+		for _, isSerialized := range []bool{false, true} {
+			raw := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}]`
+			if hasControl {
+				raw += `,"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`
+			}
+			raw += `}`
+			calls := 0
+			options := EvaluationContext{Scope: Scope{Provider: "local", Account: "a"}, Values: Object{"binding": StringValue("synthetic")}, ResolveRequestScope: func(*Request) (Scope, error) {
+				calls++
+				return Scope{Provider: "local", Account: "a"}, nil
+			}}
+			request, err := compiled.DecodeRequest(t.Context(), []byte(raw), options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Reasoning = nil // Clearing current state does not authorize replay.
+			if isSerialized {
+				request, err = decodeRequestContract(fixtureValue(t, request).Bytes(), ProtocolCoreVersion)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			native, workspace := request.Native, request.Native.requestWorkspace
+			wire, err := compiled.EncodeRequest(t.Context(), request, options)
+			if hasControl {
+				assertPackageRuntimeIssue(t, err, UnsupportedNative, "/native")
+			} else if err != nil || string(wire) != raw {
+				t.Fatal("trusted baseline without a control was rejected", err, string(wire))
+			}
+			if calls != 1 || request.Native != native || native.requestWorkspace != workspace {
+				t.Fatal("native preflight repeated authorization or modified caller-owned state")
+			}
+			if !isSerialized {
+				continue
+			}
+			_, issues := compiled.Execute(t.Context(), EncodeRequest, fixtureValue(t, request), options)
+			if hasControl {
+				assertPackageRuntimeIssue(t, IssuesError(issues), UnsupportedNative, "/native")
+			} else if err := IssuesError(issues); err != nil {
+				t.Fatal("raw authoring rejected a valid serialized baseline", err)
+			}
+			wrongScope := options
+			wrongScope.Scope.Account = "other"
+			_, issues = compiled.Execute(t.Context(), EncodeRequest, fixtureValue(t, request), wrongScope)
+			assertPackageRuntimeIssue(t, IssuesError(issues), ResourceScopeMismatch, request.Native.Source.Path)
+			if calls != 1 {
+				t.Fatal("raw native preflight repeated authorization")
+			}
+			if hasControl {
+				continue
+			}
+			oversized := cloneRequestSemantic(request)
+			oversized.Native.Value = Value{raw: strings.Replace(raw, `"hi"`, `"`+strings.Repeat("x", 4096)+`"`, 1)}
+			limited, err := WithRequestBodyLimit(t.Context(), int64(oversized.Native.Value.Len()-1))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = compiled.EncodeRequestValue(limited, oversized, options)
+			var limit *ResourceLimitError
+			if !errors.As(err, &limit) || limit.Domain != "wire" || limit.Metric != "bytes" {
+				t.Fatal("reconstructed native baseline escaped its snapshot budget", err)
+			}
+		}
+	}
+}
+
+func TestHistoryValueMappingRejectsUnprovedRelations(t *testing.T) {
+	for _, change := range []func(*ProtocolPackage){
+		func(p *ProtocolPackage) {
+			mapping := p.Mapping.Directions[DecodeRequest]
+			mapping.Program.When = expressionPointer(literalExpression(true))
+			p.Mapping.Directions[DecodeRequest] = mapping
+		},
+		func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Program.Then.Fields["reasoning"].Fields["historyRetention"] = literalExpression("other")
+		},
+		func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Program.Otherwise.Fields["parameters"].Fields["wire:claude"] = literalExpression(map[string]any{})
+		},
+		func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Effects[1].ValueMapping.Unmatched = "/native/value"
+		},
+	} {
+		document := historyPrototype(t, "anthropic")
+		change(&document)
+		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		value := fixtureValue(t, document)
+		if compiled, issues := compiler.CompilePackage(value.Bytes()); compiled != nil || IssuesError(issues) == nil {
+			t.Fatal("unproved history normalization compiled")
+		}
+	}
+}
+
+func TestFiniteValueMappingUsesDeclaredCoreField(t *testing.T) {
+	document := textProtocolPackage(t)
+	corePath := "/parameters/history_mode"
+	unmatched := "/parameters/wire_mode"
+	variants := []Value{StringValue("full"), StringValue("complete")}
+	read := func(path string) Expression { return readExpression("input", path) }
+	exists := func(path string) *Expression { return &Expression{Op: "exists", Source: expressionPointer(read(path))} }
+	decode := document.Mapping.Directions[DecodeRequest]
+	var canonical, other Expression
+	if err := fixtureValue(t, decode.Program).Decode(&canonical); err != nil {
+		t.Fatal(err)
+	}
+	canonical.Fields["parameters"] = objectExpression(map[string]Expression{"history_mode": literalExpression("all")})
+	if err := fixtureValue(t, decode.Program).Decode(&other); err != nil {
+		t.Fatal(err)
+	}
+	other.Fields["parameters"] = objectExpression(map[string]Expression{"wire_mode": read("/mode")})
+	decode.Program = Expression{Op: "if", When: &Expression{Op: "any", Items: []Expression{
+		{Op: "equal", Items: []Expression{read("/mode"), literalExpression("full")}},
+		{Op: "equal", Items: []Expression{read("/mode"), literalExpression("complete")}},
+	}}, Then: &canonical, Otherwise: &other}
+	decode.Effects = append(decode.Effects, ProtocolSemanticEffect{ID: "mode-owner", Kind: "aggregate", Path: corePath, Target: "/mode", When: exists("/mode"), ValueMapping: &ProtocolValueMapping{Value: StringValue("all"), Variants: variants, Unmatched: unmatched}})
+	document.Mapping.Directions[DecodeRequest] = decode
+	encode := document.Mapping.Directions[EncodeRequest]
+	encode.Program.Fields["mode"] = Expression{Op: "if", When: exists(corePath), Then: expressionPointer(literalExpression("full")), Otherwise: expressionPointer(read(unmatched))}
+	encode.Effects = append(encode.Effects, ProtocolSemanticEffect{ID: "mode-owner", Kind: "aggregate", Path: corePath, Target: "/mode", When: exists(corePath), ValueMapping: &ProtocolValueMapping{Value: StringValue("all"), Variants: variants, Unmatched: unmatched}})
+	document.Mapping.Directions[EncodeRequest] = encode
+	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
+		contract := document.Spec.Documents[document.Mapping.Directions[direction].Document]
+		contract.Schema.Properties["mode"] = ValueSchema{Type: StringType}
+	}
+	compiled := compilePackageForTest(t, document)
+	for _, mode := range []string{"full", "complete", "future"} {
+		request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hello","mode":"`+mode+`"}`), EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := compiled.EncodeRequestValue(t.Context(), request, EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		value, err := readValuePointer(wire, []string{"mode"})
+		if mode != "future" {
+			mode = "full"
+		}
+		if err != nil || !value.IsString(mode) {
+			t.Fatal("finite mapping lost declared or unmatched value", wire, err)
+		}
+	}
+	for _, path := range []string{"/native/value", "/source/family", "/parameters", "/parameters/history_mode/nested", "/missing"} {
+		if err := validateFiniteValueMapping(DecodeRequest, path, decode.Effects[len(decode.Effects)-1].ValueMapping, DefaultLimits()); err == nil {
+			t.Fatal("finite mapping accepted an inaccessible owner", path)
+		}
+	}
+}

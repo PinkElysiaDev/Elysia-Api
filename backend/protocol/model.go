@@ -93,6 +93,9 @@ const (
 	RefusalNode    NodeKind = "refusal"
 	ToolCallNode   NodeKind = "tool_call"
 	ToolResultNode NodeKind = "tool_result"
+	// ServerToolNode records execution owned by the upstream provider. It is
+	// never a request for the client or the Agent to execute a local tool.
+	ServerToolNode NodeKind = "server_tool"
 	OpaqueNode     NodeKind = "opaque"
 )
 
@@ -118,7 +121,8 @@ type ToolInput struct {
 	Value Value     `json:"value,omitzero"`
 }
 
-// Resource identifies a provider-scoped file, cache, session or signature.
+// Resource identifies a provider-scoped file, audio, container, cache, session
+// or signature. Inline media bytes are payloads rather than resource handles.
 type Resource struct {
 	Kind  string `json:"kind"`
 	ID    Value  `json:"id"`
@@ -143,6 +147,8 @@ type CacheIntent struct {
 
 // Node is one ordered content item. Tool calls and results occupy their original
 // positions in Children instead of a separate, independently mutable list.
+// Tool result status separates failure from payload. payloadForm=result_envelope
+// marks a payload with independent error/output members and additional data.
 type Node struct {
 	Metadata []ResponseMetadata `json:"metadata,omitempty"`
 	Kind     NodeKind           `json:"kind"`
@@ -179,42 +185,50 @@ const (
 
 // Tool defines an available tool. The gateway does not execute client tools.
 type Tool struct {
-	Kind        ToolKind      `json:"kind"`
-	Name        Value         `json:"name,omitzero"`
-	Description Value         `json:"description,omitzero"`
-	InputSchema Value         `json:"inputSchema,omitzero"`
-	Format      Value         `json:"format,omitzero"`
-	Options     Object        `json:"options,omitempty"`
-	Cache       []CacheIntent `json:"cache,omitempty"`
-	Native      *Native       `json:"native,omitempty"`
+	Kind        ToolKind `json:"kind"`
+	Name        Value    `json:"name,omitzero"`
+	Description Value    `json:"description,omitzero"`
+	InputSchema Value    `json:"inputSchema,omitzero"`
+	Format      Value    `json:"format,omitzero"`
+	// Options preserves raw strict and eager_input_streaming hints. strictDefault
+	// records the source's automatic or disabled behavior when strict is missing or null.
+	Options Object        `json:"options,omitempty"`
+	Cache   []CacheIntent `json:"cache,omitempty"`
+	Native  *Native       `json:"native,omitempty"`
 }
 
 // Request has one ordered content history. Parameters are named semantic
 // fields, not an automatic pass-through container for unknown wire extensions.
 type Request struct {
-	SchemaVersion      int              `json:"schemaVersion"`
-	Source             Identity         `json:"source"`
-	Model              Value            `json:"model,omitzero"`
-	Content            []Node           `json:"content"`
-	Tools              []Tool           `json:"tools,omitempty"`
-	ToolChoice         Value            `json:"toolChoice,omitzero"`
-	Parameters         Object           `json:"parameters,omitempty"`
-	OutputLimitDefault bool             `json:"outputLimitDefault,omitempty"`
-	Reasoning          *ReasoningIntent `json:"reasoning,omitempty"`
-	Cache              []CacheIntent    `json:"cache,omitempty"`
-	Resources          []Resource       `json:"resources,omitempty"`
-	Native             *Native          `json:"native,omitempty"`
-	ClientOutput       *ClientOutput    `json:"clientOutput,omitempty"`
+	continuationInput     *continuationInput
+	continuationsAccepted bool
+	SchemaVersion         int              `json:"schemaVersion"`
+	Source                Identity         `json:"source"`
+	Model                 Value            `json:"model,omitzero"`
+	Content               []Node           `json:"content"`
+	Tools                 []Tool           `json:"tools,omitempty"`
+	ToolChoice            Value            `json:"toolChoice,omitzero"`
+	Parameters            Object           `json:"parameters,omitempty"`
+	OutputLimitDefault    bool             `json:"outputLimitDefault,omitempty"`
+	Reasoning             *ReasoningIntent `json:"reasoning,omitempty"`
+	Cache                 []CacheIntent    `json:"cache,omitempty"`
+	Resources             []Resource       `json:"resources,omitempty"`
+	Native                *Native          `json:"native,omitempty"`
+	ClientOutput          *ClientOutput    `json:"clientOutput,omitempty"`
 }
 
 // ClientOutput describes delivery to the caller, independently of generation.
 // RawStreamOptions retains absent/null and extensions for same-wire replay.
 type ClientOutput struct {
-	CollectUsage        bool                    `json:"collectUsage,omitempty"`
-	IncludeUsage        *bool                   `json:"includeUsage,omitempty"`
-	RawStreamOptions    Value                   `json:"rawStreamOptions,omitzero"`
-	RawResponsesInclude Value                   `json:"rawResponsesInclude,omitzero"`
-	ResponsesStorage    *ResponsesStorageIntent `json:"responsesStorage,omitempty"`
+	// RequireContinuationState requests client-visible recovery when protected state exists.
+	RequireContinuationState bool `json:"requireContinuationState,omitempty"`
+	// ResponsesIncludeResolved records the target rule's handling of source selectors.
+	ResponsesIncludeResolved bool                    `json:"responsesIncludeResolved,omitempty"`
+	CollectUsage             bool                    `json:"collectUsage,omitempty"`
+	IncludeUsage             *bool                   `json:"includeUsage,omitempty"`
+	RawStreamOptions         Value                   `json:"rawStreamOptions,omitzero"`
+	RawResponsesInclude      Value                   `json:"rawResponsesInclude,omitzero"`
+	ResponsesStorage         *ResponsesStorageIntent `json:"responsesStorage,omitempty"`
 }
 
 // ResponsesStorageIntent describes API response retrieval, independently of
@@ -262,6 +276,7 @@ type Usage struct {
 
 // Response is the ordered result of one generation operation.
 type Response struct {
+	rangeOrigin   *Response
 	Metadata      []ResponseMetadata `json:"metadata,omitempty"`
 	SchemaVersion int                `json:"schemaVersion"`
 	Source        Identity           `json:"source"`

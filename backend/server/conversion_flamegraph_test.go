@@ -88,6 +88,7 @@ type flameMeasurement struct {
 	SizeMiB, Workers, Repeat, Requests int
 	Stream                             bool
 	ElapsedMS                          float64
+	StartedUnixNS, FinishedUnixNS      int64
 	// Settlement includes the metrics round trip and confirmation that all
 	// completed requests have persisted; it is not the SQL commit timestamp.
 	SettledElapsedMS      float64 `json:",omitempty"`
@@ -103,6 +104,7 @@ type flameMeasurement struct {
 
 type flameCallMeasurement struct {
 	LatencyNS, FirstByteNS, FirstFrameNS int64
+	Frames                               int
 }
 
 type flameRecoverySample struct {
@@ -151,7 +153,16 @@ func TestConversionFlamegraph(t *testing.T) {
 		t.Fatal("invalid stream selection")
 	}
 	provider := startConversionHTTPChild(t, "provider", "")
+	writeConversionProviderIdentity(t, directory, provider)
 	gateway := startConversionHTTPChild(t, "gateway", provider.URL)
+	proof, err := json.MarshalIndent(gateway.Execution, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "execution.json"), proof, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("execution: %s", proof)
 	client := &http.Client{Timeout: 5 * time.Minute}
 	t.Cleanup(client.CloseIdleConnections)
 	metrics := func(address, action string) conversionHTTPMetrics {
@@ -214,10 +225,20 @@ func TestConversionFlamegraph(t *testing.T) {
 			matrixSource = flameMatrixProtocol(t, sourceID)
 			body, path = flameMatrixRequest(t, matrixSource, stream)
 		}
+		if endpoint := os.Getenv("ELYSIA_FLAME_GATEWAY_PATH"); endpoint != "" {
+			path = endpoint
+		}
+		continuation := loadContinuationPerformanceFixture(t)
+		if continuation != nil {
+			body = continuation.Body
+		}
 		call := func() (observation flameCallMeasurement, result error) {
 			request, _ := http.NewRequestWithContext(t.Context(), "POST", gateway.URL+path, strings.NewReader(body))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer "+flameToken)
+			if continuation != nil {
+				request.Header.Set("x-elysia-session-id", continuation.Session)
+			}
 			started := time.Now()
 			response, err := client.Do(request)
 			if err != nil {
@@ -240,6 +261,15 @@ func TestConversionFlamegraph(t *testing.T) {
 			}
 			observation.LatencyNS = time.Since(started).Nanoseconds()
 			output := captured.Bytes()
+			if continuation != nil {
+				return observation, continuation.validate(response.StatusCode, output)
+			}
+			if mode != "measure" && stream {
+				observation.Frames = bytes.Count(output, []byte("\ndata:"))
+				if bytes.HasPrefix(output, []byte("data:")) {
+					observation.Frames++
+				}
+			}
 			if matrixSource != nil {
 				if response.StatusCode != 200 || response.Trailer.Get(gatewayStreamErrorTrailer) != "" {
 					return observation, fmt.Errorf("matrix response %d: %.400s", response.StatusCode, output)
@@ -328,48 +358,57 @@ func TestConversionFlamegraph(t *testing.T) {
 					name, endpoint = "execution.trace", "trace"
 				}
 				go func() { profileDone <- saveProfile(name, fmt.Sprintf("%s?seconds=%d", endpoint, seconds)) }()
+				if os.Getenv("ELYSIA_FLAME_FIXED_CPU") == "1" {
+					// The archived profile timestamps must bracket the fixed workload;
+					// this delay only avoids dispatching before the profile HTTP call.
+					time.Sleep(100 * time.Millisecond)
+				}
 			} else if mode == "memory" {
 				if err := saveProfile("alloc-before.pprof", "allocs"); err != nil {
 					t.Fatal(err)
 				}
-				profileDone = make(chan error, 1)
-				go func() {
-					// A fixed delay can photograph an already idle gateway. Record
-					// activity on both sides of the snapshot instead of claiming peak.
-					deadline := time.Now().Add(10 * time.Second)
-					observe := func() (conversionHTTPMetrics, error) {
-						var state conversionHTTPMetrics
-						response, err := client.Get(gateway.Metrics)
-						if err != nil {
-							return state, err
-						}
-						defer response.Body.Close()
-						if response.StatusCode != http.StatusOK {
-							return state, fmt.Errorf("activity HTTP %d", response.StatusCode)
-						}
-						return state, sonic.ConfigStd.NewDecoder(response.Body).Decode(&state)
-					}
-					for time.Now().Before(deadline) {
-						before, err := observe()
-						if err != nil {
-							profileDone <- err
-							return
-						}
-						if before.ActiveRequests > 0 {
-							err = saveProfile("heap-active.pprof", "heap")
-							after, observationErr := observe()
-							if err == nil {
-								err = observationErr
+				// Release binaries do not expose active-request counters. Their
+				// memory run records drained heap, without claiming an active peak.
+				if os.Getenv("ELYSIA_CONVERSION_HTTP_EXTERNAL") == "" {
+					profileDone = make(chan error, 1)
+					go func() {
+						// A fixed delay can photograph an already idle gateway. Record
+						// activity on both sides of the snapshot instead of claiming peak.
+						deadline := time.Now().Add(10 * time.Second)
+						observe := func() (conversionHTTPMetrics, error) {
+							var state conversionHTTPMetrics
+							response, err := client.Get(gateway.Metrics)
+							if err != nil {
+								return state, err
 							}
-							raw, _ := sonic.ConfigStd.MarshalIndent(map[string]any{"before": before, "after": after, "activeOnBothSides": after.ActiveRequests > 0, "peakSnapshot": false}, "", "  ")
-							_ = os.WriteFile(filepath.Join(directory, "heap-active-observation.json"), raw, 0600)
-							profileDone <- err
-							return
+							defer response.Body.Close()
+							if response.StatusCode != http.StatusOK {
+								return state, fmt.Errorf("activity HTTP %d", response.StatusCode)
+							}
+							return state, sonic.ConfigStd.NewDecoder(response.Body).Decode(&state)
 						}
-						time.Sleep(time.Millisecond)
-					}
-					profileDone <- fmt.Errorf("no active request observed for heap snapshot")
-				}()
+						for time.Now().Before(deadline) {
+							before, err := observe()
+							if err != nil {
+								profileDone <- err
+								return
+							}
+							if before.ActiveRequests > 0 {
+								err = saveProfile("heap-active.pprof", "heap")
+								after, observationErr := observe()
+								if err == nil {
+									err = observationErr
+								}
+								raw, _ := sonic.ConfigStd.MarshalIndent(map[string]any{"before": before, "after": after, "activeOnBothSides": after.ActiveRequests > 0, "peakSnapshot": false}, "", "  ")
+								_ = os.WriteFile(filepath.Join(directory, "heap-active-observation.json"), raw, 0600)
+								profileDone <- err
+								return
+							}
+							time.Sleep(time.Millisecond)
+						}
+						profileDone <- fmt.Errorf("no active request observed for heap snapshot")
+					}()
+				}
 			}
 			started := time.Now()
 			requests := 0
@@ -405,7 +444,7 @@ func TestConversionFlamegraph(t *testing.T) {
 				}
 				requests += len(batch)
 				observations = append(observations, batch...)
-				if mode != "cpu" || time.Since(started) >= time.Duration(seconds+1)*time.Second {
+				if mode != "cpu" || os.Getenv("ELYSIA_FLAME_FIXED_CPU") == "1" || time.Since(started) >= time.Duration(seconds+1)*time.Second {
 					break
 				}
 			}
@@ -436,6 +475,7 @@ func TestConversionFlamegraph(t *testing.T) {
 				t.Fatal("duplicate or missing generations")
 			}
 			measurement := flameMeasurement{UpstreamCalls: after.Calls - before.Calls, Mode: mode, Workload: workload, Phase: "steady", SizeMiB: size, Workers: workers, Repeat: repeat, Requests: requests, Stream: stream, ElapsedMS: float64(elapsed) / float64(time.Millisecond), Before: initial, Metrics: sample, Observations: observations}
+			measurement.StartedUnixNS, measurement.FinishedUnixNS = started.UnixNano(), started.Add(elapsed).UnixNano()
 			if mode == "measure" {
 				measurement.SettledElapsedMS = float64(settledElapsed) / float64(time.Millisecond)
 				measurement.SettlementWaitMS = float64(settlementWait) / float64(time.Millisecond)

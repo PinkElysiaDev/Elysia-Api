@@ -10,19 +10,33 @@ import (
 	"github.com/bytedance/sonic/ast"
 )
 
+const objectMemberScanBytes = 1024
+
 // Pointer traversal borrows intermediate raw fragments only within this call.
 // The returned selection owns its bytes, so small retained metadata cannot pin
 // an entire request. An empty pointer keeps the existing identity behavior.
 func readValuePointer(value Value, pointer []string) (Value, error) {
+	return readValuePointerWithin(value, pointer, nil)
+}
+
+func readValuePointerWithin(value Value, pointer []string, reader *valueReader) (Value, error) {
+	return readValuePointerWithObjectReader(value, pointer, reader, nil)
+}
+
+func readValuePointerWithObjectReader(value Value, pointer []string, reader *valueReader, objects *planObjectReader) (Value, error) {
 	if len(pointer) == 0 {
 		return value, nil
 	}
+	var owner *planObjectReader
 	for _, key := range pointer {
 		if value.IsZero() {
 			return Value{}, nil
 		}
 		if value.IsObject() {
-			next, err := sonicObjectMember(value, key)
+			if enclosing := objects.ownerFor(value); enclosing != nil {
+				owner = enclosing
+			}
+			next, err := owner.readOwnedMember(value, key)
 			if err != nil {
 				return Value{}, err
 			}
@@ -51,14 +65,45 @@ func readValuePointer(value Value, pointer []string) (Value, error) {
 		}
 		value = Value{raw: raw}
 	}
-	return Value{raw: strings.Clone(value.raw)}, nil
+	return Value{raw: reader.fragment(value.raw)}, nil
 }
 
-// Searcher's string lookup stops at the first occurrence. Enumerating one
-// object's properties preserves last-decoded-key-wins, even for escaped keys,
-// without materializing/cloning every sibling Value into a map.
+// Single reads of small, already validated objects do not need a parse tree.
+// Keep the last matching key, including escaped and invalid Unicode spellings.
+func scanObjectMember(value Value, key string) (Value, error) {
+	raw := strings.TrimSpace(value.raw)
+	var selected Value
+	for offset := skipJSONSpace(raw, 1); raw[offset] != '}'; {
+		end := jsonStringEnd(raw, offset)
+		name := raw[offset+1 : end-1]
+		if strings.Contains(name, `\`) || !utf8.ValidString(name) {
+			var err error
+			name, err = decodeObjectKey(raw[offset:end])
+			if err != nil {
+				return Value{}, err
+			}
+		}
+		offset = skipJSONSpace(raw, skipJSONSpace(raw, end)+1)
+		end = jsonValueEnd(raw, offset)
+		if name == key {
+			selected = Value{raw: raw[offset:end]}
+		}
+		offset = skipJSONSpace(raw, end)
+		if raw[offset] == ',' {
+			offset = skipJSONSpace(raw, offset+1)
+		}
+	}
+	return selected, nil
+}
+
+// Searcher's string lookup stops at the first occurrence. Enumerate cached
+// properties to preserve the same last-decoded-key-wins contract.
 func sonicObjectMember(value Value, key string) (Value, error) {
 	node := ast.NewRaw(value.raw)
+	return readSonicObjectMember(&node, key)
+}
+
+func readSonicObjectMember(node *ast.Node, key string) (Value, error) {
 	properties, err := node.Properties()
 	if err != nil {
 		return Value{}, err

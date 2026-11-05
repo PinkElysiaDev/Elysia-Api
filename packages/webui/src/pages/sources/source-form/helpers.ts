@@ -16,6 +16,8 @@ export type SourceForm = Omit<ModelSource, 'apiKeys' | 'manualModels' | 'keyStra
   keyStrategy: SourceKeyStrategy
 }
 
+export type ManualKeySelection = Record<number, number[]>
+
 // 按「线路 API 协议」命名，取代旧的厂商混称（openai/openai-compatible/claude/gemini）。
 // 选择 Responses API 表示上游端点类型；默认仍经过 Maheshvara，显式 relay.passthrough
 // 才会启用同协议透传。
@@ -97,6 +99,39 @@ export function emptySource(): SourceForm {
   }
 }
 
+/** 初始化一次编辑快照，区分未限制权限与显式空权限。 */
+export function initializeSourceForm(source: ModelSource | null) {
+  const form: SourceForm = source ? {
+    ...source,
+    platform: normalizePlatform(source.platform),
+    apiKey: '',
+    apiKeys: source.apiKeys?.length
+      ? source.apiKeys.map((key) => ({ ...key }))
+      : source.apiKey ? [{ value: source.apiKey }] : [],
+    manualModels: source.manualModels ?? [],
+    keyStrategy: normalizeKeyStrategy(source.keyStrategy),
+  } : emptySource()
+  const manualKeySelection: ManualKeySelection = {}
+  form.manualModels.forEach((model, index) => {
+    manualKeySelection[index] = form.apiKeys.flatMap((key, keyIndex) =>
+      key.value.trim() && (key.allowedModels == null || key.allowedModels.includes(model.id)) ? [keyIndex] : [],
+    )
+  })
+  return { form, manualKeySelection, fetchUrlEnabled: !!form.fetchBaseUrl?.trim() }
+}
+
+/** Key 删行或重排时同步其模型选择，undefined 表示移除该引用。 */
+export function remapKeySelection(selection: ManualKeySelection, remap: (index: number) => number | undefined): ManualKeySelection {
+  const result: ManualKeySelection = {}
+  for (const [model, indexes] of Object.entries(selection)) {
+    result[Number(model)] = indexes.flatMap((index) => {
+      const mapped = remap(index)
+      return mapped === undefined ? [] : [mapped]
+    })
+  }
+  return result
+}
+
 // 存量兼容：'single'/空策略归一化为「轮询」（单 Key 下三种策略行为完全等价）。
 export function normalizeKeyStrategy(raw: string | undefined): SourceKeyStrategy {
   return raw === 'random' || raw === 'priority' ? raw : 'round-robin'
@@ -105,32 +140,16 @@ export function normalizeKeyStrategy(raw: string | undefined): SourceKeyStrategy
 /** 自动源清除手动分配；手动源将模型与 Key 的选择编译为 allowedModels。 */
 export function compileApiKeysPayload(
   form: SourceForm,
-  manualKeySelection: Record<number, number[]>,
+  manualKeySelection: ManualKeySelection,
   autoFetch: boolean,
-): { keys: SourceAPIKey[] } | { error: string } {
-  const keys = form.apiKeys.filter((k) => k.value.trim())
-  if (autoFetch) return { keys: keys.map((key) => ({ ...key, allowedModels: null })) }
-  if (keys.length <= 1) return { keys }
-  const allManual = form.manualModels
-  for (const [index, model] of allManual.entries()) {
-    if (!model.id.trim()) continue
-    const selection = manualKeySelection[index]
-    if (selection !== undefined && selection.length === 0) {
-      return { error: `模型「${model.id}」没有任何可用 Key` }
-    }
-  }
-  // 有效 key 在原数组中的下标（manualKeySelection 记录的是原数组下标）。
-  const keyOriginalIndexes = form.apiKeys
-    .map((k, i) => (k.value.trim() ? i : -1))
-    .filter((i) => i >= 0)
-  return {
-    keys: keyOriginalIndexes.map((originalIndex) => ({
-      ...form.apiKeys[originalIndex],
-      allowedModels: allManual
-        .filter((m, i) => m.id.trim() && (manualKeySelection[i] ?? []).includes(originalIndex))
-        .map((m) => m.id.trim()),
-    })),
-  }
+): SourceAPIKey[] {
+  // 选择记录的是原始下标，过滤空 Key 前先编译权限。
+  return form.apiKeys.flatMap((key, keyIndex) => key.value.trim() ? [{
+    ...key,
+    allowedModels: autoFetch ? null : form.manualModels
+      .filter((model, index) => model.id.trim() && manualKeySelection[index].includes(keyIndex))
+      .map((model) => model.id.trim()),
+  }] : [])
 }
 
 /** 组装提交后端的源 payload:平台规范化、手动模型裁剪与拉取地址开关联动。 */

@@ -6,9 +6,11 @@ import (
 )
 
 func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSample) (Value, error) {
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	switch sample.Kind {
 	case "decode":
-		update, err := compiled.DecodeTaskUpdate(ctx, sample.Operation, sample.Purpose, sample.Input)
+		update, err := compiled.DecodeTaskUpdate(ctx, sample.Operation, sample.Purpose, sample.Input, options)
 		if err != nil {
 			return Value{}, err
 		}
@@ -18,7 +20,7 @@ func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSampl
 		if err := decodeContract(sample.Input.Bytes(), &receipt); err != nil {
 			return Value{}, err
 		}
-		return compiled.EncodeTaskReceipt(ctx, sample.Operation, sample.Purpose, receipt)
+		return compiled.EncodeTaskReceipt(ctx, sample.Operation, sample.Purpose, receipt, options)
 	case "control":
 		var input struct {
 			ID string `json:"id"`
@@ -26,7 +28,7 @@ func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSampl
 		if err := decodeContract(sample.Input.Bytes(), &input); err != nil {
 			return Value{}, err
 		}
-		control, err := compiled.EncodeTaskControl(ctx, sample.Operation, sample.Purpose, input.ID)
+		control, err := compiled.EncodeTaskControl(ctx, sample.Operation, sample.Purpose, input.ID, options)
 		if err != nil {
 			return Value{}, err
 		}
@@ -37,11 +39,20 @@ func executeTaskSample(ctx context.Context, compiled *Compiled, sample TaskSampl
 }
 
 func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) bool {
+	if len(compiled.taskMappings) == 0 {
+		return false
+	}
+	options := newVerificationContext(Scope{}, nil)
+	defer options.State.Release()
 	coverage := map[string]map[string]bool{}
+	samplePath, operationPath := "/taskSamples/", "/operations/"
+	if compiled.packagePlan != nil {
+		samplePath, operationPath = "/mapping/taskSamples/", "/mapping/operations/"
+	}
 	for name := range compiled.taskMappings {
 		coverage[name] = map[string]bool{}
 	}
-	for _, sample := range compiled.Definition().TaskSamples {
+	for _, sample := range compiled.verificationTaskSamples() {
 		output, err := executeTaskSample(ctx, compiled, sample)
 		if err == nil && !equalValues(output, sample.Expected) {
 			err = fmt.Errorf("task sample differs from expected output")
@@ -49,7 +60,7 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 		// Encoding a local ID/state must remain decodable. This prevents a
 		// constant receipt from passing fixtures while hiding the actual job ID.
 		if err == nil && sample.Kind == "encode" {
-			decoded, issues := compiled.ConvertTask(ctx, sample.Operation, "decode", sample.Purpose, output)
+			decoded, issues := compiled.ConvertTask(ctx, sample.Operation, "decode", sample.Purpose, output, options)
 			if issues != nil {
 				err = issues
 			} else if !equalValues(decoded, sample.Input) {
@@ -58,7 +69,7 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 		}
 		check := VerificationCheck{SampleID: sample.ID, Passed: err == nil}
 		if err != nil {
-			report.Issues = append(report.Issues, verificationIssue(compiled, "", "/taskSamples/"+sample.ID, VerificationMismatch, err.Error(), sample.ID))
+			report.Issues = append(report.Issues, verificationIssue(compiled, "", samplePath+sample.ID, VerificationMismatch, err.Error(), sample.ID))
 		} else {
 			check.Capabilities = []Capability{AsyncJobsCapability}
 			key := sample.Kind + "/" + sample.Purpose
@@ -92,7 +103,7 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 		for _, key := range required {
 			if !covered[key] {
 				isComplete = false
-				report.Issues = append(report.Issues, verificationIssue(compiled, "", "/operations/"+name+"/task", IncompleteCoverage, "task flow lacks passing evidence for "+key, ""))
+				report.Issues = append(report.Issues, verificationIssue(compiled, "", operationPath+name+"/task", IncompleteCoverage, "task flow lacks passing evidence for "+key, ""))
 			}
 		}
 	}

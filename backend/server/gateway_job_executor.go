@@ -80,6 +80,11 @@ func (jobs *gatewayJobService) stop() {
 
 type gatewayJobExecutor struct{ server *Server }
 
+// Durable execution facts stay stable across polling, recovery and result reads.
+func jobEvaluationContext(job protocol.GenerationJob, scope protocol.Scope) (protocol.EvaluationContext, error) {
+	return (protocol.EvaluationContext{Scope: scope}).WithOperation(job.Task.ID, job.CreatedAt.Unix())
+}
+
 func jobBaseHash(base string) string {
 	sum := sha256.Sum256([]byte(base))
 	return hex.EncodeToString(sum[:])
@@ -137,7 +142,11 @@ func (executor gatewayJobExecutor) Submit(ctx context.Context, job protocol.Gene
 	}
 	copy := *request
 	copy.Model = protocol.StringValue(job.Model)
-	body, err := compiled.EncodeRequest(ctx, &copy, protocol.EvaluationContext{Scope: modelProtocolScope(model)})
+	options, err := jobEvaluationContext(job, modelProtocolScope(model))
+	if err != nil {
+		return protocol.JobUpdate{}, err
+	}
+	body, err := compiled.EncodeRequest(ctx, &copy, options)
 	if err != nil {
 		return protocol.JobUpdate{}, err
 	}
@@ -152,7 +161,7 @@ func (executor gatewayJobExecutor) Submit(ctx context.Context, job protocol.Gene
 	if err != nil {
 		return protocol.JobUpdate{}, err
 	}
-	return compiled.DecodeTaskUpdate(ctx, job.Operation, "submit", response)
+	return compiled.DecodeTaskUpdate(ctx, job.Operation, "submit", response, options)
 }
 
 func (executor gatewayJobExecutor) Poll(ctx context.Context, job protocol.GenerationJob) (protocol.JobUpdate, error) {
@@ -163,11 +172,15 @@ func (executor gatewayJobExecutor) Cancel(ctx context.Context, job protocol.Gene
 }
 
 func (executor gatewayJobExecutor) update(ctx context.Context, job protocol.GenerationJob, purpose string) (protocol.JobUpdate, error) {
-	compiled, body, _, err := executor.control(ctx, job, purpose)
+	compiled, body, model, err := executor.control(ctx, job, purpose)
 	if err != nil {
 		return protocol.JobUpdate{}, err
 	}
-	return compiled.DecodeTaskUpdate(ctx, job.Operation, purpose, body)
+	options, err := jobEvaluationContext(job, modelProtocolScope(model))
+	if err != nil {
+		return protocol.JobUpdate{}, err
+	}
+	return compiled.DecodeTaskUpdate(ctx, job.Operation, purpose, body, options)
 }
 
 func (executor gatewayJobExecutor) Result(ctx context.Context, job protocol.GenerationJob) (*protocol.Response, error) {
@@ -175,7 +188,11 @@ func (executor gatewayJobExecutor) Result(ctx context.Context, job protocol.Gene
 	if err != nil {
 		return nil, err
 	}
-	response, err := compiled.DecodeResponse(ctx, body.Bytes(), protocol.EvaluationContext{Scope: modelProtocolScope(model)})
+	options, err := jobEvaluationContext(job, modelProtocolScope(model))
+	if err != nil {
+		return nil, err
+	}
+	response, err := compiled.DecodeResponse(ctx, body.Bytes(), options)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +221,11 @@ func (executor gatewayJobExecutor) control(ctx context.Context, job protocol.Gen
 	if err := job.Task.UpstreamID.Decode(&id); err != nil {
 		return nil, protocol.Value{}, model, err
 	}
-	control, err := compiled.EncodeTaskControl(ctx, job.Operation, purpose, id)
+	options, err := jobEvaluationContext(job, modelProtocolScope(model))
+	if err != nil {
+		return nil, protocol.Value{}, model, err
+	}
+	control, err := compiled.EncodeTaskControl(ctx, job.Operation, purpose, id, options)
 	if err != nil {
 		return nil, protocol.Value{}, model, err
 	}

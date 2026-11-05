@@ -156,7 +156,7 @@ func TestCompoundSessionFramesShareOfflineAndLivePreservation(t *testing.T) {
 		t.Fatal("offline compound replay", err)
 	}
 	binding := Binding{ProtocolID: definition.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Capabilities, Transports: []Transport{WebSocket}}
-	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sample.Scope, sample.Model)
+	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sessionTestContext(t, sample.Scope), sample.Model)
 	if err != nil {
 		t.Fatal(err)
 	}

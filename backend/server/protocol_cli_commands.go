@@ -6,7 +6,8 @@ var protocolFlagUsage = map[string]string{
 	"sample":    "完整输入 JSON；真实生成探测使用语义请求",
 	"direction": "映射方向，取值以 protocol schema 为准",
 	"sequence":  "将输入作为有序事件序列验证",
-	"mode":      "mapping、session、task、models 或 agent",
+	"mode":      "mapping、session、task、models、count_tokens 或 agent",
+	"model":     "计数预览的端点模型名（例如 Gemini 路径中的模型）",
 	"sample-id": "定义中已声明的会话样例 ID",
 	"operation": "定义中已声明的操作名",
 	"kind":      "任务映射方向：decode、encode 或 control",
@@ -30,8 +31,8 @@ func protocolCommands() []*cliCommand {
 		action, summary, usage string
 		flags                  []cliFlagSpec
 	}{
-		{"draft", "写入协议草稿并校验定义", "elysia protocol draft '<schemaVersion=2 JSON>'", nil},
-		{"preview", "预览请求、响应、事件或工作流", "elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|agent]", []cliFlagSpec{{name: "sample"}, {name: "direction"}, {name: "sequence", boolean: true}, {name: "mode"}, {name: "sample-id"}, {name: "operation"}, {name: "kind"}, {name: "purpose"}}},
+		{"draft", "写入协议草稿并校验定义", "elysia protocol draft '<schemaVersion=4 spec/mapping JSON>'", nil},
+		{"preview", "预览请求、响应、事件或工作流", "elysia protocol preview --sample '<JSON>' [--direction <direction>] [--sequence] [--mode mapping|session|task|models|count_tokens|agent] [--model <name>]", []cliFlagSpec{{name: "sample"}, {name: "direction"}, {name: "sequence", boolean: true}, {name: "mode"}, {name: "model"}, {name: "sample-id"}, {name: "operation"}, {name: "kind"}, {name: "purpose"}}},
 		{"test", "验证真实上游契约（受权限策略控制）", "elysia protocol test --operation <id> --sample '<semantic request JSON>' [--base-url <URL>] [--api-key <key>]", []cliFlagSpec{{name: "operation"}, {name: "sample"}, {name: "base-url"}, {name: "api-key"}}},
 		{"models", "按声明操作验证真实上游模型目录（受权限策略控制）", "elysia protocol models [--base-url <URL>] [--api-key <key>]", []cliFlagSpec{{name: "base-url"}, {name: "api-key"}}},
 		{"save", "保存草稿与离线证据，不启用", "elysia protocol save [--expected <draft-hash>]", []cliFlagSpec{{name: "expected"}}},
@@ -45,14 +46,14 @@ func protocolCommands() []*cliCommand {
 			handler: func(s *Server) CLIHandler { return &protocolV2Tool{server: s, action: action} },
 		}
 		if action == "draft" {
-			command.positionals = []cliPositionalSpec{{"config", "完整 v2 定义 JSON"}}
+			command.positionals = []cliPositionalSpec{{"config", "完整 spec/mapping 协议包 JSON"}}
 		}
 		flags := append([]cliFlagSpec(nil), spec.flags...)
 		command.mapper = func(inv *cliInvocation) (map[string]any, error) {
 			params := map[string]any{}
 			if action == "draft" {
 				if len(inv.args) != 1 {
-					return nil, fmt.Errorf("protocol draft requires one complete v2 JSON definition")
+					return nil, fmt.Errorf("protocol draft requires one complete spec/mapping JSON package")
 				}
 				if err := inv.setJSONText(params, "config", inv.args[0]); err != nil {
 					return nil, err

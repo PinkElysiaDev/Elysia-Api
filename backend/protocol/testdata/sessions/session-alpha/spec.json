@@ -1,0 +1,53 @@
+{
+  "id": "session-alpha",
+  "name": "session-alpha",
+  "version": "1",
+  "family": "session-alpha",
+  "wireVersion": "1",
+  "operations": {
+    "session": {
+      "kind": "session",
+      "method": "GET",
+      "path": "/session",
+      "transport": "websocket",
+      "auth": {
+        "location": "none"
+      },
+      "session": {
+        "frameBytes": 1048576,
+        "queueItems": 32,
+        "queueBytes": 8388608,
+        "idleMillis": 120000,
+        "pingMillis": 30000,
+        "closeMillis": 5000,
+        "automaticResponses": false,
+        "queryFields": [
+          "model"
+        ],
+        "clientEvent": "client-frame",
+        "serverEvent": "server-frame"
+      },
+      "request": "handshake"
+    }
+  },
+  "documents": {
+    "handshake": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "client-frame": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "server-frame": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  }
+}

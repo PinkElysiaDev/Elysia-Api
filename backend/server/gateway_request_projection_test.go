@@ -45,7 +45,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			if err := s.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "gateway-group", Name: "group", Enabled: true, ToolsCapable: true, Models: []string{"gateway-source:upstream-model"}, Strategy: "sequential"}); err != nil {
 				t.Fatal(err)
 			}
-			policy := protocol.ConversionPolicy{SchemaVersion: 1, ID: "hint-mode", Mode: mode, Rules: []protocol.ConversionRule{}}
+			policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "hint-mode", Mode: mode, Rules: []protocol.ConversionRule{}}
 			bindings, err := s.store.ListProtocolBindings(t.Context())
 			if err != nil {
 				t.Fatal(err)
@@ -115,6 +115,38 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 				}
 			}
 			anthropic, _ := service.Pin(protocol.PresetAnthropicID)
+			retentionRaw := `{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"question"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`
+			retentionRequest, err := anthropic.DecodeRequest(t.Context(), []byte(retentionRaw), protocol.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			previewBody, _ = sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "request", "context": protocol.ConversionContext{Source: anthropic.Identity(), Target: target.Identity(), Model: "upstream-model"}, "input": retentionRequest})
+			ctx, preview = adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
+			s.adminConversionPreview(contextForTest(ctx), ctx)
+			flushTestResponse(ctx)
+			beforeRetention := calls
+			retentionResponse := perform(protocol.PresetAnthropicID, "/v1/messages", retentionRaw)
+			if preview.Code != 200 || retentionResponse.Code != 200 || calls != beforeRetention+1 || strings.Contains(string(sent), "context_management") {
+				t.Fatal("keep-all retention was rejected", preview.Code, retentionResponse.Code, calls-beforeRetention, retentionResponse.Body)
+			}
+			var retentionPreview struct {
+				Data struct {
+					Output protocol.Request
+					Issues []protocol.ConversionIssue
+				}
+			}
+			if err := sonic.ConfigStd.Unmarshal(preview.Body.Bytes(), &retentionPreview); err != nil {
+				t.Fatal(err)
+			}
+			retentionIssues := retentionPreview.Data.Issues
+			if len(retentionIssues) != 1 || retentionIssues[0].Code != protocol.ConversionNormalized || retentionIssues[0].Fidelity != "preserved" {
+				t.Fatal("retention preview did not report normalization", retentionIssues)
+			}
+			retentionPreview.Data.Output.Model = protocol.StringValue("upstream-model")
+			predictedRetention, err := target.EncodeRequest(t.Context(), &retentionPreview.Data.Output, protocol.EvaluationContext{})
+			if err != nil || string(predictedRetention) != string(sent) {
+				t.Fatal("retention preview differs from forwarding", err, string(predictedRetention), string(sent))
+			}
 			toolRaw := `{"model":"group","max_tokens":100,"stream":true,"messages":[{"role":"user","content":"lookup"}],"tools":[{"name":"lookup","input_schema":{"type":"object"},"eager_input_streaming":true}]}`
 			toolRequest, err := anthropic.DecodeRequest(t.Context(), []byte(toolRaw), protocol.EvaluationContext{})
 			if err != nil {
@@ -208,6 +240,8 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			for _, fields := range []string{
 				`"cache_control":{"type":42}`, `"cache_control":{"type":"future"}`, `"cache_control":{"type":"ephemeral","ttl":42}`, `"cache_control":{"type":"ephemeral","future":true}`,
 				`"metadata":{"user_id":42}`, `"metadata":{"future":true}`,
+				`"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":{"type":"thinking_turns","value":1}}]}`,
+				`"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}],"future":true}`,
 			} {
 				before := calls
 				rec := perform(protocol.PresetAnthropicID, "/v1/messages", `{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"}],`+fields+`}`)

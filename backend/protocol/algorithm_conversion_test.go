@@ -19,7 +19,7 @@ func BenchmarkAlgorithmConversion(b *testing.B) {
 				for i := range passes {
 					rules = append(rules, ConversionRule{ID: fmt.Sprint("rule", i), Order: i, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic")})
 				}
-				c, err := CompileConversion(ConversionPolicy{SchemaVersion: 1, ID: "scaling", Mode: "compatible", Rules: rules})
+				c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "scaling", Mode: "compatible", Rules: rules})
 				if err != nil {
 					b.Fatal(err)
 				}

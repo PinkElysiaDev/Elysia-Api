@@ -42,28 +42,54 @@ func (l *hertzLogger) emit(ctx context.Context, level hlog.Level, format string,
 	}
 	message := fmt.Sprintf(format, args...)
 	event := logger.Event(severity)
-	if ctx != nil {
-		if requestLogger := zerolog.Ctx(ctx); requestLogger.GetLevel() != zerolog.Disabled {
-			event = requestLogger.WithLevel(severity)
-		}
+	if requestLogger := zerolog.Ctx(ctx); requestLogger.GetLevel() != zerolog.Disabled {
+		event = requestLogger.WithLevel(severity)
 	}
 	event.Str("component", "hertz").Msg(message)
 }
 
-func (l *hertzLogger) Trace(v ...any)             { l.emit(nil, hlog.LevelTrace, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Debug(v ...any)             { l.emit(nil, hlog.LevelDebug, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Info(v ...any)              { l.emit(nil, hlog.LevelInfo, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Notice(v ...any)            { l.emit(nil, hlog.LevelNotice, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Warn(v ...any)              { l.emit(nil, hlog.LevelWarn, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Error(v ...any)             { l.emit(nil, hlog.LevelError, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Fatal(v ...any)             { l.emit(nil, hlog.LevelFatal, "%s", fmt.Sprint(v...)) }
-func (l *hertzLogger) Tracef(f string, v ...any)  { l.emit(nil, hlog.LevelTrace, f, v...) }
-func (l *hertzLogger) Debugf(f string, v ...any)  { l.emit(nil, hlog.LevelDebug, f, v...) }
-func (l *hertzLogger) Infof(f string, v ...any)   { l.emit(nil, hlog.LevelInfo, f, v...) }
-func (l *hertzLogger) Noticef(f string, v ...any) { l.emit(nil, hlog.LevelNotice, f, v...) }
-func (l *hertzLogger) Warnf(f string, v ...any)   { l.emit(nil, hlog.LevelWarn, f, v...) }
-func (l *hertzLogger) Errorf(f string, v ...any)  { l.emit(nil, hlog.LevelError, f, v...) }
-func (l *hertzLogger) Fatalf(f string, v ...any)  { l.emit(nil, hlog.LevelFatal, f, v...) }
+func (l *hertzLogger) Trace(v ...any) {
+	l.emit(context.Background(), hlog.LevelTrace, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Debug(v ...any) {
+	l.emit(context.Background(), hlog.LevelDebug, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Info(v ...any) {
+	l.emit(context.Background(), hlog.LevelInfo, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Notice(v ...any) {
+	l.emit(context.Background(), hlog.LevelNotice, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Warn(v ...any) {
+	l.emit(context.Background(), hlog.LevelWarn, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Error(v ...any) {
+	l.emit(context.Background(), hlog.LevelError, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Fatal(v ...any) {
+	l.emit(context.Background(), hlog.LevelFatal, "%s", fmt.Sprint(v...))
+}
+func (l *hertzLogger) Tracef(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelTrace, f, v...)
+}
+func (l *hertzLogger) Debugf(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelDebug, f, v...)
+}
+func (l *hertzLogger) Infof(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelInfo, f, v...)
+}
+func (l *hertzLogger) Noticef(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelNotice, f, v...)
+}
+func (l *hertzLogger) Warnf(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelWarn, f, v...)
+}
+func (l *hertzLogger) Errorf(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelError, f, v...)
+}
+func (l *hertzLogger) Fatalf(f string, v ...any) {
+	l.emit(context.Background(), hlog.LevelFatal, f, v...)
+}
 func (l *hertzLogger) CtxTracef(c context.Context, f string, v ...any) {
 	l.emit(c, hlog.LevelTrace, f, v...)
 }

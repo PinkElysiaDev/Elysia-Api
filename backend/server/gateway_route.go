@@ -60,11 +60,13 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		return nil, err
 	}
 	plan := &gatewayPlan{ingress: ingress, session: continuationSession(c, input), bodyBytes: len(body)}
-	input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(ctx).BufferBytes)
+	operationOptions, err := (protocol.EvaluationContext{}).WithOperation(record.RequestID, record.StartedAt.Unix())
 	if err != nil {
 		return nil, err
 	}
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": string(c.GetHeader("anthropic-beta"))}}), Values: protocol.Object{"path": protocol.StringValue(path)}}
+	options := operationOptions
+	options.InterleavedThinking = protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": string(c.GetHeader("anthropic-beta"))}})
+	options.Values = protocol.Object{"path": protocol.StringValue(path)}
 	for _, operation := range ingress.OperationRoutes() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
 			for name, value := range parameters {
@@ -74,6 +76,14 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 	}
 	options.ResolveRequestScope = func(request *protocol.Request) (protocol.Scope, error) {
 		return s.bindGatewayRequest(ctx, c, view, bindings, plan, path, request, record)
+	}
+	if ingress.CoreVersion() == protocol.ProtocolCoreVersion {
+		options, plan.carriers, err = ingress.ExtractContinuations(ctx, input, options)
+	} else {
+		input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(ctx).BufferBytes)
+	}
+	if err != nil {
+		return nil, err
 	}
 	request, err := ingress.DecodeRequestValue(ctx, input, options)
 	if err != nil {
@@ -94,6 +104,7 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 	}
 	var issues []protocol.ConversionIssue
 	var eligible []gatewayCandidate
+	var history *continuationHistory
 	for _, candidate := range plan.candidates {
 		if plan.operation.Transport == protocol.WebSocket {
 			if err := protocol.CheckSessionCompatibility(plan.operation, candidate.operation); err != nil {
@@ -120,15 +131,20 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		// Conversion owns its output. Only authenticated recovery needs a
 		// mutable candidate-local input before that ownership boundary.
 		restored := request
-		if candidate.continuation != nil {
+		if candidate.continuation.needsRecovery(plan.carriers) {
 			restored = request.Clone()
+			if history == nil {
+				history = &continuationHistory{}
+			}
 		}
-		if err = s.restoreGatewayContinuation(ctx, candidate.continuation, restored, plan.carriers); err != nil {
+		if err = s.restoreGatewayContinuation(ctx, candidate.continuation, restored, plan.carriers, history); err != nil {
 			return nil, err
 		}
 		candidate.prepared, err = candidate.conversion.Request(ctx, restored, candidate.conversionContext(ingress, false), sink)
 		if err == nil && candidate.continuation != nil {
-			candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
+			if !candidate.continuation.isPackage {
+				candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
+			}
 			candidate.continuation.conversion = candidate.conversion
 			candidate.continuation.route = candidate.conversionContext(ingress, true)
 		}
@@ -150,7 +166,8 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		}
 		probe := candidate.prepared.Clone()
 		probe.Model = protocol.StringValue(candidate.model.Identifier())
-		probeOptions := protocol.EvaluationContext{Scope: candidate.scope, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), ClientOutput: probe.ClientOutput}
+		probeOptions := operationOptions
+		probeOptions.Scope, probeOptions.InterleavedThinking, probeOptions.ClientOutput = candidate.scope, protocol.OperationInterleavedThinking(candidate.operation), probe.ClientOutput
 		canRetainEncoding := len(eligible) == 0 && !candidate.model.CacheSynthesis && candidate.operation.Kind == "generate" && candidate.compiled.CanReuseRequestEncoding()
 		if canRetainEncoding {
 			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
@@ -174,7 +191,7 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		candidate.binding = constrained
 		candidate.routeBinding = matched
 		if canRetainEncoding {
-			candidate.encoding = &gatewayRequestEncoding{value: encoded, request: probe, identity: candidate.compiled.Identity(), scope: probeOptions.Scope, limits: candidate.compiled.RequestLimits(ctx), interleaved: probeOptions.InterleavedThinking, issues: probeOptions.Diagnostics.Issues()}
+			candidate.encoding = newGatewayRequestEncoding(ctx, candidate.compiled, probe, encoded, probeOptions)
 		}
 		eligible = append(eligible, candidate)
 	}
@@ -196,8 +213,10 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 	}
 	binding := entry.Binding
 	compiled, _ := view.Pin(binding.ProtocolID)
-	if issues := protocol.CheckBinding(binding, compiled); len(issues) > 0 {
-		return candidate, &protocol.ConversionError{Issues: issues}
+	if kind != "count_tokens" || compiled == nil {
+		if issues := protocol.CheckBinding(binding, compiled); len(issues) > 0 {
+			return candidate, &protocol.ConversionError{Issues: issues}
+		}
 	}
 	if kind == "generate" && binding.Wait != nil {
 		for name, operation := range compiled.OperationRoutes() {
@@ -206,18 +225,30 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 			}
 		}
 	}
+	selectedOperation := binding.Operation
+	if kind == "count_tokens" {
+		selected, _ := compiled.Operation(selectedOperation)
+		if selected.Kind != kind {
+			selectedOperation = ""
+		}
+	}
 	for name, entry := range compiled.OperationRoutes() {
 		isCompatibleStream := (transport == protocol.SSE || transport == protocol.NDJSON) && (entry.Transport == protocol.SSE || entry.Transport == protocol.NDJSON)
-		if entry.Kind != kind || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (binding.Operation != "" && name != binding.Operation) {
+		if entry.Kind != kind || (entry.Transport != transport && !isCompatibleStream) || !slices.Contains(binding.Transports, entry.Transport) || (selectedOperation != "" && name != selectedOperation) {
 			continue
 		}
 		if candidate.operationName != "" {
-			return candidate, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "multiple upstream generation operations require an explicit selection")
+			return candidate, gatewayIssue(compiled.Identity(), protocol.InvalidDefinition, "/operations", "multiple matching upstream operations require an explicit selection")
 		}
 		candidate.operationName = name
 	}
 	if candidate.operationName == "" {
 		return candidate, gatewayIssue(compiled.Identity(), protocol.UnsupportedCapability, "/operations", "upstream has no operation for the requested transport")
+	}
+	if kind == "count_tokens" {
+		if issues := protocol.CheckTokenCountBinding(binding, compiled, candidate.operationName); len(issues) > 0 {
+			return candidate, &protocol.ConversionError{Issues: issues}
+		}
 	}
 	operation, _ := compiled.Operation(candidate.operationName)
 	candidate.binding, candidate.compiled, candidate.operation, candidate.scope = binding, compiled, operation, modelProtocolScope(model)
@@ -339,6 +370,13 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 	if response {
 		source, target = target, source
 	}
+	route := protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	if candidate.continuation != nil && candidate.continuation.isPackage {
+		if response {
+			return route.WithContinuation(candidate.continuation.binding, candidate.continuation.requireCarrier)
+		}
+		return route
+	}
 	recoverable := map[string]bool{}
 	if candidate.continuation != nil {
 		for key := range candidate.continuation.saved {
@@ -351,7 +389,8 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 			}
 		}
 	}
-	return protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Recoverable: recoverable, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	route.Recoverable = recoverable
+	return route
 }
 
 func modelProtocolScope(model config.ModelRef) protocol.Scope {
@@ -426,9 +465,13 @@ func selectGatewayIngressOperation(compiled *protocol.Compiled, method, path str
 func (s *Server) bindGatewayRequest(ctx context.Context, c *app.RequestContext, view protocol.RegistryView, bindings []storage.ProtocolBinding, plan *gatewayPlan, path string, request *protocol.Request, record *usageRecord) (protocol.Scope, error) {
 	ingress := plan.ingress
 
-	name, operation, err := selectGatewayIngressOperation(ingress, string(c.Method()), path, request)
-	if err != nil {
-		return protocol.Scope{}, err
+	name, operation := plan.operationName, plan.operation
+	if name == "" {
+		var err error
+		name, operation, err = selectGatewayIngressOperation(ingress, string(c.Method()), path, request)
+		if err != nil {
+			return protocol.Scope{}, err
+		}
 	}
 	plan.operation = operation
 	plan.operationName = name
@@ -454,7 +497,13 @@ func (s *Server) bindGatewayRequest(ctx context.Context, c *app.RequestContext, 
 		if binding.Unbound {
 			return protocol.Scope{}, gatewayIssue(ingress.Identity(), protocol.UnsupportedCapability, "/binding", "model group is explicitly unbound; select a protocol before calling")
 		}
-		if err := protocol.IssuesError(protocol.CheckIngressBinding(binding.Binding, ingress)); err != nil {
+		var issues []protocol.ConversionIssue
+		if operation.Kind == "count_tokens" {
+			issues = protocol.CheckTokenCountBinding(binding.Binding, ingress, name)
+		} else {
+			issues = protocol.CheckIngressBinding(binding.Binding, ingress)
+		}
+		if err := protocol.IssuesError(issues); err != nil {
 			return protocol.Scope{}, err
 		}
 		if !slices.Contains(binding.Binding.Transports, operation.Transport) {

@@ -92,7 +92,7 @@ All paths below use the `/api/admin/protocols` namespace and existing management
 | `POST /combinations`, `GET` / `PUT /bindings` | Composition evidence and model/source/group contracts |
 | `POST /reload` | Atomic replacement after successful compilation |
 
-Preview modes: mapping/session/task/models/agent. Exact payloads are defined by the [handlers](../backend/server/protocol_revision_admin.go) and [PreviewInput](../backend/protocol/authoring.go). Missing coverage or stale hash/compiler evidence blocks activation; uploading `passed:true` cannot authorize it.
+Preview modes: mapping/session/task/models/count_tokens/agent. Exact payloads are defined by the [handlers](../backend/server/protocol_revision_admin.go) and [PreviewInput](../backend/protocol/authoring.go). Missing coverage or stale hash/compiler evidence blocks activation; uploading `passed:true` cannot authorize it.
 
 
 ## Default request hint projection

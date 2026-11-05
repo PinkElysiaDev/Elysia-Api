@@ -17,6 +17,8 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
+const reviewEditTemperature = 0.25
+
 // Authored mappings are installed and verified before measurement. These
 // fixtures use the real store/runtime binding boundary, not a bypass flag.
 func configureReviewMapping(t *testing.T, server *Server) {
@@ -25,7 +27,7 @@ func configureReviewMapping(t *testing.T, server *Server) {
 		return
 	}
 	hasAfter := mode == "after" || mode == "after-decode" || mode == "after-encode"
-	if !hasAfter && mode != "json-rule" {
+	if !hasAfter && mode != "json-rule" && mode != "json-rule-edit" {
 		t.Fatal("invalid review mapping")
 	}
 	service, err := server.protocolService()
@@ -56,11 +58,17 @@ func configureReviewMapping(t *testing.T, server *Server) {
 		}
 	} else {
 		present := true
+		rule := protocol.ConversionRule{ID: "review-json-boundary", Order: 55, Enabled: true, Phase: protocol.ConversionRequest, Action: "set", Path: "/model", Value: protocol.StringValue("m"), Match: protocol.ConversionMatch{Path: "/model", Present: &present}}
+		if mode == "json-rule-edit" {
+			present = false
+			rule.Path, rule.Match.Path = "/parameters/temperature", "/parameters/temperature"
+			rule.Value, _ = protocol.EncodeValue(reviewEditTemperature)
+		}
 		for i := range bindings {
 			if bindings[i].Binding.ProtocolID != "anthropic-messages" {
 				continue
 			}
-			bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "review-json-boundary", Rules: []protocol.ConversionRule{{ID: "review-json-boundary", Order: 55, Enabled: true, Phase: protocol.ConversionRequest, Action: "set", Path: "/model", Value: protocol.StringValue("m"), Match: protocol.ConversionMatch{Path: "/model", Present: &present}}}}}
+			bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "review-json-boundary", Rules: []protocol.ConversionRule{rule}}}
 			changed++
 		}
 	}
@@ -336,8 +344,8 @@ func TestReviewHeldProfiles(t *testing.T) {
 			}
 		}
 		held := reviewMetrics(t, gateway.Metrics, "reset")
-		if held.ActiveRequests != 4 {
-			t.Fatal("not four held streams", held.ActiveRequests)
+		if held.ActiveRequests != 4 || held.Preparation.Active != 0 || held.Preparation.ReservedBodyBytes != 0 {
+			t.Fatal("held streams retained preparation", held)
 		}
 		if batch == 0 {
 			reviewProfile(t, gateway, "heap-held.pprof", "heap")

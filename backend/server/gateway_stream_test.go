@@ -1,14 +1,18 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/hertz/pkg/network"
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
@@ -144,5 +148,240 @@ func TestGatewayBrokenStreamReportsErrorAndNeverRetries(t *testing.T) {
 	result := gatewayTestRequest(server, "text-alpha", `{"deployment":"group","turns":[{"actor":"user","segments":[{"text":"hello"}]}]}`, "gateway-test-token")
 	if calls.Load() != 1 || !strings.Contains(result.Body.String(), "operation.failed") || strings.Contains(result.Body.String(), "response.finished") || result.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" {
 		t.Fatalf("broken stream: calls=%d trailer=%v body=%s", calls.Load(), result.Result().Trailer, result.Body)
+	}
+}
+
+type deliveryCommitWriter struct {
+	network.ExtWriter
+	writeError error
+	flushError error
+	afterFlush func()
+	flushes    int
+	writes     int
+	failAt     int
+}
+
+func (writer *deliveryCommitWriter) Write(body []byte) (int, error) {
+	writer.writes++
+	if writer.writeError != nil && (writer.failAt == 0 || writer.writes == writer.failAt) {
+		return 0, writer.writeError
+	}
+	return writer.ExtWriter.Write(body)
+}
+
+func (writer *deliveryCommitWriter) WriteString(body string) (int, error) {
+	return writer.Write([]byte(body))
+}
+
+func (writer *deliveryCommitWriter) Flush() error {
+	writer.flushes++
+	if writer.flushError != nil {
+		return writer.flushError
+	}
+	if err := writer.ExtWriter.Flush(); err != nil {
+		return err
+	}
+	if writer.afterFlush != nil {
+		writer.afterFlush()
+	}
+	return nil
+}
+
+func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
+	compiled := compileSourceStreamPackage(t, outputAwareStreamPackage(t))
+	for _, ending := range []string{"complete", "write-failure", "flush-failure", "cancel-after-flush", "second-write-failure"} {
+		t.Run(ending, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c := newTestContext(httptest.NewRecorder())
+			setTestRequest(c, httptest.NewRequest(http.MethodPost, "/generate", nil))
+			writer := &deliveryCommitWriter{ExtWriter: startStream(c)}
+			transportFailure := errors.New("synthetic output transport failure")
+			switch ending {
+			case "write-failure":
+				writer.writeError = transportFailure
+			case "flush-failure":
+				writer.flushError = transportFailure
+			case "cancel-after-flush":
+				writer.afterFlush = cancel
+			}
+			defer flushTestResponse(c)
+			validation, err := compiled.NewWireStreamValidation(protocol.Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := (protocol.EvaluationContext{State: protocol.NewEvaluationState()}).WithOutputStream(validation)
+			defer options.State.Release()
+			sourceOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+			defer sourceOptions.State.Release()
+			wireOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+			defer wireOptions.State.Release()
+			present := true
+			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "final-sequence", Rules: []protocol.ConversionRule{{
+				ID: "sequence", Enabled: true, Phase: protocol.ConversionWire, Match: protocol.ConversionMatch{Path: "/initial", Present: &present},
+				Action: "set", Path: "/sequence", Value: mustProtocolValue(t, "41"),
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
+				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.SSE}},
+				candidate: gatewayCandidate{conversion: conversion}, limits: compiled.ResourceLimits(), options: options, finalValidation: validation, wireValidation: wireOptions}
+			raw := mustProtocolValue(t, `{"type":"response.started","responseId":"delivered-id","sequence":0,"initial":true}`)
+			decoded, err := compiled.DecodeFrame(ctx, raw, sourceOptions)
+			if err != nil {
+				t.Fatal(err)
+			}
+			frames, err := compiled.EncodeConvertedFrame(ctx, decoded, decoded.Events, options)
+			if err != nil || len(frames) != 1 || frames[0] != raw {
+				t.Fatal("native source was not replayed exactly once", frames, err)
+			}
+			err = stream.emit(frames[0])
+			hasDelivered := ending == "complete" || ending == "cancel-after-flush" || ending == "second-write-failure"
+			if hasDelivered && err != nil || !hasDelivered && !errors.Is(err, transportFailure) {
+				t.Fatal("output transport result changed", err)
+			}
+			if ending == "cancel-after-flush" && ctx.Err() != context.Canceled {
+				t.Fatal("flush cancellation fixture did not cancel")
+			}
+			probe := protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, Type: protocol.OperationFailed, ResponseID: protocol.StringValue("probe"), Sequence: mustProtocolValue(t, "99"), Error: protocol.StringValue("probe")}
+			observed, err := compiled.EncodeEvent(t.Context(), probe, options)
+			if !hasDelivered {
+				if err == nil || validation.CommitDelivery() == nil || validation.Consume(t.Context(), raw) == nil {
+					t.Fatal("failed output retained a usable position or pending commit", observed, err)
+				}
+				writes, flushes := writer.writes, writer.flushes
+				if err := stream.emit(raw); !errors.Is(err, transportFailure) || writer.writes != writes || writer.flushes != flushes {
+					t.Fatal("failed output retried a write or replaced its cause", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields, _ := observed.ReadObject()
+			var wasStarted bool
+			if err := fields["was_started"].Decode(&wasStarted); err != nil || wasStarted != hasDelivered {
+				t.Fatal("visible position advanced before a successful Flush", observed, err)
+			}
+			wantFlushes := 1
+			if ending == "write-failure" {
+				wantFlushes = 0
+			}
+			if writer.flushes != wantFlushes {
+				t.Fatal("stream flush boundary changed", writer.flushes)
+			}
+			if ending == "second-write-failure" {
+				probe.ResponseID, probe.Sequence = protocol.StringValue("delivered-id"), mustProtocolValue(t, "42")
+				observed, err = compiled.EncodeEvent(ctx, probe, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writer.writeError = transportFailure
+				if err := stream.emit(observed); !errors.Is(err, transportFailure) || validation.CommitDelivery() == nil {
+					t.Fatal("second output failure advanced delivery", err)
+				}
+				writes := writer.writes
+				if err := stream.emit(observed); !errors.Is(err, transportFailure) || writer.writes != writes || writer.flushes != 1 {
+					t.Fatal("failed second output was sent again", err, writer.flushes)
+				}
+				return
+			}
+			if ending != "complete" {
+				return // An uncertain write/flush is not a reusable stream.
+			}
+			err = emitFailureEvent(ctx, c, stream.plan, options, func(wire protocol.Value) error {
+				fields, _ := wire.ReadObject()
+				if !fields["responseId"].IsString("delivered-id") || fields["sequence"].JSONString() != "42" {
+					t.Fatal("local failure ignored the final edited wire position", wire)
+				}
+				return stream.emit(wire)
+			}, errors.New("local failure"))
+			if err != nil {
+				t.Fatal("local failure did not pass final stream validation", err)
+			}
+			if err := validation.Finish(); err != nil || writer.flushes != 2 {
+				t.Fatal("failure delivery did not terminate exactly once", err, writer.flushes)
+			}
+		})
+	}
+}
+
+func TestGatewayCarrierBatchDelivery(t *testing.T) {
+	document := outputAwareStreamPackage(t)
+	document.Spec.Documents["client-event"].Stream.Events["carrier.tail"] = protocol.ProtocolStreamEventSpec{{Action: "observe", AfterTerminal: true}}
+	var declaration protocol.ProtocolContinuationMapping
+	if err := mustProtocolValue(t, `{"encode_event":{"when":{"op":"equal","items":[{"op":"read","path":"/type"},{"op":"literal","value":"response.finished"}]},"program":{"op":"array","items":[{"op":"merge","policy":"last","items":[{"op":"read"},{"op":"object","fields":{"carrier":{"op":"map","source":{"op":"read","from":"runtime","path":"/continuation/tokens"},"body":{"op":"read","from":"item","path":"/token"}}}}]},{"op":"object","fields":{"type":{"op":"literal","value":"carrier.tail"},"responseId":{"op":"read","path":"/responseId"},"sequence":{"op":"integer","operation":"add","items":[{"op":"read","path":"/sequence"},{"op":"literal","value":1}]}}}]},"emitted":{"op":"if","when":{"op":"exists","source":{"op":"read","path":"/carrier"}},"then":{"op":"read","path":"/carrier"},"otherwise":{"op":"literal","value":[]}}}}`).Decode(&declaration); err != nil {
+		t.Fatal(err)
+	}
+	document.Mapping.Continuation = &declaration
+	compiled := compileSourceStreamPackage(t, document)
+	codec, err := protocol.NewContinuationCodec([]byte("local carrier batch fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue("fixture")}
+	sealed, err := codec.SealState(protocol.ContinuationRecord{Version: 1, ID: "one", Protocol: compiled.Identity(), Node: node, Digest: protocol.ContinuationNodeDigest(node), ExpiresAt: time.Now().Add(time.Hour).Unix()}, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ending := range []string{"complete", "second-frame-write-failure", "flush-failure", "cancel-after-flush"} {
+		t.Run(ending, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c := newTestContext(httptest.NewRecorder())
+			setTestRequest(c, httptest.NewRequest(http.MethodPost, "/generate", nil))
+			defer flushTestResponse(c)
+			writer := &deliveryCommitWriter{ExtWriter: startStream(c)}
+			binding, err := compiled.BindContinuation(protocol.EncodeEvent, compiled.Identity(), protocol.Scope{}, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := binding.Append(sealed); err != nil {
+				t.Fatal(err)
+			}
+			validation, err := compiled.NewWireStreamValidation(protocol.Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer validation.Release()
+			options := (protocol.EvaluationContext{}).WithOutputStream(validation).WithContinuation(binding)
+			present := true
+			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "carrier-edit", Rules: []protocol.ConversionRule{{ID: "marker", Enabled: true, Phase: protocol.ConversionWire, Action: "set", Path: "/marker", Value: protocol.StringValue("after"), Match: protocol.ConversionMatch{Path: "/marker", Present: &present}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
+				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.NDJSON}},
+				candidate: gatewayCandidate{conversion: conversion, continuation: &gatewayContinuation{isPackage: true, binding: binding}},
+				limits:    compiled.ResourceLimits(), options: options, finalValidation: validation}
+			if err := stream.emit(mustProtocolValue(t, `{"type":"response.started","responseId":"r","sequence":0}`)); err != nil {
+				t.Fatal(err)
+			}
+			failure := errors.New("synthetic carrier batch failure")
+			switch ending {
+			case "second-frame-write-failure":
+				writer.writeError, writer.failAt = failure, writer.writes+2
+			case "flush-failure":
+				writer.flushError = failure
+			case "cancel-after-flush":
+				writer.afterFlush = cancel
+			}
+			terminal := mustProtocolValue(t, `{"type":"response.finished","responseId":"r","sequence":1,"marker":"before"}`)
+			err = stream.emit(terminal)
+			if ending == "complete" || ending == "cancel-after-flush" {
+				if err != nil || binding.HasPending() || binding.Finish() != nil || validation.Finish() != nil || writer.writes != 3 || writer.flushes != 2 {
+					t.Fatal("carrier batch did not commit exactly once", err, writer.writes, writer.flushes)
+				}
+				return
+			}
+			if !errors.Is(err, failure) || !binding.HasPending() || binding.CommitDelivery() == nil || validation.CommitDelivery() == nil {
+				t.Fatal("partial batch acquired successful delivery", err)
+			}
+			writes, flushes := writer.writes, writer.flushes
+			if err := stream.emit(terminal); !errors.Is(err, failure) || writer.writes != writes || writer.flushes != flushes {
+				t.Fatal("failed carrier batch was retried", err)
+			}
+		})
 	}
 }

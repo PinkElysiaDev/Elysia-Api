@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -61,7 +62,7 @@ func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	if err := checkSemanticValue(request, limits); !errors.As(err, &failure) || failure.Domain != "semantic" {
 		t.Fatal(err)
 	}
-	policy := ConversionPolicy{SchemaVersion: 1, ID: "small", Limits: &limits, Rules: []ConversionRule{{ID: "expand", Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters", Value: parseTestValue(t, `{"x":"`+strings.Repeat("x", 801)+`"}`)}}}
+	policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "small", Limits: &limits, Rules: []ConversionRule{{ID: "expand", Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters", Value: parseTestValue(t, `{"x":"`+strings.Repeat("x", 801)+`"}`)}}}
 	c, err := ResolveConversion(policy)
 	if err != nil {
 		t.Fatal(err)
@@ -73,6 +74,39 @@ func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	var conversion *ConversionError
 	if !errors.As(err, &conversion) || conversion.Issues[0].RuleID != "expand" || conversion.Issues[0].PolicyHash != c.Hash || conversion.Issues[0].Direction != DecodeRequest {
 		t.Fatal("resource provenance lost", err)
+	}
+}
+
+func TestLargeSemanticEncodingChecksBeforePlanning(t *testing.T) {
+	request := &Request{
+		Content:    []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("x", 2*plannedRequestEncodeMinBytes))}},
+		Parameters: Object{"absent": {}},
+	}
+	cyclic := &Request{Content: make([]Node, 1)}
+	cyclic.Content[0].Children = cyclic.Content
+	for _, tc := range []struct {
+		name    string
+		request *Request
+		bytes   int
+	}{
+		{"byte limit precedes invalid value", request, plannedRequestEncodeMinBytes},
+		{"invalid value keeps encoder error", request, DefaultLimits().BufferBytes},
+		{"cycle bounded before planning", cyclic, DefaultLimits().BufferBytes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := DefaultLimits()
+			limits.BufferBytes = tc.bytes
+			want := checkSemanticValue(tc.request, limits)
+			got, err := encodeSemanticWithin(tc.request, limits)
+			if want == nil || err == nil || !got.IsZero() {
+				t.Fatalf("invalid input encoded: %v; expected %v", err, want)
+			}
+			for ; want != nil || err != nil; want, err = errors.Unwrap(want), errors.Unwrap(err) {
+				if reflect.TypeOf(want) != reflect.TypeOf(err) || want.Error() != err.Error() {
+					t.Fatalf("error chain changed: %T %v / %T %v", err, err, want, want)
+				}
+			}
+		})
 	}
 }
 
@@ -88,7 +122,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 	if compiled.wireLimits(ctx, DecodeRequest).BufferBytes != 64<<20 {
 		t.Fatal("request boundary not expanded")
 	}
-	policy, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "test"})
+	policy, err := ResolveConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +130,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 		t.Fatal("response wire budget leaked")
 	}
 	budget := &evaluationBudget{limits: semanticLimits(DefaultLimits()), stepLimit: 1}
-	expression := compiledExpression{op: "literal", value: StringValue("x")}
+	expression := compiledExpression{expressionCompileFacts: &expressionCompileFacts{}, op: "literal", value: StringValue("x")}
 	state := evaluation{ctx: ctx, budget: budget}
 	if _, err := expression.evaluate(state); err != nil {
 		t.Fatal(err)
@@ -118,7 +152,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 }
 
 func TestConversionRequestHonorsCancellation(t *testing.T) {
-	conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: 1, ID: "cancel"})
+	conversion, err := ResolveConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "cancel"})
 	if err != nil {
 		t.Fatal(err)
 	}

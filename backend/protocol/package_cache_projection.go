@@ -1,0 +1,129 @@
+package protocol
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+const cacheIntentScope = "cache_intents"
+
+func validateCacheDisposition(direction Direction, effect ProtocolSemanticEffect) error {
+	if effect.Kind != "drop" && effect.Kind != "default" {
+		if effect.Scope != "" || !effect.Default.IsZero() || effect.Severity != "" {
+			return fmt.Errorf("scope, default and severity require a cache disposition")
+		}
+		return nil
+	}
+	if direction != EncodeRequest || effect.Scope != cacheIntentScope {
+		return fmt.Errorf("semantic effect %q is not executable without encode_request scope cache_intents", effect.Kind)
+	}
+	if effect.Path != "" || effect.Target != "" || effect.Layout != nil || effect.ValueMapping != nil || effect.When == nil || strings.TrimSpace(effect.Reason) == "" {
+		return fmt.Errorf("cache disposition requires a local when and reason, without path, target or layout")
+	}
+	if effect.Kind == "default" {
+		if !effect.Default.IsNull() || effect.Severity != "" {
+			return fmt.Errorf("cache default supports only explicit null without an authored severity")
+		}
+	} else if !effect.Default.IsZero() || (effect.Severity != SeverityInfo && effect.Severity != SeverityWarning) {
+		return fmt.Errorf("cache drop requires severity info or warning and no default")
+	}
+	return nil
+}
+
+func emptyCacheDefault(intent CacheIntent) bool {
+	return (intent.Kind == "key" || intent.Kind == "retention" || intent.Kind == "breakpoint") && intent.Value.IsNull() && intent.TTL.IsZero() && intent.Resource == nil
+}
+
+func hasRequestCacheIntents(request *Request) bool {
+	if len(request.Cache) != 0 {
+		return true
+	}
+	for _, tool := range request.Tools {
+		if len(tool.Cache) != 0 {
+			return true
+		}
+	}
+	var hasNodes func([]Node) bool
+	hasNodes = func(nodes []Node) bool {
+		for _, node := range nodes {
+			if len(node.Cache) != 0 || hasNodes(node.Children) || hasNodes(node.ReasoningContent) {
+				return true
+			}
+		}
+		return false
+	}
+	return hasNodes(request.Content)
+}
+
+func matchCacheDisposition(ctx context.Context, intent CacheIntent, effect compiledSemanticEffect, budget *evaluationBudget) (bool, error) {
+	if effect.kind == "default" && !emptyCacheDefault(intent) {
+		return false, nil
+	}
+	read := func(pointer []string) (JSONOutput, error) { return readCoreCacheIntent(intent, pointer, nil) }
+	condition, err := effect.when.evaluate(evaluation{ctx: ctx, inputReader: read, rootReader: read, budget: budget})
+	if err != nil {
+		return false, err
+	}
+	return readBoolean(condition)
+}
+
+// Encoding verifies that the selected conversion policy disposed of unsupported
+// intent. It never repeats the projection behind a disabled or overridden rule.
+func (compiled *Compiled) checkCacheDispositions(state evaluation, limits Limits, options EvaluationContext) error {
+	request := state.coreRequest
+	if request == nil {
+		var err error
+		request, err = decodeCoreRequestOutput(JSONLeaf(state.input))
+		if err != nil {
+			return err
+		}
+		if err := validateRequestHints(request); err != nil {
+			return err
+		}
+	}
+	// Rule values are editable. The target's native policy is the authority for
+	// replay, including after a conversion rule has already removed the intent.
+	if compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, compiled.target(EncodeRequest, options)) {
+		replay := options.requestReplay
+		if replay == nil {
+			replay = newRequestReplay(compiled, options)
+		}
+		prepared, err := replay.load(state.ctx, request.Native)
+		if err != nil {
+			return err
+		}
+		if err := compiled.checkCacheDispositionMatches(state.ctx, prepared.baseline, limits, func(string) error {
+			return streamIssue(UnsupportedNative, "/native", "original cache intent has no proven deletion contract for same-wire native replay")
+		}); err != nil {
+			return err
+		}
+	}
+	return compiled.checkCacheDispositionMatches(state.ctx, request, limits, func(path string) error {
+		return streamIssue(UnsupportedCapability, path, "cache intent requires the selected request-projection policy before encoding")
+	})
+}
+
+func (compiled *Compiled) checkCacheDispositionMatches(ctx context.Context, request *Request, limits Limits, reject func(string) error) error {
+	if !hasRequestCacheIntents(request) {
+		return nil
+	}
+	budget := &evaluationBudget{limits: limits, stepLimit: limits.Nodes}
+	return requestCaches(request, func(intents *[]CacheIntent, at string) error {
+		for index, intent := range *intents {
+			for _, effect := range compiled.packagePlan.effects[EncodeRequest] {
+				if effect.scope != cacheIntentScope {
+					continue
+				}
+				isMatch, err := matchCacheDisposition(ctx, intent, effect, budget)
+				if err != nil {
+					return err
+				}
+				if isMatch {
+					return reject(fmt.Sprintf("%s/%d", at, index))
+				}
+			}
+		}
+		return nil
+	})
+}

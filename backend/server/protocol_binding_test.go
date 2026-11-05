@@ -57,7 +57,7 @@ func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *tes
 	delete(binding.Binding.Capabilities, protocol.FunctionToolsCapability)
 	for _, row := range rows {
 		if row.Kind == "source" && row.SourceID == binding.SourceID {
-			row.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "parent-reject", Rules: []protocol.ConversionRule{{ID: "reject", Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Reason: "parent source policy"}}}}
+			row.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "parent-reject", Rules: []protocol.ConversionRule{{ID: "reject", Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Reason: "parent source policy"}}}}
 			if err := server.store.SaveProtocolBinding(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}

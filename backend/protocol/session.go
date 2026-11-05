@@ -35,6 +35,7 @@ type sessionTool struct {
 // SessionReplay validates interleaved requests, responses and client tool
 // results. It never executes a tool, reconnects a transport or retains media.
 type SessionReplay struct {
+	retention                streamReservation
 	limits                   Limits
 	clientTarget             Target
 	upstreamTarget           Target
@@ -48,6 +49,7 @@ type SessionReplay struct {
 	isStarted                bool
 	isClosed                 bool
 	hasFailed                bool
+	isReleased               bool
 	canGenerateAutomatically bool
 	model                    Value
 }
@@ -64,6 +66,9 @@ func NewSessionReplay(clientTarget, upstreamTarget Target, limits Limits, policy
 // Consume validates one event before forwarding; false suppresses an identical
 // event carrying an explicit sequence number. State belongs to a single loop.
 func (session *SessionReplay) Consume(origin EventOrigin, event Event) (bool, error) {
+	if session.isReleased {
+		return false, streamIssue(InvalidAssociation, "/session", "released session cannot resume")
+	}
 	if origin != ClientEvent && origin != UpstreamEvent {
 		return false, streamIssue(InvalidInput, "/origin", "unknown session lane")
 	}
@@ -90,6 +95,9 @@ func (session *SessionReplay) Consume(origin EventOrigin, event Event) (bool, er
 	}
 	if session.isClosed {
 		return false, streamIssue(UpstreamContractViolation, "/type", "event arrived after session close")
+	}
+	if event.Type == ControlUpdated && event.controlReceipt != nil {
+		return true, session.checkBudget()
 	}
 	if origin == ClientEvent {
 		err = session.consumeClient(event)
@@ -262,22 +270,44 @@ func (session *SessionReplay) Responses() []SessionResponse {
 	return results
 }
 
-func (session *SessionReplay) checkBudget() error {
-	items := len(session.responses) + len(session.tools) + len(session.clientSequence.records) + len(session.serverSequence.records) + session.pendingResponses
-	buffered := 0
-	for _, response := range session.responses {
-		items += len(response.items) + len(response.identities.aliases) + len(response.sequence.records)
-		buffered += response.state.buffered
+func (session *SessionReplay) retainedState() (items, bytes int) {
+	items = len(session.responses) + session.pendingResponses
+	bytes = len(session.sessionID) + session.model.Len()
+	for id, response := range session.responses {
+		items += response.retainedItems()
+		bytes += len(id) + response.retainedBytes()
 	}
+	return items, bytes
+}
+
+func (session *SessionReplay) checkBudget() error {
+	items, buffered := session.retainedState()
 	if items > session.limits.StateItems || buffered > session.limits.BufferBytes {
 		return streamIssue(LimitExceeded, "/session", "aggregate session state exceeds its configured limit")
 	}
+	if err := session.retention.check(items, buffered); err != nil {
+		return err
+	}
+	// Tool-result flags share their response item; lane history uses only the
+	// remaining capacity beyond each lane's fixed latest-sequence fact.
+	available := session.limits.StateItems - items
+	session.clientSequence.trim(max(1, available-max(0, session.serverSequence.count-1)+1))
+	session.serverSequence.trim(max(1, available-max(0, session.clientSequence.count-1)+1))
+	session.retention.commit(items, buffered)
 	return nil
 }
 
 // Finish rejects an upstream close with incomplete generation. An explicit
 // client session-close command is cancellation, never a fabricated success.
 func (session *SessionReplay) Finish() error {
+	if session.isReleased {
+		return streamIssue(InvalidAssociation, "/session", "released session cannot finish")
+	}
+	if budget := session.retention.budget; budget != nil {
+		if err := budget.Check(); err != nil {
+			return err
+		}
+	}
 	if session.isClosed {
 		return nil
 	}
@@ -293,6 +323,20 @@ func (session *SessionReplay) Finish() error {
 		}
 	}
 	return nil
+}
+
+// Release drops response histories and lane state after the owner has taken its
+// final accounting snapshots. Returned usage copies remain independent.
+func (session *SessionReplay) Release() {
+	if budget := session.retention.budget; budget != nil {
+		budget.removeSequence(session.clientSequence)
+		budget.removeSequence(session.serverSequence)
+	}
+	session.retention.release()
+	for _, response := range session.responses {
+		response.Release()
+	}
+	*session = SessionReplay{isClosed: session.isClosed, hasFailed: session.hasFailed, isReleased: true}
 }
 
 // ResponseUsage returns independent per-response snapshots. Keeping them

@@ -99,7 +99,7 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 				t.Fatal(err)
 			}
 			bindings, _ := s.store.ListProtocolBindings(t.Context())
-			bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: 1, ID: "client-acceptance", Rules: []protocol.ConversionRule{{ID: "client-metadata", Order: 110, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{SourceFamily: "claude", TargetFamily: "gemini"}, Action: "remove", Path: "/parameters/anthropic_metadata"}, {ID: "client-effort", Order: 120, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{SourceFamily: "claude", TargetFamily: "gemini"}, Action: "remove", Path: "/parameters/anthropic_output_config"}}}}
+			bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "client-acceptance", Rules: []protocol.ConversionRule{{ID: "client-metadata", Order: 110, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{SourceFamily: "claude", TargetFamily: "gemini"}, Action: "remove", Path: "/parameters/anthropic_metadata"}, {ID: "client-effort", Order: 120, Enabled: true, Phase: protocol.ConversionRequest, Match: protocol.ConversionMatch{SourceFamily: "claude", TargetFamily: "gemini"}, Action: "remove", Path: "/parameters/anthropic_output_config"}}}}
 			verified, err := s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
 			if err != nil {
 				t.Fatal(err)

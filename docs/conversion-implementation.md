@@ -66,6 +66,8 @@ Responses 消息使用独立的 `item.started` / `item.finished`；内容事件�
 
 非流式请求的已知流式输出选项按无效果规范化，记录 `conversion_normalized` / info / `preserved`。`include_usage` 和加密思考输出选择仍由已有输出处理动作管理。未知输出扩展同协议保留，跨协议要求明确映射。思考、生成上限、结构化输出、工具选择、安全、历史引用及存储意图继续使用各自检查。
 
+Anthropic → Gemini 请求中，`context_management` 仅含单项 `clear_thinking_20251015`，且 `keep` 为 `"all"` 或 `{"type":"all"}`、各层无额外字段时，`request_projection` 将其映射为不清理已提供历史的默认行为。兼容和严格模式均记录 `conversion_normalized` / info / `preserved`，只移除该控制，不删除历史思考、消息或工具；签名与加密内容仍独立校验。同协议保留原字段，规则禁用后不自动处理。有限保留、混合编辑、清理工具、压缩及未知字段继续受原生扩展保护；此行为不表示 Gemini 会保存未随请求发送的历史，也不保证不同模型生成相同回答。
+
 编码器不自行丢弃消息或工具扩展、未处理资源。已知历史 item ID/status 的表示损失由历史动作诊断，工具调用 ID、结果关联和错误状态保持；Chat 混排工具结果与正文按原顺序拆成消息。转换只修改候选副本，原生快照不得恢复省略字段。运行、管理预览、协议组合验证和内置 Agent 共用转换流程。编译器版本变化复用启动重验及预置升级，不增加迁移或旧版本分支。
 
 ## 配置和管理
@@ -98,6 +100,8 @@ Chat 启动身份兼容使用 `source_event` 阶段的 `chat_stream_identity` �
 | `DELETE /continuations?session=...` | 按会话清理副本 |
 
 原 `/preview` 支持 `mode=conversion`，原 `/combinations` 支持 `conversionPolicy`。绑定中的 `conversion` 可固定 `policyId/revisionHash` 并增加 `overrides`；固定修订不随全局激活漂移。
+
+`/preview` 的 `mode=conversion` 仅执行选定阶段的规则；`/conversion-policies/preview` 的 `phase=request` 使用完整请求入口，包含 ingress、request 规则及成功后的 usage 设置。
 
 策略、绑定和派生证据同事务更新；请求通过一次数据库读事务固定策略及绑定。提交时检查配置代数和读取集合，变化返回 409。证据关联双方定义／样例 hash、编译器、完整能力契约及最终策略 hash；条件规则另外绑定模型／操作／传输上下文。
 

@@ -1,0 +1,100 @@
+package protocol
+
+import "fmt"
+
+// WithOutputStream binds the actual target wire validator for read-only runtime
+// facts. Identity, direction and scope must match this mapping. Required position
+// reads reject an absent binding; optional item lookups remain missing. Carrying
+// this context through another mapping does not grant access.
+func (options EvaluationContext) WithOutputStream(validation *WireStreamValidation) EvaluationContext {
+	options.outputStream = validation
+	return options
+}
+
+// CommitDelivery records successful delivery of the last accepted output batch.
+// The single owner calls it only after all writes and their Flush succeed, or
+// after explicitly simulating successful delivery during offline verification.
+// It does not check cancellation: a successful Flush has already happened.
+func (validation *WireStreamValidation) CommitDelivery() error {
+	if validation == nil || validation.direction != EncodeEvent || validation.packageStream == nil {
+		return fmt.Errorf("delivery commit requires an output package stream")
+	}
+	state := validation.packageStream
+	if budget := state.retention.budget; budget != nil {
+		if err := budget.Check(); err != nil {
+			return err
+		}
+	}
+	if !state.hasPendingDelivery {
+		return fmt.Errorf("delivery commit requires a successfully accepted output frame")
+	}
+	if validation.deliveryRanges != nil {
+		if err := validation.deliveryRanges.commit(); err != nil {
+			return err
+		}
+		state.rangeBytes = validation.deliveryRanges.bytes
+		state.retention.commit(state.retainedItems(), state.retainedBytes())
+	}
+	state.delivered = state.accepted
+	state.deliveredFrameNumber = state.frameNumber
+	state.hasPendingDelivery = false
+	return nil
+}
+
+// AbortDelivery closes this output after an uncertain Write or Flush. Previously
+// committed positions remain facts; the staged batch can never be committed or
+// resumed. The host keeps the original transport error as the failure cause.
+func (validation *WireStreamValidation) AbortDelivery() {
+	validation.deliveryAborted = true
+	if ranges := validation.deliveryRanges; ranges != nil {
+		*ranges = deliveryRangeStream{}
+	}
+	if state := validation.packageStream; state != nil {
+		// An aborted stream can expose its committed position for diagnostics,
+		// but cannot resume. Entity payloads, aliases and intervals have no owner.
+		*state = packageStreamValidation{retention: state.retention, contract: state.contract, target: state.target, direction: state.direction, limits: state.limits,
+			accepted: state.delivered, delivered: state.delivered, frameNumber: state.frameNumber, deliveredFrameNumber: state.deliveredFrameNumber,
+			identityBytes: len(state.delivered.responseID), hasRejectedFrame: true}
+		state.retention.commit(state.retainedItems(), state.retainedBytes())
+	}
+}
+
+// Release drops request-owned validation state when delivery or cancellation
+// settles. A released validator remains closed and cannot resume an output.
+func (validation *WireStreamValidation) Release() {
+	validation.AbortDelivery()
+	if state := validation.packageStream; state != nil {
+		state.retention.release()
+	}
+	validation.deliveryRanges = nil
+	validation.packageStream = nil
+	validation.decoder = nil
+	validation.replay = nil
+}
+
+func (runtime evaluationRuntime) readOutputStream(field string) (plannedOutput, error) {
+	if runtime.outputStream == nil {
+		return plannedOutput{}, fmt.Errorf("output stream metadata is not bound to this mapping and scope")
+	}
+	if runtime.outputStream.hasRejectedFrame {
+		return plannedOutput{}, operationMetadataError("/delivery", "rejected output cannot resume from a delivery position")
+	}
+	position := runtime.outputStream.delivered
+	switch field {
+	case "responseId":
+		if !position.hasStarted {
+			return plannedOutput{}, nil
+		}
+		return plannedLeaf(StringValue(position.responseID)), nil
+	case "sequence":
+		if !position.hasSequence {
+			return plannedOutput{}, nil
+		}
+		return plannedLeaf(coreInteger(position.sequence)), nil
+	case "started":
+		return plannedLeaf(coreBoolean(position.hasStarted)), nil
+	case "terminal":
+		return plannedLeaf(coreBoolean(position.isTerminal)), nil
+	}
+	panic("uncompiled output stream field")
+}

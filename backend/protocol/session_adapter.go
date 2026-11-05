@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"strconv"
 )
 
@@ -17,13 +18,24 @@ type SessionAdapter struct {
 	mediaSequence                      map[EventOrigin]int64
 }
 
+// Release discards translation and replay state after the owner records the
+// stopped session's response snapshots.
+func (adapter *SessionAdapter) Release() {
+	adapter.options.State.Release()
+	adapter.replay.Release()
+	adapter.mediaSequence = nil
+}
+
 // NewSessionAdapter constructs the shared offline/live duplex translation path.
 // The caller supplies its already-authorized model group and upstream scope.
-func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOperation Operation, binding Binding, scope Scope, model Value) (*SessionAdapter, error) {
+func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOperation Operation, binding Binding, options EvaluationContext, model Value) (*SessionAdapter, error) {
 	if err := CheckSessionCompatibility(clientOperation, upstreamOperation); err != nil {
 		return nil, err
 	}
-	options := EvaluationContext{Scope: scope, State: NewEvaluationState()}
+	if options.operation == nil {
+		return nil, operationMetadataError("/operation", "session execution requires bound operation metadata")
+	}
+	options.State = NewEvaluationState()
 	limits := ingress.limits
 	limits.StateItems = min(limits.StateItems, upstream.limits.StateItems)
 	limits.BufferBytes = min(limits.BufferBytes, upstream.limits.BufferBytes)
@@ -31,12 +43,22 @@ func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOpe
 	if err != nil {
 		return nil, err
 	}
+	if ingress.packagePlan != nil && upstream.packagePlan != nil {
+		if err := NewStreamBudget(limits).Bind(options.State, replay); err != nil {
+			options.State.Release()
+			replay.Release()
+			return nil, err
+		}
+	}
 	return &SessionAdapter{ingress: ingress, upstream: upstream, clientOperation: clientOperation, upstreamOperation: upstreamOperation, binding: binding, options: options, model: model, replay: replay, mediaSequence: map[EventOrigin]int64{}}, nil
 }
 
 // Convert retains binary bytes only for explicitly matched formats; JSON uses
 // the same compiled directions and model checks as offline verification.
 func (adapter *SessionAdapter) Convert(ctx context.Context, origin EventOrigin, frame SessionFrame) ([]SessionFrame, error) {
+	if adapter.replay.isReleased {
+		return nil, streamIssue(InvalidAssociation, "/session", "released session cannot resume")
+	}
 	if frame.IsBinary {
 		return adapter.convertMedia(origin, frame)
 	}
@@ -108,7 +130,11 @@ func (adapter *SessionAdapter) convertMedia(origin EventOrigin, frame SessionFra
 	}
 	adapter.mediaSequence[origin]++
 	sequence := adapter.mediaSequence[origin]
-	event := Event{SchemaVersion: SemanticSchemaVersion, Type: MediaReceived, Media: &Media{Type: format.Type, Format: format.Format, Sequence: Value{raw: strconv.FormatInt(sequence, 10)}, Reference: Resource{Kind: "transport_frame", ID: StringValue(string(origin) + ":" + strconv.FormatInt(sequence, 10)), Scope: adapter.options.Scope}}}
+	coreVersion := adapter.upstream.CoreVersion()
+	if origin == ClientEvent {
+		coreVersion = adapter.ingress.CoreVersion()
+	}
+	event := Event{SchemaVersion: coreVersion, Type: MediaReceived, Media: &Media{Type: format.Type, Format: format.Format, Sequence: Value{raw: strconv.FormatInt(sequence, 10)}, Reference: Resource{Kind: "transport_frame", ID: StringValue(string(origin) + ":" + strconv.FormatInt(sequence, 10)), Scope: adapter.options.Scope}}}
 	if err := adapter.checkModel(origin, event); err != nil {
 		return nil, err
 	}
@@ -119,7 +145,11 @@ func (adapter *SessionAdapter) convertMedia(origin EventOrigin, frame SessionFra
 }
 
 // Finish validates the observed session terminal instead of inventing one on EOF.
-func (adapter *SessionAdapter) Finish() error { return adapter.replay.Finish() }
+func (adapter *SessionAdapter) Finish() error {
+	return errors.Join(adapter.replay.Finish(),
+		adapter.ingress.finishInputEvents(context.Background(), DecodeClientEvent, adapter.options),
+		adapter.upstream.finishInputEvents(context.Background(), DecodeEvent, adapter.options))
+}
 
 // IsClosed reports an explicit close/failure, never a completed single response.
 func (adapter *SessionAdapter) IsClosed() bool { return adapter.replay.isClosed }
@@ -138,10 +168,13 @@ func (adapter *SessionAdapter) ResponseUsage() map[string]*Usage {
 // EncodeFailure exposes late conversion failures through the declared client
 // error event. A protocol without such an encoding still receives an error close.
 func (adapter *SessionAdapter) EncodeFailure(ctx context.Context, failure error) (SessionFrame, error) {
+	if adapter.replay.isReleased {
+		return SessionFrame{}, streamIssue(InvalidAssociation, "/session", "released session cannot resume")
+	}
 	errorValue, err := EncodeValue(map[string]string{"code": "protocol_session_error", "message": failure.Error()})
 	if err != nil {
 		return SessionFrame{}, err
 	}
-	frame, err := adapter.ingress.EncodeEvent(ctx, Event{SchemaVersion: SemanticSchemaVersion, Type: OperationFailed, Error: errorValue}, adapter.options)
+	frame, err := adapter.ingress.EncodeEvent(ctx, Event{SchemaVersion: adapter.ingress.CoreVersion(), Type: OperationFailed, Error: errorValue}, adapter.options)
 	return SessionFrame{Payload: frame.Bytes()}, err
 }

@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
 )
+
+const terminalEmitWait = 5 * time.Second
 
 // 事件类型：引擎只产出结构化事件，SSE 编码由 HTTP 层完成。
 const (
@@ -197,4 +200,26 @@ type AskQuestion struct {
 type AskOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
+}
+
+// emitEvent 非阻塞发送瞬态事件（缓冲满则丢弃——消息本身会持久化，丢增量无损）。
+func emitEvent(events chan<- Event, event Event) {
+	select {
+	case events <- event:
+	default:
+	}
+}
+
+// emitTerminal 发送终态事件：尽力送达（5s 窗口），随后 channel 将被关闭。
+func emitTerminal(ctx context.Context, events chan<- Event, event Event) {
+	select {
+	case events <- event:
+		return
+	default:
+	}
+	select {
+	case events <- event:
+	case <-ctx.Done():
+	case <-time.After(terminalEmitWait):
+	}
 }

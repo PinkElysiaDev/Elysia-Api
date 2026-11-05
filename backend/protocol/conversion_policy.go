@@ -11,6 +11,9 @@ import (
 
 type ConversionPhase string
 
+// ConversionPolicySchemaVersion identifies executable conversion policies.
+const ConversionPolicySchemaVersion = 2
+
 const (
 	ConversionIngress     ConversionPhase = "ingress"
 	ConversionRequest     ConversionPhase = "request"
@@ -50,6 +53,7 @@ type ConversionUsageSettings struct {
 type ConversionRule struct {
 	// Compiled execution hint; never part of an authored policy or its hash.
 	partitionRequest bool
+	preparedOption   *preparedConversionOption
 	ID               string          `json:"id"`
 	Order            int             `json:"order"`
 	Enabled          bool            `json:"enabled"`
@@ -84,6 +88,13 @@ type ConversionSelection struct {
 }
 
 type ConversionContext struct {
+	continuation        *ContinuationBinding
+	continuationEvent   *continuationEventObservation
+	requireContinuation bool
+	operation           *operationMetadata
+	frameUsage          *frameUsageObservation
+	selectedFrameUsage  *Usage
+	fieldObservations   map[string]fieldObservation
 	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
 	ResponseWire        bool                   `json:"-"`
 	ResponseModel       *ResponseModelOrigin   `json:"responseModel,omitempty"`
@@ -100,6 +111,9 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	streamDispositions    map[string]ConversionRule
+	recovery              map[ConversionPhase][]ConversionRule
+	needsFrameUsage       bool
 	phases                map[ConversionPhase][]ConversionRule
 	ownedPhases           map[ConversionPhase]bool
 	options               map[string]conversionOption
@@ -109,7 +123,7 @@ type CompiledConversion struct {
 	Hash                  string             `json:"hash"`
 	Origins               map[string]string  `json:"origins"`
 	RuleRevisions         map[string]string  `json:"ruleRevisions"`
-	expressions           map[string]*compiledExpression
+	expressions           map[string]*compiledOutputPlan
 	limits                Limits
 }
 
@@ -126,13 +140,13 @@ func (c *CompiledConversion) ForExecution() *CompiledConversion {
 // ResolveConversion applies complete rule replacement by stable ID; no implicit
 // concatenation or duplicate execution. Equal order in a phase is ambiguous.
 func ResolveConversion(layers ...ConversionPolicy) (*CompiledConversion, error) {
-	effective := ConversionPolicy{SchemaVersion: 1, ID: "resolved", Name: "Resolved", Mode: "compatible", Rules: []ConversionRule{}}
+	effective := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "resolved", Name: "Resolved", Mode: "compatible", Rules: []ConversionRule{}}
 	rules := map[string]ConversionRule{}
 	origins := map[string]string{}
 	revisions := map[string]string{}
 	for _, layer := range layers {
-		if layer.SchemaVersion != 1 {
-			return nil, fmt.Errorf("conversion schemaVersion must be 1")
+		if layer.SchemaVersion != ConversionPolicySchemaVersion {
+			return nil, fmt.Errorf("conversion schemaVersion must be %d", ConversionPolicySchemaVersion)
 		}
 		if layer.Mode != "" {
 			effective.Mode = layer.Mode
@@ -180,7 +194,7 @@ func ResolveConversion(layers ...ConversionPolicy) (*CompiledConversion, error) 
 }
 
 func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
-	if p.SchemaVersion != 1 || !definitionIdentifier.MatchString(p.ID) {
+	if p.SchemaVersion != ConversionPolicySchemaVersion || !definitionIdentifier.MatchString(p.ID) {
 		return nil, fmt.Errorf("invalid conversion policy schema or id")
 	}
 	if p.Mode == "" {
@@ -206,7 +220,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 	if s := p.Continuation; s != nil && (s.RetentionSeconds <= 0 || s.RetentionSeconds > 365*24*3600 || s.TurnsPerSession <= 0 || s.MaxBytes <= 0 || s.RecordBytes <= 0 || s.RecordBytes > limits.BufferBytes) {
 		return nil, fmt.Errorf("invalid continuation retention or limits")
 	}
-	c := &CompiledConversion{options: map[string]conversionOption{}, Policy: p, limits: limits, expressions: map[string]*compiledExpression{}, Origins: map[string]string{}}
+	c := &CompiledConversion{options: map[string]conversionOption{}, Policy: p, limits: limits, expressions: map[string]*compiledOutputPlan{}, Origins: map[string]string{}}
 	compiler := &expressionCompiler{limits: limits, references: map[string]Expression{}, resolving: map[string]bool{}, used: map[string]bool{}}
 	actions := map[string]conversionAction{}
 	for _, action := range conversionActionCatalog() {
@@ -235,7 +249,49 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if err := action.validate(r); err != nil {
 			return nil, err
 		}
-		if action.parseOption != nil {
+		if r.Action == "stream_disposition" {
+			option, err := compileStreamDispositionOption(r)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "control_event" {
+			option, err := compileControlEventOption(r)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "continuation_recovery" {
+			option, err := compileContinuationRecovery(r, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "auxiliary_event" {
+			option, err := compileAuxiliaryOption(r)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "core_controls" {
+			option, err := compileCoreControlOption(r, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "model_controls" {
+			option, err := compileModelControlOptions(r.Value, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "request_projection" {
+			option, err := compileRequestProjectionOption(r.Value, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if action.parseOption != nil {
 			c.options[r.ID] = action.parseOption(r.Value)
 		} else if action.codecValue != "" {
 			c.options[r.ID] = parseConversionOption[string](r.Value)
@@ -244,7 +300,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			if r.Phase == ConversionWire {
 				return nil, fmt.Errorf("node conditions require a semantic phase")
 			}
-			if !slices.Contains([]NodeKind{MessageNode, TextNode, ImageNode, AudioNode, VideoNode, DocumentNode, ReasoningNode, RefusalNode, ToolCallNode, ToolResultNode, OpaqueNode}, r.Match.NodeKind) {
+			if !slices.Contains([]NodeKind{MessageNode, TextNode, ImageNode, AudioNode, VideoNode, DocumentNode, ReasoningNode, RefusalNode, ToolCallNode, ToolResultNode, ServerToolNode, OpaqueNode}, r.Match.NodeKind) {
 				return nil, fmt.Errorf("unknown conversion node kind %q", r.Match.NodeKind)
 			}
 		}
@@ -268,7 +324,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			if r.Expression == nil {
 				return nil, fmt.Errorf("transform rule %s requires expression", r.ID)
 			}
-			e, err := compiler.compile(*r.Expression, "/rules/"+r.ID+"/expression", expressionScope{}, 1)
+			e, err := compiler.compilePlan(*r.Expression, "/rules/"+r.ID+"/expression", expressionScope{}, 1)
 			if err != nil {
 				return nil, err
 			}
@@ -291,24 +347,34 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if !rule.Enabled {
 			continue
 		}
+		if rule.Action == "stream_disposition" {
+			if c.streamDispositions == nil {
+				c.streamDispositions = make(map[string]ConversionRule)
+			}
+			c.streamDispositions[rule.ID] = rule
+			continue
+		}
 		c.phases[rule.Phase] = append(c.phases[rule.Phase], rule)
+		if rule.Action == "continuation_recovery" {
+			if c.recovery == nil {
+				c.recovery = map[ConversionPhase][]ConversionRule{}
+			}
+			c.recovery[rule.Phase] = append(c.recovery[rule.Phase], rule)
+		}
+		if rule.Action == "core_controls" && rule.Phase == ConversionEvent {
+			option := c.options[rule.ID].value.(coreControlOptions)
+			c.needsFrameUsage = c.needsFrameUsage || option.FrameUsage
+		}
 		c.ownedPhases[rule.Phase] = c.ownedPhases[rule.Phase] && state.accepts(rule.Phase, rule)
 	}
 	markRequestPartitions(c.phases[ConversionRequest])
+	compiler.releaseGraph()
 	return c, nil
 }
 
 func (m ConversionMatch) matches(ctx ConversionContext, input Value) bool {
-	for _, pair := range [][2]string{{m.SourceID, ctx.Source.DefinitionID}, {m.TargetID, ctx.Target.DefinitionID}, {m.SourceFamily, ctx.Source.Family}, {m.TargetFamily, ctx.Target.Family}, {m.SourceWire, ctx.Source.WireVersion}, {m.TargetWire, ctx.Target.WireVersion}, {m.Operation, ctx.Operation}, {string(m.Transport), string(ctx.Transport)}} {
-		if pair[0] != "" && pair[0] != pair[1] {
-			return false
-		}
-	}
-	if m.Model != "" {
-		ok, _ := path.Match(m.Model, ctx.Model)
-		if !ok {
-			return false
-		}
+	if !m.matchesRoute(ctx) {
+		return false
 	}
 	if m.Present != nil {
 		ptr, _ := parsePointer(m.Path)
@@ -320,11 +386,59 @@ func (m ConversionMatch) matches(ctx ConversionContext, input Value) bool {
 	return true
 }
 
+func (m ConversionMatch) matchesRoute(ctx ConversionContext) bool {
+	for _, pair := range [][2]string{{m.SourceID, ctx.Source.DefinitionID}, {m.TargetID, ctx.Target.DefinitionID}, {m.SourceFamily, ctx.Source.Family}, {m.TargetFamily, ctx.Target.Family}, {m.SourceWire, ctx.Source.WireVersion}, {m.TargetWire, ctx.Target.WireVersion}, {m.Operation, ctx.Operation}, {string(m.Transport), string(ctx.Transport)}} {
+		if pair[0] != "" && pair[0] != pair[1] {
+			return false
+		}
+	}
+	if m.Model != "" {
+		ok, _ := path.Match(m.Model, ctx.Model)
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (m ConversionMatch) matchesSemantic(ctx ConversionContext, document any) bool {
+	if !m.matchesRoute(ctx) {
+		return false
+	}
+	if m.Present == nil {
+		return true
+	}
+	if m.Path == "" {
+		return *m.Present
+	}
+	pointer, _ := parsePointer(m.Path)
+	var selected JSONOutput
+	var err error
+	switch value := document.(type) {
+	case *Request:
+		selected, err = readCoreRequestOutput(value, pointer, nil)
+	case *Response:
+		selected, err = readCoreResponseOutput(value, pointer, nil)
+	case *Event:
+		selected, err = readCoreEventOutput(value, pointer, nil)
+	case *Node:
+		selected, err = readCoreNode(*value, pointer, nil)
+	default:
+		panic("presence requires a semantic document")
+	}
+	// Traversal errors mean no match, including for Present=false, just as in
+	// the wire matcher. Explicit null remains a present value.
+	return err == nil && !selected.IsZero() == *m.Present
+}
+
 func (m ConversionMatch) MatchesContext(ctx ConversionContext) bool { return m.matches(ctx, Value{}) }
 
 func (c *CompiledConversion) SignatureProjectionEnabled(phase ConversionPhase, route ConversionContext) bool {
 	if c == nil {
 		return false
+	}
+	if c.HasContinuationRecovery(phase, route) {
+		return true
 	}
 	for _, r := range c.Policy.Rules {
 		match := r.Match
@@ -402,8 +516,10 @@ func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route Conver
 }
 
 func (c *CompiledConversion) WithVerificationContext(route ConversionContext) *CompiledConversion {
+	route.frameUsage = nil
 	// Observed response fields belong to a single attempt, never a binding proof.
 	route.ResponseModel = nil
+	route.fieldObservations = nil
 	if route.Reasoning != nil {
 		capability := *route.Reasoning
 		capability.Levels = slices.Clone(capability.Levels)
@@ -422,6 +538,9 @@ func (c *CompiledConversion) ContextHash() string {
 	value, _ := EncodeValue(c.VerificationContext)
 	return hashValue(value)
 }
+
+// VerificationRoute binds model constraints to the fixture's wire direction.
+// A stream binding's saved transport cannot turn its JSON adapter check into SSE.
 func (c *CompiledConversion) VerificationRoute(source, target Identity, transport Transport) ConversionContext {
 	created, _ := EncodeValue(1)
 	route := ConversionContext{Source: source, Target: target, Transport: transport, Delivery: &DeliveryState{ID: StringValue("response_verification"), Created: created}}
@@ -430,7 +549,6 @@ func (c *CompiledConversion) VerificationRoute(source, target Identity, transpor
 		route.InterleavedThinking = c.VerificationContext.InterleavedThinking
 		route.Model = c.VerificationContext.Model
 		route.Operation = c.VerificationContext.Operation
-		route.Transport = c.VerificationContext.Transport
 	}
 	return route
 }

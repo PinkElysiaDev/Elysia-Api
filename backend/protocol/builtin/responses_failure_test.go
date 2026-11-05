@@ -8,10 +8,7 @@ import (
 )
 
 func TestResponsesErrorEnvelopeProjection(t *testing.T) {
-	for _, body := range []string{
-		`{"type":"error","sequence_number":51,"error":{"type":"api_error","message":"provider failed","code":null,"param":null}}`,
-		`{"type":"error","sequence_number":51,"message":"provider failed","code":null,"param":null}`,
-	} {
+	for _, body := range responsesErrorEnvelopes() {
 		from := shippedProjectionProtocol(t, Responses)
 		frame, err := from.DecodeFrame(t.Context(), testValue(t, body), p.EvaluationContext{State: p.NewEvaluationState()})
 		if err != nil {
@@ -43,17 +40,16 @@ func TestResponsesErrorEnvelopeProjection(t *testing.T) {
 	}
 }
 
+func responsesErrorEnvelopes() []string {
+	return []string{
+		`{"type":"error","sequence_number":51,"error":{"type":"api_error","message":"provider failed","code":null,"param":null}}`,
+		`{"type":"error","sequence_number":51,"message":"provider failed","code":null,"param":null}`,
+	}
+}
+
 func TestResponsesErrorEnvelopeValidation(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
-	for _, test := range []struct{ body, path string }{
-		{`{"type":"error","sequence_number":1,"error":{"type":"api_error"}}`, "/error/message"},
-		{`{"type":"error","sequence_number":1,"error":{"type":"api_error","message":42}}`, "/error/message"},
-		{`{"type":"error","sequence_number":1,"error":null}`, "/error"},
-		{`{"type":"error","sequence_number":1,"message":null}`, "/message"},
-		{`{"type":"error","sequence_number":1,"message":"bad","code":42}`, "/code"},
-		{`{"type":"error","sequence_number":1,"message":"bad","param":[]}`, "/param"},
-		{`{"type":"error","sequence_number":1,"message":"outer","error":{"type":"api_error","message":"inner"}}`, "/message"},
-	} {
+	for _, test := range responsesErrorRejections() {
 		v := testValue(t, test.body)
 		if _, err := c.DecodeFrame(t.Context(), v, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil || !strings.Contains(err.Error(), test.path) {
 			t.Fatal(test.body, "decode", err)
@@ -73,5 +69,17 @@ func TestResponsesErrorEnvelopeValidation(t *testing.T) {
 		if _, err := shippedProjectionProtocol(t, Anthropic).EncodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
 			t.Fatal("unknown error extension disappeared", extra)
 		}
+	}
+}
+
+func responsesErrorRejections() []struct{ body, path string } {
+	return []struct{ body, path string }{
+		{`{"type":"error","sequence_number":1,"error":{"type":"api_error"}}`, "/error/message"},
+		{`{"type":"error","sequence_number":1,"error":{"type":"api_error","message":42}}`, "/error/message"},
+		{`{"type":"error","sequence_number":1,"error":null}`, "/error"},
+		{`{"type":"error","sequence_number":1,"message":null}`, "/message"},
+		{`{"type":"error","sequence_number":1,"message":"bad","code":42}`, "/code"},
+		{`{"type":"error","sequence_number":1,"message":"bad","param":[]}`, "/param"},
+		{`{"type":"error","sequence_number":1,"message":"outer","error":{"type":"api_error","message":"inner"}}`, "/message"},
 	}
 }

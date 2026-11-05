@@ -90,15 +90,15 @@ func (g *generator) emit(id int, t reflect.Type) {
 		g.line("if value == nil {return meter.scalar(4)}\nif !meter.open(){return false}\ncount:=0\nfor key, child:=range value { if count>0 {meter.bytes++};count++;meter.bytes++;if !meter.scalar(jsonStringBytes(string(key))) || !meter.measure%d(child) {return false} }\nreturn meter.close()", g.id(t.Elem()))
 	case reflect.Struct:
 		g.line("if !meter.open(){return false}\ncount:=0")
-		for i := range t.NumField() {
-			f := t.Field(i)
-			if !f.IsExported() {
-				continue
+		var fields []reflect.StructField
+		for index := range t.NumField() {
+			field := t.Field(index)
+			if field.IsExported() && strings.Split(field.Tag.Get("json"), ",")[0] != "-" {
+				fields = append(fields, field)
 			}
+		}
+		for index, f := range fields {
 			tags := strings.Split(f.Tag.Get("json"), ",")
-			if tags[0] == "-" {
-				continue
-			}
 			if tags[0] == "" || f.Anonymous {
 				panic("unsupported field: " + t.String() + "." + f.Name)
 			}
@@ -139,7 +139,11 @@ func (g *generator) emit(id int, t reflect.Type) {
 			if key != `"`+tags[0]+`"` || strings.ContainsAny(tags[0], "<>&") {
 				panic("non-simple JSON field name: " + tags[0])
 			}
-			g.line("if %s {if count>0 {meter.bytes++};count++;meter.bytes++;if !meter.scalar(%d) || !meter.measure%d(value.%s){return false}}", condition, len(key), g.id(f.Type), f.Name)
+			advance := ""
+			if index+1 < len(fields) {
+				advance = "count++;"
+			}
+			g.line("if %s {if count>0 {meter.bytes++};%smeter.bytes++;if !meter.scalar(%d) || !meter.measure%d(value.%s){return false}}", condition, advance, len(key), g.id(f.Type), f.Name)
 		}
 		g.line("return meter.close()")
 	default:

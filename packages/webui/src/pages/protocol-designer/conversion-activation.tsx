@@ -1,5 +1,5 @@
 import type { EnabledProtocol } from '@/lib/protocol-v2'
-import type { ConversionMatch, ConversionRecord } from '@/lib/conversion-policy'
+import { CONVERSION_POLICY_VERSION, type ConversionMatch, type ConversionRecord } from '@/lib/conversion-policy'
 import { Button } from '@/components/ui/button'
 import { field } from './conversion-fields'
 
@@ -27,6 +27,8 @@ export function ConversionActivation({
   busy,
   onActivate,
 }: Props) {
+  const selected = revisions.find((entry) => entry.hash === revision)
+  const isCurrentVersion = selected?.policy.schemaVersion === CONVERSION_POLICY_VERSION
   const protocolSelect = (label: string, key: 'sourceId' | 'targetId') => (
     <label className="space-y-1.5 text-xs font-medium text-foreground">
       <span>{label}</span>
@@ -64,18 +66,19 @@ export function ConversionActivation({
               <option key={r.hash} value={r.hash}>
                 {r.hash.slice(0, 12)}
                 {saved?.activeHash === r.hash ? '（当前）' : ''}
+                {r.policy.schemaVersion !== CONVERSION_POLICY_VERSION ? '（旧格式，仅供查看）' : ''}
               </option>
             ))}
           </select>
         </label>
       </div>
-      <Button variant="primary" disabled={busy || !saved || !revision} onClick={onActivate}>
+      <Button variant="primary" disabled={busy || !saved || !isCurrentVersion} onClick={onActivate}>
         启用或回滚至此修订
       </Button>
       <details className="border-t border-border/40 pt-3.5">
         <summary className="cursor-pointer text-xs font-medium text-foreground">验证详情</summary>
         <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--code-bg)] p-3 font-mono text-xs">
-          {JSON.stringify(revisions.find((r) => r.hash === revision)?.reports ?? [], null, 2)}
+          {JSON.stringify(selected?.reports ?? [], null, 2)}
         </pre>
       </details>
     </section>

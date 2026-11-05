@@ -27,7 +27,11 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 	}
 	defer s.protocolUses.acquire(candidate.binding.ProtocolID, candidate.compiled.Hash())()
 	for attempt := 0; ; attempt++ {
-		result, err := s.collectProtocolGenerationAttempt(ctx, candidate, request, record, onText)
+		options, err := generationOperationContext(record)
+		if err != nil {
+			return nil, err
+		}
+		result, err := s.collectProtocolGenerationAttempt(ctx, candidate, request, record, onText, options)
 		if err == nil || ctx.Err() != nil || attempt == len(generationRetryDelays) || !canRetryGeneration(err) {
 			return result, err
 		}
@@ -45,7 +49,16 @@ func (s *Server) collectProtocolGeneration(ctx context.Context, candidate gatewa
 	}
 }
 
-func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string)) (*protocol.Response, error) {
+// Bind a real generation attempt before any preparation that executes Mapping.
+func generationOperationContext(record *usageRecord) (protocol.EvaluationContext, error) {
+	if record != nil {
+		return (protocol.EvaluationContext{}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	}
+	started := time.Now()
+	return (protocol.EvaluationContext{}).WithOperation(usageRequestID(started), started.Unix())
+}
+
+func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate gatewayCandidate, request *protocol.Request, record *usageRecord, onText func(protocol.NodeKind, string), options protocol.EvaluationContext) (*protocol.Response, error) {
 	if record != nil {
 		record.UpstreamHTTPStatus = 0
 		record.TransportFailure = nil
@@ -63,22 +76,28 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if record != nil {
 		s.estimateGatewayAttempt(record, request)
 	}
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, State: protocol.NewEvaluationState(), Diagnostics: &protocol.DiagnosticSink{}}
+	options.InterleavedThinking, options.Scope = protocol.OperationInterleavedThinking(candidate.operation), candidate.scope
+	options.State, options.Diagnostics = protocol.NewEvaluationState(), &protocol.DiagnosticSink{}
+	options.ClientOutput = request.ClientOutput
+	options = options.WithConversion(candidate.conversion, candidate.conversionContext(candidate.compiled, true).WithOperation(options))
+	defer options.State.Release()
 	defer func() {
 		if record != nil {
 			record.appendConversionIssues(options.Diagnostics.Issues())
 		}
 	}()
-	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
+	wire, err := candidate.compiled.EncodeRequestValue(ctx, request, options)
 	if err != nil {
 		return nil, err
 	}
-	if err := candidate.compiled.CheckOperationInput(ctx, candidate.operationName, body); err != nil {
+	wire, err = candidate.finalizeRequestWire(ctx, wire, candidate.conversionContext(candidate.compiled, false).WithOperation(options), options)
+	if err != nil {
 		return nil, err
 	}
 	if record != nil {
-		record.OutgoingBody = record.sanitizeBody(body)
+		record.OutgoingBody = record.sanitizeBodyText(wire.JSONString())
 	}
+	body := wire.Bytes()
 	outboundBody := body
 	response, err := s.protocolTransport.SendProtocolRequest(ctx, candidate.model.BaseURL, candidate.model.APIKey, candidate.operation, body, map[string]string{"model": candidate.model.Identifier()})
 	if err != nil {
@@ -92,7 +111,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, limits.BufferBytes)
 		if err != nil {
-			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
+			return nil, &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		if record != nil {
 			record.ProviderResponse = record.sanitizeBody(body)
@@ -120,12 +139,14 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 			return nil, err
 		}
 		if record != nil {
-			if err := observeHostedTools(record, candidate.compiled, body); err != nil {
-				return nil, err
+			if candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
+				if err := observeLegacyHostedTools(record, candidate.compiled, body); err != nil {
+					return nil, err
+				}
 			}
 			updateRecordProtocolUsage(record, result.Usage)
 		}
-		route, err := candidate.conversionContext(candidate.compiled, true).WithResponseModelOrigin(candidate.compiled, candidate.compiled, outboundBody, body)
+		route, err := candidate.conversionContext(candidate.compiled, true).WithOperation(options).WithResponseModelOrigin(candidate.compiled, candidate.compiled, outboundBody, body)
 		if err != nil {
 			return nil, err
 		}
@@ -133,15 +154,22 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		if err != nil {
 			return nil, err
 		}
+		if err := candidate.compiled.ValidateResponseReferences(ctx, result); err != nil {
+			return nil, err
+		}
 		return result, errors.Join(protocol.CheckGenerationOutcome(result), protocol.IssuesError(protocol.CheckModelResponse(result, candidate.compiled, candidate.binding, candidate.scope)))
 	}
-	target := protocol.Target{Codec: candidate.compiled.Codec(protocol.DecodeEvent), Protocol: candidate.compiled.Identity(), Direction: protocol.EncodeEvent, Scope: candidate.scope, Capabilities: candidate.binding.Capabilities}
+	target := candidate.sourceEventTarget()
 	collector, err := protocol.NewResponseCollector(target, limits)
 	if err != nil {
 		return nil, err
 	}
+	defer collector.Release()
 	source, err := newProtocolSourceStream(ctx, candidate, candidate.compiled, candidate.conversionContext(candidate.compiled, true), options, record, func(decoded *protocol.EventFrame, _ protocol.Object) error {
 		for _, event := range decoded.Events {
+			if err := candidate.compiled.ValidateEventReferences(ctx, event, options); err != nil {
+				return err
+			}
 			kind, delta, err := collector.Consume(event)
 			if err != nil {
 				return err
@@ -154,6 +182,13 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	})
 	if err != nil {
 		return nil, err
+	}
+	if candidate.compiled.CoreVersion() == protocol.ProtocolCoreVersion {
+		budget := protocol.NewStreamBudget(limits)
+		if err := budget.Bind(options.State, source.wireValidation, source.replay, collector); err != nil {
+			source.release()
+			return nil, err
+		}
 	}
 	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, limits.BufferBytes, source.Push)
 	err = source.Finish(err)

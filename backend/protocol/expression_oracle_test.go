@@ -2,50 +2,17 @@ package protocol
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
 
-type evaluation struct {
-	ctx                        context.Context
-	input, item, root, context Value
-	budget                     *evaluationBudget
-}
-
-type evaluationBudget struct {
-	stepLimit int
-	steps     int
-	limits    Limits
-}
-
-// A compiled identity leaf uses one step from a fresh positive budget. Keep
-// only its fallible checks, including the expression's original error location.
-func (expression *compiledExpression) checkIdentityAfter(ctx context.Context, bytes int, limits Limits) error {
-	if expression == nil {
-		return nil
-	}
-	if err := ctx.Err(); err != nil {
-		return locateMappingError(expression.path, err)
-	}
-	if bytes > limits.BufferBytes {
-		return locateMappingError(expression.path, resourceFailure("evaluation", "bytes", limits.BufferBytes, bytes))
-	}
-	return nil
-}
-
+// Reference evaluator retained from 6e7d3434 for byte, budget and error-order
+// differentials. Production builds contain only the compiled output-plan backend.
 func (expression *compiledExpression) evaluate(state evaluation) (value Value, err error) {
 	defer func() { err = locateMappingError(expression.path, err) }()
-	state.budget.steps++
-	stepLimit := state.budget.stepLimit
-	if stepLimit == 0 {
-		stepLimit = state.budget.limits.Nodes
-	}
-	if state.budget.steps > stepLimit {
-		return Value{}, resourceFailure("evaluation", "steps", stepLimit, state.budget.steps)
-	}
-	if err := state.ctx.Err(); err != nil {
+	if err := state.advance(); err != nil {
 		return Value{}, err
 	}
 	defer func() {
@@ -54,12 +21,22 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 			value = Value{}
 		}
 	}()
+	return expression.evaluateValue(state)
+}
+
+func (expression *compiledExpression) evaluateValue(state evaluation) (Value, error) {
 	switch expression.op {
 	case "omit":
 		return Value{}, nil
 	case "literal":
 		return expression.value, nil
 	case "read":
+		if output, handled, err := expression.readOutput(state); handled {
+			if err != nil || output.IsZero() {
+				return Value{}, err
+			}
+			return output.Encode(context.WithoutCancel(state.ctx))
+		}
 		root := state.input
 		switch expression.from {
 		case "root":
@@ -69,7 +46,7 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 		case "context":
 			root = state.context
 		}
-		value, err := readValuePointer(root, expression.pointer)
+		value, err := readValuePointerWithin(root, expression.pointer, state.valueReader)
 		if err != nil {
 			return Value{}, fmt.Errorf("%s: %w", expression.path, err)
 		}
@@ -94,6 +71,16 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 			}
 		}
 		return EncodeValue(object)
+	case "project":
+		source, err := expression.source.evaluate(state)
+		if err != nil {
+			return Value{}, err
+		}
+		output, err := expression.projectObjectOracle(JSONLeaf(source))
+		if err != nil {
+			return Value{}, err
+		}
+		return output.output.Encode(context.WithoutCancel(state.ctx))
 	case "array", "concat", "join", "merge", "equal", "all", "any":
 		return expression.evaluateOperands(state)
 	case "map", "flatmap", "filter":
@@ -138,6 +125,26 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 		return Value{}, err
 	}
 	switch expression.op {
+	case "keys":
+		fields, err := source.ReadObject()
+		if err != nil {
+			return Value{}, err
+		}
+		keys := sortedKeys(fields)
+		values := make([]Value, 0, len(keys))
+		bytes := 2
+		for index, key := range keys {
+			value := StringValue(key)
+			if index != 0 {
+				bytes++
+			}
+			bytes += value.Len()
+			if bytes > state.budget.limits.BufferBytes {
+				return Value{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
+			}
+			values = append(values, value)
+		}
+		return EncodeValue(values)
 	case "exists":
 		return EncodeValue(!source.IsZero())
 	case "present":
@@ -175,6 +182,9 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 		}
 		mapped, exists := expression.values[key]
 		if !exists {
+			if expression.otherwise != nil {
+				return expression.otherwise.evaluate(state)
+			}
 			return Value{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return mapped, nil
@@ -202,6 +212,29 @@ func (expression *compiledExpression) evaluate(state evaluation) (value Value, e
 		return expression.evaluateKeyedArray(source)
 	}
 	return Value{}, fmt.Errorf("%s: unimplemented compiled operation", expression.path)
+}
+
+// Freeze projection before selection pushdown: normalize every raw member first.
+// Sharing the production selector would hide dropped-field regressions.
+func (expression *compiledExpression) projectObjectOracle(source JSONOutput) (plannedOutput, error) {
+	fields, err := plannedObjectFields(source)
+	if err != nil {
+		return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
+	}
+	isInclude := expression.policy == "include"
+	capacity := len(fields)
+	if isInclude {
+		capacity = min(capacity, len(expression.keys))
+	}
+	node := &jsonOutputNode{object: true, fields: make([]jsonOutputField, 0, capacity)}
+	for _, field := range fields {
+		_, isSelected := slices.BinarySearch(expression.keys, field.key)
+		if isSelected == isInclude {
+			node.fields = append(node.fields, field)
+		}
+	}
+	output := JSONOutput{node: node}
+	return plannedOutput{output, normalizedOutputBytes(output)}, nil
 }
 
 func (expression *compiledExpression) evaluateArray(state evaluation) (Value, error) {
@@ -407,92 +440,4 @@ func (expression *compiledExpression) evaluateKeyedArray(source Value) (Value, e
 		result[index] = items[sourceIndex]
 	}
 	return EncodeValue(result)
-}
-
-func readArray(value Value) ([]Value, error) {
-	if valueType(value) != ArrayType {
-		return nil, fmt.Errorf("expected an array")
-	}
-	var items []Value
-	err := value.Decode(&items)
-	return items, err
-}
-
-func readBoolean(value Value) (bool, error) {
-	if valueType(value) != BooleanType {
-		return false, fmt.Errorf("expected a boolean")
-	}
-	var result bool
-	err := value.Decode(&result)
-	return result, err
-}
-
-func readString(value Value) (string, error) {
-	if valueType(value) != StringType {
-		return "", fmt.Errorf("expected a string")
-	}
-	var result string
-	err := value.Decode(&result)
-	return result, err
-}
-
-func castValue(value Value, target JSONType) (Value, error) {
-	kind := valueType(value)
-	if value.IsZero() || value.IsNull() {
-		return Value{}, fmt.Errorf("cannot cast absent or null scalar")
-	}
-	if kind == target || (kind == IntegerType && target == NumberType) {
-		return value, nil
-	}
-	if target == StringType && (kind == NumberType || kind == IntegerType || kind == BooleanType) {
-		return StringValue(value.raw), nil
-	}
-	if kind == StringType {
-		text, _ := readString(value)
-		if target == BooleanType {
-			if text == "true" {
-				return EncodeValue(true)
-			}
-			if text == "false" {
-				return EncodeValue(false)
-			}
-			return Value{}, fmt.Errorf("boolean strings must be true or false")
-		}
-		parsed, err := ParseValue([]byte(text))
-		if err != nil {
-			return Value{}, err
-		}
-		actual := valueType(parsed)
-		if (target == IntegerType && actual == IntegerType) || (target == NumberType && (actual == IntegerType || actual == NumberType)) {
-			return parsed, nil
-		}
-	}
-	return Value{}, fmt.Errorf("unsupported or lossy scalar conversion to %s", target)
-}
-
-func compareValues(left, right Value) (int, error) {
-	var a, b any
-	if err := left.Decode(&a); err != nil {
-		return 0, err
-	}
-	if err := right.Decode(&b); err != nil {
-		return 0, err
-	}
-	switch x := a.(type) {
-	case string:
-		y, ok := b.(string)
-		if ok {
-			return strings.Compare(x, y), nil
-		}
-	case json.Number:
-		y, ok := b.(json.Number)
-		if ok {
-			first, firstOK := exactNumber(x.String())
-			second, secondOK := exactNumber(y.String())
-			if firstOK && secondOK {
-				return first.Cmp(second), nil
-			}
-		}
-	}
-	return 0, fmt.Errorf("sort keys must have matching string or number types")
 }

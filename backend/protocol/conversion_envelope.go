@@ -174,7 +174,7 @@ func (c *CompiledConversion) envelopeUsageObject(phase ConversionPhase, document
 		return false, err
 	}
 	if event.Response == nil {
-		event.Response = &Response{SchemaVersion: SemanticSchemaVersion}
+		event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion)}
 	}
 	event.Response.Usage = usage
 	return true, nil

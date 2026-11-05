@@ -15,12 +15,30 @@ type SequenceTracker struct {
 	seen    map[int64][sha256.Size]byte
 	limit   int
 	next    int
+	count   int
 	last    int64
 }
 
 // NewSequenceTracker constructs a window using validated stream limits.
 func NewSequenceTracker(limits Limits) *SequenceTracker {
 	return &SequenceTracker{limit: limits.StateItems, seen: make(map[int64][sha256.Size]byte)}
+}
+
+func (tracker *SequenceTracker) trim(limit int) {
+	if limit >= tracker.limit {
+		return
+	}
+	for tracker.count > limit {
+		tracker.dropOldest()
+	}
+	tracker.limit = limit
+}
+
+func (tracker *SequenceTracker) dropOldest() {
+	delete(tracker.seen, tracker.records[tracker.next].sequence)
+	tracker.records[tracker.next] = sequenceRecord{}
+	tracker.next = (tracker.next + 1) % len(tracker.records)
+	tracker.count--
 }
 
 // Accept returns false for a known identical event. Payload must be canonical
@@ -33,19 +51,21 @@ func (tracker *SequenceTracker) Accept(sequence int64, payload []byte) (bool, er
 		}
 		return false, streamIssue(UpstreamContractViolation, "sequence", "sequence number was reused with different event content")
 	}
-	if len(tracker.records) > 0 && sequence <= tracker.last {
+	if tracker.count > 0 && sequence <= tracker.last {
 		return false, streamIssue(UpstreamContractViolation, "sequence", "event sequence moved backwards or exceeded the replay window")
 	}
 	tracker.last = sequence
-	tracker.seen[sequence] = digest
 	record := sequenceRecord{sequence: sequence, digest: digest}
-	if len(tracker.records) < tracker.limit {
+	if tracker.count == tracker.limit {
+		tracker.dropOldest()
+	}
+	tracker.seen[sequence] = digest
+	if tracker.count == len(tracker.records) {
 		tracker.records = append(tracker.records, record)
 	} else {
-		delete(tracker.seen, tracker.records[tracker.next].sequence)
-		tracker.records[tracker.next] = record
-		tracker.next = (tracker.next + 1) % tracker.limit
+		tracker.records[(tracker.next+tracker.count)%len(tracker.records)] = record
 	}
+	tracker.count++
 	return true, nil
 }
 

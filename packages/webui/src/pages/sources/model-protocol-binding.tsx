@@ -2,7 +2,8 @@ import { BindingConversionEditor } from './binding-conversion'
 import { useEffect, useRef, useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { Button } from '@/components/ui/button'
-import { protocolAPI, type EnabledProtocol, type ProtocolBindingEntry } from '@/lib/protocol-v2'
+import { ProtocolDocument } from '@/lib/protocol-document'
+import { protocolAPI, protocolIdentityPrefix, type EnabledProtocol, type ProtocolBindingEntry } from '@/lib/protocol-v2'
 import type { Model } from '@/lib/types'
 
 /** Explicit model binding remains independent of source selection and catalog refresh. */
@@ -47,9 +48,10 @@ function ModelBindingForm({ model, disabled }: { model: Model; disabled: boolean
         if (!target) throw new Error('请选择当前已启用的协议')
         const revision = (await protocolAPI.revisions(target.id)).find((item) => item.hash === target.revision)
         if (!revision) throw new Error('协议已变化，请重新打开模型设置')
-        const definition = JSON.parse(revision.definition) as { operations: Record<string, { kind: string; transport: string }> }
+        const document = new ProtocolDocument(revision.definition)
+        const operations = JSON.parse(document.read(`${protocolIdentityPrefix(document)}/operations`)!) as Record<string, { kind: string; transport: string }>
         const capabilities = Object.fromEntries(Object.entries(target.capabilities).filter(([key, supported]) => supported && (model.toolsCapable || !key.startsWith('tools.')) && (model.visionCapable || !['images', 'audio', 'video'].includes(key))))
-        entry.binding = { protocolId: target.id, revisionHash: target.revision, capabilities, transports: [...new Set(Object.values(definition.operations).filter((operation) => operation.kind === 'generate').map((operation) => operation.transport))] }
+        entry.binding = { protocolId: target.id, revisionHash: target.revision, capabilities, transports: [...new Set(Object.values(operations).filter((operation) => operation.kind === 'generate').map((operation) => operation.transport))] }
       }
       if (generation.current !== requestId) return
       const saved = await protocolAPI.saveBinding(entry)

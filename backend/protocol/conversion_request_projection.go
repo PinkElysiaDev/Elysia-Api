@@ -1,16 +1,32 @@
 package protocol
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type requestProjectionOptions struct {
-	SourceCodec string `json:"sourceCodec,omitempty"`
-	TargetCodec string `json:"targetCodec"`
+	SourceCodec string                 `json:"sourceCodec,omitempty"`
+	TargetCodec string                 `json:"targetCodec,omitempty"`
+	Core        *requestProjectionSpec `json:"core,omitempty"`
+	corePlan    *compiledRequestProjection
 }
 
 // Hint validation runs before authored rules and projection can remove fields.
 func validateRequestHints(req *Request) error {
+	if req.SchemaVersion != ProtocolCoreVersion {
+		if err := validateLegacyTrackingHints(req.Parameters); err != nil {
+			return err
+		}
+	}
+	return validateRequestIntentShapes(req)
+}
+
+// Legacy codecs still interpret tracking parameters in Go. Core v2 mappings
+// declare these external shapes in Spec and guard their own projections.
+func validateLegacyTrackingHints(parameters Object) error {
 	for _, key := range []string{"metadata", "anthropic_metadata", "user"} {
-		value := req.Parameters[key]
+		value := parameters[key]
 		if value.IsZero() || value.IsNull() {
 			continue
 		}
@@ -39,6 +55,10 @@ func validateRequestHints(req *Request) error {
 			}
 		}
 	}
+	return nil
+}
+
+func validateRequestIntentShapes(req *Request) error {
 	for i, tool := range req.Tools {
 		if err := ValidateToolStreamOption(tool.Options["eager_input_streaming"], fmt.Sprintf("/tools/%d/options/eager_input_streaming", i)); err != nil {
 			return err
@@ -48,6 +68,9 @@ func validateRequestHints(req *Request) error {
 			if value.Decode(&strict) != nil {
 				return streamIssue(InvalidInput, fmt.Sprintf("/tools/%d/options/strict", i), "tool strict must be a boolean or null")
 			}
+		}
+		if value := tool.Options["strictDefault"]; !value.IsZero() && !value.IsString("automatic") && !value.IsString("disabled") {
+			return streamIssue(InvalidInput, fmt.Sprintf("/tools/%d/options/strictDefault", i), "tool strictness default must be automatic or disabled")
 		}
 	}
 	return requestCaches(req, func(intents *[]CacheIntent, at string) error {
@@ -122,10 +145,13 @@ func requestCaches(req *Request, visit func(*[]CacheIntent, string) error) error
 	return walk(req.Content, "/content")
 }
 
-func (c *CompiledConversion) requestProjection(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
+func (c *CompiledConversion) requestProjection(ctx context.Context, req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
 	opts, optionErr := readConversionOption[requestProjectionOptions](c, rule)
 	if err := optionErr; err != nil {
 		return err
+	}
+	if opts.Core != nil {
+		return c.projectRequestIntents(ctx, req, route, rule, opts.corePlan, sink)
 	}
 	codec := opts.TargetCodec
 	openAI := codec == "openai-chat" || codec == "responses"
@@ -227,5 +253,45 @@ func (c *CompiledConversion) requestProjection(req *Request, route ConversionCon
 			delete(tool.Options, "strict")
 		}
 	}
+	if opts.SourceCodec == "anthropic" && codec == "gemini" {
+		c.normalizeAnthropicThinkingRetention(req, route, rule, sink)
+	}
 	return nil
+}
+
+func (c *CompiledConversion) normalizeAnthropicThinkingRetention(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) {
+	const key = "wire:claude"
+	value := req.Parameters[key]
+	if value.IsZero() {
+		return
+	}
+	reader := requestValueReader(value)
+	fields, _ := value.readObjectWithin(reader)
+	management, _ := fields["context_management"].readObjectWithin(reader)
+	if len(management) != 1 {
+		return
+	}
+	edits, _ := management["edits"].readArrayWithin(reader)
+	if len(edits) != 1 {
+		return
+	}
+	edit, _ := edits[0].readObjectWithin(reader)
+	if len(edit) != 2 || !edit["type"].IsString("clear_thinking_20251015") {
+		return
+	}
+	if keep := edit["keep"]; !keep.IsString("all") {
+		setting, _ := keep.readObjectWithin(reader)
+		if len(setting) != 1 || !setting["type"].IsString("all") {
+			return
+		}
+	}
+	// Gemini sends the supplied history without this clearing control. Unknown
+	// edits stay native so the encoder still rejects unverified context changes.
+	delete(fields, "context_management")
+	if len(fields) == 0 {
+		delete(req.Parameters, key)
+	} else {
+		req.Parameters[key], _ = EncodeValue(fields)
+	}
+	c.normalized(rule, route, "/"+key+"/context_management", "keep-all thinking mapped to Gemini's supplied-history behavior; no history cleared", sink)
 }

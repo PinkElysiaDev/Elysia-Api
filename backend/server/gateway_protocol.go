@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/common/utils"
 
 	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
@@ -40,28 +38,25 @@ func gatewayIssue(identity protocol.Identity, code protocol.IssueCode, path, rea
 }
 
 func (s *Server) gatewayProtocol(ctx context.Context, c *app.RequestContext) {
-	if !s.requireProtocolRuntime(ctx, c) {
+	selection, ok := s.requireIngress(c)
+	if !ok {
 		return
 	}
-	service, err := s.protocolService()
-	if err != nil {
-		respondProtocolError(ctx, c, err)
-		return
-	}
-	view := service.View()
-	ingress, exists := view.Pin(c.Param("protocolId"))
-	if !exists {
-		respondFail(ctx, c, http.StatusNotFound, "inactive_protocol", "protocol has no verified active revision")
+	service, view, ingress := selection.service, selection.view, selection.compiled
+	if s.serveTokenCounting(ctx, c, selection) {
 		return
 	}
 	if s.serveGatewayJobControl(ctx, c, service, ingress) {
 		return
 	}
-	path := "/" + strings.TrimPrefix(c.Param("path"), "/")
+	path := selection.path
+	if ingress.CoreVersion() == protocol.ProtocolCoreVersion && s.serveModelCatalog(ctx, c, ingress, path) {
+		return
+	}
 	if operation, exists := gatewaySessionOperation(ingress, string(c.Method()), path); exists {
 		handshake, err := readSessionHandshake(c, operation)
 		if err != nil {
-			respondProtocolError(ctx, c, err)
+			s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Message: err.Error()})
 			return
 		}
 		s.serveGatewaySession(ctx, c, view, ingress, path, handshake.Bytes())
@@ -199,7 +194,10 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	request := prepared.Clone()
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options := protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}
+	options, err := (protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	if err != nil {
+		return err
+	}
 	delivery := plan.responsePlan(options.ClientOutput)
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
@@ -211,33 +209,15 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
 	wireValue, isPrepared := candidate.takeRequestValue(ctx, request, options)
-	var err error
 	if !isPrepared {
 		wireValue, err = candidate.compiled.EncodeRequestValue(ctx, request, options)
 		if err != nil {
 			return &gatewayFailure{http.StatusBadRequest, err}
 		}
 	}
-	if candidate.conversion.HasPhase(protocol.ConversionWire) {
-		wireValue, err = candidate.conversion.ApplyValue(ctx, protocol.ConversionWire, wireValue, candidate.conversionContext(plan.ingress, false), options.Diagnostics)
-		if err != nil {
-			return &gatewayFailure{http.StatusBadRequest, err}
-		}
-		decoded, e := candidate.compiled.DecodeRequestValue(ctx, wireValue, options)
-		if e != nil {
-			return &gatewayFailure{http.StatusBadRequest, e}
-		}
-		if e = protocol.IssuesError(protocol.CheckRoute(decoded, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); e != nil {
-			return &gatewayFailure{http.StatusBadRequest, e}
-		}
-	}
-	if e := candidate.compiled.CheckRequestBody(ctx, wireValue); e != nil {
-		return &gatewayFailure{http.StatusBadRequest, e}
-	} else if e = candidate.compiled.ValidateWireOutput(protocol.EncodeRequest, wireValue); e != nil {
-		return e
-	}
-	if err := candidate.compiled.CheckOperationValueInput(ctx, candidate.operationName, wireValue); err != nil {
-		return &gatewayFailure{http.StatusBadRequest, err}
+	wireValue, err = candidate.finalizeRequestWire(ctx, wireValue, candidate.conversionContext(plan.ingress, false).WithOperation(options), options)
+	if err != nil {
+		return err
 	}
 	responseRoute, err := candidate.conversionContext(plan.ingress, true).WithRequestModelOrigin(plan.ingress, candidate.compiled, wireValue)
 	if err != nil {
@@ -248,6 +228,7 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	record.OutgoingBody = record.sanitizeBodyText(wireValue.JSONString())
 	// Keep transport storage out of the log cleaning lifetime.
 	body := wireValue.Bytes()
+	candidate.continuation.prepareParent(plan.request.Content)
 	candidate.prepared = nil
 	candidate.releaseRequestEncoding()
 	candidate.encoding = nil
@@ -265,7 +246,7 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, err := protocol.ReadBoundedBody(response.Body, candidate.compiled.ResourceLimits().BufferBytes)
 		if err != nil {
-			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode, nil)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
+			return &upstreamHTTPFailure{&gatewayFailure{response.StatusCode, attachFailureDiagnostics(protocol.CheckGenerationOutcome(fallbackHTTPFailure(response.StatusCode)), protocol.AnnotateResourceError(err, candidate.compiled.Identity(), protocol.DecodeResponse, "read.response"))}}
 		}
 		record.ProviderResponse = record.sanitizeBody(body)
 		return mapGatewayHTTPFailure(ctx, record, response.StatusCode, body, plan.ingress, candidate, options)
@@ -293,6 +274,10 @@ func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record 
 		record.ErrorKind = "preparation_overloaded"
 	}
 	class := generationFailureClass(err)
+	var wireError *builtin.GatewayError
+	if errors.As(err, &wireError) && class == "" {
+		class = wireError.Class
+	}
 	if class != "" {
 		record.ErrorKind = string(class)
 		if failure == nil && status != statusClientClosedRequest {
@@ -313,16 +298,18 @@ func (s *Server) failGateway(ctx context.Context, c *app.RequestContext, record 
 		c.Data(status, "application/json", upstream.body)
 		return
 	}
-	if !strings.HasPrefix(string(c.Path()), "/gateway/") {
-		var wireError *builtin.GatewayError
-		if !errors.As(err, &wireError) {
-			wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Status: status, Message: err.Error()}
-			if class != "" {
-				wireError.Class = class
-			}
+	if wireError == nil {
+		wireError = &builtin.GatewayError{Class: builtin.ClassFromStatus(status), Message: err.Error()}
+		if class != "" {
+			wireError.Class = class
 		}
-		writeProtocolError(ctx, c, inputFormatFromPath(string(c.Path())), wireError)
-		return
 	}
-	c.JSON(status, utils.H{"error": utils.H{"code": "protocol_gateway_error", "message": err.Error(), "issues": record.ConversionIssues}})
+	local := *wireError
+	local.Status = status
+	if secondary := s.writeIngressError(ctx, c, &local); secondary != nil {
+		var conversion *protocol.ConversionError
+		if errors.As(secondary, &conversion) {
+			record.appendConversionIssues(conversion.Issues)
+		}
+	}
 }

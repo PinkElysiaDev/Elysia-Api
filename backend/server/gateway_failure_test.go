@@ -49,7 +49,7 @@ func TestHTTPFailureKeepsStatusAndSafePrimaryCause(t *testing.T) {
 		for _, targetID := range []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID} {
 			target, _ := service.Pin(targetID)
 			for _, fixture := range []struct{ body, message string }{
-				{`{"cloudflare_error":true,"status":524,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游源站响应超时"},
+				{`{"cloudflare_error":true,"status":524,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游请求失败"},
 				{`{"cloudflare_error":true,"status":523,"error_name":"origin_response_timeout","private":"must-not-leak"}`, "上游请求失败"},
 				{`{"cloudflare_error":true,"status":"524","error_name":"origin_response_timeout"}`, "上游请求失败"},
 				{`<html>must-not-leak</html>`, "上游请求失败"},
@@ -178,5 +178,53 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 	var missing *protocol.ConversionError
 	if !errors.As(failure, &missing) || strings.Contains(failure.Error(), "upstream failure:") {
 		t.Fatalf("missing response lost its validation error: %v", failure)
+	}
+}
+
+func TestPackageHTTPFailureUsesSourceCoreVersion(t *testing.T) {
+	compiled := compileSourceStreamPackage(t, sourceStreamPackage(t))
+	response, secondary := decodeUpstreamHTTPFailure(t.Context(), http.StatusBadGateway, []byte("<html>private provider body</html>"), compiled, protocol.EvaluationContext{})
+	if secondary == nil || response.SchemaVersion != compiled.CoreVersion() || protocol.CheckGenerationOutcome(response) == nil {
+		t.Fatal("synthetic HTTP failure lost its source version or cause", response, secondary)
+	}
+	failure := encodeGatewayFailure(t.Context(), http.StatusBadGateway, response, compiled, protocol.EvaluationContext{})
+	var upstream *upstreamFailure
+	if !errors.As(failure, &upstream) || failure.status != http.StatusBadGateway || !strings.Contains(string(upstream.body), "HTTP 502") || strings.Contains(string(upstream.body), "private provider body") {
+		t.Fatal("core2 HTTP error could not reach its declared output", failure)
+	}
+	declared, err := decodeUpstreamHTTPFailure(t.Context(), http.StatusForbidden, []byte(`{"error":{"message":"declared denial"}}`), compiled, protocol.EvaluationContext{})
+	if err != nil || declared.SchemaVersion != compiled.CoreVersion() || !declared.Error.IsObject() {
+		t.Fatal("declared HTTP error was replaced", declared, err)
+	}
+}
+
+func TestDefaultPackageFailureDetailsDelivery(t *testing.T) {
+	for _, name := range []string{"anthropic", "google-generate-content"} {
+		t.Run(name, func(t *testing.T) {
+			server, _ := newProtocolAdminTestServer(t)
+			packages := seedGatewayPackages(t, server)
+			upstream, ingress := packages["openai-chat"], packages[name]
+			var calls atomic.Int32
+			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				calls.Add(1)
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusTooManyRequests)
+				_, _ = writer.Write([]byte(`{"error":{"type":"rate_limit_error","message":"quota","code":"budget_exhausted","param":"model"}}`))
+			}))
+			defer provider.Close()
+			setupGatewayModelWithCapabilities(t, server, upstream, provider.URL, protocol.CapabilitySet{protocol.TextCapability: true, protocol.UsageCapability: true})
+			path := strings.ReplaceAll(ingress.Operations()["generate"].Path, "{model}", "group")
+			request := httptest.NewRequest(http.MethodPost, "/gateway/"+ingress.Identity().DefinitionID+path, strings.NewReader(buildPackageGatewayRequest(name, false)))
+			request.Header.Set("Authorization", "Bearer gateway-test-token")
+			request.Header.Set("Content-Type", "application/json")
+			reply := httptest.NewRecorder()
+			serveTestHTTP(server.engine, reply, request)
+			if reply.Code != http.StatusTooManyRequests || calls.Load() != 1 || !strings.Contains(reply.Body.String(), "budget_exhausted") || !strings.Contains(reply.Body.String(), "model") {
+				t.Fatal("declared failure details or original status were lost", reply.Code, calls.Load(), reply.Body.String())
+			}
+			if err := ingress.ValidateWireOutput(protocol.EncodeResponse, mustProtocolValue(t, reply.Body.String())); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

@@ -11,7 +11,7 @@ func verifyCombinationNative(ctx context.Context, ingress, upstream *Compiled, r
 	if !ingress.native.Preserve || !upstream.native.Preserve || !ingress.capabilities[NativeExtensionsCapability] || !upstream.capabilities[NativeExtensionsCapability] {
 		return
 	}
-	for _, sample := range ingress.Definition().Samples {
+	for _, sample := range ingress.verificationSamples() {
 		if sample.Direction != DecodeRequest || sample.ExpectedIssue != "" {
 			continue
 		}

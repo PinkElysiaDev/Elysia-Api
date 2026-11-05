@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -73,7 +74,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 				t.Fatal(err)
 			}
 			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
-			record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
+			record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now(), bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 			before := calls
 			result, collectErr := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 			if calls != before+1 {
@@ -240,9 +241,29 @@ func TestGatewayChatInvalidResponseModelIsNotAliased(t *testing.T) {
 			if rec.Code != http.StatusBadGateway {
 				t.Fatalf("invalid provider model was hidden: %d %s", rec.Code, rec.Body.String())
 			}
-			if !strings.Contains(rec.Body.String(), "upstream_contract_violation") || !strings.Contains(rec.Body.String(), "decode_response") {
+			if !strings.Contains(rec.Body.String(), "upstream_contract_violation") || !strings.Contains(rec.Body.String(), "/model") {
 				t.Fatal("source model failure lost its attribution", rec.Body.String())
 			}
 		})
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		records := latestUsageRecords(t, s)
+		if len(records) == 4 {
+			for _, item := range records {
+				var record usageRecord
+				if err := sonic.ConfigStd.Unmarshal([]byte(storedRecordJSON(t, s.store, item.RequestID)), &record); err != nil {
+					t.Fatal(err)
+				}
+				if len(record.ConversionIssues) != 1 || record.ConversionIssues[0].Code != protocol.UpstreamContractViolation || record.ConversionIssues[0].Direction != protocol.DecodeResponse || record.ConversionIssues[0].Path != "/model" {
+					t.Fatal("settled source model failure lost its typed attribution", record.ConversionIssues)
+				}
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("source model failures did not settle exactly once", len(records))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

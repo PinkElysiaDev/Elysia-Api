@@ -18,6 +18,9 @@ type ResponseModelOrigin struct {
 // provider only when both semantic and final wire values still match the
 // observed source. Mapping-created errors retain their target diagnostics.
 func (route ConversionContext) AttributeResponseModelFailure(err error, response *Response, wire Value) error {
+	if len(route.fieldObservations) != 0 {
+		return route.attributeObservedFieldFailure(err, response, wire)
+	}
 	origin := route.ResponseModel
 	var conversion *ConversionError
 	if origin == nil || response == nil || !errors.As(err, &conversion) || origin.SourceModel != response.Model {
@@ -50,7 +53,8 @@ func chatResponseModelPair(ingress, upstream *Compiled) bool {
 // into conversion context or substitutes the routing model for the sent model.
 func (route ConversionContext) WithResponseModelOrigin(ingress, upstream *Compiled, outbound, source []byte) (ConversionContext, error) {
 	route.ResponseModel = nil
-	if route.Transport != HTTPJSON || !chatResponseModelPair(ingress, upstream) {
+	route.fieldObservations = nil
+	if route.Transport != HTTPJSON || !hasFieldObservationPair(ingress, upstream) && !chatResponseModelPair(ingress, upstream) {
 		return route, nil
 	}
 	request, err := ParseValue(outbound)
@@ -68,6 +72,10 @@ func (route ConversionContext) WithResponseModelOrigin(ingress, upstream *Compil
 // No request body has to survive provider I/O for later response attribution.
 func (route ConversionContext) WithRequestModelOrigin(ingress, upstream *Compiled, outbound Value) (ConversionContext, error) {
 	route.ResponseModel = nil
+	route.fieldObservations = nil
+	if ingress != nil && upstream != nil && (ingress.packagePlan != nil || upstream.packagePlan != nil) {
+		return route.observeRequestFields(ingress, upstream, outbound)
+	}
 	if route.Transport != HTTPJSON || !chatResponseModelPair(ingress, upstream) {
 		return route, nil
 	}
@@ -83,6 +91,9 @@ func (route ConversionContext) WithRequestModelOrigin(ingress, upstream *Compile
 // WithObservedResponseModel completes a dispatch-time snapshot without mutating
 // a reusable route. Absence remains distinct from null or an invalid model.
 func (route ConversionContext) WithObservedResponseModel(source []byte) (ConversionContext, error) {
+	if len(route.fieldObservations) != 0 {
+		return route.observeResponseFields(source)
+	}
 	if route.ResponseModel == nil {
 		return route, nil
 	}
@@ -134,7 +145,22 @@ func (c *CompiledConversion) RepairCollectedResponseModel(ctx context.Context, r
 	}
 	copy := *response
 	for _, rule := range c.Policy.Rules {
-		if !rule.Enabled || rule.Phase != ConversionResponse || rule.Action != "chat_response_model" || !rule.Match.matches(route, Value{}) {
+		if !rule.Enabled || rule.Phase != ConversionResponse || !rule.Match.matches(route, Value{}) {
+			continue
+		}
+		if rule.Action == "core_controls" {
+			options, err := readConversionOption[coreControlOptions](c, rule)
+			if err != nil {
+				return nil, err
+			}
+			if options.Collection {
+				if _, err := c.applySelectedCoreControls(ctx, &copy, route, rule, sink, true); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+		if rule.Action != "chat_response_model" {
 			continue
 		}
 		if err := ctx.Err(); err != nil {

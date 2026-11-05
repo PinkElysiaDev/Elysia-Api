@@ -20,7 +20,7 @@ test('source frame preview uses startup policy and exposes strict rejection', as
   expect(result.output.map((f: { id: string; created: number }) => [f.id, f.created])).toEqual([['b', 81], ['b', 81]])
   expect(result.issues).toHaveLength(2)
   expect(result.effective.origins['chat-stream-identity']).toBe('engine-default')
-  const strict = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { phase: 'source_event', sequence: true, context, input: [first, second], policy: { schemaVersion: 1, id: 'strict-startup', mode: 'strict', rules: [] } } })
+  const strict = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { phase: 'source_event', sequence: true, context, input: [first, second], policy: { schemaVersion: 2, id: 'strict-startup', mode: 'strict', rules: [] } } })
   expect(strict.status()).toBe(400)
   expect((await strict.json()).error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: '/id', ruleId: 'chat-stream-identity', fidelity: 'rejected', direction: 'decode_event' })]))
 })

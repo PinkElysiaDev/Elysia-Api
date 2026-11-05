@@ -51,7 +51,7 @@ func (s *Server) pinGatewayConversions(ctx context.Context) (*gatewayConversionS
 }
 
 func (snapshot *gatewayConversionSnapshot) resolve(ingress, upstream *protocol.Compiled, model config.ModelRef, operation string, transport protocol.Transport) (*protocol.CompiledConversion, error) {
-	key := gatewayConversionKey{ingress.Hash(), upstream.Hash(), model.SourceID, model.ID, model.Identifier(), operation, transport}
+	key := gatewayConversionKey{ingress.ExecutionHash(), upstream.ExecutionHash(), model.SourceID, model.ID, model.Identifier(), operation, transport}
 	snapshot.mu.Lock()
 	defer snapshot.mu.Unlock()
 	compiled := snapshot.plans[key]

@@ -1,6 +1,9 @@
 package protocol
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 func sessionOperations(compiled *Compiled) map[string]Operation {
 	operations := map[string]Operation{}
@@ -41,7 +44,7 @@ func verifySessionCombination(ctx context.Context, ingress, upstream *Compiled, 
 				targetOperation Operation
 			}{{ingress, upstream, clientName, server}, {upstream, ingress, serverName, client}} {
 				hasTrace := false
-				for _, sample := range pair.source.Definition().SessionSamples {
+				for _, sample := range pair.source.verificationSessionSamples() {
 					if sample.Operation != pair.operation || sample.ExpectedIssue != "" {
 						continue
 					}
@@ -82,10 +85,17 @@ func verifySessionCombination(ctx context.Context, ingress, upstream *Compiled, 
 }
 
 func replaySessionCombination(ctx context.Context, target *Compiled, operation Operation, sample SessionSample, evidence sessionEvidence) error {
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	replay, err := NewSessionReplay(sessionLaneTarget(target, ClientEvent, options), sessionLaneTarget(target, UpstreamEvent, options), target.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
 	if err != nil {
 		return err
+	}
+	defer replay.Release()
+	if target.packagePlan != nil {
+		if err := NewStreamBudget(target.limits).Bind(options.State, replay); err != nil {
+			return err
+		}
 	}
 	for _, entry := range evidence.trace {
 		direction := eventEncoder(entry.direction)
@@ -115,7 +125,7 @@ func replaySessionCombination(ctx context.Context, target *Compiled, operation O
 			}
 		}
 	}
-	return replay.Finish()
+	return errors.Join(replay.Finish(), target.finishInputEvents(ctx, DecodeClientEvent, options), target.finishInputEvents(ctx, DecodeEvent, options))
 }
 
 func exceedsCapabilities(observed, allowed CapabilitySet) bool {

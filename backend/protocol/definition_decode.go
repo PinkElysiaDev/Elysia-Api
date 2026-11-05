@@ -1,9 +1,8 @@
 package protocol
 
 import (
-	"encoding/json"
-
-	"github.com/bytedance/sonic"
+	"strings"
+	"unicode/utf8"
 )
 
 // UnmarshalJSON rejects unknown expression keys and retains the presence of
@@ -11,17 +10,37 @@ import (
 func (expression *Expression) UnmarshalJSON(raw []byte) error {
 	type plain Expression
 	var decoded plain
-	if err := decodeContract(raw, &decoded); err != nil {
-		return err
-	}
-	var fields map[string]json.RawMessage
-	if err := sonic.ConfigStd.Unmarshal(raw, &fields); err != nil {
+	text := string(raw)
+	if err := decodeContractText(text, &decoded); err != nil {
 		return err
 	}
 	*expression = Expression(decoded)
-	expression.present = make(map[string]bool, len(fields))
-	for key := range fields {
-		expression.present[key] = true
+	text = strings.TrimSpace(text)
+	if text == "null" {
+		return nil
+	}
+	// The typed decoder already validated this object. Only keys are needed;
+	// retaining RawMessages would copy each child subtree at every ancestor.
+	for offset := skipJSONSpace(text, 1); text[offset] != '}'; {
+		end := jsonStringEnd(text, offset)
+		key := text[offset+1 : end-1]
+		if strings.Contains(key, `\`) || !utf8.ValidString(key) {
+			var err error
+			key, err = decodeObjectKey(text[offset:end])
+			if err != nil {
+				return err
+			}
+		}
+		if field := expressionFieldBits[key]; field != 0 {
+			expression.present |= field
+		} else {
+			expression.unknownKeys = append(expression.unknownKeys, strings.Clone(key))
+		}
+		offset = skipJSONSpace(text, skipJSONSpace(text, end)+1)
+		offset = skipJSONSpace(text, jsonValueEnd(text, offset))
+		if text[offset] == ',' {
+			offset = skipJSONSpace(text, offset+1)
+		}
 	}
 	return nil
 }

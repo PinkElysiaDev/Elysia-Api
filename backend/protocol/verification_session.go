@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -19,11 +20,18 @@ type sessionTraceFrame struct {
 
 func executeSessionSample(ctx context.Context, compiled *Compiled, sample SessionSample) (sessionEvidence, error) {
 	result := sessionEvidence{coverage: map[Direction]CapabilitySet{}}
-	options := EvaluationContext{Scope: sample.Scope, Values: sample.Context, State: NewEvaluationState()}
+	options := newVerificationContext(sample.Scope, sample.Context)
+	defer options.State.Release()
 	operation := compiled.operations[sample.Operation]
 	replay, err := NewSessionReplay(sessionLaneTarget(compiled, ClientEvent, options), sessionLaneTarget(compiled, UpstreamEvent, options), compiled.limits, SessionPolicy{Model: sample.Model, CanGenerateAutomatically: operation.Session.CanGenerateAutomatically})
 	if err != nil {
 		return result, err
+	}
+	defer replay.Release()
+	if compiled.packagePlan != nil {
+		if err := NewStreamBudget(compiled.limits).Bind(options.State, replay); err != nil {
+			return result, err
+		}
 	}
 	buffered := 0
 	for index, step := range sample.Steps {
@@ -32,12 +40,12 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 		if err != nil {
 			return result, err
 		}
-		expected, err := comparableExpected(fixture)
+		expected, err := comparableExpected(compiled, fixture)
 		if err != nil {
 			return result, err
 		}
 		if !equalValues(expected, value.output) {
-			return result, IssuesError([]ConversionIssue{verificationIssue(compiled, step.Direction, fmt.Sprintf("/sessionSamples/%s/steps/%d/expected", sample.ID, index)+differencePath(expected, value.output), VerificationMismatch, "session step differs from its expected output", fixture.ID)})
+			return result, IssuesError([]ConversionIssue{verificationIssue(compiled, step.Direction, fmt.Sprintf("%s/%s/steps/%d/expected", compiled.sessionSamplesPath(), sample.ID, index)+differencePath(expected, value.output), VerificationMismatch, "session step differs from its expected output", fixture.ID)})
 		}
 		if err := verifyEventRoundTrip(ctx, compiled, fixture, value); err != nil {
 			return result, err
@@ -61,7 +69,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 		}
 		buffered += len(encoded.raw) + len(value.output.raw)
 		if buffered > compiled.limits.BufferBytes {
-			return result, streamIssue(LimitExceeded, "/sessionSamples", "session replay exceeds its aggregate buffer limit")
+			return result, streamIssue(LimitExceeded, compiled.sessionSamplesPath(), "session replay exceeds its aggregate buffer limit")
 		}
 		result.events = append(result.events, events...)
 		if result.coverage[step.Direction] == nil {
@@ -77,7 +85,7 @@ func executeSessionSample(ctx context.Context, compiled *Compiled, sample Sessio
 		}
 		result.checks = append(result.checks, check)
 	}
-	return result, replay.Finish()
+	return result, errors.Join(replay.Finish(), compiled.finishInputEvents(ctx, DecodeClientEvent, options), compiled.finishInputEvents(ctx, DecodeEvent, options))
 }
 
 func eventOrigin(direction Direction) EventOrigin {
@@ -104,9 +112,9 @@ func sessionLaneTarget(compiled *Compiled, origin EventOrigin, options Evaluatio
 
 func verifySessionSamples(ctx context.Context, compiled *Compiled, report *VerificationReport, coverage map[Direction]CapabilitySet, hasSample, hasSequence map[Direction]bool, hasLifecycle map[Direction]map[Capability]bool) {
 	hasOperation := map[string]bool{}
-	for index, sample := range compiled.Definition().SessionSamples {
+	for index, sample := range compiled.verificationSessionSamples() {
 		evidence, err := executeSessionSample(ctx, compiled, sample)
-		path := fmt.Sprintf("/sessionSamples/%d", index)
+		path := fmt.Sprintf("%s/%d", compiled.sessionSamplesPath(), index)
 		check := VerificationCheck{SampleID: sample.ID, Passed: err == nil}
 		if sample.ExpectedIssue != "" {
 			check.Passed = hasIssueCode(err, sample.ExpectedIssue)

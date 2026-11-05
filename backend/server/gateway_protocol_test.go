@@ -40,24 +40,29 @@ func activateGatewayDefinition(t *testing.T, server *Server, definition protocol
 // Preset batches publish once after all revisions have been persisted.
 func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Definition, reload bool) *protocol.Compiled {
 	t.Helper()
-	service, err := server.protocolService()
-	if err != nil {
-		t.Fatal(err)
-	}
 	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return seedGatewayProtocol(t, server, definition.ID, raw, reload)
+}
+
+func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, reload bool) *protocol.Compiled {
+	t.Helper()
+	service, err := server.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
 	expectedDraft, expectedActive := "", ""
-	if draft, err := service.ReadDraft(t.Context(), definition.ID); err == nil {
+	if draft, err := service.ReadDraft(t.Context(), id); err == nil {
 		expectedDraft = draft.Hash
 	}
-	if active, ok := service.Pin(definition.ID); ok {
+	if active, ok := service.Pin(id); ok {
 		expectedActive = active.Hash()
 	}
 	// Presets are installed by the runtime, never through user authoring APIs.
 	// Tests seed them through the same verified repository boundary.
-	if protocol.IsPresetProtocolID(definition.ID) {
+	if protocol.IsPresetProtocolID(id) {
 		compiled, issues := service.Validate(raw)
 		if err := protocol.IssuesError(issues); err != nil {
 			t.Fatal(err)
@@ -73,16 +78,16 @@ func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Def
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := server.store.SaveProtocolDraft(t.Context(), protocol.Draft{ProtocolID: definition.ID, Hash: compiled.Hash(), Definition: value, UpdatedAt: time.Now().UTC()}, expectedDraft); err != nil {
+		if _, err := server.store.SaveProtocolDraft(t.Context(), protocol.Draft{ProtocolID: id, Hash: compiled.Hash(), Definition: value, UpdatedAt: time.Now().UTC()}, expectedDraft); err != nil {
 			t.Fatal(err)
 		}
-		if err := server.store.SaveProtocolRevision(t.Context(), protocol.Revision{ProtocolID: definition.ID, Hash: compiled.Hash(), Definition: value, CreatedAt: time.Now().UTC()}); err != nil {
+		if err := server.store.SaveProtocolRevision(t.Context(), protocol.Revision{ProtocolID: id, Hash: compiled.Hash(), Definition: value, CreatedAt: time.Now().UTC()}); err != nil {
 			t.Fatal(err)
 		}
-		if err := server.store.SaveProtocolReport(t.Context(), definition.ID, compiled.Hash(), report); err != nil {
+		if err := server.store.SaveProtocolReport(t.Context(), id, compiled.Hash(), report); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := server.store.SetProtocolActivation(t.Context(), definition.ID, compiled.Hash(), expectedActive); err != nil {
+		if _, err := server.store.SetProtocolActivation(t.Context(), id, compiled.Hash(), expectedActive); err != nil {
 			t.Fatal(err)
 		}
 		if reload {
@@ -92,18 +97,18 @@ func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Def
 		}
 		return compiled
 	}
-	draft, issues, err := service.SaveDraft(t.Context(), definition.ID, raw, expectedDraft)
+	draft, issues, err := service.SaveDraft(t.Context(), id, raw, expectedDraft)
 	if err != nil || protocol.IssuesError(issues) != nil {
 		t.Fatalf("draft: %v %v", err, issues)
 	}
-	revision, report, err := service.VerifyDraft(t.Context(), definition.ID, draft.Hash)
+	revision, report, err := service.VerifyDraft(t.Context(), id, draft.Hash)
 	if err != nil || !report.Passed {
 		t.Fatalf("verify: %v %+v", err, report.Issues)
 	}
-	if _, err := service.Activate(t.Context(), definition.ID, revision.Hash, expectedActive); err != nil {
+	if _, err := service.Activate(t.Context(), id, revision.Hash, expectedActive); err != nil {
 		t.Fatal(err)
 	}
-	compiled, _ := service.Pin(definition.ID)
+	compiled, _ := service.Pin(id)
 	return compiled
 }
 
@@ -112,6 +117,11 @@ func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Def
 var fixturePresetReports sync.Map
 
 func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled, url string) {
+	t.Helper()
+	setupGatewayModelWithCapabilities(t, server, upstream, url, upstream.DeclaredCapabilities())
+}
+
+func setupGatewayModelWithCapabilities(t *testing.T, server *Server, upstream *protocol.Compiled, url string, capabilities protocol.CapabilitySet) {
 	t.Helper()
 	source := storage.ModelSource{ID: "gateway-source", Name: "gateway-source", BaseURL: url, Platform: "custom:" + upstream.Identity().DefinitionID, Enabled: true}
 	if err := server.store.UpsertSource(t.Context(), source); err != nil {
@@ -133,7 +143,7 @@ func setupGatewayModel(t *testing.T, server *Server, upstream *protocol.Compiled
 			transports = append(transports, operation.Transport)
 		}
 	}
-	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: transports}}
+	binding := storage.ProtocolBinding{Kind: "source", SourceID: source.ID, Binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: capabilities, Transports: transports}}
 	binding.Combinations = verifyFixtureBinding(t, server, binding)
 	if err := server.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 		t.Fatal(err)

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -189,7 +190,7 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := s.collectProtocolGeneration(t.Context(), candidate, request, &usageRecord{}, nil)
+	response, err := s.collectProtocolGeneration(t.Context(), candidate, request, &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}, nil)
 	if err != nil || response == nil || calls.Load() != 1 {
 		t.Fatal("collector failed", err, calls.Load())
 	}

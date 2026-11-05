@@ -16,16 +16,7 @@ func TestAnthropicSignatureFragmentsAndRepeatedSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output []p.Value
-	for _, body := range []string{
-		`{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[]}}`,
-		`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
-		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"reason"}}`,
-		`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"first-"}}`,
-		`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"second"}}`,
-		`{"type":"content_block_stop","index":0}`,
-		`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}`,
-		`{"type":"message_stop"}`,
-	} {
+	for _, body := range anthropicSignatureFrames() {
 		frame, err := compiled.DecodeFrame(t.Context(), testValue(t, body), options)
 		if err != nil {
 			t.Fatal(err)
@@ -367,5 +358,18 @@ func TestBuiltinStreamMatrixPreservesTextAndUsageTails(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func anthropicSignatureFrames() []string {
+	return []string{
+		`{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[]}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"reason"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"first-"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"second"}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}`,
+		`{"type":"message_stop"}`,
 	}
 }

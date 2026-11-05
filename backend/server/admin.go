@@ -1219,15 +1219,6 @@ func maskSecret(value string) string {
 	return value[:4] + "..." + value[len(value)-4:]
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 // compactQueryArray 过滤空串元素:客户端带 ?keyName= 的空值参数时
 // QueryArray 返回 [""],IN (”) 会恒空结果(旧语义是空=不过滤)。
 func compactQueryArray(values []string) []string {

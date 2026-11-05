@@ -1,0 +1,5528 @@
+{
+  "id": "google-generate-content",
+  "name": "Google Generate-content migration draft (not enabled)",
+  "version": "2.1.6",
+  "family": "gemini",
+  "wireVersion": "v2",
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1beta/models/{model}:generateContent",
+      "transport": "http_json",
+      "request": "generation-request",
+      "response": "provider-response",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      }
+    },
+    "models": {
+      "kind": "models",
+      "method": "GET",
+      "path": "/v1beta/models",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "response": "model-page",
+      "models": {
+        "cursorParameter": "pageToken",
+        "clientDocument": "client-model-page"
+      }
+    },
+    "stream": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/v1beta/models/{model}:streamGenerateContent",
+      "transport": "sse",
+      "request": "generation-request",
+      "response": "provider-event",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "framing": {},
+      "query": {
+        "alt": "sse"
+      }
+    },
+    "count_tokens": {
+      "method": "POST",
+      "transport": "http_json",
+      "auth": {
+        "location": "header",
+        "name": "x-goog-api-key"
+      },
+      "kind": "count_tokens",
+      "path": "/v1beta/models/{model}:countTokens",
+      "request": "count-request",
+      "response": "count-response"
+    }
+  },
+  "documents": {
+    "client-model-page": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "displayName",
+                "description",
+                "inputTokenLimit",
+                "outputTokenLimit",
+                "supportedGenerationMethods"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "inputTokenLimit": {
+                  "type": "integer"
+                },
+                "outputTokenLimit": {
+                  "type": "integer"
+                },
+                "supportedGenerationMethods": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "ref": "request-input"
+        }
+      ]
+    },
+    "generation-request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "ref": "request-safety"
+        }
+      ]
+    },
+    "provider-response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "ref": "single-candidate"
+        }
+      ]
+    },
+    "client-response": {
+      "schema": {
+        "type": "any"
+      },
+      "assertions": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/error",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/error"
+            }
+          }
+        },
+        {
+          "path": "/candidates",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "when": {
+            "op": "all",
+            "items": [
+              {
+                "op": "not",
+                "source": {
+                  "op": "present",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/error"
+                  }
+                }
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/candidates"
+                }
+              }
+            ]
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/content",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content"
+                }
+              }
+            },
+            {
+              "path": "/content/parts",
+              "schema": {
+                "type": "array"
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an array",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/content"
+                }
+              },
+              "each": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  }
+                },
+                {
+                  "path": "/text",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "Gemini text must be a string, including explicit empty text",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/text"
+                    }
+                  }
+                },
+                {
+                  "path": "/inlineData",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/inlineData"
+                    }
+                  }
+                },
+                {
+                  "path": "/fileData",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/fileData"
+                    }
+                  }
+                },
+                {
+                  "path": "/functionCall",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/functionCall"
+                    }
+                  }
+                },
+                {
+                  "path": "/functionResponse",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/functionResponse"
+                    }
+                  }
+                },
+                {
+                  "path": "/executableCode",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/executableCode"
+                    }
+                  }
+                },
+                {
+                  "path": "/codeExecutionResult",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires an object",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/codeExecutionResult"
+                    }
+                  }
+                },
+                {
+                  "path": "/thoughtSignature",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "wire contract requires a nonempty string",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "check": {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "from": "input",
+                          "path": ""
+                        },
+                        {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      ]
+                    }
+                  },
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thoughtSignature"
+                    }
+                  }
+                },
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "Gemini part requires data or a thought signature",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire.output"
+                  },
+                  "check": {
+                    "op": "any",
+                    "items": [
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/text"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/inlineData"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/fileData"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/functionCall"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/functionResponse"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/executableCode"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/codeExecutionResult"
+                        }
+                      },
+                      {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "single-candidate"
+        }
+      ]
+    },
+    "model-page": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "response-candidate": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "upstream-request": {
+      "schema": {
+        "type": "any"
+      },
+      "assertions": [
+        {
+          "path": "",
+          "schema": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an object",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          }
+        },
+        {
+          "path": "/contents",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "wire contract requires an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire.output"
+          },
+          "each": [
+            {
+              "path": "",
+              "schema": {
+                "type": "object",
+                "allowUnknown": true
+              },
+              "code": "conversion_rejected",
+              "reason": "wire contract requires an object",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              }
+            },
+            {
+              "path": "/role",
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "model"
+                ]
+              },
+              "code": "conversion_rejected",
+              "reason": "Gemini contents only accept user or model",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output"
+              },
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/role"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "path": "/contents",
+          "schema": {
+            "type": "array"
+          },
+          "code": "conversion_rejected",
+          "reason": "contents must be an array",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire"
+          },
+          "each": [
+            {
+              "path": "/parts",
+              "schema": {
+                "type": "array"
+              },
+              "code": "conversion_rejected",
+              "reason": "parts must be an array",
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire"
+              },
+              "when": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "type",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/parts"
+                    }
+                  },
+                  {
+                    "op": "literal",
+                    "value": "array"
+                  }
+                ]
+              },
+              "each": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "conversion_rejected",
+                  "reason": "a function part must have one content kind",
+                  "diagnostic": {
+                    "code": "conversion_rejected",
+                    "stage": "wire"
+                  },
+                  "check": {
+                    "op": "not",
+                    "source": {
+                      "op": "any",
+                      "items": [
+                        {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/functionCall"
+                              }
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/functionResponse"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "any",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/functionCall"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/functionResponse"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "op": "any",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/text"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/inlineData"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/fileData"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "",
+          "code": "conversion_rejected",
+          "reason": "tool history links are inconsistent",
+          "diagnostic": {
+            "code": "conversion_rejected",
+            "stage": "wire"
+          },
+          "check": {
+            "op": "ref",
+            "ref": "request-tool-links"
+          }
+        },
+        {
+          "ref": "request-safety"
+        }
+      ]
+    },
+    "provider-event": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true,
+        "properties": {
+          "responseId": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "error": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true,
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "content": {
+                  "type": "object",
+                  "allowUnknown": true,
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "model"
+                      ]
+                    },
+                    "parts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "allowUnknown": true
+                      }
+                    }
+                  }
+                },
+                "finishReason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "usageMetadata": {
+            "type": "object",
+            "allowUnknown": true,
+            "nullable": true,
+            "properties": {
+              "promptTokenCount": {
+                "type": "integer"
+              },
+              "candidatesTokenCount": {
+                "type": "integer"
+              },
+              "totalTokenCount": {
+                "type": "integer"
+              },
+              "cachedContentTokenCount": {
+                "type": "integer"
+              },
+              "thoughtsTokenCount": {
+                "type": "integer"
+              },
+              "toolUsePromptTokenCount": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "path": "/candidates",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "code": "upstream_contract_violation",
+          "reason": "this stream mapping supports one candidate",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/candidates"
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "lte",
+            "items": [
+              {
+                "op": "length",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": 1
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/promptTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/promptTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/candidatesTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/candidatesTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/totalTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/totalTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/cachedContentTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/cachedContentTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/thoughtsTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/thoughtsTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/toolUsePromptTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/toolUsePromptTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/totalTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "totalTokenCount cannot be below the observed token components",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/totalTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "integer",
+                "operation": "add",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/usageMetadata/promptTokenCount"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/usageMetadata/promptTokenCount"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/usageMetadata/candidatesTokenCount"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/usageMetadata/candidatesTokenCount"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/usageMetadata/thoughtsTokenCount"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/usageMetadata/thoughtsTokenCount"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/createTime",
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/createTime"
+            }
+          }
+        },
+        {
+          "path": "/usageMetadata/serviceTier",
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/serviceTier"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/finishMessage",
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/finishMessage"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/avgLogprobs",
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/avgLogprobs"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/logprobsResult",
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/logprobsResult"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/citationMetadata",
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/citationMetadata"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/groundingMetadata",
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/groundingMetadata"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/safetyRatings",
+          "schema": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "any"
+            }
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/safetyRatings"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        }
+      ],
+      "stream": {
+        "discriminator": "/error",
+        "discriminatorValue": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/error"
+            }
+          },
+          "then": {
+            "op": "literal",
+            "value": "failure"
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": "chunk"
+          }
+        },
+        "responseId": "/responseId",
+        "inheritResponseId": true,
+        "optionalResponseId": true,
+        "identities": [
+          {
+            "path": "/responseId",
+            "type": "string"
+          },
+          {
+            "path": "/modelVersion",
+            "type": "string"
+          }
+        ],
+        "state": {
+          "usageFields": {
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "initial": {}
+          },
+          "hasPriorPart": {
+            "schema": {
+              "type": "boolean"
+            },
+            "initial": false
+          },
+          "lastPartSignature": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "lifecycle": {
+          "eof": "require_terminal",
+          "openEntities": "finish"
+        },
+        "namespaces": {
+          "function_call": {
+            "keyType": "string"
+          }
+        },
+        "entities": {
+          "function_call": {
+            "namespace": "function_call",
+            "payload": "none",
+            "identities": {
+              "name": {
+                "type": "string",
+                "requiredAt": "start"
+              }
+            }
+          }
+        },
+        "events": {
+          "failure": [
+            {
+              "action": "stream_fail",
+              "error": "/error",
+              "allowBeforeStart": true
+            }
+          ],
+          "chunk": [
+            {
+              "action": "stream_start",
+              "implicit": true,
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/candidates/0"
+                }
+              }
+            },
+            {
+              "foreach": "/candidates/0/content/parts",
+              "as": "part",
+              "actions": [
+                {
+                  "action": "assert",
+                  "assertions": [
+                    {
+                      "path": "",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "stream part requires an object"
+                    },
+                    {
+                      "path": "",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "stream part requires one declared payload",
+                      "check": {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/text"
+                            }
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/functionCall"
+                            }
+                          },
+                          {
+                            "op": "all",
+                            "items": [
+                              {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/thoughtSignature"
+                                }
+                              },
+                              {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "length",
+                                    "source": {
+                                      "op": "keys",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": ""
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": 1
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "path": "",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "text and function call payloads cannot share one part",
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/text"
+                              }
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/functionCall"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/text",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "text must be a string",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/text"
+                        }
+                      }
+                    },
+                    {
+                      "path": "/thought",
+                      "schema": {
+                        "type": "boolean"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "thought must be a boolean",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thought"
+                        }
+                      }
+                    },
+                    {
+                      "path": "/thoughtSignature",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "thought signature must be a nonempty string",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function call requires an object",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/functionCall"
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall/name",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function call requires a nonempty name",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/functionCall"
+                        }
+                      },
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall/id",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function call identity must be nonempty",
+                      "when": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall"
+                          }
+                        },
+                        "then": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall/id"
+                          }
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      },
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall/args",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function arguments must be an object",
+                      "when": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall"
+                          }
+                        },
+                        "then": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall/args"
+                          }
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "action": "assert",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "keys",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": ""
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 1
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "assertions": [
+                    {
+                      "path": "/thoughtSignature",
+                      "code": "unsupported_capability",
+                      "reason": "signature requires an immediately preceding part with a consistent signature",
+                      "check": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/hasPriorPart"
+                          },
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "state",
+                                "path": "/lastPartSignature"
+                              }
+                            },
+                            "then": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "state",
+                                  "path": "/lastPartSignature"
+                                },
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": ""
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          }
+                        ]
+                      },
+                      "diagnostic": {
+                        "code": "unsupported_capability",
+                        "stage": "wire"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "action": "entity_start",
+                  "entity": "function_call",
+                  "key": {
+                    "path": "/functionCall/id"
+                  },
+                  "implicit": true,
+                  "identities": {
+                    "name": {
+                      "path": "/functionCall/name"
+                    }
+                  },
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/functionCall/id"
+                    }
+                  }
+                },
+                {
+                  "action": "state_update",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/text"
+                            }
+                          },
+                          {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/functionCall"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "root",
+                                "path": "/candidates/0/finishReason"
+                              }
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": ""
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": {
+                                    "text": ""
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "updates": {
+                    "hasPriorPart": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "lastPartSignature": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thoughtSignature"
+                    }
+                  }
+                },
+                {
+                  "action": "state_update",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "keys",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": ""
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 1
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "updates": {
+                    "lastPartSignature": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thoughtSignature"
+                    }
+                  }
+                },
+                {
+                  "action": "observe",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "keys",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": ""
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 1
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "action": "control",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/candidates/0/finishReason"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          {
+                            "op": "literal",
+                            "value": {
+                              "text": ""
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "allowBeforeStart": true,
+                  "afterTerminal": true
+                }
+              ]
+            },
+            {
+              "action": "state_update",
+              "updates": {
+                "usageFields": {
+                  "op": "merge",
+                  "policy": "last",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "state",
+                      "path": "/usageFields"
+                    },
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usageMetadata"
+                      },
+                      "keys": [
+                        "promptTokenCount",
+                        "candidatesTokenCount",
+                        "totalTokenCount",
+                        "cachedContentTokenCount",
+                        "thoughtsTokenCount",
+                        "toolUsePromptTokenCount"
+                      ],
+                      "policy": "include"
+                    }
+                  ]
+                }
+              },
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "afterTerminal": true
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "external cumulative token counts are inconsistent",
+                  "check": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/usageFields"
+                      }
+                    },
+                    "then": {
+                      "op": "with_input",
+                      "source": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/usageFields"
+                      },
+                      "body": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "all",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/cachedContentTokenCount"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/promptTokenCount"
+                                  }
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "lte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/cachedContentTokenCount"
+                                },
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/promptTokenCount"
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "all",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/thoughtsTokenCount"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/totalTokenCount"
+                                  }
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "lte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/thoughtsTokenCount"
+                                },
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/totalTokenCount"
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/totalTokenCount"
+                              }
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "gte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/totalTokenCount"
+                                },
+                                {
+                                  "op": "integer",
+                                  "operation": "add",
+                                  "items": [
+                                    {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "exists",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "input",
+                                          "path": "/promptTokenCount"
+                                        }
+                                      },
+                                      "then": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/promptTokenCount"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": 0
+                                      }
+                                    },
+                                    {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "exists",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "input",
+                                          "path": "/candidatesTokenCount"
+                                        }
+                                      },
+                                      "then": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/candidatesTokenCount"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": 0
+                                      }
+                                    },
+                                    {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "exists",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "input",
+                                          "path": "/thoughtsTokenCount"
+                                        }
+                                      },
+                                      "then": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/thoughtsTokenCount"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": 0
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": true
+                    }
+                  }
+                }
+              ],
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "afterTerminal": true
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/usageMetadata/promptTokenCount",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usageMetadata/promptTokenCount"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usageMetadata/candidatesTokenCount",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usageMetadata/candidatesTokenCount"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usageMetadata/totalTokenCount",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usageMetadata/totalTokenCount"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                }
+              ],
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "afterTerminal": true
+            },
+            {
+              "allowBeforeStart": true,
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "action": "observe",
+              "afterTerminal": true
+            },
+            {
+              "action": "observe",
+              "allowBeforeStart": true,
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usageMetadata"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          "keys": [
+                            "responseId",
+                            "modelVersion",
+                            "candidates",
+                            "usageMetadata"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "action": "stream_finish",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/candidates/0/finishReason"
+                }
+              }
+            },
+            {
+              "action": "control",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates/0"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usageMetadata"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            "keys": [
+                              "responseId",
+                              "modelVersion",
+                              "candidates",
+                              "usageMetadata"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "allowBeforeStart": true,
+              "afterTerminal": true
+            }
+          ]
+        }
+      }
+    },
+    "client-event": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true,
+        "properties": {
+          "responseId": {
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "error": {
+            "type": "object",
+            "allowUnknown": true
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true,
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "content": {
+                  "type": "object",
+                  "allowUnknown": true,
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "model"
+                      ]
+                    },
+                    "parts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "allowUnknown": true
+                      }
+                    }
+                  }
+                },
+                "finishReason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "usageMetadata": {
+            "type": "object",
+            "allowUnknown": true,
+            "nullable": true,
+            "properties": {
+              "promptTokenCount": {
+                "type": "integer"
+              },
+              "candidatesTokenCount": {
+                "type": "integer"
+              },
+              "totalTokenCount": {
+                "type": "integer"
+              },
+              "cachedContentTokenCount": {
+                "type": "integer"
+              },
+              "thoughtsTokenCount": {
+                "type": "integer"
+              },
+              "toolUsePromptTokenCount": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "assertions": [
+        {
+          "path": "/candidates",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "code": "upstream_contract_violation",
+          "reason": "this stream mapping supports one candidate",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/candidates"
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "lte",
+            "items": [
+              {
+                "op": "length",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                }
+              },
+              {
+                "op": "literal",
+                "value": 1
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/promptTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/promptTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/candidatesTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/candidatesTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/totalTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/totalTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/cachedContentTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/cachedContentTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/thoughtsTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/thoughtsTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/toolUsePromptTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "usage counters must be nonnegative",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/toolUsePromptTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": 0
+              }
+            ]
+          }
+        },
+        {
+          "path": "/usageMetadata/totalTokenCount",
+          "schema": {
+            "type": "integer"
+          },
+          "code": "upstream_contract_violation",
+          "reason": "totalTokenCount cannot be below the observed token components",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/totalTokenCount"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "check": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "integer",
+                "operation": "add",
+                "items": [
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/usageMetadata/promptTokenCount"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/usageMetadata/promptTokenCount"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/usageMetadata/candidatesTokenCount"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/usageMetadata/candidatesTokenCount"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "when": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "root",
+                        "path": "/usageMetadata/thoughtsTokenCount"
+                      }
+                    },
+                    "then": {
+                      "op": "read",
+                      "from": "root",
+                      "path": "/usageMetadata/thoughtsTokenCount"
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "path": "/createTime",
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/createTime"
+            }
+          }
+        },
+        {
+          "path": "/usageMetadata/serviceTier",
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/usageMetadata/serviceTier"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/finishMessage",
+          "schema": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/finishMessage"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/avgLogprobs",
+          "schema": {
+            "type": "number",
+            "nullable": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/avgLogprobs"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/logprobsResult",
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/logprobsResult"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/citationMetadata",
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/citationMetadata"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/groundingMetadata",
+          "schema": {
+            "type": "object",
+            "nullable": true,
+            "allowUnknown": true
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/groundingMetadata"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        },
+        {
+          "path": "/candidates/0/safetyRatings",
+          "schema": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "any"
+            }
+          },
+          "code": "upstream_contract_violation",
+          "reason": "invalid declared stream metadata",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates/0/safetyRatings"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          }
+        }
+      ],
+      "stream": {
+        "discriminator": "/error",
+        "discriminatorValue": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/error"
+            }
+          },
+          "then": {
+            "op": "literal",
+            "value": "failure"
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": "chunk"
+          }
+        },
+        "responseId": "/responseId",
+        "inheritResponseId": true,
+        "optionalResponseId": true,
+        "identities": [
+          {
+            "path": "/responseId",
+            "type": "string"
+          },
+          {
+            "path": "/modelVersion",
+            "type": "string"
+          }
+        ],
+        "state": {
+          "usageFields": {
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "initial": {}
+          },
+          "hasPriorPart": {
+            "schema": {
+              "type": "boolean"
+            },
+            "initial": false
+          },
+          "lastPartSignature": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "lifecycle": {
+          "eof": "require_terminal",
+          "openEntities": "finish"
+        },
+        "namespaces": {
+          "function_call": {
+            "keyType": "string"
+          }
+        },
+        "entities": {
+          "function_call": {
+            "namespace": "function_call",
+            "payload": "none",
+            "identities": {
+              "name": {
+                "type": "string",
+                "requiredAt": "start"
+              }
+            }
+          }
+        },
+        "events": {
+          "failure": [
+            {
+              "action": "stream_fail",
+              "error": "/error",
+              "allowBeforeStart": true
+            }
+          ],
+          "chunk": [
+            {
+              "action": "stream_start",
+              "implicit": true,
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/candidates/0"
+                }
+              }
+            },
+            {
+              "foreach": "/candidates/0/content/parts",
+              "as": "part",
+              "actions": [
+                {
+                  "action": "assert",
+                  "assertions": [
+                    {
+                      "path": "",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "stream part requires an object"
+                    },
+                    {
+                      "path": "",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "stream part requires one declared payload",
+                      "check": {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/text"
+                            }
+                          },
+                          {
+                            "op": "exists",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/functionCall"
+                            }
+                          },
+                          {
+                            "op": "all",
+                            "items": [
+                              {
+                                "op": "present",
+                                "source": {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/thoughtSignature"
+                                }
+                              },
+                              {
+                                "op": "equal",
+                                "items": [
+                                  {
+                                    "op": "length",
+                                    "source": {
+                                      "op": "keys",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": ""
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": 1
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "path": "",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "text and function call payloads cannot share one part",
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/text"
+                              }
+                            },
+                            {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/functionCall"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/text",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "text must be a string",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/text"
+                        }
+                      }
+                    },
+                    {
+                      "path": "/thought",
+                      "schema": {
+                        "type": "boolean"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "thought must be a boolean",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thought"
+                        }
+                      }
+                    },
+                    {
+                      "path": "/thoughtSignature",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "thought signature must be a nonempty string",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function call requires an object",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/functionCall"
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall/name",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function call requires a nonempty name",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/functionCall"
+                        }
+                      },
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall/id",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function call identity must be nonempty",
+                      "when": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall"
+                          }
+                        },
+                        "then": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall/id"
+                          }
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      },
+                      "check": {
+                        "op": "not",
+                        "source": {
+                          "op": "equal",
+                          "items": [
+                            {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "path": "/functionCall/args",
+                      "schema": {
+                        "type": "object",
+                        "allowUnknown": true
+                      },
+                      "code": "upstream_contract_violation",
+                      "reason": "function arguments must be an object",
+                      "when": {
+                        "op": "if",
+                        "when": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall"
+                          }
+                        },
+                        "then": {
+                          "op": "exists",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": "/functionCall/args"
+                          }
+                        },
+                        "otherwise": {
+                          "op": "literal",
+                          "value": false
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "action": "assert",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "keys",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": ""
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 1
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "assertions": [
+                    {
+                      "path": "/thoughtSignature",
+                      "code": "unsupported_capability",
+                      "reason": "signature requires an immediately preceding part with a consistent signature",
+                      "check": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "state",
+                            "path": "/hasPriorPart"
+                          },
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "state",
+                                "path": "/lastPartSignature"
+                              }
+                            },
+                            "then": {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "state",
+                                  "path": "/lastPartSignature"
+                                },
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": ""
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          }
+                        ]
+                      },
+                      "diagnostic": {
+                        "code": "unsupported_capability",
+                        "stage": "wire"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "action": "entity_start",
+                  "entity": "function_call",
+                  "key": {
+                    "path": "/functionCall/id"
+                  },
+                  "implicit": true,
+                  "identities": {
+                    "name": {
+                      "path": "/functionCall/name"
+                    }
+                  },
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/functionCall/id"
+                    }
+                  }
+                },
+                {
+                  "action": "state_update",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "any",
+                        "items": [
+                          {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/text"
+                            }
+                          },
+                          {
+                            "op": "present",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": "/functionCall"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "not",
+                        "source": {
+                          "op": "all",
+                          "items": [
+                            {
+                              "op": "present",
+                              "source": {
+                                "op": "read",
+                                "from": "root",
+                                "path": "/candidates/0/finishReason"
+                              }
+                            },
+                            {
+                              "op": "equal",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": ""
+                                },
+                                {
+                                  "op": "literal",
+                                  "value": {
+                                    "text": ""
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "updates": {
+                    "hasPriorPart": {
+                      "op": "literal",
+                      "value": true
+                    },
+                    "lastPartSignature": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thoughtSignature"
+                    }
+                  }
+                },
+                {
+                  "action": "state_update",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "keys",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": ""
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 1
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "updates": {
+                    "lastPartSignature": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/thoughtSignature"
+                    }
+                  }
+                },
+                {
+                  "action": "observe",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "input",
+                          "path": "/thoughtSignature"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "length",
+                            "source": {
+                              "op": "keys",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": ""
+                              }
+                            }
+                          },
+                          {
+                            "op": "literal",
+                            "value": 1
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "action": "control",
+                  "when": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "present",
+                        "source": {
+                          "op": "read",
+                          "from": "root",
+                          "path": "/candidates/0/finishReason"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          {
+                            "op": "literal",
+                            "value": {
+                              "text": ""
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "allowBeforeStart": true,
+                  "afterTerminal": true
+                }
+              ]
+            },
+            {
+              "action": "state_update",
+              "updates": {
+                "usageFields": {
+                  "op": "merge",
+                  "policy": "last",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "state",
+                      "path": "/usageFields"
+                    },
+                    {
+                      "op": "project",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usageMetadata"
+                      },
+                      "keys": [
+                        "promptTokenCount",
+                        "candidatesTokenCount",
+                        "totalTokenCount",
+                        "cachedContentTokenCount",
+                        "thoughtsTokenCount",
+                        "toolUsePromptTokenCount"
+                      ],
+                      "policy": "include"
+                    }
+                  ]
+                }
+              },
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "afterTerminal": true
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "external cumulative token counts are inconsistent",
+                  "check": {
+                    "op": "if",
+                    "when": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/usageFields"
+                      }
+                    },
+                    "then": {
+                      "op": "with_input",
+                      "source": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/usageFields"
+                      },
+                      "body": {
+                        "op": "all",
+                        "items": [
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "all",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/cachedContentTokenCount"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/promptTokenCount"
+                                  }
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "lte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/cachedContentTokenCount"
+                                },
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/promptTokenCount"
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "all",
+                              "items": [
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/thoughtsTokenCount"
+                                  }
+                                },
+                                {
+                                  "op": "exists",
+                                  "source": {
+                                    "op": "read",
+                                    "from": "input",
+                                    "path": "/totalTokenCount"
+                                  }
+                                }
+                              ]
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "lte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/thoughtsTokenCount"
+                                },
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/totalTokenCount"
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "when": {
+                              "op": "exists",
+                              "source": {
+                                "op": "read",
+                                "from": "input",
+                                "path": "/totalTokenCount"
+                              }
+                            },
+                            "then": {
+                              "op": "integer",
+                              "operation": "gte",
+                              "items": [
+                                {
+                                  "op": "read",
+                                  "from": "input",
+                                  "path": "/totalTokenCount"
+                                },
+                                {
+                                  "op": "integer",
+                                  "operation": "add",
+                                  "items": [
+                                    {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "exists",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "input",
+                                          "path": "/promptTokenCount"
+                                        }
+                                      },
+                                      "then": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/promptTokenCount"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": 0
+                                      }
+                                    },
+                                    {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "exists",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "input",
+                                          "path": "/candidatesTokenCount"
+                                        }
+                                      },
+                                      "then": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/candidatesTokenCount"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": 0
+                                      }
+                                    },
+                                    {
+                                      "op": "if",
+                                      "when": {
+                                        "op": "exists",
+                                        "source": {
+                                          "op": "read",
+                                          "from": "input",
+                                          "path": "/thoughtsTokenCount"
+                                        }
+                                      },
+                                      "then": {
+                                        "op": "read",
+                                        "from": "input",
+                                        "path": "/thoughtsTokenCount"
+                                      },
+                                      "otherwise": {
+                                        "op": "literal",
+                                        "value": 0
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "otherwise": {
+                              "op": "literal",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "otherwise": {
+                      "op": "literal",
+                      "value": true
+                    }
+                  }
+                }
+              ],
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "afterTerminal": true
+            },
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/usageMetadata/promptTokenCount",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usageMetadata/promptTokenCount"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usageMetadata/candidatesTokenCount",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usageMetadata/candidatesTokenCount"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                {
+                  "path": "/usageMetadata/totalTokenCount",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/usageMetadata/totalTokenCount"
+                    }
+                  },
+                  "schema": {
+                    "type": "integer"
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "token count must be a nonnegative integer",
+                  "check": {
+                    "op": "integer",
+                    "operation": "gte",
+                    "items": [
+                      {
+                        "op": "read",
+                        "from": "input",
+                        "path": ""
+                      },
+                      {
+                        "op": "literal",
+                        "value": 0
+                      }
+                    ]
+                  }
+                }
+              ],
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "afterTerminal": true
+            },
+            {
+              "allowBeforeStart": true,
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/usageMetadata"
+                }
+              },
+              "action": "observe",
+              "afterTerminal": true
+            },
+            {
+              "action": "observe",
+              "allowBeforeStart": true,
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usageMetadata"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "project",
+                          "source": {
+                            "op": "read",
+                            "from": "input",
+                            "path": ""
+                          },
+                          "keys": [
+                            "responseId",
+                            "modelVersion",
+                            "candidates",
+                            "usageMetadata"
+                          ],
+                          "policy": "exclude"
+                        },
+                        {
+                          "op": "literal",
+                          "value": {}
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "action": "stream_finish",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/candidates/0/finishReason"
+                }
+              }
+            },
+            {
+              "action": "control",
+              "when": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "exists",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/candidates/0"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "present",
+                      "source": {
+                        "op": "read",
+                        "from": "input",
+                        "path": "/usageMetadata"
+                      }
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "not",
+                      "source": {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "project",
+                            "source": {
+                              "op": "read",
+                              "from": "input",
+                              "path": ""
+                            },
+                            "keys": [
+                              "responseId",
+                              "modelVersion",
+                              "candidates",
+                              "usageMetadata"
+                            ],
+                            "policy": "exclude"
+                          },
+                          {
+                            "op": "literal",
+                            "value": {}
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              "allowBeforeStart": true,
+              "afterTerminal": true
+            }
+          ]
+        }
+      }
+    },
+    "count-response": {
+      "schema": {
+        "type": "object",
+        "required": [
+          "totalTokens"
+        ],
+        "properties": {
+          "totalTokens": {
+            "type": "integer"
+          }
+        },
+        "allowUnknown": true
+      }
+    },
+    "count-request": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "contents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "generateContentRequest": {
+            "type": "object",
+            "required": [
+              "model",
+              "contents"
+            ],
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "contents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "allowUnknown": true
+                }
+              }
+            },
+            "allowUnknown": true
+          }
+        },
+        "allowUnknown": true
+      },
+      "assertions": [
+        {
+          "path": "",
+          "code": "invalid_input",
+          "reason": "unknown count request member",
+          "check": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "check_fields",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                "keys": [
+                  "contents",
+                  "generateContentRequest"
+                ],
+                "policy": "member",
+                "onUnknown": {
+                  "code": "invalid_input",
+                  "stage": "wire",
+                  "reason": "counting requires contents or generateContentRequest"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "path": "",
+          "code": "invalid_input",
+          "reason": "counting requires exactly one of contents and generateContentRequest",
+          "check": {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/contents"
+                  }
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": "/generateContentRequest"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "ref": "request-input"
+        },
+        {
+          "ref": "request-input",
+          "path": "/generateContentRequest"
+        }
+      ]
+    }
+  },
+  "expressions": {
+    "request-tool-records": {
+      "op": "flatmap",
+      "source": {
+        "op": "read",
+        "from": "input",
+        "path": "/contents"
+      },
+      "body": {
+        "op": "let",
+        "name": "message",
+        "source": {
+          "op": "read",
+          "from": "item",
+          "path": ""
+        },
+        "body": {
+          "op": "let",
+          "name": "message-path",
+          "source": {
+            "op": "join",
+            "items": [
+              {
+                "op": "literal",
+                "value": "/contents/"
+              },
+              {
+                "op": "cast",
+                "to": "string",
+                "source": {
+                  "op": "index"
+                }
+              }
+            ]
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "type",
+                  "source": {
+                    "op": "read",
+                    "from": "binding",
+                    "path": "/parts",
+                    "name": "message"
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": "array"
+                }
+              ]
+            },
+            "then": {
+              "op": "flatmap",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "path": "/parts",
+                "name": "message"
+              },
+              "body": {
+                "op": "let",
+                "name": "part-path",
+                "source": {
+                  "op": "join",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "binding",
+                      "path": "",
+                      "name": "message-path"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "/parts/"
+                    },
+                    {
+                      "op": "cast",
+                      "to": "string",
+                      "source": {
+                        "op": "index"
+                      }
+                    }
+                  ]
+                },
+                "body": {
+                  "op": "concat",
+                  "items": [
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/functionCall"
+                        }
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "object",
+                            "fields": {
+                              "kind": {
+                                "op": "literal",
+                                "value": "define"
+                              },
+                              "key": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/functionCall/id"
+                              },
+                              "group": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/functionCall/name"
+                              },
+                              "path": {
+                                "op": "join",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "part-path"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "/functionCall"
+                                  },
+                                  {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "exists",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/functionCall/id"
+                                      }
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "/id"
+                                    },
+                                    "otherwise": {
+                                      "op": "literal",
+                                      "value": "/name"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "array",
+                        "items": []
+                      }
+                    },
+                    {
+                      "op": "if",
+                      "when": {
+                        "op": "exists",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/functionResponse"
+                        }
+                      },
+                      "then": {
+                        "op": "array",
+                        "items": [
+                          {
+                            "op": "object",
+                            "fields": {
+                              "kind": {
+                                "op": "literal",
+                                "value": "resolve"
+                              },
+                              "key": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/functionResponse/id"
+                              },
+                              "group": {
+                                "op": "read",
+                                "from": "item",
+                                "path": "/functionResponse/name"
+                              },
+                              "path": {
+                                "op": "join",
+                                "items": [
+                                  {
+                                    "op": "read",
+                                    "from": "binding",
+                                    "path": "",
+                                    "name": "part-path"
+                                  },
+                                  {
+                                    "op": "literal",
+                                    "value": "/functionResponse"
+                                  },
+                                  {
+                                    "op": "if",
+                                    "when": {
+                                      "op": "exists",
+                                      "source": {
+                                        "op": "read",
+                                        "from": "item",
+                                        "path": "/functionResponse/id"
+                                      }
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "/id"
+                                    },
+                                    "otherwise": {
+                                      "op": "literal",
+                                      "value": "/name"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "otherwise": {
+                        "op": "array",
+                        "items": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "otherwise": {
+              "op": "array",
+              "items": []
+            }
+          }
+        }
+      }
+    },
+    "request-tool-links": {
+      "op": "check_links",
+      "source": {
+        "op": "ref",
+        "ref": "request-tool-records"
+      },
+      "policy": "unique_group"
+    },
+    "has-unique-safety-categories": {
+      "op": "let",
+      "name": "categories",
+      "source": {
+        "op": "associate",
+        "source": {
+          "op": "read",
+          "from": "input",
+          "path": ""
+        },
+        "key": "/category"
+      },
+      "body": {
+        "op": "literal",
+        "value": true
+      }
+    }
+  },
+  "constraints": {
+    "request-safety": [
+      {
+        "path": "/safetySettings",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/safetySettings"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        },
+        "reason": "safetySettings requires one setting per category",
+        "each": [
+          {
+            "path": "/category",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "safety setting requires a nonempty string",
+            "check": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": ""
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "path": "/threshold",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "safety setting requires a nonempty string",
+            "check": {
+              "op": "not",
+              "source": {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  },
+                  {
+                    "op": "literal",
+                    "value": ""
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "path": "/safetySettings",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/safetySettings"
+          }
+        },
+        "check": {
+          "op": "ref",
+          "ref": "has-unique-safety-categories"
+        },
+        "reason": "only one safety setting is allowed per category"
+      }
+    ],
+    "single-candidate": [
+      {
+        "path": "/candidates",
+        "schema": {
+          "type": "array"
+        },
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "not",
+              "source": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/error"
+                }
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/candidates"
+              }
+            }
+          ]
+        },
+        "check": {
+          "op": "let",
+          "name": "output-count",
+          "source": {
+            "op": "length",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            }
+          },
+          "body": {
+            "op": "any",
+            "items": [
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "output-count"
+                  },
+                  {
+                    "op": "literal",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "binding",
+                    "name": "output-count"
+                  },
+                  {
+                    "op": "literal",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "reason": "this protocol package supports one response candidate"
+      }
+    ],
+    "request-input": [
+      {
+        "path": "/generationConfig/thinkingConfig",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "code": "invalid_input",
+        "reason": "thinking controls must be an object or null",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/generationConfig/thinkingConfig"
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig",
+        "schema": {
+          "type": "any"
+        },
+        "code": "invalid_input",
+        "reason": "thinkingLevel and thinkingBudget cannot coexist",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "all",
+            "items": [
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingLevel"
+                }
+              },
+              {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/generationConfig/thinkingConfig/thinkingBudget"
+                }
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "check": {
+          "op": "literal",
+          "value": false
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig/includeThoughts",
+        "schema": {
+          "type": "boolean"
+        },
+        "code": "invalid_input",
+        "reason": "includeThoughts must be a boolean",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/includeThoughts"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig/thinkingLevel",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "code": "invalid_input",
+        "reason": "invalid thinking level",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/thinkingLevel"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/thinkingConfig/thinkingBudget",
+        "schema": {
+          "type": "any"
+        },
+        "code": "invalid_input",
+        "reason": "budget must be an integer >= -1 without overflow",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig"
+            }
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/generationConfig/thinkingConfig/thinkingBudget"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "check": {
+          "op": "if",
+          "when": {
+            "op": "is_integer",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "integer",
+            "operation": "gte",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": -1
+              }
+            ]
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      },
+      {
+        "path": "",
+        "code": "invalid_association",
+        "reason": "tool history links are inconsistent",
+        "diagnostic": {
+          "code": "invalid_association",
+          "stage": "wire"
+        },
+        "check": {
+          "op": "ref",
+          "ref": "request-tool-links"
+        },
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "type",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/contents"
+              }
+            },
+            {
+              "op": "literal",
+              "value": "array"
+            }
+          ]
+        }
+      },
+      {
+        "ref": "request-safety"
+      }
+    ]
+  }
+}

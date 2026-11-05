@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	stdjson "encoding/json" // Independent token oracle for the resource meter.
 	"io"
 	"os"
 	"testing"
@@ -27,7 +26,7 @@ func FuzzJSONResourceLimits(f *testing.F) {
 		}
 		limits := DefaultLimits()
 		limits.Depth, limits.Nodes = int(depthLimit)+1, int(nodeLimit)+1
-		decoder := stdjson.NewDecoder(bytes.NewReader(raw))
+		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()
 		depth, nodes, maximum := 0, 0, 0
 		for {
@@ -39,7 +38,7 @@ func FuzzJSONResourceLimits(f *testing.F) {
 				t.Fatal(err)
 			}
 			nodes++
-			if delimiter, ok := token.(stdjson.Delim); ok {
+			if delimiter, ok := token.(json.Delim); ok {
 				if delimiter == '{' || delimiter == '[' {
 					depth++
 				} else {

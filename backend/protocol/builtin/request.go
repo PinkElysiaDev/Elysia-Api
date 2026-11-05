@@ -492,7 +492,7 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 					return unsupported("/parameters/anthropic_metadata/"+key, "unknown metadata requires explicit mapping")
 				}
 			}
-			if user := parameters["user"]; !user.IsZero() && !meta["user_id"].IsZero() && user != meta["user_id"] {
+			if user := parameters["user"]; !user.IsZero() && !meta["user_id"].IsZero() && !isSameUserIdentity(user, meta["user_id"]) {
 				return unsupported("/parameters/user", "conflicting user identities")
 			}
 			isMapped = true
@@ -514,4 +514,17 @@ func (adapter module) encodeParameters(fields p.Object, parameters p.Object) err
 		fields["generationConfig"] = object(parameterOutput)
 	}
 	return nil
+}
+
+func isSameUserIdentity(left, right p.Value) bool {
+	if left == right {
+		return true
+	}
+	// Raw callers may bypass typed hint validation. Apart from null, keep
+	// non-string values strict instead of broadening equality to arbitrary JSON.
+	if !left.IsStringValue() || !right.IsStringValue() {
+		return left.IsNull() && right.IsNull()
+	}
+	var leftText, rightText string
+	return left.Decode(&leftText) == nil && right.Decode(&rightText) == nil && leftText == rightText
 }

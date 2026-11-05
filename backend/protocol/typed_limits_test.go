@@ -69,12 +69,17 @@ func checkMeterEquivalent(t *testing.T, value any) {
 			}
 		}
 	}
-	if meter.bytes != len(encoded.raw) || meter.nodes != nodes || meter.depth != 0 {
-		t.Fatalf("meter (%d,%d,%d) != encoding (%d,%d,0)", meter.bytes, meter.nodes, meter.depth, len(encoded.raw), nodes)
+	if meter.bytes != len(encoded.raw) || meter.nodes != nodes || meter.depth != 0 || meter.maxDepth != maxDepth {
+		t.Fatalf("meter (bytes=%d,nodes=%d,depth=%d,maxDepth=%d) != encoding (%d,%d,0,%d)", meter.bytes, meter.nodes, meter.depth, meter.maxDepth, len(encoded.raw), nodes, maxDepth)
 	}
 	generated := typedMeter{limits: limits}
-	if ok, supported := generated.visitTyped(value); supported && (!ok || generated.bytes != meter.bytes || generated.nodes != meter.nodes || generated.depth != meter.depth || generated.maxDepth != meter.maxDepth) {
+	isMeasured, isSupported := generated.visitTyped(value)
+	if isSupported && (!isMeasured || generated.bytes != meter.bytes || generated.nodes != meter.nodes || generated.depth != meter.depth || generated.maxDepth != meter.maxDepth || generated.maxRawBytes != meter.maxRawBytes) {
 		t.Fatalf("generated meter differs from reflective/JSON oracle: %+v / %+v", generated, meter)
+	}
+	size, err := measureSemanticValue(value, limits)
+	if err != nil || size.hasMetrics != isSupported || isSupported && (size.semanticMetrics != (semanticMetrics{bytes: len(encoded.raw), nodes: nodes, depth: maxDepth}) || !size.fits(limits)) {
+		t.Fatalf("complete measurement differs from JSON token oracle: %+v / %v", size, err)
 	}
 	limits.Nodes, limits.Depth = nodes, maxDepth
 	for _, delta := range []int{-1, 0, 1} {
@@ -92,7 +97,22 @@ func checkMeterEquivalent(t *testing.T, value any) {
 			if (want == nil) != (got == nil) || want != nil && want.Error() != got.Error() {
 				t.Fatalf("%s delta %d: got %v, want %v", field, delta, got, want)
 			}
+			if size.fits(boundary) && want != nil {
+				t.Fatalf("%s delta %d: complete measurement bypassed a budget rejection", field, delta)
+			}
 		}
+	}
+}
+
+func TestSemanticSizeDoesNotReuseIncompleteMetrics(t *testing.T) {
+	limits := DefaultLimits()
+	size, err := measureSemanticValue(Object{"raw": {raw: `{"x":[{}]}`}}, limits)
+	if err != nil || size.bytes == 0 || size.fits(limits) {
+		t.Fatal("encoder-only result supplied a generated traversal proof", size, err)
+	}
+	size, err = measureSemanticValue(&Request{Parameters: Object{"absent": {}}}, limits)
+	if err == nil || size.fits(limits) {
+		t.Fatal("incomplete traversal supplied reusable metrics", size, err)
 	}
 }
 

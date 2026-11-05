@@ -31,8 +31,13 @@ func (s *Server) adminEnabledProtocols(ctx context.Context, c *app.RequestContex
 	items := make([]enabledProtocol, 0, len(view.IDs()))
 	for _, id := range view.IDs() {
 		compiled, _ := view.Pin(id)
-		definition := compiled.Definition()
-		item := enabledProtocol{ID: id, Name: definition.Name, Revision: compiled.Hash(), Preset: protocol.IsPresetProtocolID(id), Capabilities: definition.Capabilities, HasAgentPolicy: definition.Agent != nil, Directions: []protocol.Direction{}}
+		item := enabledProtocol{ID: id, Revision: compiled.Hash(), Preset: protocol.IsPresetProtocolID(id), Capabilities: compiled.DeclaredCapabilities(), HasAgentPolicy: compiled.HasAgentPolicy(), Directions: []protocol.Direction{}}
+		if document, isPackage := compiled.Package(); isPackage {
+			item.Name = document.Spec.Name
+		} else {
+			definition := compiled.Definition()
+			item.Name = definition.Name
+		}
 		for _, direction := range protocol.DirectionCatalog() {
 			if compiled.Supports(direction) {
 				item.Directions = append(item.Directions, direction)

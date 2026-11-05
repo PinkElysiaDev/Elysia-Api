@@ -651,7 +651,8 @@ func waitForTaskState(t *testing.T, s *Server, taskID, want string) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("task %s never reached %q (now %q)", taskID, want, taskState(t, s, taskID))
+	_, task, _ := a2aCall(t, s, "tasks/get", map[string]any{"id": taskID}, "")
+	t.Fatalf("task %s never reached %q: %+v", taskID, want, task)
 }
 
 // 取消后的终态不得被后台轮次的迟到帧（完成/失败）改写。

@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
@@ -8,6 +9,38 @@ import (
 
 type requestObservation struct {
 	Wire, Error string
+}
+
+func BenchmarkAnthropicGeminiProjection(b *testing.B) {
+	for _, size := range []int{64, 2 << 20} {
+		name := "short"
+		if size > 64 {
+			name = "history2MiB"
+		}
+		b.Run(name, func(b *testing.B) {
+			source, target := testCompiled(b, Anthropic), testCompiled(b, Gemini)
+			conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(source, target))
+			if err != nil {
+				b.Fatal(err)
+			}
+			body := []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"` + strings.Repeat("h", size) + `"}]}`)
+			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
+			b.ReportAllocs()
+			for b.Loop() {
+				request, err := source.DecodeRequest(b.Context(), body, p.EvaluationContext{})
+				if err != nil {
+					b.Fatal(err)
+				}
+				request, err = conversion.Request(b.Context(), request, route, nil)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := target.EncodeRequest(b.Context(), request, p.EvaluationContext{}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 // Compare the public result of typed and JSON module dispatch, without freezing

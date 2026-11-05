@@ -1,0 +1,88 @@
+{
+  "id": "job-alpha",
+  "name": "job-alpha",
+  "version": "1",
+  "family": "job-alpha",
+  "wireVersion": "1",
+  "documents": {
+    "request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "generation-request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "provider-response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "client-response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "task-status": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  },
+  "operations": {
+    "submit": {
+      "kind": "submit",
+      "method": "POST",
+      "path": "/jobs",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      },
+      "response": "task-status",
+      "request": "generation-request",
+      "task": {
+        "status": "status",
+        "result": "result",
+        "cancel": "cancel",
+        "idempotencyHeader": "Idempotency-Key"
+      }
+    },
+    "status": {
+      "kind": "status",
+      "method": "GET",
+      "path": "/jobs/{taskId}",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      },
+      "response": "task-status"
+    },
+    "result": {
+      "kind": "result",
+      "method": "GET",
+      "path": "/jobs/{taskId}/result",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      },
+      "response": "provider-response"
+    },
+    "cancel": {
+      "kind": "cancel",
+      "method": "DELETE",
+      "path": "/jobs/{taskId}",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      },
+      "response": "task-status"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+[
+  {"responseId":"r","modelVersion":"m","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"think","thought":true},{"thoughtSignature":"sig-thought"},{"text":"hel"}]}}]},
+  {"responseId":"r","modelVersion":"m","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"lo"},{"functionCall":{"id":"call","name":"lookup","args":{"n":9007199254740993}}},{"thoughtSignature":"sig-tool"}]}}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"thoughtsTokenCount":1,"totalTokenCount":6}},
+  {"responseId":"r","modelVersion":"m","candidates":[{"index":0,"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"thoughtsTokenCount":1,"totalTokenCount":6}}
+]

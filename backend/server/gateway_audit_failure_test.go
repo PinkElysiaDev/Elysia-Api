@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
@@ -124,7 +125,7 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 			out := httptest.NewRecorder()
 			before := calls.Load()
 			serveTestHTTP(s.engine, out, req)
-			if calls.Load() != before+1 || out.Code != 524 || !strings.Contains(out.Body.String(), "上游源站响应超时") || strings.Contains(out.Body.String(), "must-not-leak") {
+			if calls.Load() != before+1 || out.Code != 524 || !strings.Contains(out.Body.String(), "HTTP 524") || strings.Contains(out.Body.String(), "must-not-leak") {
 				t.Fatalf("%s stream=%v: %d %s", ingress.id, stream, out.Code, out.Body.String())
 			}
 			records := latestUsageRecords(t, s)
@@ -155,11 +156,11 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidate := gatewayCandidate{compiled: upstream, operation: operation, operationName: name, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{operation.Transport}}}
-		record := &usageRecord{}
+		record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}
 		before := calls.Load()
 		result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 		var failure *upstreamHTTPFailure
-		if !errors.As(err, &failure) || failure.status != 524 || result == nil || calls.Load() != before+1 || record.UpstreamHTTPStatus != 524 || len(record.ConversionIssues) == 0 || !strings.Contains(err.Error(), "上游源站响应超时") {
+		if !errors.As(err, &failure) || failure.status != 524 || result == nil || calls.Load() != before+1 || record.UpstreamHTTPStatus != 524 || len(record.ConversionIssues) == 0 || !strings.Contains(err.Error(), "HTTP 524") {
 			t.Fatalf("collector diverged: %+v %v", record, err)
 		}
 	}

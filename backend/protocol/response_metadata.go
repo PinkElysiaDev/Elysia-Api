@@ -15,6 +15,8 @@ type ResponseMetadata struct {
 	SourceCodec string `json:"sourceCodec"`
 	Path        string `json:"path"`
 	Value       Value  `json:"value"`
+	// Update is append only for an item delta; collected metadata is a snapshot.
+	Update string `json:"update,omitempty"`
 }
 
 // MetadataFieldType is shared by JSON and SSE decoders. Stateful references,
@@ -132,6 +134,23 @@ func MetadataFieldType(codec, location, name string) string {
 		return "string"
 	}
 	return ""
+}
+
+func validateCoreMetadataValue(version int, field ResponseMetadata) error {
+	if version == ProtocolCoreVersion {
+		if field.Name == "logprobs" {
+			return validateCoreLogprobs(field)
+		}
+		return nil // External field contracts belong to Spec and target dispositions.
+	}
+	return ValidateMetadataValue(field.Codec, field.Location, field.Name, field.Value, field.Path)
+}
+
+func validateCoreLogprobs(field ResponseMetadata) error {
+	if field.Location != "content" {
+		return streamIssue(InvalidInput, field.Path, "token probabilities require a content owner")
+	}
+	return validateLogprobTokens(field.Value, field.Path)
 }
 
 func ValidateMetadataValue(codec, location, name string, v Value, at string) error {

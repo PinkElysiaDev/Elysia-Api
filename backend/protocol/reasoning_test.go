@@ -97,7 +97,7 @@ func TestStructuredReasoningPartUsesResourceScopeAndEvidenceChecks(t *testing.T)
 }
 
 func TestStructuredReasoningPartReceivesNamedNodeRules(t *testing.T) {
-	policy := ConversionPolicy{SchemaVersion: 1, Rules: []ConversionRule{{ID: "part-edit", Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: TextNode}, Action: "set", Path: "/payload", Value: StringValue("edited")}}}
+	policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, Rules: []ConversionRule{{ID: "part-edit", Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: TextNode}, Action: "set", Path: "/payload", Value: StringValue("edited")}}}
 	c, err := ResolveConversion(policy)
 	if err != nil {
 		t.Fatal(err)

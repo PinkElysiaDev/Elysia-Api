@@ -3,32 +3,40 @@ package protocol
 import "fmt"
 
 type replayItem struct {
-	openChildren  int
-	parent        string
-	wireID        Value
-	role          Value
-	kind          NodeKind
-	input         InputKind
-	callID        string
-	name          string
-	isFinished    bool
-	summaryParts  int
-	visibleParts  int
-	reasoningForm ReasoningForm
+	openChildren       int
+	parent             string
+	collection         string
+	hasSummaryChildren bool
+	hasContentChildren bool
+	wireID             Value
+	role               Value
+	kind               NodeKind
+	input              InputKind
+	callID             string
+	name               string
+	isFinished         bool
+	summaryParts       int
+	visibleParts       int
+	reasoningForm      ReasoningForm
 }
 
 // EventReplay is the shared semantic event validator for fixtures and runtime
 // sessions. It retains bounded identities/digests, not already-forwarded text.
 type EventReplay struct {
-	state      *StreamState
-	sequence   *SequenceTracker
-	items      map[string]*replayItem
-	identities *ItemIdentities
-	limits     Limits
-	target     Target
-	usage      *Usage
-	isTerminal bool
-	terminal   EventType
+	retention     streamReservation
+	state         *StreamState
+	sequence      *SequenceTracker
+	items         map[string]*replayItem
+	identities    *ItemIdentities
+	limits        Limits
+	embeddedItems int
+	identityBytes int
+	usageBytes    int
+	target        Target
+	usage         *Usage
+	isTerminal    bool
+	isReleased    bool
+	terminal      EventType
 }
 
 // NewEventReplay creates isolated state for one response event sequence.
@@ -42,7 +50,16 @@ func NewEventReplay(target Target, limits Limits) (*EventReplay, error) {
 
 // Consume validates one semantic event. False means an identical, explicitly
 // sequenced event was already observed; callers must not forward it twice.
-func (replay *EventReplay) Consume(event Event) (bool, error) {
+func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
+	if replay.isReleased {
+		return false, streamIssue(InvalidAssociation, "/state", "released event replay cannot resume")
+	}
+	defer func() {
+		if err == nil && accepted {
+			err = replay.checkRetainedBytes()
+			accepted = err == nil
+		}
+	}()
 	if err := IssuesError(CheckEvent(event, replay.target, replay.limits)); err != nil {
 		return false, err
 	}
@@ -53,10 +70,14 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 		return false, streamIssue(UpstreamContractViolation, "/type", "event arrived after terminal; only usage tails are permitted")
 	}
 	if event.Usage != nil {
-		replay.usage = MergeUsage(replay.usage, event.Usage)
+		if err := replay.mergeUsage(event.Usage); err != nil {
+			return false, err
+		}
 	}
 	if event.Response != nil && event.Response.Usage != nil {
-		replay.usage = MergeUsage(replay.usage, event.Response.Usage)
+		if err := replay.mergeUsage(event.Response.Usage); err != nil {
+			return false, err
+		}
 	}
 	switch event.Type {
 	case ItemStarted, ItemDelta, ItemSnapshot, ItemFinished:
@@ -72,10 +93,18 @@ func (replay *EventReplay) Consume(event Event) (bool, error) {
 		replay.terminal = ResponseFinished
 	case OperationFailed, OperationCancelled:
 		// Failed/cancelled operations may legitimately leave partial arguments.
+		replay.releaseToolInputs()
 		replay.isTerminal = true
 		replay.terminal = event.Type
 	}
 	return true, nil
+}
+
+func (replay *EventReplay) releaseToolInputs() {
+	for _, tool := range replay.state.tools {
+		tool.input.Reset()
+	}
+	replay.state.buffered = 0
 }
 
 func (replay *EventReplay) consumeItem(event Event) error {
@@ -88,9 +117,11 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		return err
 	}
 	if parent != "" {
-		p := replay.items[parent]
-		if p == nil || p.kind != MessageNode || p.isFinished || p.parent != "" {
-			return streamIssue(InvalidAssociation, "/parentId", "content requires an open top-level message")
+		if err := replay.checkParent(replay.items[parent], event); err != nil {
+			return err
+		}
+		if event.Collection == "" && event.Item != nil && !isMessageStreamChild(*event.Item) {
+			return streamIssue(UnsupportedCapability, "/item", "message stream children require text, refusal, unstructured reasoning or client tool leaves")
 		}
 	}
 	item := replay.items[key]
@@ -101,26 +132,34 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if event.Item == nil {
 			return streamIssue(InvalidInput, "/item", "item start requires semantic item kind")
 		}
-		if len(replay.items) >= replay.limits.StateItems {
-			return streamIssue(LimitExceeded, "/item", "too many stream items")
+		if err := replay.reserveItems(1); err != nil {
+			return err
 		}
-		if parent != "" && event.Item.Kind != TextNode && event.Item.Kind != RefusalNode {
-			return streamIssue(UnsupportedCapability, "/item/kind", "message stream children require text or refusal content")
-		}
-		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm, parent: parent}
+		item = &replayItem{kind: event.Item.Kind, reasoningForm: event.Item.ReasoningForm, parent: parent, collection: event.Collection}
 		if event.Item.Input != nil {
 			item.input = event.Item.Input.Kind
 		}
 		replay.items[key] = item
 		if parent != "" {
-			replay.items[parent].openChildren++
+			p := replay.items[parent]
+			p.openChildren++
+			p.hasSummaryChildren = p.hasSummaryChildren || event.Collection == "summary"
+			p.hasContentChildren = p.hasContentChildren || event.Collection == "reasoning_content"
 		}
 	}
 	if item == nil {
 		return streamIssue(InvalidAssociation, "/itemId", "delta or completion has no preceding item start")
 	}
+	previousBytes := item.retainedBytes()
+	defer func() { replay.identityBytes += item.retainedBytes() - previousBytes }()
 	if item.parent != parent {
 		return streamIssue(InvalidAssociation, "/parentId", "item parent changed")
+	}
+	if item.collection != event.Collection {
+		return streamIssue(InvalidAssociation, "/collection", "item collection changed")
+	}
+	if event.Type == ItemFinished && item.openChildren != 0 {
+		return streamIssue(InvalidAssociation, "/parentId", "parent finished before its content")
 	}
 	if item.kind == MessageNode {
 		if event.Item != nil {
@@ -141,11 +180,6 @@ func (replay *EventReplay) consumeItem(event Event) error {
 		if event.Item != nil && len(event.Item.Children) > 0 {
 			return streamIssue(InvalidAssociation, "/item/children", "streamed message children require their own associated events")
 		}
-		if event.Type == ItemFinished {
-			if item.openChildren != 0 {
-				return streamIssue(InvalidAssociation, "/parentId", "message finished before its content")
-			}
-		}
 	}
 	if item.isFinished {
 		return streamIssue(UpstreamContractViolation, "/itemId", "content arrived after item completion")
@@ -156,42 +190,44 @@ func (replay *EventReplay) consumeItem(event Event) error {
 	if event.Item != nil && event.Item.ReasoningForm != item.reasoningForm {
 		return streamIssue(InvalidAssociation, "/item/reasoningForm", "reasoning representation changed")
 	}
+	if err := replay.consumeItemContent(key, item, event); err != nil {
+		return err
+	}
+	if event.Type == ItemFinished {
+		item.isFinished = true
+		if parent != "" {
+			replay.items[parent].openChildren--
+		}
+	}
+	return nil
+}
+
+func isMessageStreamChild(node Node) bool {
+	if node.ReasoningForm != "" || len(node.Children) != 0 || node.ReasoningContent != nil {
+		return false
+	}
+	switch node.Kind {
+	case TextNode, RefusalNode, ReasoningNode, ToolCallNode:
+		return true
+	default:
+		return false
+	}
+}
+
+func (replay *EventReplay) consumeItemContent(key string, item *replayItem, event Event) error {
 	if item.kind == ToolCallNode {
 		return replay.consumeTool(key, item, event)
 	}
-	if event.Item != nil && (event.Item.ReasoningForm == SummaryReasoning || event.Item.ReasoningForm == StructuredReasoning) {
-		if len(event.Item.Children) < item.summaryParts {
-			return streamIssue(UpstreamContractViolation, "/item/children", "reasoning summary removed an emitted part")
+	if item.kind == ServerToolNode {
+		return replay.consumeServerTool(key, item, event)
+	}
+	if event.Item != nil && item.reasoningForm != "" {
+		if err := replay.trackReasoningSnapshot(key, item, event.Item); err != nil {
+			return err
 		}
-		for index, child := range event.Item.Children {
-			if child.Kind != TextNode {
-				return streamIssue(UnsupportedCapability, "/item/children", "summary parts require text")
-			}
-			text, err := readString(child.Payload)
-			if err != nil {
-				return err
-			}
-			if _, err := replay.state.TrackText(fmt.Sprintf("%s/summary/%d", key, index), text, true); err != nil {
-				return err
-			}
-		}
-		item.summaryParts = len(event.Item.Children)
-		if len(event.Item.ReasoningContent) < item.visibleParts {
-			return streamIssue(UpstreamContractViolation, "/item/reasoningContent", "reasoning content removed an emitted part")
-		}
-		for index, part := range event.Item.ReasoningContent {
-			text, err := readString(part.Payload)
-			if err != nil {
-				return err
-			}
-			if _, err := replay.state.TrackText(fmt.Sprintf("%s/reasoning-content/%d", key, index), text, true); err != nil {
-				return err
-			}
-		}
-		item.visibleParts = len(event.Item.ReasoningContent)
 	}
 	if item.reasoningForm != "" && !event.Delta.IsZero() {
-		return streamIssue(InvalidAssociation, "/delta", "structured reasoning updates require an indexed part snapshot")
+		return streamIssue(InvalidAssociation, "/delta", "structured reasoning text requires associated child events")
 	}
 	value := event.Delta
 	isSnapshot := event.Type == ItemSnapshot || event.Type == ItemFinished || event.Type == ItemStarted
@@ -210,9 +246,73 @@ func (replay *EventReplay) consumeItem(event Event) error {
 			return err
 		}
 	}
-	item.isFinished = event.Type == ItemFinished
-	if parent != "" && event.Type == ItemFinished {
-		replay.items[parent].openChildren--
+	return nil
+}
+
+func (replay *EventReplay) checkParent(parent *replayItem, event Event) error {
+	if parent == nil || parent.isFinished || parent.parent != "" {
+		return streamIssue(InvalidAssociation, "/parentId", "content requires an open top-level parent")
+	}
+	if event.Collection == "" {
+		if parent.kind != MessageNode {
+			return streamIssue(InvalidAssociation, "/collection", "reasoning children require a collection")
+		}
+		return nil
+	}
+	if parent.kind != ReasoningNode || (parent.reasoningForm != SummaryReasoning && parent.reasoningForm != StructuredReasoning) {
+		return streamIssue(InvalidAssociation, "/parentId", "collection requires a structured reasoning parent")
+	}
+	if event.Collection == "reasoning_content" && parent.reasoningForm != StructuredReasoning {
+		return streamIssue(InvalidAssociation, "/collection", "visible content requires structured reasoning")
+	}
+	if event.Type == ItemStarted && ((event.Collection == "summary" && parent.summaryParts != 0) || (event.Collection == "reasoning_content" && parent.visibleParts != 0)) {
+		return streamIssue(InvalidAssociation, "/collection", "embedded snapshots and associated children cannot share a collection")
+	}
+	return nil
+}
+
+func (replay *EventReplay) trackReasoningSnapshot(key string, item *replayItem, node *Node) error {
+	for _, part := range []struct {
+		name        string
+		path        string
+		nodes       []Node
+		count       *int
+		hasChildren bool
+	}{
+		{"summary", "/item/children", node.Children, &item.summaryParts, item.hasSummaryChildren},
+		{"reasoning-content", "/item/reasoningContent", node.ReasoningContent, &item.visibleParts, item.hasContentChildren},
+	} {
+		if part.hasChildren {
+			if len(part.nodes) != 0 {
+				return streamIssue(InvalidAssociation, part.path, "associated children cannot be replaced by an embedded snapshot")
+			}
+			continue
+		}
+		if part.nodes == nil {
+			continue // Metadata updates do not replace a text collection.
+		}
+		if len(part.nodes) < *part.count {
+			return streamIssue(UpstreamContractViolation, part.path, "reasoning snapshot removed an emitted part")
+		}
+		additional := len(part.nodes) - *part.count
+		if err := replay.reserveItems(additional); err != nil {
+			return err
+		}
+		for index, child := range part.nodes {
+			text, err := readString(child.Payload)
+			if err != nil {
+				return err
+			}
+			trackerKey := fmt.Sprintf("%s/%s/%d", key, part.name, index)
+			if _, err := replay.state.TrackText(trackerKey, text, true); err != nil {
+				return err
+			}
+			if index >= *part.count {
+				replay.identityBytes += len(trackerKey)
+			}
+		}
+		replay.embeddedItems += additional
+		*part.count = len(part.nodes)
 	}
 	return nil
 }
@@ -282,7 +382,6 @@ func (replay *EventReplay) consumeTool(key string, item *replayItem, event Event
 			return err
 		}
 	}
-	item.isFinished = event.Type == ItemFinished
 	return nil
 }
 
@@ -290,10 +389,65 @@ func (replay *EventReplay) itemKey(event Event) (string, error) {
 	return replay.identities.Resolve(event)
 }
 
+func (item *replayItem) retainedBytes() int {
+	return item.wireID.Len() + item.role.Len() + len(item.callID) + len(item.name)
+}
+
+func (replay *EventReplay) retainedItems() int {
+	items := len(replay.items) + replay.embeddedItems
+	if replay.usage != nil {
+		items += len(replay.usage.Details)
+	}
+	return items
+}
+
+func (replay *EventReplay) mergeUsage(update *Usage) error {
+	replay.usage = MergeUsage(replay.usage, update)
+	if err := replay.reserveItems(0); err != nil {
+		return err
+	}
+	size, err := measureSemanticValue(replay.usage, replay.limits)
+	if err != nil {
+		return err
+	}
+	replay.usageBytes = size.bytes
+	return nil
+}
+
+func (replay *EventReplay) reserveItems(additional int) error {
+	items := replay.retainedItems() + additional
+	if items > replay.limits.StateItems {
+		return streamIssue(LimitExceeded, "/item", "stream identities and embedded content exceed the item limit")
+	}
+	// The latest sequence is a fixed lane fact. Older deduplication records
+	// use only spare capacity and may expire as semantic state grows.
+	replay.sequence.trim(max(1, replay.limits.StateItems-items+1))
+	return nil
+}
+
+func (replay *EventReplay) retainedBytes() int {
+	return replay.identities.bytes + replay.identityBytes + replay.state.buffered + replay.usageBytes
+}
+
+func (replay *EventReplay) checkRetainedBytes() error {
+	bytes := replay.retainedBytes()
+	if bytes > replay.limits.BufferBytes {
+		return streamIssue(LimitExceeded, "/item", "stream identities and buffered input exceed the buffer limit")
+	}
+	if replay.retention.budget != nil {
+		items := replay.retainedItems()
+		if err := replay.retention.check(items, bytes); err != nil {
+			return err
+		}
+		replay.retention.commit(items, bytes)
+	}
+	return nil
+}
+
 func (replay *EventReplay) completeTools() error {
 	for key, item := range replay.items {
-		if item.kind == MessageNode && !item.isFinished {
-			return streamIssue(UpstreamContractViolation, "/itemId", "response finished before its message")
+		if (item.kind == MessageNode || item.kind == ServerToolNode || item.reasoningForm != "") && !item.isFinished {
+			return streamIssue(UpstreamContractViolation, "/itemId", "response finished before its container")
 		}
 		if item.kind == ToolCallNode && (item.callID == "" || item.name == "") {
 			return streamIssue(InvalidAssociation, key, "completed tool requires its name and call ID")
@@ -304,11 +458,24 @@ func (replay *EventReplay) completeTools() error {
 
 // Finish requires a declared terminal; network EOF is not successful completion.
 func (replay *EventReplay) Finish() error {
+	if replay.isReleased {
+		return streamIssue(InvalidAssociation, "/state", "released event replay cannot finish")
+	}
 	if !replay.isTerminal {
 		return streamIssue(UpstreamContractViolation, "/type", "event sequence ended without a terminal")
+	}
+	if budget := replay.retention.budget; budget != nil {
+		return budget.Check()
 	}
 	return nil
 }
 
 // Usage returns a copy of the merged counters, including usage after terminal.
 func (replay *EventReplay) Usage() *Usage { return MergeUsage(nil, replay.usage) }
+
+// Release drops request-owned identities, history and input buffers. A released
+// replay cannot accept more events or establish successful completion.
+func (replay *EventReplay) Release() {
+	replay.releaseRetention()
+	*replay = EventReplay{isReleased: true}
+}

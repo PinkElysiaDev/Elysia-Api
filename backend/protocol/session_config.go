@@ -43,6 +43,18 @@ func DefaultSessionConfig() SessionConfig {
 }
 
 func checkSessionOperation(operation Operation, definition Definition, limits Limits) error {
+	if err := checkSessionTransport(operation, limits); err != nil {
+		return err
+	}
+	if operation.Transport != WebSocket {
+		return nil
+	}
+	return checkSessionAdapters(operation, definition.Capabilities,
+		hasDefinitionDirections(definition, DecodeRequest, DecodeClientEvent, EncodeEvent),
+		hasDefinitionDirections(definition, EncodeRequest, EncodeUpstreamEvent, DecodeEvent))
+}
+
+func checkSessionTransport(operation Operation, limits Limits) error {
 	if operation.Transport != WebSocket {
 		if operation.Session != nil || operation.Kind == "session" {
 			return fmt.Errorf("session configuration requires WebSocket transport")
@@ -65,16 +77,19 @@ func checkSessionOperation(operation Operation, definition Definition, limits Li
 	if options.CloseMillis <= 0 || options.PingMillis <= options.CloseMillis || options.IdleMillis <= options.PingMillis || options.IdleMillis > DefaultSessionIdleMillis {
 		return fmt.Errorf("session requires 0 < closeMillis < pingMillis < idleMillis <= %d", DefaultSessionIdleMillis)
 	}
-	if !definition.Capabilities[SessionsCapability] {
+	return nil
+}
+
+func checkSessionAdapters(operation Operation, capabilities CapabilitySet, canIngress, canUpstream bool) error {
+	if !capabilities[SessionsCapability] {
 		return fmt.Errorf("WebSocket requires sessions capability")
 	}
+	options := operation.Session
 	for _, media := range []*MediaFormat{options.InputMedia, options.OutputMedia} {
-		if media != nil && (media.Type == "" || media.Format == "" || !definition.Capabilities[RealtimeMediaCapability]) {
+		if media != nil && (media.Type == "" || media.Format == "" || !capabilities[RealtimeMediaCapability]) {
 			return fmt.Errorf("binary media requires type, format and media.realtime capability")
 		}
 	}
-	canIngress := hasDefinitionDirections(definition, DecodeRequest, DecodeClientEvent, EncodeEvent)
-	canUpstream := hasDefinitionDirections(definition, EncodeRequest, EncodeUpstreamEvent, DecodeEvent)
 	if !canIngress && !canUpstream {
 		return fmt.Errorf("WebSocket requires a complete ingress or upstream session adapter")
 	}

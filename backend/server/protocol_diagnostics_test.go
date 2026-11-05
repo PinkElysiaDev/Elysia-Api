@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
@@ -99,7 +100,7 @@ func TestEncodingFailureKeepsCandidateAndExactField(t *testing.T) {
 	candidate.model.BaseURL = "https://example.invalid"
 	candidate.model.SourceID = "source"
 	c, _ := messagesRequestContext(`{}`)
-	record := &usageRecord{}
+	record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}
 	err := s.forwardGateway(contextForTest(c), c, record, &gatewayPlan{request: request}, candidate)
 	if err == nil || !strings.Contains(err.Error(), "/content/0") {
 		t.Fatal(err)
