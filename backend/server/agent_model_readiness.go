@@ -62,16 +62,11 @@ func agentTransport(binding protocol.Binding, compiled *protocol.Compiled) proto
 }
 
 func checkAgentModel(view protocol.RegistryView, bindings []storage.ProtocolBinding, model storage.Model) agentModelReadiness {
-	_, readiness := prepareAgentModel(view, bindings, model)
-	return readiness
-}
-
-func prepareAgentModel(view protocol.RegistryView, bindings []storage.ProtocolBinding, model storage.Model) (gatewayCandidate, agentModelReadiness) {
 	result := agentModelReadiness{SourceID: model.SourceID, ModelID: model.ID, ModelName: model.Name, ModelTools: model.ToolsCapable, CapabilitySource: model.CapabilitySource}
-	fail := func(code, path, reason string) (gatewayCandidate, agentModelReadiness) {
+	fail := func(code, path, reason string) agentModelReadiness {
 		result.ReasonCode, result.Reason = code, reason
 		result.Issues = gatewayIssue(protocol.Identity{DefinitionID: result.ProtocolID}, protocol.UnsupportedCapability, path, reason).Issues
-		return gatewayCandidate{}, result
+		return result
 	}
 	entry, found := selectProtocolBinding(bindings, modelReference(model))
 	result.BindingKind = entry.Kind
@@ -101,16 +96,16 @@ func prepareAgentModel(view protocol.RegistryView, bindings []storage.ProtocolBi
 	}
 	if issues := protocol.CheckBinding(entry.Binding, compiled); protocol.IssuesError(issues) != nil {
 		result.ReasonCode, result.Reason, result.Issues = "binding_verification_stale", "协议绑定验证过期或与当前修订不兼容，请重新验证", issues
-		return gatewayCandidate{}, result
+		return result
 	}
-	candidate, failure := selectGatewayOperation(gatewayCandidate{model: modelReference(model)}, entry, compiled, agentTransport(entry.Binding, compiled), "generate")
+	candidate, failure := makeGatewayCandidate(view, bindings, modelReference(model), agentTransport(entry.Binding, compiled), "generate")
 	if failure != nil || candidate.operation.Kind != "generate" {
 		result.CanRepair = false
 		return fail("protocol_mapping_missing", "/operations", "Agent 需要兼容的同步生成操作及响应映射")
 	}
 	result.Available = true
 	result.CanRepair = false
-	return candidate, result
+	return result
 }
 
 func (s *Server) adminAgentModels(ctx context.Context, c *app.RequestContext) {

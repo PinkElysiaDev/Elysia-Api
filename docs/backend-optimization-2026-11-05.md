@@ -110,9 +110,9 @@ This is a targeted implementation/caller review across backend subsystems, not
 a claim that every backend source line was audited. No unrelated naming or
 formatting changes are included.
 
-## Agent conversion preparation
+## Agent conversion preparation: rejected at the final default gate
 
-The Agent now prepares its checked candidate from the same immutable conversion
+The measured Agent candidate prepares its checked candidate from the same immutable conversion
 snapshot used to resolve policy. It reuses the existing bounded compiled-plan
 cache, while each call retains its own provider evidence, diagnostics and execution
 state. Execution copies are created after releasing the cache lock. No new cache,
@@ -164,10 +164,79 @@ or improvement is not established. No third batch is taken. Combined CPU falls
 from 10.559 to 0.916 ms/call, objects from 25,407 to 2,181. GC pause is below this
 fixture's measurement resolution. All raw runs and both initial decisions remain.
 
-The Agent changes are retained under the agreed no-stable-regression criterion,
-subject to the final gateway matrix. Corrected server full tests pass in
+The Agent changes were provisionally committed pending the final gateway matrix.
+They are now rejected and restored after that matrix's combined default-chain
+memory regression; CPU and allocation savings do not override it. Corrected server full tests pass in
 `backend-fixture-checks` (171.7 seconds for the command). The original complete
 Go run passed every other package and failed only the corrected test assumption.
 Vet, staticcheck v0.8.2 (zero diagnostics), related protocol/server/backend race,
 both generation checks, source inventory and measurement-tool tests pass in
 `backend-final-checks`. These checks ran separately from performance windows.
+
+## Release and WebUI verification
+
+Commit `c1962aa7` contains the provisional Agent change. `backend-delivery-checks`
+records the normal standalone build: WebUI media verification, TypeScript, Vite,
+embedded assets/source snapshot and six Go targets all pass. Windows amd64 starts
+with an isolated new database and passes health, compiler identity, four current
+default presets and embedded-UI asset checks. Cross-compilation is not runtime
+acceptance on the other five targets.
+
+The first browser attempt cannot launch because its bundled Chromium is absent;
+its failure log is preserved. The existing Chrome 156.0.8078.74 is then selected
+through Playwright's supported `chrome` channel, with a fresh temporary profile.
+All 46 selected tests pass in `backend-browser-checks`, using workspace Playwright
+1.64.1: protocol documents and separate sources, real verify/activate/rollback,
+policy editing and preview, both count-token package previews, Agent editor and
+stream/UI state. No WebUI source or dependency lock file changes are needed.
+
+## Final current-chain matrix and cutover gate
+
+`backend-final-standalone` and `backend-final-counters` each contain 160 successful
+windows: eight scenes, five rotating rounds, D0/P0/final-default/final-package.
+Every window verifies exact output, one upstream call per request, active identity
+before/after reload and successful owned-process exits. Standalone CPU, throughput,
+latency, first frame and sampled process memory are kept separate from the test-only
+exact allocation counters. No historical executable enters this round's gate.
+
+| Scene | D0 CPU ms/request | Final package CPU ms/request | D0 B/request | Final package B/request |
+|---|---:|---:|---:|---:|
+| Short JSON | 0.671 | 1.358 | 147,044 | 262,227 |
+| 256 KiB history | 7.690 | 13.062 | 9,823,774 | 8,910,037 |
+| 32 tools | 2.319 | 4.486 | 526,079 | 1,474,364 |
+| Four concurrent clients | 0.492 | 0.881 | 148,351 | 262,996 |
+| 256-frame SSE | 12.817 | 36.255 | 6,810,942 | 15,078,009 |
+| 2 MiB media | 18.921 | 26.611 | 18,477,155 | 15,916,460 |
+| Cross-protocol JSON | 0.824 | 0.916 | 155,943 | 222,459 |
+| Cross-protocol SSE | 15.259 | 36.133 | 9,089,743 | 14,895,925 |
+
+These are per-window medians across five rounds. The final package has stable CPU
+regressions against D0 in seven scenes; cross-JSON CPU is inconclusive but its
+throughput/latency/memory regress. First-frame and peak-RSS regressions also block
+cutover. Lower media/history allocated bytes cannot compensate for those results.
+The cutover gate fails clearly; no extra confirmation is spent on that comparison.
+
+The package-versus-P0 standalone comparison has no stable regression in any of the
+eight scenes. SSE objects fall from 205,116 to 199,168/request and allocated bytes
+from 15,172,444 to 15,078,009/request; this does not establish a general HTTP speedup.
+Default-versus-D0 initially regresses only tools natural recovery heap (ratio
+1.385, interval 1.072–1.457). Counter-window auxiliary results flag default history
+latency (+0.059%), default media peak RSS (+3.56%) and package media p95 (+2.41%).
+Exact allocated bytes/objects have no stable regression against their own chains.
+The flagged scenes receive one equal-sized confirmation, preserving all original
+observations; their combined decisions are recorded below.
+
+The tools natural-recovery result remains a stable default-chain regression after
+all ten pairs: 8,258,200 → 11,236,880 bytes, ratio 1.361, interval 1.074–1.476.
+The Agent production candidate is therefore restored in full. Its exact cause is
+not established by these samples; it must not be dismissed as GC noise or balanced
+against the Agent's CPU gain. No third confirmation or speculative production fix
+is attempted. Tests and evidence remain, and the array-only candidate receives
+its own final default/package matrix before retention.
+
+The counter confirmation removes the initial package media p95, default history
+latency and default media RSS flags, but its combined default history peak RSS
+now regresses by 0.312% (interval 1.00062–1.01090). This is retained as another
+failed metric, not filtered out because it is small. No further confirmation is
+run. The restored Agent call chain passes the retained in-flight configuration
+regression; the candidate is not part of the final production source.

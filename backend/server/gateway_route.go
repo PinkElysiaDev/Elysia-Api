@@ -218,13 +218,6 @@ func makeGatewayCandidate(view protocol.RegistryView, bindings []storage.Protoco
 			return candidate, &protocol.ConversionError{Issues: issues}
 		}
 	}
-	return selectGatewayOperation(candidate, entry, compiled, transport, kind)
-}
-
-// Binding identity and capability checks belong to the caller. Operation selection
-// consumes that same immutable binding without repeating its validation.
-func selectGatewayOperation(candidate gatewayCandidate, entry storage.ProtocolBinding, compiled *protocol.Compiled, transport protocol.Transport, kind string) (gatewayCandidate, *protocol.ConversionError) {
-	binding := entry.Binding
 	if kind == "generate" && binding.Wait != nil {
 		for name, operation := range compiled.OperationRoutes() {
 			if name == binding.Operation && operation.Kind == "submit" {
@@ -258,7 +251,7 @@ func selectGatewayOperation(candidate gatewayCandidate, entry storage.ProtocolBi
 		}
 	}
 	operation, _ := compiled.Operation(candidate.operationName)
-	candidate.binding, candidate.compiled, candidate.operation, candidate.scope = binding, compiled, operation, modelProtocolScope(candidate.model)
+	candidate.binding, candidate.compiled, candidate.operation, candidate.scope = binding, compiled, operation, modelProtocolScope(model)
 	candidate.combinations = entry.Combinations
 	return candidate, nil
 }
