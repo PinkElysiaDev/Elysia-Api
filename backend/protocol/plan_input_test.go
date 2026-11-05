@@ -49,6 +49,29 @@ func TestOutputPlanReadsConstructedInput(t *testing.T) {
 	}
 }
 
+func TestConstructedFieldReadsMatchEncodedKeys(t *testing.T) {
+	for _, fields := range [][]jsonOutputField{
+		{{"a", JSONLeaf(coreInteger(1))}, {"b", JSONLeaf(coreInteger(2))}, {"z", JSONLeaf(coreInteger(3))}},
+		{{"z", JSONLeaf(coreInteger(3))}, {"b", JSONLeaf(coreInteger(2))}, {"a", JSONLeaf(coreInteger(1))}},
+		{{"a", JSONLeaf(coreInteger(1))}, {"a", JSONLeaf(coreInteger(2))}, {"bad\xff", JSONLeaf(coreInteger(3))}, {"bad�", JSONLeaf(coreInteger(4))}},
+	} {
+		output := JSONOutput{node: &jsonOutputNode{object: true, fields: fields}}
+		output.node.hasCanonicalKeys = fields[0].key != fields[1].key
+		output.node.hasSortedFields = fields[0].key == "a"
+		encoded, err := output.Encode(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"0", "a", "b", "c", "z", "zz", "bad�"} {
+			want, wantErr := readValuePointer(encoded, []string{key})
+			got, gotErr := readOutputPointer(output, []string{key}, nil)
+			if got.node != nil || got.value != want || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) {
+				t.Fatal("constructed lookup changed encoded key semantics", key, got, want, gotErr, wantErr)
+			}
+		}
+	}
+}
+
 func TestOutputPlanRootObjectReadScope(t *testing.T) {
 	root := Value{raw: `{"a":{"n":1},"b":2}`}
 	for _, tc := range []struct {

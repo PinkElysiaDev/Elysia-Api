@@ -60,3 +60,47 @@ length/join controls. Both measurements and combined comparison are retained in
 `backend-operands-narrow-{micro,confirm}`. No further confirmation is attempted.
 All operand production changes are restored to P0; the failure-order regression
 remains. These results do not justify accepting a change merely for fewer bytes.
+
+## Wire array validation
+
+The first array experiment factors member scanning into the existing public and
+scalar consumers. Although wire validation improves, raw scalar length becomes
+3.6–12.2% slower; `backend-arrays-micro` retains this rejected experiment against
+its frozen operand parent. The public/scalar readers are restored.
+
+`backend-arrays-only` changes only the array branch of the wire shape checker.
+It reads validated immutable spans through the existing `valueReader.valueEnd`,
+including its bounded large-subtree index, without a temporary member slice.
+The full resource check still precedes shape traversal and failure diagnostics
+still come from the existing schema validator. No values escape validation.
+Protocol tests pass. Ten alternating 30,000-iteration rounds against P0 have no
+stable timing/bytes/objects regression in wire-array and scalar control fixtures.
+HTTP acceptance remains separate.
+
+## Constructed field lookup: rejected
+
+The early-exit candidate preserves duplicate/invalid-Unicode last-wins behavior
+and passes encoded-key parity tests. Ten alternating million-iteration lookup
+rounds (`backend-fields-micro`) nevertheless regress single-field reads by about
+8–9% and sorted late/missing reads by up to 103%. Extra conditions and ordering
+comparisons cost more than the eliminated scans in these cases. The production
+change is restored; the independent encoded-key regression remains. This clear
+failure needs no confirmation or HTTP run. `backend-fields` and the initial
+`backend-agent` archive contain this rejected code and are not final candidates.
+
+## Broader backend review
+
+| Area inspected | Decision |
+|---|---|
+| Input views and Spec checks | Successful immutable-input/resource checks are already reused; do not duplicate that optimization. External and core lifecycle checks have different subjects. |
+| JSON transport and Native | Keep owning copies that detach small fragments or outgoing wire from larger backing storage. Prior borrowed-transport counterexample still applies. |
+| Routing cache and limiter | Keep generation checks around asynchronous loads, per-key permissions, and idempotent quota release; they handle concurrent changes, not unreachable fallback. |
+| Outbound and relay | URL validation and dial-time address checks concern different facts. Keep both, stream idle deadlines and operation-specific redirect rejection. |
+| Storage and usage writer | Keep transaction snapshots, generation guards, bounded queue fallback and persistence retries. Failures/shutdown/reset make these paths reachable. No database/schema tuning without a measured bottleneck. |
+| Logging | No-quote redaction shortcut and disabled-body early exits already exist. Keep truncation/ownership and malformed-input redaction; no logging behavior change. |
+| Refresh, health and shutdown | Existing owner lifetimes, coalescing and cancellation cover real concurrent transitions. No extra abstractions or speculative removal. |
+| Agent | Reuse a checked candidate and the existing conversion snapshot instead of repeated binding validation, separate binding/policy reads and recompilation. Verify in-flight isolation and later revocation. |
+
+This is a targeted implementation/caller review across backend subsystems, not
+a claim that every backend source line was audited. No unrelated naming or
+formatting changes are included.
