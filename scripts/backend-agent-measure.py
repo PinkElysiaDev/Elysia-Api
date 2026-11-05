@@ -16,6 +16,7 @@ def main():
     parser.add_argument('--stages', required=True)
     parser.add_argument('--label', required=True)
     parser.add_argument('--rounds', type=int, default=5)
+    parser.add_argument('--logging', choices=['off', 'body'], default='off')
     args = parser.parse_args()
     stages = args.stages.split(',')
     if len(stages) != 2 or args.rounds < 5:
@@ -35,12 +36,12 @@ def main():
             directory = output / f'{repeat+1}-{stage}'
             directory.mkdir()
             build = builds[stage]
-            env = versions.environment() | {'ELYSIA_AGENT_SNAPSHOT_OUTPUT': str(directory)}
+            env = versions.environment() | {'ELYSIA_AGENT_SNAPSHOT_OUTPUT': str(directory), 'ELYSIA_AGENT_SNAPSHOT_LOG': args.logging}
             command = [build['instrumented'], '-test.run=^TestAgentSnapshotPerformance$', '-test.v', '-test.count=1', '-test.timeout=5m']
             record = dict(stage=stage, round=repeat+1, command=command, binarySHA256=build['instrumentedSHA256'],
                           sourceSHA256=build['sourceSHA256'], fixtureHashes=build['benchmarkOverlay'],
                           runnerSHA256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                          environment=versions.RUNTIME, status='running')
+                          environment=versions.RUNTIME, logging=args.logging, status='running')
             versions.save_json(directory / 'run.json', record)
             try:
                 versions.execute(command, Path(build['source']) / 'backend/server', directory / 'run.log', env)

@@ -14,12 +14,15 @@ import (
 	"time"
 
 	"github.com/elysia-api/backend/agent"
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 const (
 	agentSnapshotWarmup = 8
 	agentSnapshotCalls  = 128
+	agentSnapshotLogKB  = 1024
 )
 
 func TestAgentSnapshotPinsInFlightBindingAndSeesRevocation(t *testing.T) {
@@ -82,8 +85,13 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 	}
 	s := newAgentIntegrationServer(t)
 	seedGatewayPackages(t, s)
+	bodyKB := 0
+	if os.Getenv("ELYSIA_AGENT_SNAPSHOT_LOG") == "body" {
+		bodyKB = agentSnapshotLogKB
+	}
+	s.config.SetUsageLogConfig(config.UsageLogConfig{BodyMaxKB: &bodyKB})
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
-		if call%2 == 0 && !containsAgentHistory(body) {
+		if call%2 == 0 && !hasAgentHistory(body) {
 			t.Error("second Agent call lost assistant history")
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -142,9 +150,9 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 	if upstream.requestCount() != agentSnapshotWarmup+agentSnapshotCalls {
 		t.Fatal("unexpected upstream calls", upstream.requestCount())
 	}
-	logs := latestUsageRecords(t, s)
-	if len(logs) == 0 {
-		t.Fatal("Agent calls did not persist usage")
+	total, _, err := s.store.QueryUsageLogs(t.Context(), storage.UsageQuery{})
+	if err != nil || total != agentSnapshotWarmup+agentSnapshotCalls {
+		t.Fatal("Agent calls did not persist exactly one usage record each", total, err)
 	}
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	report := map[string]any{
@@ -166,7 +174,7 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 	fmt.Println(string(raw))
 }
 
-func containsAgentHistory(body string) bool {
+func hasAgentHistory(body string) bool {
 	var request struct {
 		Messages []struct{ Role, Content string }
 	}
