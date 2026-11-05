@@ -348,6 +348,7 @@
     "backend/protocol/compiled_catalog.go",
     "backend/protocol/compiler.go",
     "backend/protocol/compiler_test.go",
+    "backend/protocol/consumer_workspaces_bench_test.go",
     "backend/protocol/continuation.go",
     "backend/protocol/continuation_allocation_test.go",
     "backend/protocol/continuation_binding.go",
