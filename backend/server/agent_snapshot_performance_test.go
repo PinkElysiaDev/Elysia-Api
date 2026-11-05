@@ -107,7 +107,11 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 		t.Skip("opt-in Agent performance fixture")
 	}
 	s := newAgentIntegrationServer(t)
-	seedGatewayPackages(t, s)
+	execution := "legacy"
+	if os.Getenv("ELYSIA_AGENT_SNAPSHOT_DEFAULT") != "1" {
+		seedGatewayPackages(t, s)
+		execution = "packages"
+	}
 	bodyKB := 0
 	if os.Getenv("ELYSIA_AGENT_SNAPSHOT_LOG") == "body" {
 		bodyKB = agentSnapshotLogKB
@@ -130,6 +134,10 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 		if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 			t.Fatal(err)
 		}
+	}
+	proof, err := readConversionExecutionIdentity(t.Context(), s, execution)
+	if err != nil {
+		t.Fatal(err)
 	}
 	caller := newAgentStreamCaller(s)
 	var previous *agent.CallResult
@@ -179,7 +187,8 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 	}
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	report := map[string]any{
-		"calls": agentSnapshotCalls, "upstreamCalls": upstream.requestCount(),
+		"execution": proof,
+		"calls":     agentSnapshotCalls, "upstreamCalls": upstream.requestCount(),
 		"ns":      float64(elapsed.Nanoseconds()) / agentSnapshotCalls,
 		"bytes":   float64(after.TotalAlloc-before.TotalAlloc) / agentSnapshotCalls,
 		"objects": float64(after.Mallocs-before.Mallocs) / agentSnapshotCalls,
