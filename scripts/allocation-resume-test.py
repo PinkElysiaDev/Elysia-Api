@@ -31,6 +31,20 @@ class ResumeIdentityTest(unittest.TestCase):
             self.assertEqual(directories, [base / 'source/backend' / package for package in
                                           ['protocol', 'server', 'protocol/builtin']])
 
+    def test_current_matrix_keeps_both_chains_and_rotates_conditions(self):
+        allocation = resume.allocation
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            calls = []
+            def run_case(version, scene, phase, mode, output):
+                output.mkdir(parents=True)
+                calls.append((allocation.versions.EVIDENCE.name, version))
+                allocation.versions.save_json(output / 'run.json', {'status': 'passed'})
+            with patch.object(allocation, 'BASE', base), patch.object(allocation.versions, 'run_case', run_case):
+                allocation.matrix(['parent', 'candidate'], 'measure', ['short'], 2, 'standalone', False)
+            first = [('parent', 'C-default'), ('parent', 'C-package'), ('candidate', 'C-default'), ('candidate', 'C-package')]
+            self.assertEqual(calls, first + first[1:] + first[:1])
+
     def test_identity_and_environment(self):
         build = {'C': {'sha256': 'binary', 'instrumentedSHA256': 'counter'}, 'driver': {'sha256': 'driver'}}
         record = dict(stage='candidate', scenario='short', phase='standalone', mode='measure', version='C-package',

@@ -128,9 +128,9 @@ def http(stages, label, scenes, rounds, phase, mode, chain):
                 versions.save_json(target / 'run.json', record)
 
 
-def matrix(stages, label, scenes, rounds, phase):
+def matrix(stages, label, scenes, rounds, phase, include_history=True):
     conditions = [(name, HISTORY, name) for name in ['R-release', 'R-build', 'A']
-                  if phase == 'standalone' or name != 'R-release']
+                  if include_history and (phase == 'standalone' or name != 'R-release')]
     for stage in stages:
         conditions.extend((stage + '-' + chain, BASE / stage, 'C-' + chain) for chain in ['default', 'package'])
     for scene in scenes:
@@ -161,7 +161,10 @@ def main():
     parser.add_argument('--phase', choices=['standalone', 'counters', 'attribution'], default='standalone')
     parser.add_argument('--mode', choices=['measure', 'cpu', 'memory'], default='measure')
     parser.add_argument('--chain', choices=['package', 'default'], default='package')
+    parser.add_argument('--current-only', action='store_true', help='Compare both current chains without historical release conditions')
     args = parser.parse_args()
+    if args.current_only and args.action != 'matrix':
+        parser.error('--current-only requires matrix')
     stages = args.stages.split(',')
     if any(not re.fullmatch(r'[a-z0-9-]+', stage) for stage in stages):
         parser.error('stage names must be lowercase identifiers')
@@ -181,7 +184,7 @@ def main():
     elif args.action == 'matrix':
         if args.phase == 'attribution' or args.mode != 'measure':
             parser.error('matrix accepts standalone/counter measurements; profile separately')
-        matrix(stages, args.label, args.scenes.split(','), args.rounds or 5, args.phase)
+        matrix(stages, args.label, args.scenes.split(','), args.rounds or 5, args.phase, not args.current_only)
     else:
         http(stages, args.label, args.scenes.split(','), args.rounds or 5, args.phase, args.mode, args.chain)
 
