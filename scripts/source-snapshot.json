@@ -877,6 +877,7 @@
     "backend/server/agent_routes.go",
     "backend/server/agent_routes_test.go",
     "backend/server/agent_session_read_test.go",
+    "backend/server/agent_snapshot_performance_test.go",
     "backend/server/agent_stream_caller.go",
     "backend/server/agent_stream_caller_test.go",
     "backend/server/agent_title_tool.go",
