@@ -1,12 +1,40 @@
 package protocol
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
+
+func TestWireArrayValidationPreservesBorrowedInput(t *testing.T) {
+	plan, err := compileWireSchemaPlan(&ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: AnyType}}, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		` [ [], {}, null, "escaped\\\"text", 9007199254740993 ] `,
+		`[{"a":1e999999999,"\u0061":0}]`, `[{"a":0,"\u0061":1e999999999}]`,
+		`["` + strings.Repeat("x", requestViewMinBytes*2) + `",["tail"]]`,
+		"[\"bad\xff\",{\"\xff\":1,\"�\":2}]",
+	} {
+		value := parseTestValue(t, raw)
+		view := newInputView(value)
+		want := plan.diagnostic.validate(value, "/wire", DefaultLimits())
+		got := plan.validateWithin(t.Context(), value, "/wire", DefaultLimits(), view)
+		if (got == nil) != (want == nil) || mappingErrorPath("/wire", got) != mappingErrorPath("/wire", want) || value.raw != raw {
+			t.Fatal("array validation changed diagnostic or input", got, want)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	value := parseTestValue(t, `[1,2,3]`)
+	if err := plan.validateWithin(ctx, value, "/wire", DefaultLimits(), newInputView(value)); !errors.Is(err, context.Canceled) {
+		t.Fatal("array validation lost cancellation", err)
+	}
+}
 
 func TestWireSchemaPlanMatchesRuntimeSchema(t *testing.T) {
 	for _, tc := range []struct {

@@ -147,17 +147,19 @@ func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *va
 			}
 		}
 	case ArrayType:
-		items, err := value.readArrayWithin(reader)
-		if err != nil {
-			return false, err
-		}
 		var itemPlan *wireSchemaPlan
 		if plan != nil {
 			itemPlan = plan.items
 		}
-		for _, item := range items {
+		for offset := skipJSONSpace(raw, 1); raw[offset] != ']'; {
+			end := reader.valueEnd(raw, offset)
+			item := Value{raw: raw[offset:end]}
 			if isValid, err := itemPlan.accepts(ctx, item, reader, objects); !isValid || err != nil {
 				return isValid, err
+			}
+			offset = skipJSONSpace(raw, end)
+			if raw[offset] == ',' {
+				offset = skipJSONSpace(raw, offset+1)
 			}
 		}
 	}

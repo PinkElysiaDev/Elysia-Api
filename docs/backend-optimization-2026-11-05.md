@@ -75,7 +75,12 @@ The full resource check still precedes shape traversal and failure diagnostics
 still come from the existing schema validator. No values escape validation.
 Protocol tests pass. Ten alternating 30,000-iteration rounds against P0 have no
 stable timing/bytes/objects regression in wire-array and scalar control fixtures.
-HTTP acceptance remains separate.
+The five-pair HTTP batch (`backend-arrays-http`) completes all 40 runs with exact
+output/upstream-call checks and no failed requests. Short/tools/SSE/cross-SSE have
+no stable CPU, latency, first-frame, RSS or natural one-second heap regression.
+CPU ratios are 0.9611/0.9907/0.9966/0.9863, all inconclusive; only tools throughput
+has a small measured improvement (0.77%). No general HTTP speedup is claimed.
+The wire-array implementation is retained subject to final full-matrix acceptance.
 
 ## Constructed field lookup: rejected
 
