@@ -4,6 +4,12 @@ Starting commit: `00fba372`, branch `refactor/protocol-dsl`.
 The same frozen backend supplies D0 (default presets) and P0 (explicit v4 packages).
 The production default still uses legacy definitions. Package/DSL/Core remain 4/2/2.
 
+Final production scope: retain only wire-array scanning. Operand workspaces,
+constructed-field early exits and Agent snapshots are rejected; their regressions
+and tests remain recorded. Default switching and legacy retirement are blocked by
+the D0 performance gate. The three-part workflow is runnable, but the overall
+refactor is not complete. Existing user databases/configuration are untouched.
+
 ## Acceptance contract
 
 Each independent candidate must improve its intended consumer without stable
@@ -240,3 +246,104 @@ now regresses by 0.312% (interval 1.00062–1.01090). This is retained as anothe
 failed metric, not filtered out because it is small. No further confirmation is
 run. The restored Agent call chain passes the retained in-flight configuration
 regression; the candidate is not part of the final production source.
+
+## Retained array-only acceptance
+
+`834d4de0` restores the four Agent production files. The remaining production
+source differs from `00fba372` only in wire-array validation and matches frozen
+`backend-arrays-only` (`344432cf-source-542d5966b17e`). Test additions do not change
+that production identity. The rejected combined `backend-final` archive above
+is never used as evidence for the retained source.
+
+`backend-arrays-accept-{standalone,counters}` each complete 160 windows with all
+identity/output/upstream/exit checks passing. Both actual default versus D0 and
+package versus P0 have no stable regression in the standalone matrix. The four
+earlier package HTTP scenes are included, with a manifest preserving their
+original paths (`prior-package` only relabels the chain for the comparison).
+
+Exact allocation bytes/objects have no stable regression. Counter-window
+auxiliary flags are default history throughput/median latency/natural heap and
+package short natural heap. Their single equal-sized confirmation is
+`backend-arrays-accept-counters-confirm`. All original and confirmation samples
+are combined: default history throughput ratio 0.9946 (0.9884–1.0014), median
+latency 1.0011 (0.9989–1.0032), natural heap 1.0097 (0.9830–1.0297); package short
+natural heap 1.1608 (0.8386–1.4041). All are inconclusive, with no remaining stable
+regression in either chain. No further confirmation is run. Inconclusive does not
+establish equivalence or improved memory recovery.
+
+The array change is retained under the agreed criterion. Its strongest evidence
+is the targeted microbenchmark: 256 strings, 6,812.5 → 4,854 ns/op, 9,576 → 296 B/op,
+9 → 2 allocations; 32 objects, 16,706 → 15,152 ns/op, 16,026.5 → 12,990 B/op,
+198 → 162 allocations. No general HTTP speedup is claimed.
+
+The retained package still fails D0 in the fresh array-only matrix, including CPU
+in all eight scenes. Short JSON is 0.580 → 0.977 ms/request; 256-frame SSE is
+12.207 → 36.255 ms/request. These matched source/binary comparisons, rather than
+the rejected Agent archive, govern the final no-cutover decision. Full tables are
+`backend-arrays-accept-{standalone,counters}/cutover-vs-d0.json`.
+
+## Supplementary evidence and remaining work
+
+Default Agent two-turn calls with logging off/on each complete five alternating
+pairs in `backend-arrays-accept-agent-default{,-logged}`. Every reported metric
+is inconclusive or below resolution, with no stable regression. The fixture
+records actual codec execution, compiler, revision and policy identity; it uses
+the shipped default definitions and a local provider, not a production deployment.
+Package Agent behavior is also covered by the retained full-server regressions.
+
+Ten alternating 1,000-iteration rounds in `backend-arrays-accept-native` preserve
+Native/semantic continuation and 32-message Unicode reference rewrites. Native
+timing is 344,310 → 341,256 ns/op (ratio 0.9911, interval 0.9811–0.9990); rewrite
+timing is inconclusive. Both allocate fewer objects, with no stable metric
+regression. These are component fixtures, not whole-service speedup claims.
+
+`backend-arrays-accept-held` runs five batches of four held 2 MiB streams per
+version. Held requests release preparation reservations; cancellation returns
+active requests, usage queue depth and queued payload bytes to zero every time.
+Forced-GC retained heap remains about 48.58–48.59 MiB across batches in both
+versions. This diagnostic is separate from natural-recovery acceptance and does
+not erase the rejected Agent result.
+
+Independent profiles are in `backend-arrays-accept-{default-cpu,package-cpu,
+package-memory}`; textual flat/cumulative summaries accompany the raw profiles.
+The package SSE profile has 4.63 CPU-seconds of samples: DSL `buildNode` accounts
+for 35.85% cumulatively, wire decode 22.68%, `checkNativeEventEffects` 14.25% and
+wire assertion validation 12.53%. These stacks overlap and must not be summed.
+Sampled SSE allocation space is led by object-field materialization (15.92% flat),
+string ownership clones (10.33%) and object/array/iteration construction. Profiles
+localize work; the exact allocation totals come from the separate counter runs.
+
+The next bounded investigation should measure repeated object-field
+materialization and DSL construction at these callers, and explain the Agent
+candidate's default-memory regression before retrying it. Preserve distinct
+input/core/final-wire checks and ownership boundaries; the profile alone does not
+justify deleting them. The rejected operand, field-lookup and borrowed-transport
+approaches are not reopened in this round. Default package identity/recovery,
+v4-only API closure, compiler-identity bump and legacy deletion remain deferred
+until a later candidate clears D0. Rollback still requires matching program,
+configuration, database and keys; no legacy-format migration has been introduced.
+
+## Final verification and local commits
+
+After restoring the Agent production code, `backend-retained-checks` passes the
+complete Go suite (`go test -p=2 ./... -count=1 -timeout=20m`, 164.8 seconds), vet,
+staticcheck v0.8.2 with zero diagnostics, related server race (204.6 seconds) and
+source-inventory checks. Earlier protocol/routing/storage/relay/agent race,
+coreplan/semanticmeter generation and measurement-runner checks remain applicable:
+those production paths did not change after their successful runs. The full suite
+includes the conversion matrix, strict/compatible policies, Native/references,
+signed continuation, models/counting, Agent, task/session and backend failure,
+queue/shutdown cases; optional live-provider fixtures are not claimed as run.
+
+`backend-retained-delivery` rebuilds all six standalone targets from `b3952e83`
+(75.1 seconds) and passes Windows amd64 isolated startup/embedded-UI smoke. The
+46 browser tests in `backend-browser-checks` cover unchanged WebUI code. The final
+documentation-only commit does not alter these tested runtime sources. Package,
+DSL, Core and compiler identities remain 4/2/2/dev.148; no activation evidence is
+reused across a compiler switch because no switch occurs.
+
+Local history preserves the baseline, individual experiments, accepted array
+change (`ec435421`), provisional Agent change (`c1962aa7`), explicit rejection
+restore (`834d4de0`) and default-Agent measurement identity (`b3952e83`). All test
+and performance evidence remains local under the named ignored directories.
+Nothing is pushed or published. No cutover or legacy-deletion commit is created.
