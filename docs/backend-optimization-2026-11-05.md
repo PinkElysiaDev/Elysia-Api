@@ -34,3 +34,29 @@ objects with early/late/missing fields. Retention and error ordering remain part
 of acceptance, not inferred from lower allocation counts.
 
 Implementation and measurement results will be appended per candidate.
+
+The baseline archive is `cabd6b04-source-c6c398515bf0` (`backend-p0`). No Go or
+pprof process was present at the initial environment check. Single-iteration
+fixture execution verifies setup only; its timings are not performance evidence.
+
+## Operand workspace experiment
+
+The first combined allocation/evaluation helper is rejected (`backend-operands`).
+Ten alternating 20,000-iteration rounds find no allocation saving for two operands
+and one additional allocation for wider operands and existing merge/boolean
+consumers. Escape analysis confirms that returning the caller's slice through
+the recursive evaluator moves each local array to the heap. `backend-operands-micro`
+and `backend-operands-escape.log` retain this failure.
+
+The corrected `backend-operands-local` shares only storage selection and no longer
+adds heap objects. Its ten-round confirmation, combined with all original samples,
+still regresses raw array length and same-input scope timing. It is rejected.
+
+The final narrower experiment restores existing merge/boolean code and changes
+only integer, expression-list join and usage consumers. Ten alternating 100,000-
+iteration rounds plus the one allowed equal-size confirmation save one allocation
+on two-operand cases, but still show stable 0.8–3.4% timing regressions in raw array
+length/join controls. Both measurements and combined comparison are retained in
+`backend-operands-narrow-{micro,confirm}`. No further confirmation is attempted.
+All operand production changes are restored to P0; the failure-order regression
+remains. These results do not justify accepting a change merely for fewer bytes.

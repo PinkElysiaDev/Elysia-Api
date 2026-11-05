@@ -182,6 +182,36 @@ func TestPlanIntegerEvaluationBoundaries(t *testing.T) {
 	}
 }
 
+func TestSmallOperandConsumersPreserveFailureOrder(t *testing.T) {
+	for _, operation := range []string{"integer", "join", "merge_usage"} {
+		for _, count := range []int{2, 3} {
+			expression := Expression{Op: operation}
+			if operation == "integer" {
+				expression.Operation = "add"
+			}
+			for index := range count {
+				expression.Items = append(expression.Items, readExpression("input", fmt.Sprintf("/%d", index)))
+			}
+			expression.Items[count-1].Required = true
+			plan := numericTestPlan(t, expression)
+			input := `["invalid"]`
+			if operation == "join" {
+				input = `[123]`
+			}
+			state := numericTestState(t, numericTestInput(t, input))
+			_, err := plan.evaluate(state)
+			if err == nil || !strings.Contains(err.Error(), "required field is absent") || mappingErrorPath("", err) != fmt.Sprintf("/mapping/items/%d", count-1) || state.budget.steps != count+1 {
+				t.Fatal("operand type checking preceded evaluation", operation, count, err, state.budget.steps)
+			}
+		}
+	}
+	plan := numericTestPlan(t, numericTestExpression("add", 3))
+	_, err := plan.evaluate(numericTestState(t, numericTestInput(t, `[9223372036854775807,1,"invalid"]`)))
+	if err == nil || mappingErrorPath("", err) != "/mapping/items/2" || strings.Contains(err.Error(), "overflow") {
+		t.Fatal("arithmetic preceded complete type checking", err)
+	}
+}
+
 func TestPlanNumericCompilation(t *testing.T) {
 	read := readExpression("input", "")
 	for _, expression := range []Expression{
