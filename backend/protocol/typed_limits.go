@@ -304,19 +304,24 @@ func (meter *typedMeter) scanRaw(raw string) bool {
 			end := jsonStringEnd(raw, offset)
 			length := end - offset
 			text := raw[offset+1 : end-1]
-			// Literal HTML and line separators are always unescaped in valid
-			// JSON; their escaped spellings contain no matching literal bytes.
-			escapedBytes := 5*(strings.Count(text, "<")+strings.Count(text, ">")+strings.Count(text, "&")) + 3*(strings.Count(text, "\u2028")+strings.Count(text, "\u2029"))
-			length += escapedBytes
-			meter.shouldNormalize = meter.shouldNormalize || escapedBytes != 0
-			if !utf8.ValidString(text) {
-				meter.shouldNormalize = true
-				for index := 0; index < len(text); {
-					_, width := utf8.DecodeRuneInString(text[index:])
-					if width == 1 && text[index] >= utf8.RuneSelf {
-						length += 5
+			if !plainMeterString(text) {
+				// Literal HTML and line separators are always unescaped in valid
+				// JSON; their escaped spellings contain no matching literal bytes.
+				escapedBytes := 5 * (strings.Count(text, "<") + strings.Count(text, ">") + strings.Count(text, "&"))
+				if strings.IndexByte(text, 0xe2) >= 0 {
+					escapedBytes += 3 * (strings.Count(text, "\u2028") + strings.Count(text, "\u2029"))
+				}
+				length += escapedBytes
+				meter.shouldNormalize = meter.shouldNormalize || escapedBytes != 0
+				if !utf8.ValidString(text) {
+					meter.shouldNormalize = true
+					for index := 0; index < len(text); {
+						_, width := utf8.DecodeRuneInString(text[index:])
+						if width == 1 && text[index] >= utf8.RuneSelf {
+							length += 5
+						}
+						index += width
 					}
-					index += width
 				}
 			}
 			if !meter.scalar(length) {
@@ -367,4 +372,18 @@ func jsonStringBytes(value string) int {
 		offset++
 	}
 	return length
+}
+
+// plainMeterString avoids repeated library calls for short ASCII strings.
+func plainMeterString(text string) bool {
+	if len(text) > 32 {
+		return false
+	}
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if c >= utf8.RuneSelf || c == '<' || c == '>' || c == '&' {
+			return false
+		}
+	}
+	return true
 }

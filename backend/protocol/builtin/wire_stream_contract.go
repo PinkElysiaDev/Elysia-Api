@@ -93,11 +93,12 @@ func (stream *streamModule) ValidateWireObjectEvent(frame p.Value, fields p.Obje
 		}
 		seen := map[int]bool{}
 		for i, value := range choices {
-			choice, err := value.ReadObject()
+			var choice [3]p.Value
+			err := value.ReadObjectMembers([]string{"index", "delta", "finish_reason"}, choice[:])
 			if err != nil {
 				return err
 			}
-			index, err := frameIndex(choice["index"])
+			index, err := frameIndex(choice[0])
 			if err != nil {
 				return err
 			}
@@ -106,28 +107,30 @@ func (stream *streamModule) ValidateWireObjectEvent(frame p.Value, fields p.Obje
 				return wireStreamIssue(base+"/index", "choice index occurs more than once in a frame")
 			}
 			seen[index] = true
-			delta, err := choice["delta"].ReadObject()
+			var delta [2]p.Value
+			err = choice[1].ReadObjectMembers([]string{"role", "tool_calls"}, delta[:])
 			if err != nil {
 				return err
 			}
-			if role := delta["role"]; !role.IsZero() {
+			if role := delta[0]; !role.IsZero() {
 				text, err := stringValue(role)
 				if err != nil || text != "assistant" {
 					return wireStreamIssue(base+"/delta/role", "Chat output role must be assistant")
 				}
 				s.assistant = true
 			}
-			calls, err := readArray(delta["tool_calls"])
+			calls, err := readArray(delta[1])
 			if err != nil {
 				return err
 			}
 			for j, value := range calls {
-				call, err := value.ReadObject()
+				var call [1]p.Value
+				err := value.ReadObjectMembers([]string{"index"}, call[:])
 				if err != nil {
 					return err
 				}
-				position, err := frameIndex(call["index"])
-				if err != nil || call["index"].IsZero() || position >= stream.limits.StateItems {
+				position, err := frameIndex(call[0])
+				if err != nil || call[0].IsZero() || position >= stream.limits.StateItems {
 					return wireStreamIssue(fmt.Sprintf("%s/delta/tool_calls/%d/index", base, j), "Chat tool index must be a bounded nonnegative integer")
 				}
 				if s.chatTools == nil {
@@ -135,7 +138,7 @@ func (stream *streamModule) ValidateWireObjectEvent(frame p.Value, fields p.Obje
 				}
 				s.chatTools[position] = true
 			}
-			if finish := choice["finish_reason"]; !finish.IsZero() && !finish.IsNull() {
+			if finish := choice[2]; !finish.IsZero() && !finish.IsNull() {
 				if !s.assistant {
 					return wireStreamIssue(base+"/delta/role", "Chat completion has no assistant role in any delta")
 				}

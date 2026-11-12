@@ -97,15 +97,20 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 			}
 			for i, v := range messages {
 				base := fmt.Sprintf("/%s/%d", key, i)
-				m, err := readWireObject(v, base)
+				var m [6]p.Value
+				names := []string{"type", "role", "reasoning_content", "tool_calls", "refusal", "content"}
+				if adapter.name == Chat {
+					names = names[:5]
+				}
+				err := readWireMembers(v, base, names, m[:len(names)])
 				if err != nil {
 					return err
 				}
-				if adapter.name == Responses && !m["type"].IsZero() && !m["type"].IsString("message") {
+				if adapter.name == Responses && !m[0].IsZero() && !m[0].IsString("message") {
 					continue
 				}
 				var role string
-				_ = m["role"].Decode(&role)
+				_ = m[1].Decode(&role)
 				valid := role == "system" || role == "developer" || role == "user" || role == "assistant"
 				if adapter.name == Chat {
 					valid = valid || role == "tool" || role == "function"
@@ -113,15 +118,20 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 				if !valid {
 					return wireContractError(base+"/role", "invalid message role")
 				}
-				if adapter.name == Chat && role == "assistant" && !m["reasoning_content"].IsZero() && !m["reasoning_content"].IsNull() && (m["content"].IsZero() || m["content"].IsNull()) {
-					calls, _ := readToolCalls(m["tool_calls"])
-					if len(calls) == 0 && (m["refusal"].IsZero() || m["refusal"].IsNull()) {
-						return wireContractError(base+"/content", "Chat thinking history needs associated assistant content or tool calls; enable chat_history")
+				if adapter.name == Chat && role == "assistant" && !m[2].IsZero() && !m[2].IsNull() {
+					if err := v.ReadObjectMembers([]string{"content"}, m[5:]); err != nil {
+						return err
+					}
+					if m[5].IsZero() || m[5].IsNull() {
+						calls, _ := readToolCalls(m[3])
+						if len(calls) == 0 && (m[4].IsZero() || m[4].IsNull()) {
+							return wireContractError(base+"/content", "Chat thinking history needs associated assistant content or tool calls; enable chat_history")
+						}
 					}
 				}
 				if adapter.name == Responses && role == "assistant" {
 					var parts []p.Value
-					if m["content"].Decode(&parts) == nil {
+					if m[5].Decode(&parts) == nil {
 						for j, part := range parts {
 							block, e := part.ReadObject()
 							if e != nil {
@@ -142,11 +152,12 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 			return e
 		}
 		for i, v := range messages {
-			m, e := readWireObject(v, fmt.Sprintf("/messages/%d", i))
+			var m [1]p.Value
+			e := readWireMembers(v, fmt.Sprintf("/messages/%d", i), []string{"role"}, m[:])
 			if e != nil {
 				return e
 			}
-			if !m["role"].IsString("user") && !m["role"].IsString("assistant") && !m["role"].IsString("system") {
+			if !m[0].IsString("user") && !m[0].IsString("assistant") && !m[0].IsString("system") {
 				return wireContractError(fmt.Sprintf("/messages/%d/role", i), "Anthropic messages require a user, assistant or system role")
 			}
 		}
@@ -157,11 +168,12 @@ func (adapter module) validateRequestWireContract(value p.Value, fields p.Object
 			return e
 		}
 		for i, v := range messages {
-			m, e := readWireObject(v, fmt.Sprintf("/contents/%d", i))
+			var m [1]p.Value
+			e := readWireMembers(v, fmt.Sprintf("/contents/%d", i), []string{"role"}, m[:])
 			if e != nil {
 				return e
 			}
-			role := m["role"]
+			role := m[0]
 			if !role.IsZero() && !role.IsString("user") && !role.IsString("model") {
 				return wireContractError(fmt.Sprintf("/contents/%d/role", i), "Gemini contents only accept user or model")
 			}
@@ -205,22 +217,28 @@ func (adapter module) validateChatWireContract(direction p.Direction, fields p.O
 	}
 	for i, v := range choices {
 		base := fmt.Sprintf("/choices/%d", i)
-		entry, e := readWireObject(v, base)
+		var entry [3]p.Value
+		e := readWireMembers(v, base, []string{"index", "message", "delta"}, entry[:])
 		if e != nil {
 			return e
 		}
-		if e = requireWireInteger(entry["index"], base+"/index"); e != nil {
+		if e = requireWireInteger(entry[0], base+"/index"); e != nil {
 			return e
 		}
 		key := "message"
 		if direction == p.EncodeEvent {
 			key = "delta"
 		}
-		m, e := readWireObject(entry[key], base+"/"+key)
+		message := entry[1]
+		if direction == p.EncodeEvent {
+			message = entry[2]
+		}
+		var m [1]p.Value
+		e = readWireMembers(message, base+"/"+key, []string{"role"}, m[:])
 		if e != nil {
 			return e
 		}
-		if direction == p.EncodeResponse && !m["role"].IsString("assistant") {
+		if direction == p.EncodeResponse && !m[0].IsString("assistant") {
 			return wireContractError(base+"/message/role", "Chat response requires assistant role")
 		}
 	}
@@ -444,4 +462,13 @@ func (adapter module) validateGeminiWireContract(direction p.Direction, fields p
 		}
 	}
 	return nil
+}
+
+// readWireMembers keeps the wire contract's object error while selecting only
+// fields needed by this validation pass. Unrelated payloads stay unmaterialized.
+func readWireMembers(value p.Value, at string, names []string, slots []p.Value) error {
+	if !value.IsObject() {
+		return wireContractError(at, "wire contract requires an object")
+	}
+	return value.ReadObjectMembers(names, slots)
 }
