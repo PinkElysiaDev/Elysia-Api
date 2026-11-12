@@ -15,11 +15,13 @@ type semanticValueEntry struct {
 // Reuse saves scans, never occurrences: each reference contributes its full
 // encoded size and node count at its actual nesting depth.
 type semanticCache struct {
-	limits        Limits
-	entries       map[immutableSpan]semanticValueEntry
-	inline        *[2]semanticCacheEntry
-	inlineCount   int
-	retainedBytes int
+	// normalizationFacts is borrowed only while its document owner is locked.
+	normalizationFacts *semanticCache
+	limits             Limits
+	entries            map[immutableSpan]semanticValueEntry
+	inline             *[2]semanticCacheEntry
+	inlineCount        int
+	retainedBytes      int
 }
 
 type semanticCacheEntry struct {
@@ -111,6 +113,14 @@ func (cache *semanticCache) normalize(value Value) Value {
 	entry, _ := cache.lookup(value)
 	if entry.hasNormalized {
 		return entry.normalized
+	}
+	// Metering can prove this immutable spelling already needs no changes.
+	// Only borrow identity facts; normalized copies stay in this local cache.
+	if cache.normalizationFacts != nil && len(value.raw) >= semanticCacheMinBytes {
+		fact, ok := cache.normalizationFacts.lookup(value)
+		if ok && fact.hasNormalized && fact.normalized == value {
+			return value
+		}
 	}
 	result := value
 	if needsSemanticCompaction(value.raw) {

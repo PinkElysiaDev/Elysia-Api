@@ -20,6 +20,11 @@ func (adapter module) decodeContent(value p.Value, path string, direction p.Dire
 		return []p.Node{{Kind: p.TextNode, Payload: value}}, nil
 	}
 	if value.IsStringValue() {
+		// Already canonical ASCII text needs neither decoding nor re-encoding.
+		// Exceptional spellings retain the codec's normalization semantics.
+		if canonicalTextValue(value) {
+			return []p.Node{{Kind: p.TextNode, Payload: value}}, nil
+		}
 		text, err := stringValue(value)
 		if err != nil {
 			return nil, err
@@ -409,4 +414,20 @@ func (adapter module) decodeGeminiPart(fields p.Object, node p.Node, options p.E
 	}
 	node.Attributes, err = adapter.nestedExtensions(fields, known, nested, options)
 	return node, err
+}
+
+// canonicalTextValue accepts only the exact spelling emitted for plain ASCII.
+// In particular, escapes, HTML characters and non-ASCII text use the codec.
+func canonicalTextValue(value p.Value) bool {
+	raw := value.JSONString()
+	if len(raw) < 2 || raw[0] != '"' || raw[len(raw)-1] != '"' {
+		return false
+	}
+	for index := 1; index < len(raw)-1; index++ {
+		character := raw[index]
+		if character < 0x20 || character >= 0x80 || character == '"' || character == '\\' || character == '<' || character == '>' || character == '&' {
+			return false
+		}
+	}
+	return true
 }

@@ -121,7 +121,11 @@ func TransportContentType(transport Transport) string {
 
 // ReadBoundedBody applies the same byte limit to inbound and upstream JSON.
 func ReadBoundedBody(reader io.Reader, limit int) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+	return readBoundedBody(reader, limit, 0)
+}
+
+func readBoundedBody(reader io.Reader, limit, size int) ([]byte, error) {
+	body, err := readBodyWithSize(io.LimitReader(reader, int64(limit)+1), size)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
