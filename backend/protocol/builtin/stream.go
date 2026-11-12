@@ -349,37 +349,40 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 		events = stream.beginResponse(fields["id"], fields["model"])
 	}
 	for _, value := range choices {
-		choice, err := value.ReadObject()
-		if err != nil {
+		var choice [3]p.Value
+		if err := value.ReadObjectMembers([]string{"index", "delta", "finish_reason"}, choice[:]); err != nil {
 			return nil, err
 		}
-		index, err := frameIndex(choice["index"])
+		index, err := frameIndex(choice[0])
 		if err != nil {
 			return nil, err
 		}
 		if index != 0 {
 			return nil, unsupported("/choices/index", "multi-choice streaming requires a declared choice lifecycle")
 		}
-		delta, err := nestedObject(choice, "delta")
-		if err != nil {
-			return nil, err
+		var delta [5]p.Value
+		if !choice[1].IsZero() {
+			if err := choice[1].ReadObjectMembers([]string{"role", "reasoning_content", "content", "refusal", "tool_calls"}, delta[:]); err != nil {
+				return nil, err
+			}
 		}
-		if role := delta["role"]; !role.IsZero() {
+		if role := delta[0]; !role.IsZero() {
 			text, err := stringValue(role)
 			if err != nil || text != "assistant" {
 				return nil, unsupported("/choices/0/delta/role", "Chat output role must be assistant")
 			}
 		}
 		for _, part := range []struct {
-			field, key string
-			kind       p.NodeKind
-		}{{"reasoning_content", "reasoning", p.ReasoningNode}, {"content", "text", p.TextNode}, {"refusal", "refusal", p.RefusalNode}} {
-			if content := delta[part.field]; !content.IsZero() && !content.IsNull() {
+			slot int
+			key  string
+			kind p.NodeKind
+		}{{1, "reasoning", p.ReasoningNode}, {2, "text", p.TextNode}, {3, "refusal", p.RefusalNode}} {
+			if content := delta[part.slot]; !content.IsZero() && !content.IsNull() {
 				// A Chat text delta appends characters; an empty delta does not
 				// start a content item. Otherwise role/terminal chunks invent an
 				// empty assistant turn between a tool call and its result.
 				// The native frame still preserves the original empty field.
-				if part.field == "content" && content.IsString("") {
+				if part.slot == 2 && content.IsString("") {
 					continue
 				}
 				batch, err := stream.textEvents(part.key, part.kind, content)
@@ -389,7 +392,7 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 				events = append(events, batch...)
 			}
 		}
-		calls, err := readArray(delta["tool_calls"])
+		calls, err := readArray(delta[4])
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +436,7 @@ func (stream *streamModule) decodeChatFrame(fields p.Object, options p.Evaluatio
 				events = append(events, event)
 			}
 		}
-		if finish := choice["finish_reason"]; !finish.IsZero() && !finish.IsNull() {
+		if finish := choice[2]; !finish.IsZero() && !finish.IsNull() {
 			stream.finish, err = decodeFinishReason(Chat, finish)
 			if err != nil {
 				return nil, err

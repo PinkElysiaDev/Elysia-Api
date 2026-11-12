@@ -75,6 +75,11 @@ func plainJSONString(value string) bool {
 // IsString compares decoded string content without changing the stored wire bytes.
 // Absent, null and non-string values never match, including an empty string.
 func (value Value) IsString(expected string) bool {
+	// A valid JSON string is empty only when its trimmed spelling is "".
+	// Avoid decoding and copying entire text deltas for this common predicate.
+	if expected == "" {
+		return strings.TrimSpace(value.raw) == `""`
+	}
 	if value.IsNull() {
 		return false
 	}

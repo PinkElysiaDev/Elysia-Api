@@ -80,7 +80,7 @@ func (compiled *Compiled) encodeEventOutput(ctx context.Context, direction Direc
 	if err := checkSemanticValue(event, budget); err != nil {
 		return eventOutput{}, err
 	}
-	input := normalizeMappingSemantic(&event, budget)
+	input := normalizeDocumentMapping(ctx, &event, budget)
 	fail := func(err error) (eventOutput, error) { return eventOutput{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)
@@ -225,7 +225,7 @@ func decodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	if err := checkDocumentSemantic(ctx, output, semanticBudget); err != nil {
 		return fail(err)
 	}
-	output = normalizeMappingSemantic(output, semanticBudget)
+	output = normalizeDocumentMapping(ctx, output, semanticBudget)
 	if err := checkDocumentMapping(ctx, output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
 	}
@@ -271,7 +271,7 @@ func finishIdentityRequestDecode[T any](ctx context.Context, compiled *Compiled,
 		// JSON null decoded into the original value destination yields its zero value.
 		return new(T), nil
 	}
-	return normalizeMappingSemantic(output, semanticBudget), nil
+	return normalizeDocumentMapping(ctx, output, semanticBudget), nil
 }
 
 func encodeTyped[T any](ctx context.Context, compiled *Compiled, direction Direction, input *T, options EvaluationContext, encode func(TypedModule, *T, EvaluationContext) (Value, error)) (Value, error) {
@@ -362,7 +362,7 @@ func encodeRequestMapping[T any](ctx context.Context, compiled *Compiled, input 
 	if err := checkDocumentSemantic(ctx, input, semanticBudget); err != nil {
 		return Value{}, err
 	}
-	input = normalizeMappingSemantic(input, semanticBudget)
+	input = normalizeDocumentMapping(ctx, input, semanticBudget)
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
 	if err := ctx.Err(); err != nil {
 		return fail(err)

@@ -14,34 +14,36 @@ func validateChatToolSequence(messages []p.Value) error {
 		return p.IssuesError([]p.ConversionIssue{{Code: p.InvalidAssociation, Severity: p.SeverityError, Stage: "wire.output", Path: path, Reason: reason}})
 	}
 	for i, v := range messages {
-		m, err := v.ReadObject()
+		var fields [3]p.Value
+		err := v.ReadObjectMembers([]string{"role", "tool_call_id", "tool_calls"}, fields[:])
 		if err != nil {
 			return err
 		}
 		at := fmt.Sprintf("/messages/%d", i)
-		if len(pending) > 0 && !m["role"].IsString("tool") {
+		if len(pending) > 0 && !fields[0].IsString("tool") {
 			return fail(at+"/role", "Chat requires results for all outstanding tool calls immediately after the assistant call message")
 		}
-		if m["role"].IsString("tool") {
-			id := m["tool_call_id"]
+		if fields[0].IsString("tool") {
+			id := fields[1]
 			if !pending[id] {
 				return fail(at+"/tool_call_id", "tool result must match an outstanding call in the immediately preceding assistant turn")
 			}
 			delete(pending, id)
 		}
-		calls, err := readToolCalls(m["tool_calls"])
+		calls, err := readToolCalls(fields[2])
 		if err != nil {
 			return err
 		}
-		if len(calls) > 0 && !m["role"].IsString("assistant") {
+		if len(calls) > 0 && !fields[0].IsString("assistant") {
 			return fail(at+"/tool_calls", "only assistant messages may issue tool calls")
 		}
 		for j, v := range calls {
-			call, err := v.ReadObject()
+			var call [1]p.Value
+			err := v.ReadObjectMembers([]string{"id"}, call[:])
 			if err != nil {
 				return err
 			}
-			id := call["id"]
+			id := call[0]
 			var text string
 			if id.IsNull() || id.Decode(&text) != nil || text == "" || pending[id] {
 				return fail(fmt.Sprintf("%s/tool_calls/%d/id", at, j), "tool call requires a unique nonempty ID")

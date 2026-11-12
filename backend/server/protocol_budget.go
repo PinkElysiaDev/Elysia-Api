@@ -83,7 +83,7 @@ func (s *Server) readPreparedProtocolBody(ctx context.Context, c *app.RequestCon
 	if declared >= 0 && declared < int64(limit) {
 		reader = io.LimitReader(reader, declared+1)
 	}
-	body, err := protocol.ReadBoundedBody(reader, limit)
+	body, err := protocol.ReadBoundedBodyWithSize(reader, limit, declared)
 	if err == nil && declared >= 0 && int64(len(body)) != declared {
 		err = fmt.Errorf("request body length differs from Content-Length")
 	}
