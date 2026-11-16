@@ -1,4 +1,5 @@
 import { clearToken, getToken } from './auth'
+import { readUsageLogDetail } from './usage-log-detail'
 import type {
   ApiResult,
   UsageTrendPoint,
@@ -14,7 +15,6 @@ import type {
   RuntimeConfigUpdate,
   RuntimeConfigUpdateResult,
   SystemLogsResult,
-  UsageLogDetail,
   UsageLogsResult,
   UsageQueryParams,
   UsageStats,
@@ -271,7 +271,7 @@ export const api = {
       query: { ...serializeUsage(params), utcOffsetMinutes: params.utcOffsetMinutes, top: params.top },
     }),
   usageLogs: (params: UsageQueryParams) => request<UsageLogsResult>('/usage/logs', { query: serializeUsage(params) }),
-  usageLogDetail: (id: string) => request<UsageLogDetail>(`/usage/logs/${encodeURIComponent(id)}`),
+  usageLogDetail: async (id: string) => readUsageLogDetail(await request<string>(`/usage/logs/${encodeURIComponent(id)}`, { rawResponse: true })),
   usageSeq: () => request<{ seq: number }>('/usage/seq'),
   usageReset: () => request<{ reset: boolean; reclaimQueued: boolean }>('/usage/reset', { method: 'POST' }),
 

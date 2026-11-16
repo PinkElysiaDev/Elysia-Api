@@ -1,26 +1,31 @@
 import { expect, test } from '@playwright/test'
+import { decodeProtocolRequest, decodeProtocolResponse, readActiveProtocolPackage } from './protocol-fixtures'
 
 test('real backend include and usage projections share preview and strict boundaries', async ({ page, request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
   const base = process.env.PROTOCOL_E2E_URL!
   const token = process.env.PROTOCOL_E2E_TOKEN ?? 'local-conversion-e2e'
   const headers = { Authorization: `Bearer ${token}` }
+  const sourcePackage = await readActiveProtocolPackage(request, base, headers, 'openai-responses')
+  const requestCore = await decodeProtocolRequest(request, base, headers, sourcePackage, {
+    model: 'm', input: 'hello', store: false, include: ['reasoning.encrypted_content'],
+  })
   await page.addInitScript((value) => localStorage.setItem('elysia-webui.panel-token', value), token)
   await page.goto(`${process.env.PROTOCOL_UI_PATH ?? '/'}#/protocols/conversions`)
   await expect(page.getByRole('heading', { name: '转换行为', exact: true })).toBeVisible()
   await page.getByLabel('行为预览上下文').fill(JSON.stringify({ source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } }))
-  await page.getByLabel('行为预览输入').fill(JSON.stringify({ schemaVersion: 1, source: {}, content: [], parameters: { responses_include: ['reasoning.encrypted_content'] } }))
+  await page.getByLabel('行为预览输入').fill(JSON.stringify(requestCore))
   await page.getByRole('button', { name: '预览行为', exact: true }).click()
   const preview = page.getByLabel('行为预览结果')
-  await expect(preview).toContainText('rawResponsesInclude')
+  await expect(preview).toContainText('requireContinuationState')
   const result = JSON.parse((await preview.textContent())!)
-  expect(result.output.parameters?.responses_include).toBeUndefined()
-  expect(result.effective.origins['responses-include']).toBe('engine-default')
+  expect(requestCore.clientOutput.requireContinuationState).toBe(true)
+  expect(result.output.clientOutput.requireContinuationState).toBe(true)
   expect(result.persistentWrites).toBe(false)
-  expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'conversion_normalized', severity: 'info', fidelity: 'preserved', path: '/include', ruleId: 'responses-include', stage: 'conversion.request' })]))
+  expect(result.issues ?? []).toEqual([])
   const policy = { schemaVersion: 2, id: 'strict-preview', mode: 'strict', rules: [] }
   const context = { source: { definitionId: 'google-generate-content' }, target: { definitionId: 'anthropic-messages' } }
-  const input = { schemaVersion: 1, source: {}, content: [], usage: { input: { count: 4, origin: 'observed' }, output: { count: 5, origin: 'observed' }, details: { 'output.reasoning_tokens': { count: 3, origin: 'observed' } } } }
+  const input = { schemaVersion: 2, source: {}, content: [], usage: { input: { count: 4, origin: 'observed' }, output: { count: 5, origin: 'observed' }, details: { 'output.reasoning_tokens': { count: 3, origin: 'observed' } } } }
   const preserved = await request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: { policy, context, input, phase: 'response' } })
   expect(preserved.ok()).toBeTruthy()
   expect((await preserved.json()).data.output.usage.details['output.reasoning_tokens']).toEqual(input.usage.details['output.reasoning_tokens'])
@@ -36,49 +41,63 @@ test('real backend include and usage projections share preview and strict bounda
   expect(converted.output.usage.details.toolUsePromptTokenCount).toBeUndefined()
   expect(converted.issues).toEqual(expect.arrayContaining([expect.objectContaining({ ruleId: 'response-usage-projection', path: '/usage/details/toolUsePromptTokenCount', fidelity: 'lossy_compatible' })]))
   await page.getByRole('button', { name: '添加规则' }).click()
-  await page.getByRole('combobox', { name: /^动作/ }).selectOption('usage_projection')
-  await expect(page.getByLabel('规则 1 目标编码器')).toBeVisible()
-  await page.getByRole('combobox', { name: /^动作/ }).selectOption('responses_storage')
-  await page.getByLabel('规则 1 目标编码器').selectOption('gemini')
-  await page.getByLabel('规则 1 保存降级').selectOption('reject')
-  await page.getByRole('combobox', { name: /^动作/ }).selectOption('responses_context')
-  await page.getByLabel('规则 1 目标编码器').selectOption('gemini')
-  await expect(page.getByText('跨协议将 null 上一轮引用规范化', { exact: false })).toBeVisible()
-  await page.getByRole('combobox', { name: /^动作/ }).selectOption('anthropic_usage_envelope')
+  await page.getByRole('combobox', { name: /^动作/ }).selectOption('core_controls')
+  await expect(page.getByText('Apply the selected mapping', { exact: false })).toBeVisible()
   await expect(page.getByLabel('规则 1 目标编码器')).toHaveCount(0)
+  const actions = await page.getByRole('combobox', { name: /^动作/ }).locator('option').allTextContents()
+  for (const action of ['usage_projection', 'responses_storage', 'responses_context', 'anthropic_usage_envelope']) {
+    expect(actions).not.toContain(action)
+  }
 })
 
 test('real backend context preview preserves null intent, rejects unsupported history and honors disabling', async ({ request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
   const base = process.env.PROTOCOL_E2E_URL!
   const headers = { Authorization: `Bearer ${process.env.PROTOCOL_E2E_TOKEN}` }
+  const sourcePackage = await readActiveProtocolPackage(request, base, headers, 'openai-responses')
+  const sourceWire = { model: 'm', input: 'hello', store: false, include: ['reasoning.encrypted_content'] }
+  const decode = (fields: object) => decodeProtocolRequest(request, base, headers, sourcePackage, { ...sourceWire, ...fields })
   const list = async () => (await (await request.get(`${base}/api/admin/protocols/conversion-policies`, { headers })).json()).data
   const before = await list()
-  const preview = (parameters: object, target = 'google-generate-content', disabled = false) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
-    policy: { schemaVersion: 2, id: 'context-preview', mode: 'strict', rules: disabled ? [{ id: 'responses-context', order: 185, enabled: false, phase: 'request', match: {}, action: 'responses_context', value: 'gemini' }] : [] },
+  const preview = (input: unknown, target = 'google-generate-content', disabled = false) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
+    policy: { schemaVersion: 2, id: 'context-preview', mode: 'strict', rules: disabled ? [{ id: 'reasoning-controls', order: 185, enabled: false, phase: 'request', match: {}, action: 'warn' }] : [] },
     phase: 'request', context: { source: { definitionId: 'openai-responses' }, target: { definitionId: target } },
-    input: { schemaVersion: 1, source: {}, content: [], parameters: { store: false, ...parameters } },
+    input,
   } })
-  const result = await preview({ responses_previous_response_id: null, responses_include: ['reasoning.encrypted_content'] })
+  const nullContext = await decode({ previous_response_id: null })
+  expect(nullContext.parameters['wire:openai_responses'].previous_response_id).toBeNull()
+  const result = await preview(nullContext)
   expect(result.ok()).toBeTruthy()
   const normalized = (await result.json()).data
-  expect(normalized.output.parameters?.responses_previous_response_id).toBeUndefined()
-  expect(normalized.output.clientOutput.rawResponsesInclude).toEqual(['reasoning.encrypted_content'])
-  expect(normalized.issues.filter((i: { code: string }) => i.code === 'conversion_normalized')).toHaveLength(2)
+  expect(normalized.output.parameters?.['wire:openai_responses']?.previous_response_id).toBeUndefined()
+  expect(normalized.output.clientOutput.requireContinuationState).toBe(true)
+  expect(normalized.issues).toEqual([expect.objectContaining({ code: 'conversion_normalized', severity: 'info', fidelity: 'preserved', ruleId: 'reasoning-controls', path: '/parameters/wire:openai_responses/previous_response_id' })])
   expect(normalized.persistentWrites).toBe(false)
-  for (const [field, values] of Object.entries({ responses_previous_response_id: ['', 42, 'prior-response'], responses_truncation: [42, 'unknown', 'auto', 'disabled', null] })) {
+  for (const [field, values] of Object.entries({ previous_response_id: ['', 42, 'prior-response'], truncation: [42, 'unknown'] })) {
     for (const value of values) {
-      const rejected = await preview({ [field]: value })
-      expect(rejected.status()).toBe(400)
-      expect(await rejected.text()).toContain(field === 'responses_truncation' ? '/truncation' : '/previous_response_id')
+      const rejected = await request.post(`${base}/api/admin/protocols/preview`, {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        data: `{"definition":${sourcePackage},"direction":"decode_request","input":${JSON.stringify({ ...sourceWire, [field]: value })}}`,
+      })
+      expect(rejected.ok()).toBeTruthy()
+      const body = (await rejected.json()).data
+      expect(body.output).toBeUndefined()
+      expect(body.issues).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error', path: `/${field}` })]))
     }
   }
+  for (const truncation of ['auto', 'disabled', null]) {
+    const input = await decode({ truncation })
+    expect(input.parameters.contextTruncation).toBe(truncation)
+    const rejected = await preview(input)
+    expect(rejected.status()).toBe(400)
+    expect((await rejected.json()).error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: '/parameters/contextTruncation', fidelity: 'rejected' })]))
+  }
   for (const [target, disabled] of [['openai-responses', false], ['google-generate-content', true]] as const) {
-    const unchanged = await preview({ responses_previous_response_id: null }, target, disabled)
+    const unchanged = await preview(nullContext, target, disabled)
     expect(unchanged.ok()).toBeTruthy()
     const body = (await unchanged.json()).data
-    expect(body.output.parameters.responses_previous_response_id).toBeNull()
-    expect(body.issues ?? []).toEqual([])
+    expect(body.output.parameters['wire:openai_responses'].previous_response_id).toBeNull()
+    expect((body.issues ?? []).filter((issue: { ruleId: string }) => issue.ruleId === 'reasoning-controls')).toEqual([])
   }
   expect(await list()).toEqual(before)
 })
@@ -87,14 +106,16 @@ test('real backend storage and required usage policies expose explicit client pr
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
   const base = process.env.PROTOCOL_E2E_URL!
   const headers = { Authorization: `Bearer ${process.env.PROTOCOL_E2E_TOKEN}` }
+  const sourcePackage = await readActiveProtocolPackage(request, base, headers, 'openai-responses')
   const preview = (mode: string, phase: string, input: unknown) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
     policy: { schemaVersion: 2, id: 'envelope-preview', mode, rules: [] }, phase, input,
     context: phase === 'request' ? { source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } } : { source: { definitionId: 'google-generate-content' }, target: { definitionId: 'anthropic-messages' }, model: 'chosen-model' },
   } })
-  for (const store of [undefined, null, true, false, 42]) {
+  for (const store of [undefined, null, true, false]) {
+    const requestCore = await decodeProtocolRequest(request, base, headers, sourcePackage, { model: 'm', input: 'hello', store })
     for (const mode of ['compatible', 'strict']) {
-      const result = await preview(mode, 'request', { schemaVersion: 1, source: {}, content: [], parameters: { store } })
-      const accepted = store !== 42 && (mode === 'compatible' || store === false)
+      const result = await preview(mode, 'request', requestCore)
+      const accepted = mode === 'compatible' || store === false
       expect(result.ok()).toBe(accepted)
       const body = await result.json()
       if (accepted) {
@@ -104,7 +125,15 @@ test('real backend storage and required usage policies expose explicit client pr
       }
     }
   }
-  const missing = { schemaVersion: 1, source: {}, content: [] }
+  const invalidStore = await request.post(`${base}/api/admin/protocols/preview`, {
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    data: `{"definition":${sourcePackage},"direction":"decode_request","input":{"model":"m","input":"hello","store":42}}`,
+  })
+  expect(invalidStore.ok()).toBeTruthy()
+  const invalidPreview = (await invalidStore.json()).data
+  expect(invalidPreview.output).toBeUndefined()
+  expect(invalidPreview.issues).toEqual(expect.arrayContaining([expect.objectContaining({ severity: 'error' })]))
+  const missing = { schemaVersion: 2, source: {}, content: [] }
   const projected = await preview('compatible', 'response', missing)
   expect(projected.ok()).toBeTruthy()
   const body = (await projected.json()).data
@@ -153,28 +182,35 @@ test('real backend policy draft, read-only preview, verification, activation and
 })
 
 
-test('dev25 metadata and conversation projections are configurable in the existing designer', async ({page,request}) => {
- test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
- const base=process.env.PROTOCOL_E2E_URL!
- const token=process.env.PROTOCOL_E2E_TOKEN!
- const headers={Authorization:`Bearer ${token}`}
- await page.addInitScript(value=>localStorage.setItem('elysia-webui.panel-token',value),token)
- await page.goto(`${process.env.PROTOCOL_UI_PATH ?? '/'}#/protocols/conversions`)
- await expect(page.getByRole('heading',{name:'转换行为',exact:true})).toBeVisible()
- await page.getByRole('button',{name:'添加规则',exact:true}).click()
- for (const action of ['response_metadata','response_shape','response_envelope','tool_result_text','system_instruction_hoist']) {
-  await page.getByRole('combobox',{name:/^动作/}).selectOption(action)
-  if (action.startsWith('response_')) {await page.getByLabel('规则 1 目标编码器').selectOption('openai-chat')}
- }
- const input={schemaVersion:1,source:{},id:'r',model:'m',content:[],metadata:[{name:'system_fingerprint',location:'response',codec:'openai-chat',sourceCodec:'openai-chat',path:'/system_fingerprint',value:'fp_observed'}]}
- const preview=(mode:string)=>request.post(`${base}/api/admin/protocols/conversion-policies/preview`,{headers,data:{policy:{schemaVersion:2,id:'audit-preview',mode,rules:[]},phase:'response',context:{source:{definitionId:'openai-chat-completions'},target:{definitionId:'anthropic-messages'}},input}})
- const result=await preview('compatible')
- expect(result.ok()).toBeTruthy()
- const data=(await result.json()).data
- expect(data.output.metadata ?? []).toEqual([])
- expect(data.issues).toEqual(expect.arrayContaining([expect.objectContaining({ruleId:'response-metadata',path:'/system_fingerprint',fidelity:'lossy_compatible'})]))
- expect(data.persistentWrites).toBe(false)
- expect((await preview('strict')).status()).toBe(400)
+test('declared metadata and layout projections use the shared core action catalog', async ({ page, request }) => {
+  test.skip(!process.env.PROTOCOL_E2E_URL, 'requires isolated real backend')
+  const base = process.env.PROTOCOL_E2E_URL!
+  const token = process.env.PROTOCOL_E2E_TOKEN!
+  const headers = { Authorization: `Bearer ${token}` }
+  await page.addInitScript(value => localStorage.setItem('elysia-webui.panel-token', value), token)
+  await page.goto(`${process.env.PROTOCOL_UI_PATH ?? '/'}#/protocols/conversions`)
+  await expect(page.getByRole('heading', { name: '转换行为', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '添加规则', exact: true }).click()
+  for (const action of ['core_controls', 'request_projection', 'model_controls', 'stream_disposition']) {
+    await page.getByRole('combobox', { name: /^动作/ }).selectOption(action)
+  }
+  const definition = await readActiveProtocolPackage(request, base, headers, 'openai-chat-completions')
+  const input = await decodeProtocolResponse(request, base, headers, definition, {
+    id: 'r', object: 'chat.completion', created: 1, model: 'm', system_fingerprint: 'fp_observed',
+    choices: [{ index: 0, message: { role: 'assistant', content: 'hello' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  })
+  const preview = (mode: string) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
+    policy: { schemaVersion: 2, id: 'audit-preview', mode, rules: [] }, phase: 'response', input,
+    context: { source: { definitionId: 'openai-chat-completions' }, target: { definitionId: 'anthropic-messages' } },
+  } })
+  const result = await preview('compatible')
+  expect(result.ok()).toBeTruthy()
+  const resultData = (await result.json()).data
+  expect(resultData.output.metadata ?? []).toEqual([])
+  expect(resultData.issues).toEqual(expect.arrayContaining([expect.objectContaining({ ruleId: 'response-metadata', path: '/system_fingerprint', fidelity: 'lossy_compatible' })]))
+  expect(resultData.persistentWrites).toBe(false)
+  expect((await preview('strict')).status()).toBe(400)
 })
 
 test('request hint projection exposes info losses and strict rejection in the shared editor', async ({ page, request }) => {
@@ -186,9 +222,12 @@ test('request hint projection exposes info losses and strict rejection in the sh
   await page.goto(`${process.env.PROTOCOL_UI_PATH ?? '/'}#/protocols/conversions`)
   await page.getByRole('button', { name: '添加规则', exact: true }).click()
   await page.getByRole('combobox', { name: /^动作/ }).selectOption('request_projection')
-  await page.getByLabel('规则 1 来源编码器').selectOption('responses')
-  await page.getByLabel('规则 1 目标编码器').selectOption('gemini')
-  const input = { schemaVersion: 1, source: {}, content: [], cache: [{ kind: 'key', location: 'request', value: 'anonymous-session' }], parameters: { store: false, metadata: { trace: 'opaque' }, user: 'anonymous' } }
+  await expect(page.getByLabel('规则 1 来源编码器')).toHaveCount(0)
+  await expect(page.getByLabel('规则 1 目标编码器')).toHaveCount(0)
+  const sourcePackage = await readActiveProtocolPackage(request, base, headers, 'openai-responses')
+  const input = await decodeProtocolRequest(request, base, headers, sourcePackage, {
+    model: 'm', input: 'hello', store: false, prompt_cache_key: 'anonymous-session', metadata: { trace: 'opaque' }, user: 'anonymous',
+  })
   const preview = (mode: string) => request.post(`${base}/api/admin/protocols/conversion-policies/preview`, { headers, data: {
     policy: { schemaVersion: 2, id: 'request-hints', mode, rules: [] }, phase: 'request', input,
     context: { source: { definitionId: 'openai-responses' }, target: { definitionId: 'google-generate-content' } },

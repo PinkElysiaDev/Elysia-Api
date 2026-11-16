@@ -6,7 +6,7 @@ const MAX_BYTES = 8 << 20
 /** Index JSON source spans without coercing numeric literals into JS numbers. */
 export class ProtocolDocument {
   readonly root: JsonNode
-  constructor(readonly source: string) {
+  constructor(readonly source: string, maxNodes = MAX_NODES) {
     if (new TextEncoder().encode(source).length > MAX_BYTES) throw new Error('JSON 超过编辑器大小限制')
     let offset = 0
     let nodes = 0
@@ -21,7 +21,7 @@ export class ProtocolDocument {
       throw new Error('JSON 字符串未结束')
     }
     const read = (depth: number): JsonNode => {
-      if (depth > MAX_DEPTH || ++nodes > MAX_NODES) throw new Error('JSON 超过深度或节点限制')
+      if (depth > MAX_DEPTH || ++nodes > maxNodes) throw new Error('JSON 超过深度或节点限制')
       space()
       const node: JsonNode = { start: offset, end: offset, kind: 'scalar', children: new Map() }
       const token = source[offset]

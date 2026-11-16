@@ -21,10 +21,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input, Textarea } from '@/components/ui/input'
 import { ApiError } from '@/lib/api'
-import { ProtocolDocument } from '@/lib/protocol-document'
 import {
   protocolAPI,
-  protocolIdentityPrefix,
+  parseProtocolPackage,
+  PROTOCOL_PACKAGE_VERSION,
   type ConversionIssue,
   type ProtocolDraft,
   type ProtocolRevision,
@@ -32,28 +32,15 @@ import {
   type VerificationReport,
 } from '@/lib/protocol-v2'
 import { cn, downloadJSONSource } from '@/lib/utils'
-import { ProtocolDirectionEditor, ProtocolOperationEditor } from './v2-operation-editor'
 
-const legacySectionNames = [
-  ['directions', '方向与映射', '方向映射'],
-  ['operations', '传输与操作', '传输操作'],
-  ['samples', '请求、响应与事件样例', '消息样例'],
-  ['agent', '原生 Agent 参数、工具结果与样例', 'Agent 规则'],
-  ['sessionSamples', '实时会话样例', '会话样例'],
-  ['taskSamples', '异步任务样例', '任务样例'],
-  ['modelSamples', '模型目录样例', '目录样例'],
-  ['native', '原生字段规则', '原生字段'],
-  ['extensions', '扩展元数据', '扩展元数据'],
-] as const
-
-const sourceSectionNames = [
+const sectionNames = [
   ['spec', '外部协议 spec.json', '协议定义'],
-  ['mapping', '转换说明 mapping.json', '转换说明'],
+  ['mapping', '核心映射 mapping.json', '核心映射'],
 ] as const
 
 const EMPTY_DEFINITION = JSON.stringify(
   {
-    schemaVersion: 4,
+    schemaVersion: PROTOCOL_PACKAGE_VERSION,
     spec: {
       id: '',
       name: '',
@@ -116,24 +103,20 @@ export function ProtocolV2Editor({
 
   const parsed = useMemo(() => {
     try {
-      return { document: new ProtocolDocument(source), error: '' }
+      return { document: parseProtocolPackage(source), error: '' }
     } catch (failure) {
       return { document: undefined, error: String(failure) }
     }
   }, [source])
 
   const document = parsed.document
-  const identityPrefix = document ? protocolIdentityPrefix(document) : ''
-  const isPackage = identityPrefix === '/spec'
-  const mappingPrefix = isPackage ? '/mapping' : ''
-  const sectionNames = isPackage ? sourceSectionNames : legacySectionNames
   const scalar = (path: string): string => {
     const raw = document?.read(path)
     const value: unknown = raw ? JSON.parse(raw) : ''
     return typeof value === 'string' ? value : ''
   }
-  const id = scalar(`${identityPrefix}/id`)
-  const protocolName = scalar(`${identityPrefix}/name`)
+  const id = scalar(`/spec/id`)
+  const protocolName = scalar(`/spec/name`)
   const hasPendingSections = Object.keys(pendingSections).length > 0
   const isDirty = source !== savedSource || hasPendingSections
   const [confirmingClose, setConfirmingClose] = useState(false)
@@ -170,8 +153,7 @@ export function ProtocolV2Editor({
   }
 
   const sectionSource = (key: string) =>
-    pendingSections[key]?.source ?? document?.read('/' + key) ??
-    (key.includes('Samples') || key === 'samples' ? '[]' : '{}')
+    pendingSections[key]?.source ?? document?.read('/' + key) ?? '{}'
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true)
@@ -213,16 +195,16 @@ export function ProtocolV2Editor({
     let path = issue.path
     if (issue.evidence) {
       for (const section of ['samples', 'sessionSamples', 'taskSamples', 'modelSamples', 'tokenCountSamples']) {
-        const entries = document?.locate(`${mappingPrefix}/${section}`)?.children
+        const entries = document?.locate(`/mapping/${section}`)?.children
         for (const [index] of entries ?? []) {
-          if (scalar(`${mappingPrefix}/${section}/${index}/id`) === issue.evidence) {
-            path = `${mappingPrefix}/${section}/${index}`
+          if (scalar(`/mapping/${section}/${index}/id`) === issue.evidence) {
+            path = `/mapping/${section}/${index}`
           }
         }
       }
     }
     setFocusPath(path)
-    const sourceTab = isPackage && sourceSectionNames.find(([key]) => path === `/${key}` || path.startsWith(`/${key}/`))?.[0]
+    const sourceTab = sectionNames.find(([key]) => path === `/${key}` || path.startsWith(`/${key}/`))?.[0]
     setTab(sourceTab || 'json')
   }
 
@@ -254,7 +236,7 @@ export function ProtocolV2Editor({
     }
   }, [draft])
 
-  const capabilities = document?.locate(`${mappingPrefix}/capabilities`)
+  const capabilities = document?.locate(`/mapping/capabilities`)
 
   return (
     <section className="space-y-6 pt-1" aria-label="协议版本编辑器">
@@ -278,7 +260,7 @@ export function ProtocolV2Editor({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={isBusy || hasPendingSections} onClick={() => void run(save)}>
+          <Button disabled={isBusy || !document || hasPendingSections} onClick={() => void run(save)}>
             <Save className="h-3.5 w-3.5" aria-hidden />
             保存草稿
           </Button>
@@ -397,12 +379,6 @@ export function ProtocolV2Editor({
       </div>
 
       <fieldset disabled={isBusy} className="min-w-0 space-y-5 pt-1">
-        {tab === 'directions' && document && !hasPendingSections && (
-          <ProtocolDirectionEditor document={document} schema={schema} onChange={setSource} />
-        )}
-        {tab === 'operations' && document && !hasPendingSections && (
-          <ProtocolOperationEditor document={document} schema={schema} onChange={setSource} />
-        )}
         {tab === 'basic' && (
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -417,9 +393,9 @@ export function ProtocolV2Editor({
                   <span>{label}</span>
                   <Input
                     className={cn(key !== 'name' && 'font-mono text-xs')}
-                    value={scalar(`${identityPrefix}/${key}`)}
+                    value={scalar(`/spec/${key}`)}
                     disabled={!document || (key === 'id' && !!draftHash)}
-                    onChange={(event) => change(`${identityPrefix}/${key}`, JSON.stringify(event.target.value))}
+                    onChange={(event) => change(`/spec/${key}`, JSON.stringify(event.target.value))}
                   />
                 </label>
               ))}
@@ -431,7 +407,7 @@ export function ProtocolV2Editor({
               </legend>
               <div className="flex flex-wrap gap-2">
                 {schema.capabilities.map((capability) => {
-                  const checked = document?.read(`${mappingPrefix}/capabilities/${capability}`) === 'true'
+                  const checked = document?.read(`/mapping/capabilities/${capability}`) === 'true'
                   return (
                     <label
                       key={capability}
@@ -448,7 +424,7 @@ export function ProtocolV2Editor({
                         disabled={!capabilities}
                         checked={checked}
                         onChange={(event) =>
-                          change(`${mappingPrefix}/capabilities/${capability}`, String(event.target.checked))
+                          change(`/mapping/capabilities/${capability}`, String(event.target.checked))
                         }
                       />
                       {capability}
@@ -457,7 +433,7 @@ export function ProtocolV2Editor({
                 })}
               </div>
               <p className="pt-1 text-xs text-muted-foreground">
-                每个方向的映射与样例必须证明所声明的能力。新增能力后重新验证才能启用。
+                每个方向只连接本协议与大自在天核心。映射与样例必须证明所声明的能力，新增能力后重新验证才能启用。
               </p>
             </fieldset>
           </div>
@@ -467,24 +443,22 @@ export function ProtocolV2Editor({
           ([key, label]) =>
             tab === key && (
               <div key={key} className="space-y-2">
-                {isPackage && (
-                  <div className="flex flex-wrap items-end gap-3">
-                    <label className="space-y-1 text-xs font-medium text-foreground">
-                      <span className="block">导入 {key}.json</span>
-                      <Input type="file" accept=".json,application/json" aria-label={`导入 ${key}.json`}
-                        onChange={(event) => {
-                          const file = event.target.files?.[0]
-                          event.target.value = ''
-                          if (file) void run(async () => editSection(key, await file.text()))
-                        }} />
-                    </label>
-                    <Button onClick={() => downloadJSONSource(`${key}.json`, sectionSource(key))}>
-                      导出 {key}.json
-                    </Button>
-                    <p className="text-xs text-muted-foreground">两份源一并保存、验证和启用。</p>
-                  </div>
-                )}
-                {isPackage && key === 'mapping' && (
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="space-y-1 text-xs font-medium text-foreground">
+                    <span className="block">导入 {key}.json</span>
+                    <Input type="file" accept=".json,application/json" aria-label={`导入 ${key}.json`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        event.target.value = ''
+                        if (file) void run(async () => editSection(key, await file.text()))
+                      }} />
+                  </label>
+                  <Button onClick={() => downloadJSONSource(`${key}.json`, sectionSource(key))}>
+                    导出 {key}.json
+                  </Button>
+                  <p className="text-xs text-muted-foreground">两份源一并保存、验证和启用。</p>
+                </div>
+                {key === 'mapping' && (
                   <p className="text-xs text-muted-foreground">
                     conversionDefaults 使用 use: request_projection 或 model_policy 绑定已声明程序；ID、顺序和启用状态由本规则指定。
                     metadata 处置由配置声明字段与形状；enum 的 otherwise 只处理未映射的字符串。
@@ -492,9 +466,13 @@ export function ProtocolV2Editor({
                     aggregate.layout 通过 remainder、fields、labels 声明请求对象拆分；核心路径、成员类型和无覆盖重建在编译时检查。
                     steps.layout 使用 stable_partition、combine_children 或 group_runs 处理请求或完整响应的 /content；group_runs 通过 role 声明相邻根的消息角色，保留叶子及顺序，并明确诊断容器边界变化。
                     unfold_children 通过 childWhen 展开选中子节点，保留其余内容的消息角色和顺序。
+                    detach_children 保留已经观察到的消息容器，将选中子节点按顺序移到容器之后；空容器仍保留。
+                    wrap_nodes 按 role 和 wrapper.id／status 为选中节点分别建立消息容器，原节点完整保留为唯一子节点。
                     merge_text 处理 /content/*/children；text.measure 声明长度口径（如 utf16_length），offsetBinding、lengthBinding 为 metadata 表达式提供原文偏移，across 显式允许跨越未选中节点。
                     track_position 按固定 name 和 item key 记录增量长度；project_range 将声明的 start/end 换算到输出区间，拒绝跨其他 item 的范围。长度单位与引用字段由 Mapping 指定。
                     conversionDefaults.streamDisposition 声明流内损失的 degrade／reject、path 和 reason；目标事件程序使用 require_disposition 的固定 name 引用规则，source 提供实际位置。严格模式、规则禁用或不匹配时拒绝，原生 observer 同样执行授权。
+                    responseRule 可绑定本 Mapping 的响应布局规则；离线验证只在本次流处置成功后应用该规则，并校验规则指纹与路由。
+                    conversionDefaults.sourcePrelude 属于 source_event：first／next 用 schema 和可选 when 限定相邻开场帧，when 与有序 set 可读取 input（下一帧）和 root（首帧）。最多暂存一帧，只替换已存在且互不重叠的路径；strict 拒绝实际改写，源 Spec 身份和生命周期校验仍独立执行。
                     nativeWhen 可读取 runtime 的 /encoding/hasRendered，判断此前是否执行过语义编码，据此选择包含历史内容的帧是否重建；它不代表成功交付，不授予引用、资源或续传证明。
                     encode_event.semanticRanges 使用相同的文本／引用记录检查核心事件改写：仅可读取事件身份、delta、item 的 kind／payload 和 metadata。原值由宿主保留，配置不能提供改写证明；最终 wire 与实际交付检查仍分别执行。
                     models 操作通过 Spec 的 models.clientDocument 声明客户端目录合同，Mapping 的 encodeModels 将核心 models 数组编码成目标格式；decodeModels 继续负责上游发现。modelSamples.direction 使用 encode_response 验证客户端输出，省略时验证 decode_response。两方向的样例覆盖分别检查。
@@ -519,36 +497,17 @@ export function ProtocolV2Editor({
             ),
         )}
 
-        {tab === 'directions' && (
+        {tab === 'mapping' && (
           <details className="border-t border-border/40 pt-3.5 text-xs">
-            <summary className="cursor-pointer font-medium text-foreground">
-              引擎支持的方向与映射操作
-            </summary>
-            <div className="mt-3 space-y-2 text-muted-foreground">
-              <p className="font-mono">{schema.directions.join(' · ')}</p>
-              <ul className="space-y-1">
-                {schema.mappingOperations.map((operation) => (
-                  <li key={operation.name}>
-                    <code className="font-mono text-foreground">{operation.name}</code>：
-                    {operation.description}
-                  </li>
-                ))}
-              </ul>
-              <p>
-                可复用模块：
-                {schema.modules
-                  .map((module) => `${module.name} (${module.directions.join(', ')})`)
-                  .join('；')}
-              </p>
-            </div>
+            <summary className="cursor-pointer font-medium text-foreground">DSL 映射操作</summary>
+            <ul className="mt-3 space-y-1 text-muted-foreground">
+              {schema.mappingOperations.map((operation) => (
+                <li key={operation.name}>
+                  <code className="font-mono text-foreground">{operation.name}</code>：{operation.description}
+                </li>
+              ))}
+            </ul>
           </details>
-        )}
-
-        {tab === 'operations' && (
-          <p className="text-xs text-muted-foreground">
-            操作定义包含 method、path、transport、auth，以及可选的 session 或 task。支持 HTTP
-            JSON、SSE、NDJSON、WebSocket；任务流声明 submit/status/result/cancel。未安装的引擎能力会在检查定义时报告。
-          </p>
         )}
 
         {tab === 'json' && (
@@ -578,7 +537,7 @@ export function ProtocolV2Editor({
 
         {tab === 'verification' && (
           <ProtocolVerification source={source} id={id} schema={schema} document={document}
-            mappingPrefix={mappingPrefix} report={report} verifiedSource={verifiedSource} />
+            report={report} verifiedSource={verifiedSource} />
         )}
 
         <ProtocolRevisions id={id} revisions={revisions} activeHash={activeHash}

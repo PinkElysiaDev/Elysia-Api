@@ -489,6 +489,8 @@ export interface UsageLogDetail {
   durationMs: number
   usage: UsageTokenUsage
   usageDetail?: Record<string, unknown>
+  /** 核心用量的精确 JSON；浏览器适配层保留数字原文，不能转为 Number 后作为账本导出。 */
+  protocolUsageJSON?: string
   builtinToolUsage?: Record<string, number>
   /** 转换诊断：信息级规范化、兼容降级及失败，保留规则与阶段归属。 */
   conversionIssues?: ConversionIssue[]

@@ -70,6 +70,7 @@ export function buildExportPayload(detail: UsageLogDetail) {
       durationMs: detail.durationMs,
       usage: detail.usage,
       usageDetail: detail.usageDetail,
+      protocolUsageJSON: detail.protocolUsageJSON,
       startedAt: detail.startedAt,
       endedAt: detail.endedAt,
     },

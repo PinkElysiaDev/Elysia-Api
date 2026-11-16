@@ -11,6 +11,21 @@ export function BindingConversionEditor(props: BindingConversionProps) {
   return <BindingConversionForm key={JSON.stringify([props.sourceId, props.modelId])} {...props} />
 }
 
+/** Shows the request ranges that have their own complete combination evidence. */
+export function BindingVerificationScopes({ entry }: { entry?: ProtocolBindingEntry }) {
+  const descriptions = entry?.combinations?.flatMap((report) => {
+    if (!report.passed || !report.requestScope) return []
+    const capabilities = Object.entries(report.capabilities ?? {}).filter(([, isSupported]) => isSupported).map(([name]) => name)
+    return [`${report.requestScope.id} · ${report.transport} · ${capabilities.join(', ')}`]
+  })
+  const scopes = [...new Set(descriptions)]
+  if (scopes.length === 0) return null
+  return <details className="text-xs"><summary>已验证的请求范围</summary>
+    <p className="text-muted-foreground">请求必须完整满足所选范围。不同范围的能力不能合并使用；未列出的输入仍需独立验证。</p>
+    <ul className="list-disc pl-4">{scopes.map((scope) => <li key={scope}>{scope}</li>)}</ul>
+  </details>
+}
+
 function BindingConversionForm({ sourceId, modelId, disabled, onSaved, onBusyChange }: BindingConversionProps) {
   const [entry, setEntry] = useState<ProtocolBindingEntry>()
   const [policies, setPolicies] = useState<ConversionRecord[]>([])
@@ -60,6 +75,7 @@ function BindingConversionForm({ sourceId, modelId, disabled, onSaved, onBusyCha
     }
   }
   return <details className="space-y-2 rounded-md border p-3"><summary>转换行为覆盖</summary>
+    <BindingVerificationScopes entry={entry} />
     <p className="text-xs text-muted-foreground">{entry ? '覆盖仅影响此绑定；同 ID 规则覆盖上层，显式禁用可停止继承的规则。' : '先保存此层级的协议绑定，再配置转换覆盖。'} <a href="#/protocols/conversions" className="underline">管理转换策略</a></p>
     <select aria-label="绑定转换策略" className="w-full rounded border bg-card p-2 text-sm" disabled={disabled || busy || !entry} value={selected} onChange={(e) => { const id = e.target.value; setSelected(id); setRevision(''); setRevisions([]); revisionGeneration.current++ }}><option value="">继承上层</option>{policies.map((p) => <option key={p.id} value={p.id}>{p.policy.name || p.id}</option>)}</select>
     {selected && <select aria-label="绑定策略修订" className="w-full rounded border bg-card p-2 text-sm" value={revision} disabled={disabled || busy} onChange={(e) => setRevision(e.target.value)}><option value="">选择不可变修订</option>{revisions.map((r) => <option key={r.hash} value={r.hash}>{r.hash.slice(0, 12)}</option>)}</select>}

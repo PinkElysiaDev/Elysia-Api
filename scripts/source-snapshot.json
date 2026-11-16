@@ -1443,6 +1443,7 @@
     "packages/webui/src/lib/theme.tsx",
     "packages/webui/src/lib/types.ts",
     "packages/webui/src/lib/usage-filters.ts",
+    "packages/webui/src/lib/usage-log-detail.ts",
     "packages/webui/src/lib/use-api-action.ts",
     "packages/webui/src/lib/use-entity-form-dialog.ts",
     "packages/webui/src/lib/utils.ts",

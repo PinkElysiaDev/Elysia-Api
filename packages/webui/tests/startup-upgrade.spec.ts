@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { readActiveProtocolPackage } from './protocol-fixtures'
 
 test('fresh backend loads all four presets and discovers models', async ({ page, request }) => {
   test.skip(!process.env.PROTOCOL_E2E_URL, 'requires a real backend')
@@ -17,6 +18,7 @@ test('fresh backend loads all four presets and discovers models', async ({ page,
   expect(status.runtimeReady).toBe(true)
   expect(status.startupFailure).toBeUndefined()
   expect(Object.keys(status.loaded)).toEqual(expect.arrayContaining(['openai-chat-completions', 'openai-responses', 'anthropic-messages', 'google-generate-content']))
+  for (const id of Object.keys(status.loaded)) await readActiveProtocolPackage(request, base, headers, id)
   await page.addInitScript((value) => localStorage.setItem('elysia-webui.panel-token', value), token)
   await page.goto('/#/protocols')
   await expect(page.getByRole('heading', { name: '预置协议（只读）' })).toBeVisible()
@@ -33,7 +35,7 @@ test('fresh backend loads all four presets and discovers models', async ({ page,
     const origin = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`
     for (const protocol of ['openai-chat-completions', 'openai-responses', 'anthropic-messages', 'google-generate-content']) {
       const id = `upgrade-browser-${protocol}-${Date.now()}`
-      const source = { id, name: id, platform: `custom:${protocol}`, baseUrl: origin + (protocol.startsWith('openai') ? '/v1' : ''), apiKey: 'mock-only', enabled: true, autoFetchModels: true }
+      const source = { id, name: id, platform: `custom:${protocol}`, baseUrl: origin, apiKey: 'mock-only', enabled: true, autoFetchModels: true }
       const saved = await request.put(`${base}/api/admin/model-sources/${id}`, { headers, data: source })
       expect(saved.status(), await saved.text()).toBe(200)
       await expect.poll(async () => {

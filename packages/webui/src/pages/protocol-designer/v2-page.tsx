@@ -6,7 +6,7 @@ import { RoleWatermark } from '@/components/role-watermark'
 import { EmptyState, LoadingState } from '@/components/ui/states'
 import { Button } from '@/components/ui/button'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { protocolAPI, protocolIdentityPrefix, type EnabledProtocol, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
+import { protocolAPI, parseProtocolPackage, type EnabledProtocol, type ProtocolDraft, type ProtocolListing, type ProtocolSchema } from '@/lib/protocol-v2'
 import { protocolLabel } from '@/lib/protocol'
 import { ProtocolV2Editor } from './v2-editor'
 import { ProtocolArchiveDialog } from './archive-dialog'
@@ -32,16 +32,10 @@ function extractDraftName(draft: ProtocolDraft, protocols: readonly EnabledProto
   const fromEnabled = protocols.find((item) => item.id === draft.protocolId)?.name?.trim()
   if (fromEnabled) return fromEnabled
   try {
-    const rawDef: unknown = draft.definition
-    if (typeof rawDef === 'string') {
-      const doc = new ProtocolDocument(rawDef)
-      const raw = doc.read(`${protocolIdentityPrefix(doc)}/name`)
-      const parsed: unknown = raw ? JSON.parse(raw) : ''
-      if (typeof parsed === 'string' && parsed.trim()) return parsed.trim()
-    } else if (rawDef && typeof rawDef === 'object' && 'name' in rawDef) {
-      const candidate = rawDef.name
-      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
-    }
+    const document = parseProtocolPackage(draft.definition)
+    const raw = document.read('/spec/name')
+    const name: unknown = raw ? JSON.parse(raw) : ''
+    if (typeof name === 'string') return name.trim()
   } catch {
     // Ignore malformed draft definitions in list view.
   }
@@ -83,14 +77,13 @@ export function ProtocolDesignerPage() {
           revision.hash === listing?.active.find((entry) => entry.protocolId === id)?.revisionHash,
       )
       if (!latest) return
-      const document = new ProtocolDocument(latest.definition)
-      const identityPrefix = protocolIdentityPrefix(document)
+      const document = parseProtocolPackage(latest.definition)
       const taken = new Set(listing?.drafts.map((draft) => draft.protocolId) ?? [])
       let candidate = `${id}-copy`
       for (let index = 1; taken.has(candidate); index += 1) candidate = `${id}-copy-${index}`
-      const source = new ProtocolDocument(document.set(`${identityPrefix}/id`, JSON.stringify(candidate))).set(
-        `${identityPrefix}/name`,
-        JSON.stringify(`${JSON.parse(document.read(`${identityPrefix}/name`) ?? JSON.stringify(id))}（副本）`),
+      const source = new ProtocolDocument(document.set('/spec/id', JSON.stringify(candidate))).set(
+        '/spec/name',
+        JSON.stringify(`${JSON.parse(document.read('/spec/name')!)}（副本）`),
       )
       setSelection({ source })
     },
@@ -120,8 +113,6 @@ export function ProtocolDesignerPage() {
     if ('definitionJSON' in rawState && typeof rawState.definitionJSON === 'string') {
       setSelection({ source: rawState.definitionJSON })
       navigate(location.pathname, { replace: true, state: null })
-    } else if ('draft' in rawState && rawState.draft) {
-      navigate('/protocols/legacy', { replace: true, state: rawState })
     }
   }, [location, navigate])
 

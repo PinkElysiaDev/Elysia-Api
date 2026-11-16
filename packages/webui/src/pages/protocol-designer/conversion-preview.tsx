@@ -62,12 +62,6 @@ export function ConversionPreview({ policyJSON, isValid, busy, registry, action 
           ))}
         </select>
       </label>
-      {phase === 'source_event' && (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          输入按接收顺序排列的完整上游 JSON 帧数组；source 为上游协议，target
-          为客户端协议。仅匹配空启动帧的身份规则，输出仍为帧数组。
-        </p>
-      )}
       {phase === 'response' && (
         <p className="text-xs leading-relaxed text-muted-foreground">
           预览 Chat 缺失模型补齐时，在上下文提供 responseModel，例如{' '}

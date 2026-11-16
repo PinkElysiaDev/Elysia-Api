@@ -5,20 +5,18 @@ import type { ProtocolSchema, VerificationReport } from '@/lib/protocol-v2'
 import { cn } from '@/lib/utils'
 
 /** Show evidence for the exact source and compiler revision. */
-export function ProtocolVerification({ source, id, schema, document, mappingPrefix, report, verifiedSource }: {
+export function ProtocolVerification({ source, id, schema, document, report, verifiedSource }: {
   source: string
   id: string
   schema: ProtocolSchema
   document?: ProtocolDocument
-  mappingPrefix: string
   report?: VerificationReport
   verifiedSource: string
 }) {
-  const isPackage = mappingPrefix === '/mapping'
-  const mappings = document?.locate(`${mappingPrefix}/directions`)
+  const mappings = document?.locate(`/mapping/directions`)
   const directionKeys = [...(mappings?.children.keys() ?? [])]
   const declaredCapabilities = schema.capabilities.filter(
-    (capability) => document?.read(`${mappingPrefix}/capabilities/${capability}`) === 'true',
+    (capability) => document?.read(`/mapping/capabilities/${capability}`) === 'true',
   )
 
   return (
@@ -73,8 +71,8 @@ export function ProtocolVerification({ source, id, schema, document, mappingPref
                 </TableCell>
                 {directionKeys.map((name) => (
                   <TableCell key={name} className="py-2.5 text-center text-muted-foreground">
-                    {document?.locate(`${mappingPrefix}/directions/${name}/capabilities`)
-                      ? document.read(`${mappingPrefix}/directions/${name}/capabilities/${capability}`) ===
+                    {document?.locate(`/mapping/directions/${name}/capabilities`)
+                      ? document.read(`/mapping/directions/${name}/capabilities/${capability}`) ===
                         'true'
                         ? '支持'
                         : '—'
@@ -119,9 +117,9 @@ export function ProtocolVerification({ source, id, schema, document, mappingPref
             {
               engineFeatures: schema.engineFeatures,
               events: schema.events,
-              ...(isPackage
-                ? { package: schema.packageSchema, spec: schema.specSchema, mapping: schema.mappingSchema }
-                : { definition: schema.definitionSchema }),
+              package: schema.packageSchema,
+              spec: schema.specSchema,
+              mapping: schema.mappingSchema,
               semantic: schema.semanticSchema,
             },
             null,

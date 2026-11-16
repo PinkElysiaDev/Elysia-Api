@@ -40,7 +40,7 @@ async function mockBindings(page: Page, initial = true, hasPolicies = false) {
     } else if (path.endsWith('/revisions')) {
       const id = path.split('/').at(-2)
       const operations = { generate: { kind: 'generate', transport: 'http_json' } }
-      const definition = id === 'responses' ? { schemaVersion: 4, spec: { operations }, mapping: {} } : { operations }
+      const definition = { schemaVersion: 4, spec: { operations }, mapping: {} }
       data = { items: [{ hash: `${id}-rev`, definition }] }
     } else if (path.endsWith('/model-sources')) {
       data = { items: [{ id: 'binding-source', name: 'Binding source', baseUrl: 'https://upstream.example', platform: 'custom:chat', enabled: true }] }

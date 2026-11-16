@@ -88,7 +88,6 @@ export function App() {
               <Route path="/protocols" element={<ProtocolDesignerPage />} />
               <Route path="/protocols/conversions" element={<ConversionPolicyPage />} />
               <Route path="/protocols/history" element={<ProtocolHistoryPage />} />
-              <Route path="/protocols/legacy" element={<Navigate to="/protocols/history" replace />} />
               <Route path="/agent" element={<AgentPage />} />
               <Route path="/groups" element={<GroupsPage />} />
               <Route path="/tokens" element={<TokensPage />} />

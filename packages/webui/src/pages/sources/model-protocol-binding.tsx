@@ -1,9 +1,8 @@
-import { BindingConversionEditor } from './binding-conversion'
+import { BindingConversionEditor, BindingVerificationScopes } from './binding-conversion'
 import { useEffect, useRef, useState } from 'react'
 import { useSWRConfig } from 'swr'
 import { Button } from '@/components/ui/button'
-import { ProtocolDocument } from '@/lib/protocol-document'
-import { protocolAPI, protocolIdentityPrefix, type EnabledProtocol, type ProtocolBindingEntry } from '@/lib/protocol-v2'
+import { protocolAPI, parseProtocolPackage, type EnabledProtocol, type ProtocolBindingEntry } from '@/lib/protocol-v2'
 import type { Model } from '@/lib/types'
 
 /** Explicit model binding remains independent of source selection and catalog refresh. */
@@ -48,8 +47,8 @@ function ModelBindingForm({ model, disabled }: { model: Model; disabled: boolean
         if (!target) throw new Error('请选择当前已启用的协议')
         const revision = (await protocolAPI.revisions(target.id)).find((item) => item.hash === target.revision)
         if (!revision) throw new Error('协议已变化，请重新打开模型设置')
-        const document = new ProtocolDocument(revision.definition)
-        const operations = JSON.parse(document.read(`${protocolIdentityPrefix(document)}/operations`)!) as Record<string, { kind: string; transport: string }>
+        const document = parseProtocolPackage(revision.definition)
+        const operations = JSON.parse(document.read('/spec/operations')!) as Record<string, { kind: string; transport: string }>
         const capabilities = Object.fromEntries(Object.entries(target.capabilities).filter(([key, supported]) => supported && (model.toolsCapable || !key.startsWith('tools.')) && (model.visionCapable || !['images', 'audio', 'video'].includes(key))))
         entry.binding = { protocolId: target.id, revisionHash: target.revision, capabilities, transports: [...new Set(Object.values(operations).filter((operation) => operation.kind === 'generate').map((operation) => operation.transport))] }
       }
@@ -70,6 +69,7 @@ function ModelBindingForm({ model, disabled }: { model: Model; disabled: boolean
       {protocols.map((item) => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}
     </select>
     <p className="text-xs text-muted-foreground">单独保存此模型的协议；模型源设置和目录刷新不会覆盖。能力以当前已保存的模型设置为准。</p>
+    <BindingVerificationScopes entry={current} />
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {notice && <p role="status" className="text-xs">{notice}</p>}
     <Button size="sm" disabled={!loaded || disabled || busy || conversionBusy} onClick={() => void save()}>{busy ? '验证中…' : '验证并保存模型绑定'}</Button>

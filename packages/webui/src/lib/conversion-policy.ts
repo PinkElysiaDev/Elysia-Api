@@ -2,7 +2,7 @@ import { request } from './api'
 import { ProtocolDocument } from './protocol-document'
 import type { ConversionIssue } from './protocol-v2'
 
-export type ConversionPhase = 'ingress' | 'request' | 'response' | 'event' | 'source_event' | 'wire'
+export type ConversionPhase = 'ingress' | 'request' | 'response' | 'source_event' | 'event' | 'wire'
 export const CONVERSION_POLICY_VERSION = 2
 export interface ConversionMatch { sourceId?: string; targetId?: string; sourceFamily?: string; targetFamily?: string; sourceWire?: string; targetWire?: string; model?: string; operation?: string; transport?: string; nodeKind?: string; path?: string; present?: boolean }
 export interface ConversionRule { id: string; order: number; enabled: boolean; phase: ConversionPhase; match: ConversionMatch; action: string; path?: string; value?: unknown; expression?: unknown; reason?: string }
@@ -38,7 +38,7 @@ export const conversionAPI = {
   activate: (policyId: string, hash: string, expectedActive: string, selector: ConversionMatch) => request(`${base}/${id(policyId)}/activate`, { method: 'POST', body: { hash, expectedActive, selector } }),
   async preview(policyJSON: string, phase: ConversionPhase, contextJSON: string, inputJSON: string) {
     for (const source of [policyJSON, contextJSON, inputJSON]) new ProtocolDocument(source)
-    const document = new ProtocolDocument(await request<string>(`${base}/preview`, { method: 'POST', rawBody: `{"policy":${policyJSON},"phase":${JSON.stringify(phase)},"sequence":${phase === 'source_event'},"context":${contextJSON},"input":${inputJSON}}`, rawResponse: true }))
+    const document = new ProtocolDocument(await request<string>(`${base}/preview`, { method: 'POST', rawBody: `{"policy":${policyJSON},"phase":${JSON.stringify(phase)},"context":${contextJSON},"input":${inputJSON}}`, rawResponse: true }))
     const exactJSON = document.read('/data')!
     const metadata = JSON.parse(exactJSON) as { issues: ConversionIssue[]; effective: { origins: Record<string, string> } }
     return { exactJSON, issues: metadata.issues, origins: metadata.effective.origins }

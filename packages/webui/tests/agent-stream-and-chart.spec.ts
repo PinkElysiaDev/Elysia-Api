@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { cliCommandOf, type AgentMessage, type AgentStreamEvent, type AgentPendingAction } from '../src/lib/agent/types'
 
+const agentPollIntervalMs = 15_000
+const agentClockStart = new Date('2026-09-27T12:00:00Z')
+
 type StreamWindow = Window & {
   pushAgentEvent: (event: AgentStreamEvent) => void
   finishAgentStream: () => void
@@ -75,19 +78,36 @@ for (const status of [404, 500]) {
   })
 }
 
-test('a failed background refresh keeps messages and recovers after retry', async ({ page }) => {
-  await page.addInitScript(() => {
-    const schedule = window.setInterval
-    window.setInterval = (handler, timeout, ...args) => schedule(handler, timeout === 15000 ? 100 : timeout, ...args)
+for (const recovery of ['retry', 'poll'] as const) {
+  test(`a failed background refresh keeps messages and recovers after ${recovery}`, async ({ page }) => {
+    await page.clock.install({ time: agentClockStart })
+    await page.clock.pauseAt(agentClockStart)
+    const messages = [message(1, 'assistant', { text: 'Keep existing history' })]
+    const session = await openAgent(page, messages)
+    let reads = 0
+    await page.route('**/api/admin/agent/sessions/regression', (route) => {
+      reads++
+      return route.fulfill({ status: 500, json: { ok: false, error: { code: 'session_read_failed', message: 'Synthetic refresh failure' } } })
+    })
+    await page.clock.runFor(agentPollIntervalMs)
+    await expect(page.getByRole('alert')).toContainText('Synthetic refresh failure')
+    await expect(page.getByText('Keep existing history', { exact: true })).toBeVisible()
+    expect(reads).toBe(1)
+    await page.route('**/api/admin/agent/sessions/regression', (route) => {
+      reads++
+      return route.fulfill({ json: { ok: true, data: { session, messages } } })
+    })
+    if (recovery === 'retry') {
+      // Paused polling makes this request attributable to the user's click.
+      await page.getByRole('button', { name: '重试加载' }).click()
+    } else {
+      await page.clock.runFor(agentPollIntervalMs)
+    }
+    await expect(page.getByRole('alert')).not.toBeVisible()
+    await expect(page.getByText('Keep existing history', { exact: true })).toBeVisible()
+    expect(reads).toBe(2)
   })
-  const session = await openAgent(page, [message(1, 'assistant', { text: 'Keep existing history' })])
-  await page.route('**/api/admin/agent/sessions/regression', (route) => route.fulfill({ status: 500, json: { ok: false, error: { code: 'session_read_failed', message: 'Synthetic refresh failure' } } }))
-  await expect(page.getByRole('alert')).toContainText('Synthetic refresh failure')
-  await expect(page.getByText('Keep existing history', { exact: true })).toBeVisible()
-  await page.route('**/api/admin/agent/sessions/regression', (route) => route.fulfill({ json: { ok: true, data: { session, messages: [message(1, 'assistant', { text: 'Keep existing history' })] } } }))
-  await page.getByRole('button', { name: '重试加载' }).click()
-  await expect(page.getByRole('alert')).not.toBeVisible()
-})
+}
 
 for (const operation of ['rename', 'settings', 'clear', 'delete', 'create'] as const) {
   test(`a delayed session ${operation} cannot replace a newer selection`, async ({ page }) => {

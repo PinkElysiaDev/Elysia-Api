@@ -7,14 +7,6 @@ import type { ConversionDocumentHandle } from './use-conversion-document'
 
 type Props = { document: ConversionDocumentHandle; registry?: ConversionRegistry }
 
-function readRuleOption(value: unknown, key: string): string {
-  if (value && typeof value === 'object' && key in value) {
-    const entry = (value as Record<string, unknown>)[key]
-    if (typeof entry === 'string') return entry
-  }
-  return ''
-}
-
 /** Edit typed rule controls while keeping arbitrary values in the exact document. */
 export function ConversionRuleEditor({ document, registry }: Props) {
   const { text, setText, policy, updateRule, updateFields, addRule, move } = document
@@ -148,74 +140,19 @@ export function ConversionRuleEditor({ document, registry }: Props) {
                 </p>
                 {registry.actionSchemas[rule.action].value?.enum && (
                   <label className="block space-y-1 text-xs font-medium text-foreground">
-                    <span>目标编码器</span>
+                    <span>动作参数</span>
                     <select
-                      aria-label={`规则 ${index + 1} 目标编码器`}
+                      aria-label={`规则 ${index + 1} 动作参数`}
                       className={field}
                       value={typeof rule.value === 'string' ? rule.value : ''}
                       onChange={(e) => updateRule(index, { value: e.target.value })}
                     >
                       <option value="">请选择</option>
-                      {registry.actionSchemas[rule.action].value?.enum?.map((codec) => (
-                        <option key={codec}>{codec}</option>
+                      {registry.actionSchemas[rule.action].value?.enum?.map((value) => (
+                        <option key={value}>{value}</option>
                       ))}
                     </select>
                   </label>
-                )}
-                {(rule.action === 'responses_storage' || rule.action === 'request_projection') && (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="space-y-1 text-xs font-medium text-foreground">
-                      <span>目标编码器</span>
-                      <select
-                        aria-label={`规则 ${index + 1} 目标编码器`}
-                        className={field}
-                        value={readRuleOption(rule.value, 'targetCodec')}
-                        onChange={(e) =>
-                          updateFields(`/rules/${index}/value`, { targetCodec: e.target.value })
-                        }
-                      >
-                        {['responses', 'gemini', 'anthropic', 'openai-chat'].map((codec) => (
-                          <option key={codec}>{codec}</option>
-                        ))}
-                      </select>
-                    </label>
-                    {rule.action === 'responses_storage' && (
-                      <label className="space-y-1 text-xs font-medium text-foreground">
-                        <span>无法保存响应时</span>
-                        <select
-                          aria-label={`规则 ${index + 1} 保存降级`}
-                          className={field}
-                          value={readRuleOption(rule.value, 'onUnsupported') || 'degrade'}
-                          onChange={(e) =>
-                            updateFields(`/rules/${index}/value`, { onUnsupported: e.target.value })
-                          }
-                        >
-                          <option value="degrade">兼容模式继续，并记录降级</option>
-                          <option value="reject">拒绝保存要求</option>
-                        </select>
-                      </label>
-                    )}
-                    {rule.action === 'request_projection' && (
-                      <label className="space-y-1 text-xs font-medium text-foreground">
-                        <span>来源编码器</span>
-                        <select
-                          aria-label={`规则 ${index + 1} 来源编码器`}
-                          className={field}
-                          value={readRuleOption(rule.value, 'sourceCodec')}
-                          onChange={(e) =>
-                            updateFields(`/rules/${index}/value`, {
-                              sourceCodec: e.target.value || undefined,
-                            })
-                          }
-                        >
-                          <option value="">未知来源</option>
-                          {['responses', 'gemini', 'anthropic', 'openai-chat'].map((codec) => (
-                            <option key={codec}>{codec}</option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                  </div>
                 )}
               </div>
             )}

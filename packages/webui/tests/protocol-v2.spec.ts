@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ProtocolDocument } from '../src/lib/protocol-document'
-import { protocolIdentityPrefix } from '../src/lib/protocol-v2'
+import { parseProtocolPackage } from '../src/lib/protocol-v2'
 
 function readProtocolPackage(directory: string) {
   const readPart = (part: string) => JSON.parse(readFileSync(resolve(`../../backend/protocol/${directory}/${part}.json`), 'utf8'))
@@ -26,7 +26,7 @@ test('designer renders the published listing contract without migration metadata
     let data: unknown = { items: [], seq: 1 }
     if (path.endsWith('/schema')) data = {}
     if (path.endsWith('/protocols')) data = {
-      drafts: [{ protocolId: 'my-protocol', hash: 'd'.repeat(64), definition: { id: 'my-protocol' }, updatedAt: '2026-10-08T00:00:00Z' }],
+      drafts: [{ protocolId: 'my-protocol', hash: 'd'.repeat(64), definition: { schemaVersion: 4, spec: { id: 'my-protocol' }, mapping: {} }, updatedAt: '2026-10-08T00:00:00Z' }],
       active: [
         { protocolId: 'openai-chat-completions', revisionHash: activeHash },
         { protocolId: 'google-generate-content', revisionHash: 'pending' },
@@ -82,9 +82,14 @@ test('raw protocol edits preserve presence, numeric spelling and ordered extensi
   expect(document.read('/nested/a~1b/~0x')).toBe('null')
   expect(new ProtocolDocument(document.set('/nested/new', 'false')).read('/nested/new')).toBe('false')
   for (const invalid of ['{"x":1,"x":2}', '{"x":}', '[1,]', '{"x":01}', '{}{}', '['.repeat(66) + ']'.repeat(66)]) expect(() => new ProtocolDocument(invalid)).toThrow()
-  for (const version of [3, 4]) {
+  for (const version of [2, 3]) {
     const packageSource = `{"schemaVersion":${version},"spec":{"id":"historical"},"mapping":{}}`
-    expect(protocolIdentityPrefix(new ProtocolDocument(packageSource))).toBe('/spec')
+    expect(() => parseProtocolPackage(packageSource)).toThrow('仅支持版本 4')
+  }
+  const packageSource = '{"schemaVersion":4,"spec":{"id":"current"},"mapping":{"exact":900719925474099312345}}'
+  expect(parseProtocolPackage(packageSource).read('/mapping/exact')).toBe('900719925474099312345')
+  for (const invalid of ['{"schemaVersion":4,"spec":{},"mapping":[]}', '{"schemaVersion":4,"spec":null,"mapping":{}}']) {
+    expect(() => parseProtocolPackage(invalid)).toThrow('必须包含 spec 和 mapping 对象')
   }
 })
 
@@ -105,7 +110,7 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
     let data: unknown = { items: [], seq: 1 }
     if (path.endsWith('/protocols/schema')) data = {
       compilerVersion, packageVersion: 4, directions: [], capabilities: [], mappingOperations: [],
-      modules: [], events: [], transports: [], engineFeatures: [],
+      events: [], transports: [], engineFeatures: [],
     }
     if (path.endsWith('/protocols')) {
       await route.fulfill({ contentType: 'application/json', body: `{"ok":true,"data":{"drafts":[${saved ? draftJSON() : ''}],"active":${JSON.stringify(activeHash ? [{ protocolId: id, revisionHash: activeHash }] : [])},"loaded":{},"presets":[]}}` })
@@ -140,12 +145,21 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   })
   await page.goto('/#/protocols')
   await page.locator('section').getByRole('button', { name: '新建协议', exact: true }).click()
+  await expect(page.getByRole('tab', { name: '方向与映射', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: '传输与操作', exact: true })).toHaveCount(0)
+  await page.getByRole('tab', { name: '完整 JSON', exact: true }).click()
+  const completeEditor = page.getByRole('textbox', { name: '完整协议 JSON', exact: true })
+  const initialSource = await completeEditor.inputValue()
+  await completeEditor.fill('{"schemaVersion":2,"id":"retired","directions":{}}')
+  await expect(page.getByRole('alert')).toContainText('仅支持版本 4')
+  await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled()
+  await completeEditor.fill(initialSource)
   await page.getByRole('tab', { name: '外部协议 spec.json', exact: true }).click()
   await page.getByLabel('导入 spec.json', { exact: true }).setInputFiles({ name: 'spec.json', mimeType: 'application/json', buffer: Buffer.from(spec) })
   await expect(page.getByRole('textbox', { name: '外部协议 spec.json JSON', exact: true })).toHaveValue(spec)
-  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  await page.getByRole('tab', { name: '核心映射 mapping.json', exact: true }).click()
   await page.getByLabel('导入 mapping.json', { exact: true }).setInputFiles({ name: 'mapping.json', mimeType: 'application/json', buffer: Buffer.from(mapping) })
-  const mappingEditor = page.getByRole('textbox', { name: '转换说明 mapping.json JSON', exact: true })
+  const mappingEditor = page.getByRole('textbox', { name: '核心映射 mapping.json JSON', exact: true })
   await expect(mappingEditor).toHaveValue(mapping)
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出 mapping.json', exact: true }).click()
@@ -155,7 +169,7 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled()
   await page.getByRole('tab', { name: '外部协议 spec.json', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '外部协议 spec.json JSON', exact: true })).toHaveValue(spec)
-  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  await page.getByRole('tab', { name: '核心映射 mapping.json', exact: true }).click()
   await expect(mappingEditor).toHaveValue('{"unfinished":')
   await mappingEditor.fill(mapping)
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
@@ -173,7 +187,7 @@ test('package sources share one save and evidence, preserve exact JSON, and loca
   await expect(page.getByRole('button', { name: '启用版本', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '检查定义', exact: true }).click()
   await page.getByLabel('协议诊断').getByRole('button').click()
-  await expect(page.getByRole('tab', { name: '转换说明 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: '核心映射 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
   expect(await mappingEditor.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe('900719925474099312346')
   await page.getByRole('tab', { name: '转换预览', exact: true }).click()
   await page.getByLabel('预览类型', { exact: true }).selectOption('models')
@@ -217,13 +231,13 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   await page.getByRole('textbox', { name: '完整协议 JSON', exact: true }).fill(source)
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
   await page.getByRole('textbox', { name: '名称', exact: true }).fill('Edited by form')
-  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
-  const mapping = page.getByRole('textbox', { name: '转换说明 mapping.json JSON', exact: true })
+  await page.getByRole('tab', { name: '核心映射 mapping.json', exact: true }).click()
+  const mapping = page.getByRole('textbox', { name: '核心映射 mapping.json JSON', exact: true })
   const original = await mapping.inputValue()
   await mapping.fill('{"invalid":')
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
   await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled()
-  await page.getByRole('tab', { name: '转换说明 mapping.json', exact: true }).click()
+  await page.getByRole('tab', { name: '核心映射 mapping.json', exact: true }).click()
   await expect(mapping).toHaveValue('{"invalid":')
   await mapping.fill(original)
   await page.getByRole('button', { name: '保存草稿', exact: true }).click()
@@ -246,7 +260,7 @@ test('browser creates, verifies, previews, activates and rolls back through the 
   await expect(page.getByLabel('协议诊断')).toContainText('incomplete_coverage')
   await expect(page.getByRole('button', { name: '启用版本', exact: true })).toBeDisabled()
   await page.getByLabel('协议诊断').getByRole('button').first().click()
-  await expect(page.getByRole('tab', { name: '转换说明 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: '核心映射 mapping.json', exact: true })).toHaveAttribute('aria-selected', 'true')
 
   await page.getByRole('tab', { name: '基本信息', exact: true }).click()
   await page.getByRole('checkbox', { name: 'tools.function', exact: true }).uncheck()

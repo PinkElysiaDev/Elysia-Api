@@ -4,22 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapse, JsonBlock } from "./ui-blocks";
 import type { AgentSession } from "@/lib/agent/types";
+import { parseProtocolPackage } from "@/lib/protocol-v2";
+import type { ProtocolDocument } from "@/lib/protocol-document";
 
-/** 配置页：协议草稿的结构化详情（请求/响应/流式映射 + 完整 JSON）+ 跳转设计器。 */
 const DRAFT_SECTIONS: { key: string; label: string }[] = [
   { key: "spec", label: "外部协议 spec.json" },
-  { key: "mapping", label: "转换说明 mapping.json" },
-  { key: "request", label: "请求构造（网关 → 上游）" },
-  { key: "response", label: "响应解析（上游 → 网关）" },
-  { key: "stream", label: "流式解析（SSE 帧）" },
-  { key: "directions", label: "独立方向与映射" },
-  { key: "capabilities", label: "声明能力" },
-  { key: "operations", label: "传输与操作" },
-  { key: "samples", label: "离线验证样例" },
-  { key: "sessionSamples", label: "会话验证样例" },
-  { key: "taskSamples", label: "任务验证样例" },
+  { key: "mapping", label: "核心映射 mapping.json" },
 ];
 
+/** Show the exact package sources shared by Agent authoring and the designer. */
 export function DraftView({
   session,
   busy,
@@ -37,17 +30,19 @@ export function DraftView({
       : typeof draft === "string"
         ? draft
         : JSON.stringify(draft, null, 2));
-  const draftObject =
-    draft && typeof draft === "object" && !Array.isArray(draft)
-      ? (draft as Record<string, unknown>)
-      : null;
-  const isPackage = draftObject?.schemaVersion === 3 || draftObject?.schemaVersion === 4;
-  const identityValue = isPackage ? draftObject.spec : draftObject;
-  const identity = identityValue && typeof identityValue === "object" && !Array.isArray(identityValue)
-    ? identityValue as Record<string, unknown>
-    : null;
-  const protocolId = identity ? String(identity.id ?? "") : "";
-  const protocolName = identity ? String(identity.name ?? "") : "";
+  let document: ProtocolDocument | undefined;
+  try {
+    document = parseProtocolPackage(draftText);
+  } catch {
+    // Agent drafts can be incomplete; keep their exact text visible for repair.
+  }
+  const readIdentity = (key: string) => {
+    const raw = document?.read(`/spec/${key}`);
+    const value: unknown = raw === undefined ? undefined : JSON.parse(raw);
+    return typeof value === "string" ? value : "";
+  };
+  const protocolId = readIdentity("id");
+  const protocolName = readIdentity("name");
   const restoreText = session.restoreJSON ?? (
     session.draftRestore == null ? "" : JSON.stringify(session.draftRestore));
   const canRestore =
@@ -57,15 +52,6 @@ export function DraftView({
     !busy;
 
   if (!draftText) return null;
-
-  const sections = draftObject
-    ? DRAFT_SECTIONS.filter((section) => draftObject[section.key] != null)
-    : [];
-  const basicEntries = draftObject
-    ? Object.entries(draftObject).filter(
-        ([key]) => !DRAFT_SECTIONS.some((section) => section.key === key),
-      )
-    : [];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -82,18 +68,10 @@ export function DraftView({
         ) : null}
       </div>
       <div className="no-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-1 pb-4">
-        {basicEntries.length > 0 ? (
-          <Collapse title="基本信息">
-            <JsonBlock
-              value={Object.fromEntries(basicEntries)}
-              maxHeight="max-h-44"
-            />
-          </Collapse>
-        ) : null}
-        {sections.map((section) => (
+        {document && DRAFT_SECTIONS.map((section) => (
           <Collapse key={section.key} title={section.label}>
             <JsonBlock
-              value={(draftObject as Record<string, unknown>)[section.key]}
+              value={document.read(`/${section.key}`)}
             />
           </Collapse>
         ))}
@@ -109,7 +87,7 @@ export function DraftView({
           onClick={() =>
             navigate("/protocols", {
               state: {
-                ...((draftObject?.schemaVersion === 2 || isPackage) ? { definitionJSON: draftText } : { draft }),
+                definitionJSON: draftText,
               },
             })
           }
