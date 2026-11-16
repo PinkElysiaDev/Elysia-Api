@@ -18,7 +18,7 @@ Status: implemented
 
 全部可执行 `Compiled` 字段均在缓存发布前初始化：definition/identity/hash、limits/capabilities、native 策略、mapping/output plan、wire contract/validator、operation/task/model/Agent plan、token-count 子图和 package plan。编译期表达式事实先被释放。公开的 package、operation 和 capability 访问器返回独立值或副本。JSON Schema 验证会创建自己的局部 validator。遍历索引和惰性状态、预算、native replay workspace 与流事务仍属于请求（`valueReader`、evaluation/input view、evaluation state）。未发现生产运行期修改执行图的路径。
 
-离线证据是刻意保留的例外：独立分配、互斥保护的 memo，而不是执行惰性状态。故意修改私有 limits 或替换 mapping/contract 的测试，通过 `_test.go` helper 分离图头和外层 map；Agent output slice 也被分离。审计发现的修改目标是图头字段、外层 map 条目和 Agent slice 元素，没有透过保留的运行期 plan 指针写入。现有独立 plan 和资源限制断言保持不变。protocol 的 `TestMain` 哨兵在测试结束后重新编译已保留预置，比较 limits 和执行图结构指纹，仅排除已同步的证据 memo。缓存测试直接测试实际共享结果，不使用分离夹具。
+离线证据是刻意保留的例外：独立分配、互斥保护的 memo，而不是执行惰性状态。故意修改私有 limits 或替换 mapping/contract 的测试，通过 `_test.go` helper 分离图头和外层 map；Agent output slice 也被分离。审计发现的修改目标是图头字段、外层 map 条目和 Agent slice 元素，没有透过保留的运行期 plan 指针写入。现有独立 plan 和资源限制断言保持不变。protocol 的 `TestMain` 哨兵在测试结束后重新编译进程缓存中每个仍存活的条目（包括未固定的自定义图和源文件对图），比较 limits 和执行图结构指纹，仅排除已同步的证据 memo。固定预置也必须仍有对应缓存条目；[审计缺口恢复](../testing/2026-11-16-audit-gap-restoration.zh.md) 记录了哨兵的范围与负向测试。缓存测试直接测试实际共享结果，不使用分离夹具。
 
 ### Offline evidence inputs
 

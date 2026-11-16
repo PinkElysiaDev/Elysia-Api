@@ -175,6 +175,80 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 	}
 }
 
+func TestPresetRecoveryAcceptsReencodedCurrentDefaultsWithoutWrites(t *testing.T) {
+	t.Parallel()
+	s, path := newProtocolAdminTestServer(t)
+	seedDiscoveryPresets(t, s)
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := protocol.PresetAnthropicID
+	var embedded protocol.Value
+	db := recoveryDB(t, path)
+	var raw string
+	if err := db.QueryRow(`SELECT definition FROM protocol_revisions WHERE protocol_id=?`, id).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	embedded = mustProtocolValue(t, raw)
+	// A typed round trip materializes omitted default fields. Structural JSON
+	// equivalence must fail, forcing both revision and draft compile fallbacks.
+	reencoded := mustEncodedProtocolValue(t, presetPackage(t, id))
+	if embedded == reencoded || storage.EquivalentProtocolDefinition(embedded, reencoded) {
+		t.Fatal("fixture does not exercise benign non-equivalent default spelling")
+	}
+	compiled, issues := service.Validate(embedded.Bytes())
+	if err := protocol.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	stored, issues := service.Validate(reencoded.Bytes())
+	if protocol.IssuesError(issues) != nil || stored.Hash() != compiled.Hash() || stored.Identity().DefinitionID != id {
+		t.Fatal("re-encoded defaults changed the current preset identity", issues)
+	}
+	recoveryExec(t, db, `UPDATE protocol_revisions SET definition=? WHERE protocol_id=? AND content_hash=?`, reencoded.JSONString(), id, compiled.Hash())
+	recoveryExec(t, db, `UPDATE protocol_drafts SET definition=? WHERE protocol_id=? AND content_hash=?`, reencoded.JSONString(), id, compiled.Hash())
+	beforeRevision, err := s.store.ReadProtocolRevision(t.Context(), id, compiled.Hash())
+	if err != nil || beforeRevision.Definition != reencoded {
+		t.Fatal("re-encoded current revision was not seeded", err)
+	}
+	beforeDraft, err := s.store.ReadProtocolDraft(t.Context(), id)
+	if err != nil || beforeDraft.Hash != compiled.Hash() || beforeDraft.Definition != reencoded {
+		t.Fatal("re-encoded current draft was not seeded", err)
+	}
+	baseline, err := s.store.ProtocolUpgradeBaseline(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := s.store.ProtocolRefreshEvidenceBaseline(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := recoveryCounts(t, db)
+	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveredPresets(t, s)
+	if s.protocolRuntimeError() != nil {
+		t.Fatal(s.protocolRuntimeError())
+	}
+	after, err := s.store.ProtocolUpgradeBaseline(t.Context())
+	if err != nil || after != baseline {
+		t.Fatal("benign defaults caused protocol repair writes", err)
+	}
+	afterEvidence, err := s.store.ProtocolRefreshEvidenceBaseline(t.Context())
+	if err != nil || afterEvidence != evidence || !reflect.DeepEqual(counts, recoveryCounts(t, db)) {
+		t.Fatal("benign defaults rewrote evidence or archived current definitions", err)
+	}
+	afterRevision, err := s.store.ReadProtocolRevision(t.Context(), id, compiled.Hash())
+	if err != nil || !reflect.DeepEqual(afterRevision, beforeRevision) {
+		t.Fatal("accepted revision bytes or timestamp changed", err)
+	}
+	afterDraft, err := s.store.ReadProtocolDraft(t.Context(), id)
+	if err != nil || !reflect.DeepEqual(afterDraft, beforeDraft) {
+		t.Fatal("accepted draft bytes or timestamp changed", err)
+	}
+}
+
 func TestPresetRecoveryPublishesPresetsAfterCustomRefreshFailure(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)

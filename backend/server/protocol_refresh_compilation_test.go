@@ -180,6 +180,11 @@ func TestProtocolRefreshCompilationPublishesPreparedPointers(t *testing.T) {
 	if err := compilation.ReloadAvailable(t.Context(), requiredPresetIDs...); err != nil {
 		t.Fatal(err)
 	}
+	// Compiled graphs may be shared across reloads, but publication must replace
+	// the registry snapshot even when preparation found no persistent changes.
+	if service.View() == previous {
+		t.Fatal("prepared definitions were not published in a new registry snapshot")
+	}
 	for _, id := range requiredPresetIDs {
 		published, hasPublished := service.Pin(id)
 		prior, hasPrior := previous.Pin(id)

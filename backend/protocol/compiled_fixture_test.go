@@ -27,26 +27,41 @@ func detachedCompiledFixture(compiled *Compiled) *Compiled {
 	return &fixture
 }
 
-// Guard the shared preset graphs against future white-box tests mutating a
-// deeper pointer that the fixture detach intentionally does not clone.
+// Guard every still-live cache graph, not only pinned presets, against white-box
+// tests mutating a deeper pointer that the fixture detach does not clone. A dead
+// weak entry cannot be returned to another caller and needs no retained graph.
 func TestMain(m *testing.M) {
 	code := m.Run()
-	processCompilations.mu.Lock()
-	presets := maps.Clone(processCompilations.presets)
-	keys := make(map[*Compiled]compilationKey, len(presets))
-	for key, pointer := range processCompilations.entries {
+	for _, err := range compilationCacheIntegrityErrors(&processCompilations) {
+		fmt.Fprintln(os.Stderr, "compilation cache sentinel:", err)
+		code = 1
+	}
+	os.Exit(code)
+}
+
+func compilationCacheIntegrityErrors(cache *compilationCache) []error {
+	cache.mu.Lock()
+	presets := maps.Clone(cache.presets)
+	entries := make(map[compilationKey]*Compiled, len(cache.entries))
+	entryKeys := make(map[*Compiled]compilationKey, len(cache.entries))
+	for key, pointer := range cache.entries {
 		if compiled := pointer.Value(); compiled != nil {
-			keys[compiled] = key
+			entries[key] = compiled
+			entryKeys[compiled] = key
 		}
 	}
-	processCompilations.mu.Unlock()
+	cache.mu.Unlock()
+	var failures []error
 	for id, preset := range presets {
-		compiled := preset.compiled
-		key := keys[compiled]
-		if key != preset.key || !isEmbeddedPreset(id, key, compiled) {
-			fmt.Fprintln(os.Stderr, "preset cache sentinel: source identity mismatch:", id)
-			code = 1
+		if preset.compiled == nil || !isEmbeddedPreset(id, preset.key, preset.compiled) {
+			failures = append(failures, fmt.Errorf("preset source identity mismatch: %s", id))
 		}
+		if entryKey, live := entryKeys[preset.compiled]; !live || entryKey != preset.key {
+			failures = append(failures, fmt.Errorf("pinned preset missing from cache: %s", id))
+		}
+	}
+	for key, compiled := range entries {
+		id := compiled.Identity().DefinitionID
 		compiler, err := NewCompiler(key.limits, []string{featureWebSocketTransport, featureAsyncTasks})
 		var document ProtocolPackage
 		if err == nil {
@@ -55,17 +70,53 @@ func TestMain(m *testing.M) {
 			err = decodeContract(embeddedPresets()[id].value.Bytes(), &document)
 		}
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "preset cache sentinel:", id, err)
-			code = 1
+			failures = append(failures, fmt.Errorf("%s source=%x: %w", id, key.source, err))
 			continue
 		}
+		// Features gate admission, not graph shape; both optional transports are
+		// enabled so every admitted configuration can be rebuilt independently.
 		reference, issues := compiler.compilePackage(document) // deliberately uncached
 		if IssuesError(issues) != nil || compiledGraphFingerprint(compiled) != compiledGraphFingerprint(reference) {
-			fmt.Fprintln(os.Stderr, "preset cache sentinel: shared graph mutated:", id, issues)
-			code = 1
+			failures = append(failures, fmt.Errorf("shared graph mutated: %s source=%x: %v", id, key.source, issues))
 		}
 	}
-	os.Exit(code)
+	return failures
+}
+
+func TestCompilationCacheSentinelRejectsMutatedGraphs(t *testing.T) {
+	for _, mutation := range []string{"limits", "nested-plan"} {
+		t.Run(mutation, func(t *testing.T) {
+			// Use a real admitted custom graph with non-default compiler limits and
+			// no pinned preset. Keep contamination isolated from the process cache.
+			limits := DefaultLimits()
+			limits.Nodes--
+			compiler, err := NewCompiler(limits, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			document := verifiedTextPackage(t, "sentinel-custom")
+			cache := newTestCompilationCache()
+			compiled, issues := cache.compile(compiler.compilationKey(fixtureValue(t, document).Bytes()), func() (*Compiled, []ConversionIssue) {
+				return compiler.compilePackage(document)
+			})
+			if err := IssuesError(issues); err != nil {
+				t.Fatal(err)
+			}
+			if failures := compilationCacheIntegrityErrors(cache); len(failures) != 0 {
+				t.Fatal("sentinel rejected an intact unpinned graph", failures)
+			}
+			switch mutation {
+			case "limits":
+				compiled.limits.StateItems--
+			case "nested-plan":
+				compiled.packagePlan.dslVersion++
+			}
+			failures := compilationCacheIntegrityErrors(cache)
+			if len(failures) != 1 || !strings.Contains(failures[0].Error(), "shared graph mutated: sentinel-custom") {
+				t.Fatal("sentinel missed mutation of an unpinned cached graph", failures)
+			}
+		})
+	}
 }
 
 func compiledGraphFingerprint(compiled *Compiled) [32]byte {
