@@ -210,35 +210,52 @@ var streamJSON = sonic.Config{CompactMarshaler: true}.Froze()
 
 // WriteFrame emits one body using the declared downstream framing.
 func WriteFrame(writer io.Writer, operation Operation, value Value) error {
-	// Both SSE and NDJSON require physical line boundaries owned by framing.
-	compact, err := streamJSON.MarshalToString(json.RawMessage(value.Bytes()))
+	write, err := NewFrameWriter(writer, operation)
 	if err != nil {
 		return err
 	}
-	if operation.Transport == NDJSON {
-		_, err := fmt.Fprintf(writer, "%s\n", compact)
-		return err
-	}
-	if operation.Transport != SSE {
-		return fmt.Errorf("operation is not an HTTP event stream")
+	return write(value)
+}
+
+// NewFrameWriter resolves framing metadata once for an operation's output stream.
+func NewFrameWriter(writer io.Writer, operation Operation) (func(Value) error, error) {
+	if operation.Transport != SSE && operation.Transport != NDJSON {
+		return nil, fmt.Errorf("operation is not an HTTP event stream")
 	}
 	name := ""
-	if operation.Framing != nil {
+	var pointer []string
+	if operation.Transport == SSE && operation.Framing != nil {
 		name = operation.Framing.EventName
-		if path := operation.Framing.EventNamePath; path != "" {
-			pointer, err := parsePointer(path)
+		var err error
+		pointer, err = parsePointer(operation.Framing.EventNamePath)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return func(value Value) error {
+		if value.IsZero() {
+			return fmt.Errorf("cannot write an absent JSON frame")
+		}
+		if operation.Transport == NDJSON {
+			// Native replay and read frames can retain physical JSON line breaks.
+			compact, err := streamJSON.MarshalToString(json.RawMessage(value.Bytes()))
 			if err != nil {
 				return err
 			}
+			_, err = io.WriteString(writer, compact+"\n")
+			return err
+		}
+		eventName := name
+		if len(pointer) > 0 {
 			field, err := readValuePointer(value, pointer)
 			if err != nil {
 				return err
 			}
-			name, err = readString(field)
-			if err != nil || name == "" {
+			eventName, err = readString(field)
+			if err != nil || eventName == "" {
 				return fmt.Errorf("SSE event name path must resolve to a nonempty string")
 			}
 		}
-	}
-	return eventstream.Write(writer, name, compact)
+		return eventstream.Write(writer, eventName, value.JSONString())
+	}, nil
 }

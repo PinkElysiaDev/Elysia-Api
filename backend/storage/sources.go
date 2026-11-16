@@ -57,7 +57,9 @@ func (s *Store) scanSource(row interface{ Scan(...any) error }) (ModelSource, er
 }
 
 func (s *Store) UpsertSource(ctx context.Context, item ModelSource) error {
-	return s.upsertSource(ctx, s.db, item)
+	return s.withConversion(ctx, func(tx *sql.Tx) error {
+		return s.saveSourceRecord(ctx, tx, item, false)
+	})
 }
 
 // BoundSourceUpdate keeps source settings, the authoritative manual catalog,
@@ -102,11 +104,7 @@ func (s *Store) SaveBoundSource(ctx context.Context, update BoundSourceUpdate, e
 			return err
 		}
 	}
-	return tx.Commit()
-}
-
-func (s *Store) upsertSource(ctx context.Context, executor protocolSQLExecutor, item ModelSource) error {
-	return s.saveSourceRecord(ctx, executor, item, false)
+	return s.commitConversion(ctx, tx)
 }
 
 func (s *Store) saveSourceRecord(ctx context.Context, executor protocolSQLExecutor, item ModelSource, isCreate bool) error {
@@ -163,7 +161,7 @@ func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys [
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE model_sources SET api_keys = ?, updated_at = ? WHERE id = ?`, stored, nowString(), sourceID)
+	_, err = s.execConversion(ctx, `UPDATE model_sources SET api_keys = ?, updated_at = ? WHERE id = ?`, stored, nowString(), sourceID)
 	return err
 }
 
@@ -171,7 +169,7 @@ func (s *Store) UpdateSourceAPIKeys(ctx context.Context, sourceID string, keys [
 // 与整源 Upsert 不同：不触发「保存后自动同步模型」之类的副作用，也不触碰
 // key/模型数据——启停与模型列表无关，重拉上游纯属多余（可能触发限流）。
 func (s *Store) UpdateSourceEnabled(ctx context.Context, id string, enabled bool) (bool, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE model_sources SET enabled = ?, updated_at = ? WHERE id = ?`, sqlBoolToInt(enabled), nowString(), id)
+	res, err := s.execConversion(ctx, `UPDATE model_sources SET enabled = ?, updated_at = ? WHERE id = ?`, sqlBoolToInt(enabled), nowString(), id)
 	if err != nil {
 		return false, err
 	}
@@ -203,7 +201,7 @@ func (s *Store) DeleteSource(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM protocol_bindings WHERE json_extract(binding, '$.sourceId') = ? AND json_extract(binding, '$.kind') IN ('source', 'model')`, id); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return s.commitConversion(ctx, tx)
 }
 
 func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, models []Model) error {
@@ -232,7 +230,7 @@ func (s *Store) ReplaceSourceModels(ctx context.Context, source ModelSource, mod
 			return err
 		}
 	}
-	return tx.Commit()
+	return s.commitConversion(ctx, tx)
 }
 
 // firstEffectiveKey 返回源的首个有效 key（多 key 时取第一个启用项，单 key 即 APIKey），
@@ -414,7 +412,7 @@ func (s *Store) mergeSourceModels(ctx context.Context, source ModelSource, incom
 	if err != nil {
 		return ModelMergeResult{Added: []string{}, Removed: []string{}}, err
 	}
-	return result, tx.Commit()
+	return result, s.commitConversion(ctx, tx)
 }
 
 var ErrSourceChanged = errors.New("model source changed or was deleted during refresh; discarded fetched results")
@@ -478,7 +476,7 @@ func (s *Store) CommitSourceRefresh(ctx context.Context, source ModelSource, inc
 	if err != nil {
 		return empty, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.commitConversion(ctx, tx); err != nil {
 		return empty, err
 	}
 	return result, nil

@@ -187,17 +187,11 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	if err := s.validateOutbound(candidate.model.BaseURL); err != nil {
 		return &gatewayFailure{http.StatusForbidden, fmt.Errorf("target base URL rejected: %w", err)}
 	}
-	prepared := plan.request
-	if candidate.prepared != nil {
-		prepared = candidate.prepared
-	}
-	request := prepared.Clone()
-	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
-	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options, err := (protocol.EvaluationContext{InterleavedThinking: candidate.operation.IsInterleavedThinking, Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	encoding, err := candidate.prepareRequestEncoding(plan.request, record)
 	if err != nil {
 		return err
 	}
+	request, options := encoding.request, encoding.options
 	delivery := plan.responsePlan(options.ClientOutput)
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
@@ -208,8 +202,8 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	}
 	s.estimateGatewayAttempt(record, request)
 	record.SystemStructure.After = systemStructure(request)
-	wireValue, isPrepared := candidate.takeRequestValue(ctx, request, options)
-	if !isPrepared {
+	wireValue := encoding.value
+	if wireValue.IsZero() {
 		wireValue, err = candidate.compiled.EncodeRequestValue(ctx, request, options)
 		if err != nil {
 			return &gatewayFailure{http.StatusBadRequest, err}

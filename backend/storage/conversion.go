@@ -274,7 +274,7 @@ func (s *Store) ActivateConversion(ctx context.Context, id, hash, expected strin
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	return s.commitConversion(ctx, tx)
 }
 
 type StoredContinuation struct {

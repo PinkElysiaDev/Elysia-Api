@@ -1,88 +1,60 @@
 package server
 
 import (
-	"context"
 	"testing"
+	"time"
 
+	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
-func TestGatewayPreparedEncodingBoundaries(t *testing.T) {
-	t.Parallel()
-	compiler, _ := protocol.NewCompiler(protocol.DefaultLimits(), nil)
-	definitions, _ := builtin.Packages()
-	var compiled *protocol.Compiled
-	for _, raw := range definitions {
-		entry, _ := compiler.Compile(raw.Bytes())
-		if entry.Identity().DefinitionID == protocol.PresetAnthropicID {
-			compiled = entry
+func TestGatewayOutboundEncodingOwnsActualInputs(t *testing.T) {
+	compiled := conversionPackage(t, protocol.PresetAnthropicID)
+	for _, hasPrepared := range []bool{false, true} {
+		request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"alias","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`), protocol.EvaluationContext{})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	for _, compiled := range []*protocol.Compiled{compiled, conversionPackage(t, protocol.PresetAnthropicID)} {
-		if !compiled.CanReuseRequestEncoding() {
-			t.Fatal("pure request mapping cannot reuse encoding")
+		request.ClientOutput = &protocol.ClientOutput{CollectUsage: true}
+		candidate := gatewayCandidate{compiled: compiled, model: config.ModelRef{ID: "api-model", Name: "display name"}, scope: protocol.Scope{Account: "account"}, operation: protocol.Operation{IsInterleavedThinking: true}}
+		if hasPrepared {
+			candidate.prepared = request
 		}
-		for _, variant := range []string{"same", "model", "scope", "budget", "cache", "thinking", "cancel", "content", "revision", "operation", "started", "context", "output"} {
-			t.Run(variant, func(t *testing.T) {
-				request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`), protocol.EvaluationContext{})
-				if err != nil {
-					t.Fatal(err)
-				}
-				warning := protocol.ConversionIssue{Severity: protocol.SeverityWarning, Reason: "preflight diagnostic"}
-				preflight, err := (protocol.EvaluationContext{Diagnostics: &protocol.DiagnosticSink{}}).WithOperation("execution", 1)
-				if err != nil {
-					t.Fatal(err)
-				}
-				preflight.Diagnostics.Add(warning)
-				candidate := gatewayCandidate{compiled: compiled, encoding: newGatewayRequestEncoding(t.Context(), compiled, request, protocol.StringValue("prepared"), preflight)}
-				actual := request.Clone()
-				options, _ := (protocol.EvaluationContext{Diagnostics: &protocol.DiagnosticSink{}}).WithOperation("execution", 1)
-				ctx := t.Context()
-				switch variant {
-				case "revision":
-					revision := *compiled
-					candidate.compiled = &revision
-				case "operation":
-					options, _ = options.WithOperation("other", 1)
-				case "started":
-					options, _ = options.WithOperation("execution", 2)
-				case "context":
-					options.Values = protocol.Object{"path": protocol.StringValue("changed")}
-				case "output":
-					options.ClientOutput = &protocol.ClientOutput{}
-
-				case "model":
-					actual.Model = protocol.StringValue("changed")
-				case "scope":
-					options.Scope.Account = "different"
-				case "budget":
-					ctx, _ = protocol.WithRequestBodyLimit(ctx, 16<<20)
-				case "cache":
-					candidate.model.CacheSynthesis = true
-				case "thinking":
-					options.InterleavedThinking = true
-				case "cancel":
-					var cancel context.CancelFunc
-					ctx, cancel = context.WithCancel(ctx)
-					cancel()
-				case "content":
-					actual.Content[0].Children[0].Payload = protocol.StringValue("edited")
-				}
-				body, ok := candidate.takeRequestValue(ctx, actual, options)
-				if ok != (variant == "same") {
-					t.Fatalf("incorrect reuse: %t", ok)
-				}
-				if ok && (!body.IsString("prepared") || len(options.Diagnostics.Issues()) != 1) || !ok && len(options.Diagnostics.Issues()) != 0 {
-					t.Fatal("diagnostics published at the wrong boundary")
-				}
-				if !candidate.encoding.value.IsZero() || candidate.encoding.request != nil {
-					t.Fatal("consumed or invalidated encoding retained payload")
-				}
-				if _, reused := candidate.takeRequestValue(ctx, actual, options); reused {
-					t.Fatal("encoding consumed twice")
-				}
-			})
+		record := &usageRecord{RequestID: "outbound-execution", StartedAt: time.Unix(123, 0)}
+		encoding, err := candidate.prepareRequestEncoding(request, record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if encoding.request == request || !encoding.request.Model.IsString("api-model") || !request.Model.IsString("alias") || encoding.options.Scope != candidate.scope || !encoding.options.InterleavedThinking || encoding.options.ClientOutput != encoding.request.ClientOutput {
+			t.Fatal("outbound inputs differ from the authorized attempt")
+		}
+		encoding.value, err = compiled.EncodeRequestValue(t.Context(), encoding.request, encoding.options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields, err := encoding.value.ReadObject()
+		if err != nil || !fields["model"].IsString("api-model") || fields["messages"].IsZero() {
+			t.Fatal("incorrect outbound body", encoding.value, err)
+		}
+		warning := protocol.ConversionIssue{Severity: protocol.SeverityWarning, Reason: "preflight diagnostic"}
+		encoding.options.Diagnostics.Add(warning)
+		candidate.encoding = encoding
+		actual, err := candidate.prepareRequestEncoding(request, record)
+		if err != nil || actual != encoding || actual.value != encoding.value || len(actual.options.Diagnostics.Issues()) != 1 {
+			t.Fatal("dispatch rebuilt outbound inputs or lost diagnostics", err)
+		}
+		body := encoding.value
+		candidate.releaseRequestEncoding()
+		if !encoding.value.IsZero() || encoding.request != nil {
+			t.Fatal("release retained the outbound body")
+		}
+		retry, err := candidate.prepareRequestEncoding(request, record)
+		if err != nil || retry == encoding || !retry.value.IsZero() || len(retry.options.Diagnostics.Issues()) != 0 {
+			t.Fatal("retry reused released state", err)
+		}
+		value, err := compiled.EncodeRequestValue(t.Context(), retry.request, retry.options)
+		if err != nil || value != body {
+			t.Fatal("retry changed outbound body", value, err)
 		}
 	}
 }

@@ -92,11 +92,6 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 			return nil, issues
 		}
 	}
-	// Request programs have invocation-local bindings and indexes. The compiler
-	// excludes stream/delivery state from these scopes; neither call can observe
-	// a mutation between preflight and encoding with the same runtime inputs.
-	decode, encode := compiled.mappings[DecodeRequest], compiled.mappings[EncodeRequest]
-	compiled.canReusePackageRequest = decode.outputPlan != nil && encode.outputPlan != nil && decode.streamState == nil && encode.streamState == nil
 	releaseExpressionGraphs(compiled.compileExpressions)
 	compiled.compileExpressions = nil
 	return compiled, nil

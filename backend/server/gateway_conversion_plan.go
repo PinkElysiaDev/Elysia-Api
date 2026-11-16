@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
@@ -13,7 +14,7 @@ import (
 // provider evidence, diagnostics, delivery and continuation state remain local.
 type gatewayConversionPlans struct {
 	mu      sync.Mutex
-	current *gatewayConversionSnapshot
+	current atomic.Pointer[gatewayConversionSnapshot]
 }
 
 type gatewayConversionSnapshot struct {
@@ -31,22 +32,24 @@ type gatewayConversionKey struct {
 }
 
 func (s *Server) pinGatewayConversions(ctx context.Context) (*gatewayConversionSnapshot, error) {
-	cache := &s.conversionPlans
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-	generation, err := s.store.ConversionGeneration(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if cache.current != nil && cache.current.generation == generation {
-		return cache.current, nil
+	cache := &s.conversionPlans
+	if snapshot := cache.current.Load(); snapshot != nil && snapshot.generation == s.store.CachedConversionGeneration() {
+		return snapshot, nil
+	}
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if snapshot := cache.current.Load(); snapshot != nil && snapshot.generation == s.store.CachedConversionGeneration() {
+		return snapshot, nil
 	}
 	policies, bindings, generation, err := s.store.ConversionSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
 	snapshot := &gatewayConversionSnapshot{generation: generation, policies: policies, bindings: bindings, plans: make(map[gatewayConversionKey]*protocol.CompiledConversion)}
-	cache.current = snapshot
+	cache.current.Store(snapshot)
 	return snapshot, nil
 }
 

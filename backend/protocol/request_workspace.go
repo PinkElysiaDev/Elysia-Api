@@ -97,13 +97,6 @@ func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Nati
 	return preparedRequestReplay{compiled: &replay, original: original, baseline: request, options: options}, nil
 }
 
-// CanReuseRequestEncoding reports whether a private gateway preflight result
-// can be reused with identical request, revision, scope, context and budgets.
-// It never authorizes skipping final wire or operation validation.
-func (compiled *Compiled) CanReuseRequestEncoding() bool {
-	return compiled.canReusePackageRequest
-}
-
 func (compiled *Compiled) supportsRequestWorkspace() bool {
 	return compiled.mappings[DecodeRequest].hasCoreOutputPlan && compiled.mappings[EncodeRequest].hasCoreInputPlan
 }

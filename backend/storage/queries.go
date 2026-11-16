@@ -48,6 +48,6 @@ func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) error {
 
 // ExecRaw 执行裸 SQL（仅限测试与一次性迁移使用）。
 func (s *Store) ExecRaw(ctx context.Context, query string) error {
-	_, err := s.db.ExecContext(ctx, query)
+	_, err := s.execConversion(ctx, query)
 	return err
 }

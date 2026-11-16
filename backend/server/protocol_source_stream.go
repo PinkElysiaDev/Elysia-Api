@@ -84,15 +84,20 @@ func (source *protocolSourceStream) consumeFrame(frame protocol.SourceFrame) err
 			return err
 		}
 	}
-	for _, event := range decoded.Events {
-		isAccepted, err := source.replay.Consume(event)
+	hasAccepted := len(decoded.Events) == 0
+	for index, event := range decoded.Events {
+		isAccepted, err := decoded.ConsumeEvent(source.replay, index, event)
 		if err != nil {
 			return source.candidate.compiled.AnnotateSourceEventError(err)
 		}
+		hasAccepted = hasAccepted || isAccepted
 		hasUsageUpdate := event.Usage != nil || event.Response != nil && event.Response.Usage != nil
 		if source.record != nil && isAccepted && hasUsageUpdate {
 			updateRecordProtocolUsage(source.record, source.replay.Usage())
 		}
+	}
+	if !hasAccepted {
+		return nil
 	}
 	return source.consume(decoded, frame.Metadata)
 }

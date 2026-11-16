@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/elysia-api/backend/protocol"
@@ -17,15 +18,30 @@ func (s *Server) initializeProtocolRuntime(ctx context.Context) (err error) {
 	defer s.protocolStartupMu.Unlock()
 	defer func() { s.recordProtocolRuntimeFailure(err) }()
 	started := time.Now()
-	if err := s.recoverRequiredPresets(ctx); err != nil {
+	s.isProtocolRuntimeRequired.Store(true)
+	s.protocolRuntimeReady.Store(false)
+	service, err := s.loadProtocolService(false)
+	if err != nil {
 		return &protocolStartupError{Stage: "preset_recovery", Err: err}
 	}
-	s.logProtocolRuntimeStage("preset_recovery", started)
-	started = time.Now()
-	if err := s.reloadProtocolRuntime(ctx); err != nil {
+	compilation := service.NewCompilationSession()
+	defer compilation.Close()
+	if err := s.refreshProtocolCompilation(ctx, compilation, false); err != nil {
+		// Presets stay committed and published for repair even when custom
+		// binding refresh fails; this pass runs only on that failure path.
+		if ctx.Err() == nil {
+			_ = s.refreshAndPublishProtocols(ctx, service, true)
+		}
+		return &protocolStartupError{Stage: "preset_recovery", Err: err}
+	}
+	if err := compilation.ReloadAvailable(ctx, requiredPresetIDs...); err != nil {
 		return &protocolStartupError{Stage: "runtime_verification", Err: err}
 	}
+	s.protocolRuntimeReady.Store(true)
 	s.logProtocolRuntimeStage("runtime_verification", started)
+	// Compilation's temporary graphs can grow the heap far beyond live runtime
+	// state. Scavenge once at startup, never on management reloads or requests.
+	debug.FreeOSMemory()
 	return nil
 }
 
@@ -34,20 +50,6 @@ func (s *Server) logProtocolRuntimeStage(stage string, started time.Time) {
 	s.logEvent("info").Str("stage", stage).Str("compiler", protocol.CompilerVersion).
 		Int("protocol_count", len(view.IDs())).Int("unavailable_count", len(view.Failures())).
 		Int64("duration_ms", time.Since(started).Milliseconds()).Msg("protocol initialization stage completed")
-}
-
-// Recover required presets before publishing the full registry.
-func (s *Server) recoverRequiredPresets(ctx context.Context) error {
-	s.isProtocolRuntimeRequired.Store(true)
-	s.protocolRuntimeReady.Store(false)
-	service, err := s.protocolService()
-	if err != nil {
-		return err
-	}
-	if err := s.refreshAndPublishProtocols(ctx, service, true); err != nil {
-		return err
-	}
-	return checkRequiredPresets(service.View())
 }
 
 func checkRequiredPresets(view protocol.RegistryView) error {

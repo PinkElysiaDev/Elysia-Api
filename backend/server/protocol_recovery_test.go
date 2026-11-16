@@ -396,7 +396,11 @@ func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.recoverRequiredPresets(t.Context()); err != nil {
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.refreshAndPublishProtocols(t.Context(), service, true); err != nil {
 		t.Fatal(err)
 	}
 	initialBindings, err := s.store.ListProtocolBindings(t.Context())
@@ -407,10 +411,6 @@ func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T
 		if binding.Kind == "source" && !reflect.DeepEqual(binding, b) {
 			t.Fatal("preset creation modified a binding")
 		}
-	}
-	service, err := s.protocolService()
-	if err != nil {
-		t.Fatal(err)
 	}
 	if err := s.refreshProtocolRuntime(t.Context(), service); err != nil {
 		t.Fatal(err)

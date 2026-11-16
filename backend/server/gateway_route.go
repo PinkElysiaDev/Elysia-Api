@@ -164,17 +164,12 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 			record.appendConversionIssues(failure.Issues)
 			continue
 		}
-		probe := candidate.prepared.Clone()
-		probe.Model = protocol.StringValue(candidate.model.Identifier())
-		probeOptions := operationOptions
-		probeOptions.Scope, probeOptions.InterleavedThinking, probeOptions.ClientOutput = candidate.scope, candidate.operation.IsInterleavedThinking, probe.ClientOutput
-		canRetainEncoding := len(eligible) == 0 && !candidate.model.CacheSynthesis && candidate.operation.Kind == "generate" && candidate.compiled.CanReuseRequestEncoding()
-		if canRetainEncoding {
-			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
-		}
-		encoded, encodeErr := candidate.compiled.EncodeRequestValue(ctx, probe, probeOptions)
+		encoding, encodeErr := candidate.prepareRequestEncoding(plan.request, record)
 		if encodeErr == nil {
-			encodeErr = candidate.compiled.CheckOperationValueInput(ctx, candidate.operationName, encoded)
+			encoding.value, encodeErr = candidate.compiled.EncodeRequestValue(ctx, encoding.request, encoding.options)
+		}
+		if encodeErr == nil {
+			encodeErr = candidate.compiled.CheckOperationValueInput(ctx, candidate.operationName, encoding.value)
 		}
 		if encodeErr != nil {
 			if ctx.Err() != nil {
@@ -190,8 +185,8 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		}
 		candidate.binding = constrained
 		candidate.routeBinding = matched
-		if canRetainEncoding {
-			candidate.encoding = newGatewayRequestEncoding(ctx, candidate.compiled, probe, encoded, probeOptions)
+		if len(eligible) == 0 && !candidate.model.CacheSynthesis && candidate.operation.Kind == "generate" {
+			candidate.encoding = encoding
 		}
 		eligible = append(eligible, candidate)
 	}

@@ -12,11 +12,12 @@ import (
 
 type Store struct {
 	*LogStore
-	db        *sql.DB
-	codec     *secretCodec
-	path      string
-	closeOnce sync.Once
-	closeErr  error
+	db         *sql.DB
+	codec      *secretCodec
+	path       string
+	generation atomic.Int64
+	closeOnce  sync.Once
+	closeErr   error
 }
 
 // LogStore owns only diagnostic and usage data, in a separate SQLite file.
