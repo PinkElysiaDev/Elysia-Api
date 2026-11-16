@@ -66,8 +66,14 @@ func compilationCacheIntegrityErrors(cache *compilationCache) []error {
 		var document ProtocolPackage
 		if err == nil {
 			// Recompile the exact admitted source. The canonical definition can
-			// compact literal Value spellings held by otherwise identical plans.
-			err = decodeContract(embeddedPresets()[id].value.Bytes(), &document)
+			// compact literal Value spellings held by otherwise identical plans,
+			// so pinned presets rebuild from their embedded package bytes; a
+			// custom graph has no embedded source and rebuilds from its own.
+			source := compiled.definition.Bytes()
+			if embedded, ok := embeddedPresets()[id]; ok && isEmbeddedPreset(id, key, compiled) {
+				source = embedded.value.Bytes()
+			}
+			err = decodeContract(source, &document)
 		}
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s source=%x: %w", id, key.source, err))
