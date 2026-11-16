@@ -1,8 +1,10 @@
 # 编译式 DSL 的局部值、遍历与原生来源
 
-本文记录 `refactor/protocol-dsl` 中已经实现的构件，不代表四个生产预置已经迁移。两份源通过 `CompileSources` 编译，完整包通过 `CompilePackage` 编译，管理入口共同保存其修订；生产切换与验收状态见 [进度记录](protocol-dsl-migration.md)。
+本文记录当前协议包使用的通用 DSL。四个运行时预置通过独立的 Spec／Mapping 执行，旧 Module／Codec 入口已经退役。两份源通过 `CompileSources` 编译，完整包通过 `CompilePackage` 编译，管理入口共同保存其修订；切换和正式验收状态见[三分切换记录](protocol-three-part-cutover-2026-11-14.md)。
 
 表达式在配置编译时解析成计划。运行时执行选中的计划，不重新解释 JSON 声明，不在错误后换另一种转换算法。以下构件不包含供应商字段或跨协议取舍政策。
+
+Expression 的配置编码在一棵表达式树内共享追加缓冲区，嵌套表达式不会逐层生成并复制完整 JSON。字段顺序、名称以及 `omitempty`／`omitzero` 条件由真实 Expression 声明生成；修改字段后在 `backend/protocol` 执行 `go generate` 更新编码器和测试对照，字段合同测试会检查遗漏。只有表达式字段递归编码，literal／enum／sample 中的值保持普通 JSON 数据。合法 read 简写保留声明形式，编辑后的非法字段继续拒绝。配置编码成本与模型请求执行成本分别测量；该实现本身不构成性能验收结论。
 
 `encode_event.semanticRanges` 使用与 deliveryRanges 相同的 name／measure／texts／ranges 记录，
 检查目标编码前的核心事件。选择器只能读取 type、responseId、itemId、parentId、collection、delta、
@@ -22,6 +24,40 @@ id／kind／payload／metadata／children／reasoningContent。完整响应、�
 编译器限制读取权限并隔离命名程序缓存；无状态程序使用这一事实时只安装固定编码状态，不计动态实体。
 Responses 在语义编码开始后重建 message 的 output_item.done 及完整响应终态，继续允许合法的独立增量原样重放。
 该选择在执行前完成，不以最终校验失败触发重试，也不缓存整轮原帧或额外正文。
+
+dev.150 还允许 nativeWhen 读取绑定输出校验器的 `/stream/*` 和 `/delivered/maxItemIndex`，以及当前批次的 `/emission/offset`。
+`/stream/started` 只在先前批次成功写入并 Flush 后为真；已校验但未提交的输出不能授权原生回放。
+绑定缺失、修订不一致或 Scope 不一致时拒绝，不能用样例 context 伪造交付。离线序列往返也逐批执行输出校验和交付提交。
+
+## 有限字符集合
+
+`matches_charset` 接受字符串表达式 `source` 和字面量字符串 `value`，判断来源中每个解码后的 Unicode 码点是否属于声明的集合。区分大小写，不进行 Unicode 归一化；重复声明同一码点不改变结果。空字符串满足任意集合，空集合只匹配空字符串。这项判断不暗含最小长度；协议所需的长度限制由 Spec／Mapping 另行声明。缺失、null、数字、布尔或容器来源都是类型错误；非字符串 `value` 在编译时拒绝，未声明字段同样拒绝。
+
+```json
+{"op":"matches_charset","source":{"op":"read","path":"/label"},"value":"Aa0_-猫😀"}
+```
+
+上例接受 `"猫A😀"` 和 `""`，拒绝 `"a "`。`"é"` 和 `"e\u0301"` 是不同的码点序列，只有声明的码点分别存在时才能匹配。集合在编译时成为只读的有序、去重码点表；运行时复用通用标量计划，不编译正则或创建字符数组。声明原文继续参与来源与方向指纹，修改集合会使旧证据失效；命名引用共享指令，输入值与执行预算仍属于每次调用。取消、步骤和来源／结果字节预算沿用现有表达式边界，字符遍历不另计一个表达式步骤，也不改变资源上限。公共操作目录同时提供编译字段约束、schema 与编辑器说明。
+
+
+## read 简写
+
+可选 `read` 表达式支持显式来源的 JSON 字符串。`"$input/model"` 等价于 `{"op":"read","from":"input","path":"/model"}`；需要 `required: true` 时继续使用对象形式。
+
+| 形式 | 读取来源 |
+| --- | --- |
+| `"$input/path"`、`"$root/path"` | 当前输入、根输入 |
+| `"$item/path"`、`"$context/path"` | 当前遍历项、上下文 |
+| `"$runtime/path"`、`"$state/slot/path"` | 获准的运行时字段、已声明状态槽 |
+| `"$binding/name/path"` | 具名局部绑定 |
+
+省略路径读取来源本身，例如 `"$input"` 或 `"$binding/message"`；`"$input/"` 读取空字符串键。路径使用 RFC 6901 JSON Pointer：`~1` 表示 `/`，`~0` 表示 `~`。绑定名是紧随 `$binding/` 的一个转义段，其后的指针选择绑定内的值；空绑定名和非法转义会被拒绝。Unicode 成员名按原值读取，不插值、不求值。简写不扩大作用域权限，`runtime` 和 `state` 仍受编译器限制，不能借 `"$state"` 读取整个状态。
+
+简写进入与对象形式相同的 read 编译和执行路径。缺失、null、false 和零继续区分；取消、步骤、深度和字节预算不变。只有类型为 Expression 的位置解释简写，`literal.value`、`enum.values`、Schema 的 enum 及样例中的字符串仍是普通 JSON 数据。需要返回该字符串时写成 `{"op":"literal","value":"$input/model"}`。
+
+`Package()`、配置编码和重新编译保留合法的简写来源；既有对象声明仍保持对象形式。编辑简写得到的 Expression 后，合法的可选读取按当前字段重新编码；required read 或其他合法操作使用对象形式，非法字段不会被静默丢弃。目录中的 Expression Schema 提供对象／字符串 `oneOf`，编辑器与 Agent 使用同一合同。
+
+改写配置文本会改变来源及相应映射指纹，旧验证报告不能直接沿用。简写只减少配置中的重复字段，不提高资源限额，也不允许删去样例或改变未知数据以通过编译。
 
 ## 构造与最终交付
 
@@ -145,7 +181,7 @@ HTTP context 的底层解码文字与静态诊断仍有明确记录的差异。
 
 ## 捕获真实原生来源
 
-`capture_native` 仅能出现在 v3 解码 program。source 必须是来自 input/root/item/binding 的 read，不能是作者提供的路径字符串、上下文对象或重建的对象。
+`capture_native` 仅能出现在协议包的解码 program。source 必须是来自 input/root/item/binding 的 read，不能是作者提供的路径字符串、上下文对象或重建的对象。
 
 ```json
 {"op":"capture_native","source":{"op":"read","from":"item","path":""}}
@@ -166,11 +202,11 @@ HTTP context 的底层解码文字与静态诊断仍有明确记录的差异。
 
 新包的正式 typed 解码在写入 Native／Provenance 结构时检查私有捕获标记。普通 object、literal 或 wire read 即使构造出相同的身份、scope、路径和值，也不能成为可信来源。原样读取及 let 绑定保留标记；merge、project 等对象重建和 JSON 物化不保留标记。工具参数、schema 和普通 Value 载荷中的同名 `native`／`source` 键仍是用户数据，不受结构来源检查。
 
-`Execute` 是未经过最终身份 stamping 的底层检查／编写入口，返回 JSON，不是正式请求的授权结果。其序列化输出不携带私有标记。正式 `DecodeRequest`／`DecodeResponse` 使用一次既有核心 writer 验证来源；拒绝不会通过再次解码恢复为成功。旧 v2 解码合同不因此改变。
+`Execute` 是未经过最终身份 stamping 的底层检查／编写入口，返回 JSON，不是正式请求的授权结果。其序列化输出不携带私有标记。正式 `DecodeRequest`／`DecodeResponse` 使用一次既有核心 writer 验证来源；拒绝不会通过再次解码恢复为成功。当前仅执行 v4 协议包的 DSL2/core2 映射。
 
 过滤、排序及合成容器不获得原位置。需要重排时，在原始迭代内先捕获，再移动已经带 Native 的语义项；不能将过滤后的 index 解释为原位置。无法证明来源时明确报错，不扫描全文猜测，也不通过内容相同推断身份。关闭 native preservation 时不生成快照。
 
-捕获只提供来源证据，不自动授权原生重放。作用域、数组身份、映射指纹、未知字段和最终 wire 校验仍需通过。节点级重建、丢弃语义后的 Native 删除证明及完整预置映射仍在迁移中。
+捕获只提供来源证据，不自动授权原生重放。作用域、数组身份、映射指纹、未知字段和最终 wire 校验仍需通过。节点重建、Native 删除后的语义证明及预置支持范围由当前 Mapping 和验证证据共同约束；捕获成功不能替代这些证明。
 
 ## 在编码声明中使用原生信息
 
@@ -234,12 +270,12 @@ kind=base64 只说明存在该标记，不保证合法 base64。原语不补 MIM
 
 ## 类型、整数与 wire 断言
 
-v3 program 与普通 effect 条件可读取两个运行时事实：
+协议包 program 与普通 effect 条件可读取两个运行时事实：
 `/interleavedThinking` 是布尔值，`/scope/model` 是当前绑定模型的字符串。
 读取写作 `{"op":"read","from":"runtime","path":"/scope/model"}`。
 它们直接来自 EvaluationContext，不读取正文或 Values 中的同名字段；
 真实 false 和空模型字符串保持原值，遗漏内部绑定会报错。context.model 是否优先、
-null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条件与 v2 不能使用此入口；
+null 是否覆盖缺省模型，由声明表达。Spec 断言与局部处置条件不能使用此入口；
 未列出的运行时路径在编译期拒绝，来源身份及其余 scope 字段不在这里开放。
 
 事件程序也可读取 `runtime /clientOutput` 及其核心字段。未提供交付意图时是 missing；
@@ -250,7 +286,7 @@ null 是否覆盖缺省模型，由声明表达。Spec 断言、局部处置条�
 缺失、null、非数组都报错，不把它们当成空集合。它可用于把辅助字段附在一个事件批次的
 末事件，不需要为此新增跨帧计数器。
 
-`type` 区分 missing/null/string/array/object/boolean/number；查询本身不解码大正文，但source求值仍可能读取、规范化字段。`is_integer` 按现有 int64 解码契约判断。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
+`type` 区分 missing/null/string/array/object/boolean/number；查询本身不解码大正文，但source求值仍可能读取、规范化字段。`is_integer` 按现有 int64 解码契约判断。`is_integral` 判断 JSON 数值在数学上是否为整数，例如 `1.0`、`10e-1` 和超出 int64 的整数均为 true，`1.5` 为 false；缺失、null、字符串及容器均为 false。它只读取数值的十进制位置，不转浮点数、不展开巨大指数，也不改变原数值或已有资源限额。两个谓词都通过 `source` 求值，保留步骤、字节预算和取消边界。`integer` 支持 add/subtract/lt/lte/gt/gte，先按顺序计算所有操作数，再验证类型及溢出，不使用浮点数或默认零掩盖错误。
 
 `keys` 返回排序、去重并独立拥有的对象键名。编译器可为直接读取typed Request中Object字段的
 `keys/type(read input/root)`选择生成的对象访问器，包括参数、工具选项及节点属性；不硬编码协议字段。
@@ -289,6 +325,13 @@ Spec 的 `WireAssertion.check` 在 schema 通过后检查选中值，`when` 检�
 显式 `reject` effect 可用 `diagnostic` 指定 code、stage 和可选 suggestion，path、reason、id
 继续取自 effect。仅实际拒绝时采用该分类，条件求值、emit 缺失和 aggregate 失败不会被捕获。
 带投影 scope 的 effect 暂不接受此字段，避免配置被另一处理边界静默忽略。
+
+`kind:"warn"` effect 声明不改变输入、输出或转换取舍的提醒。必须提供布尔 `when`、
+`reason` 和 `diagnostic`；`path` 指向当前方向输入中的位置。它不能声明 scope、target、
+default、severity 或 layout。条件为真时按指定 code/stage 记录 warning，保真标记为
+preserved；条件为假时不记录。条件求值错误、取消和资源超限仍按原边界失败，不能被警告吞掉。
+诊断收集器缺席不会改变执行结果。Anthropic Mapping 用此声明缓存 TTL 的顺序和未知值提醒，
+工具、已准备好的系统/消息内容以及请求级缓存的遍历顺序由 Mapping 表达式确定。
 
 ## 对象字段约束与有序拒绝
 
@@ -421,7 +464,8 @@ null 余项必须保持 null 且不带分拆字段。未知核心成员、变更
 
 ## 核心内容稳定分区
 
-控制步骤 layout.operation:stable_partition 只作用于请求或完整响应的 /content。when 的
+控制步骤 layout.operation:stable_partition 作用于请求或完整响应的 /content，或各消息的
+/content/*/children；后者分别排列每个消息的子节点，不跨消息移动。when 的
 input 是当前根节点，root 是完整文档；选中节点稳定移到未选中节点前，两组内部顺序保持。
 可声明 pathBinding 和 movedBinding，分别读取原核心位置与是否会移动。
 局部 steps 复用诊断及条件，仅能更新 role，不能替换节点、改写
@@ -466,8 +510,10 @@ measure 不读取偏移绑定；offsetBinding、lengthBinding 只提供给诊断
 pathBinding 保留原核心位置。messageWhen、when、measure 不读取偏移绑定，避免选择结果
 依赖尚未进行的合并。
 
-text.metadata 按已声明名称选择表达式，input 是原 metadata，root 仍为完整核心对象。
-表达式仅改变 Value，不能伪造来源或资源；未声明条目及隐式 omit 拒绝。条目按原顺序保留，
+text.metadata 按已声明名称选择 `{ "value": 表达式, "references": 可选表达式 }`，
+input 是原 metadata，root 仍为完整核心对象。value 更新目标载荷；references 同步更新核心
+URL 引用的偏移。原条目含 references 时必须声明其更新，不能保留旧偏移或隐式省略。
+表达式不能伪造来源或资源；未声明条目及隐式 omit 拒绝。条目按原顺序保留，
 目标编码按声明聚合它们。引用字段结构和偏移运算由 Mapping 给出，Go 不识别引用字段名。
 
 无命中或单块不读取、拼接正文，不产生合并诊断；只有实际合并才计量、分配正文和节点切片。
@@ -491,6 +537,19 @@ utf16_length，避免重新读取或拼接完整前缀。原语只允许在流�
 最后一个连续段，不复制历史区间数组。网络交付位置另由原有成功发送边界推进。
 默认 Chat 流已接入：原生观察和重建使用同一后缀程序，引用去重先于位置换算。
 
+`detach_children` 使用相同的 `/content`、`when`、`childWhen` 和损失诊断声明。
+它保留原消息容器及其身份、状态、附属语义，将未选中的子节点保留在容器内，
+再按原顺序把选中的子节点放到该容器之后；空容器也保留。此操作适用于已经向客户端
+交付容器起始事件的流，不得用 JSON 响应的重新分组规则抹除已观察到的容器。
+两种操作都保留子节点载荷、资源和来源，不赋予新的 Native 权限。
+
+`wrap_nodes` 在 `/content` 中为 `when` 选中的非消息节点分别建立一个消息容器。
+`role` 声明容器角色，`wrapper.id`、`wrapper.status` 使用当前节点作用域的字符串表达式；
+可读取固定转换上下文。每个节点完整地保留为唯一子节点，容器不继承子节点的 Native、
+来源或资源。该操作不接受额外 `steps`，不合并相邻节点，也不重写被包裹节点。
+Responses 的外来流消息逐子项输出，文本和 refusal 通过此声明对应独立消息；
+原消息保留为空容器，避免后到的文本被移到先到的推理或工具之前。
+
 ## 流内损失授权
 
 `conversionDefaults[].streamDisposition` 声明 `kind: degrade | reject`、`path` 和 `reason`，
@@ -510,6 +569,14 @@ strict、reject、禁用、未匹配、规则被替换成其他动作或缺少�
 Chat `event-layout / 310` 使用现有目标身份及通道索引识别 message 和同类 item 的边界损失，
 仅在首次观察相应边界时请求授权，不为每个 delta 重复登记。正文按到达顺序输出，
 reasoning、refusal、text 保持不同通道；容器附属语义及独立候选仍需明确投影。
+
+`streamDisposition.responseRule` 可引用本 Mapping 内一个 response 阶段的核心控制规则，
+用于声明该流布局在完整大自在天响应中的对应结构。编译器绑定整条规则指纹；引用只能
+使用路由条件，不能指向事件规则或未声明规则。离线验证保留独立的目标编码诊断，只有
+实际执行成功的 disposition、完整目标 Spec 校验和交付检查全部通过后，才对预期收集
+结果应用对应规则。目标解码结果仍独立比较，正文、身份、资源和未声明容器变化不会被忽略。
+被禁用、替换、移除或不匹配路由的 companion 不能授权比较；strict 仍在实际损失处拒绝。
+此规则不自动进入计量或日志收集，也不对所有 response 规则做隐式重放。
 
 ## 最终响应与事件引用关联
 

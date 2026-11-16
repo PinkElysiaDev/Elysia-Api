@@ -10,8 +10,9 @@ remains available for current-format repair.
 
 ## Changes protocol authors must account for
 
-- `Mapping.initial` emits a declared prefix once, before the first nonempty
-  decoded event frame. It does not invent a prefix when no frame arrives.
+- Initial events are emitted by the declared event `program` and per-stream
+  `state`, with explicit conditions for the first nonempty decoded frame.
+  The retired `Mapping.initial` execution key is rejected.
 - `join` accepts either `items` or `source` (an array of strings). It never
   coerces objects or free-text tool input into JSON arguments.
 - `Operation.input` checks the final wire body. Definition and binding

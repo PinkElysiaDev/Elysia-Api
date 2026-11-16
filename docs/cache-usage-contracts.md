@@ -4,6 +4,16 @@
 
 缓存是否被使用、上游是否报告计数、网关是否正确转发计数，是三个独立问题。缺失值不能当零；上游接受缓存字段不证明发生命中，更不证明某个 TTL 的时间行为。
 
+## Responses 写缓存保留期观测
+
+Responses 的 `usage.input_tokens_details.cache_write_tokens_details` 非 null 时必须同时提供 `ttl_30m_tokens` 与 `ttl_12h_tokens`。来源 Spec 拒绝空对象、缺少任一成员、未知成员、负数、小数及 int64 溢出。Mapping 将两者解为 `Usage.Details` 的 `cache_creation.30m_tokens` 与 `cache_creation.12h_tokens`，包括 `origin:"observed"` 的显式零；计数超过 JavaScript 安全整数范围仍保持整数精度。
+
+这两个分项表示写入时适用保留期，不是已缓存时长或额外 token。已知 `CacheCreation` 时，两项之和必须等于创建总量，且读取与创建总量不能超过 Input；用减法检查避免溢出。Input、Output、Total 不再累加分项。纯核心的部分明细可以表示部分知识，缺少的分项不补零；编码完整 Responses 对象仍要求两项齐全。30m/12h 与其他协议的 5m/1h 不构成可改名等价关系，也不证明价格、费用或缓存实际存活时间。
+
+字段缺失保持缺失；显式 null 不生成 Counter，并保留为来源所属的 usage 余项。同源编码将余项与已映射计数合并，叶成员冲突明确拒绝。Chat、Anthropic、Gemini 的 `response-usage-projection` / `event-usage-projection` 可在 compatible 下省略这两个已知明细，逐项报告 `conversion_degraded` 和 `/usage/details/cache_creation.30m_tokens` 等实际核心路径、规则 ID、策略哈希；strict 或关闭规则时拒绝。来源记录和计费总量不被客户端投影覆盖；null 与未知余项不能沿用已知计数的省略规则。
+
+SSE 的两项计数为快照，重复报告不相加，最终观测零覆盖此前非零。当前支持边界采取保守规则：一旦报告非 null 完整分项，后续**明确提供 usage 的响应快照**必须继续报告完整非 null 分项；null、空 usage、仅变更总量或撤去分项均拒绝。没有 usage 更新的进度事件可以继续；completed/incomplete 终态必须保留分项。该规则避免把此前分项当作新快照的当前观测，不声称官方类型定义或现有零值样本已证明更宽泛的部分更新语义。
+
 ## 缓存意图与断点合成
 
 断点、key、retention、最短 TTL、预热和显式资源是不同意图，不能互相替代。默认 `request_projection`（请求阶段，顺序 130）保留可映射的 key、retention 和标准 `cache_control` 断点及 TTL。目标无对应字段时，`compatible` 只省略提示并记录信息级 `conversion_degraded` / `lossy_compatible`；`strict` 在调用上游前拒绝实际损失。覆盖请求、工具、system、消息和内容块，不修改正文、工具参数或任意用户 JSON。
@@ -47,8 +57,8 @@ Anthropic 上游在每次写出缓存的响应里都附带 `cache_creation.ephem
 
 [映射补丁](examples/cache-usage-alias.mapping.json) 和 [离线样例](examples/cache-usage-alias.sample.json) 演示人工约定的 `usage.provider_metrics.write_tokens`。它们不是完整协议，也不是对任何供应商私有计费字段的解释；只有供应商契约及实际证据确认其含义后，才应替换路径使用。
 
-1. 在编辑器复制 Chat 定义，使用新 ID；保留能力、四方向、操作、原有样例和扩展。
-2. 将补丁对应的 `decode_response.after`、`decode_event.after` 合入定义。如果已有 `after`，应显式组合变换并增加样例，不能覆盖原变换。
+1. 在编辑器复制 Chat v4 包，为 Spec 设置新 ID；保留两份源、能力、方向、操作、原有样例和扩展。
+2. 在 `mapping.expressions` 中将 `decode-usage` 复制为 `standard-decode-usage`，将 `stream-decode-usage` 复制为 `standard-stream-decode-usage`，再合入示例的 `expressions`。两个方向复用 `cache-usage`，原方向程序和字段效果保持完整。
 3. 将样例追加到 `samples`，补充实际站点的 JSON、流式、零值、缺失和冲突样例。该示例约定标准语义字段优先，包括明确零值；只有标准创建计数缺失才读取别名。
 4. 执行验证、预览、保存草稿、启用确切修订，然后验证模型绑定及实际转发。
 
@@ -56,7 +66,7 @@ Agent 使用同一服务层：`elysia protocol draft`、`validate`、`verify`、
 
 旧样例如果把 `cache_write_tokens` 预期为未知扩展，需要按新解析结果更新这一字段的断言：`expected.usage.cacheCreation={"count":原值,"origin":"observed"}`，包括零值；输入总量仍使用原来的总输入。只调整该已识别字段的旧扩展路径，保留其他扩展和所有样例。先用预览检查完整语义差异，再重验启用；不要删除失败样例来绕过版本验证。
 
-`module` 先解析基础协议；`after` 的 `input` 是语义对象，`root` 是原始响应或事件帧。事件变换逐项处理本帧事件，不把后续尾帧提前当作最终计数。原生回放同时要求源/目标编码器和解码器兼容，包括引用表达式的实际实现。相同协议族或相同 ref 名称不足以授权回放。不同定义间不能表达的扩展继续返回 `unsupported_native`，不能通过清空扩展取得成功。
+Mapping 用 `let` 将原解码器的 usage 绑定为 `decoded-usage`；公共表达式 `cache-usage` 从 `root` 读取原始响应或事件帧，保留标准计数及显式零值。流式 usage 只处理当前帧。原生回放同时要求源/目标编码器和解码器兼容，包括引用表达式的实际实现。相同协议族或相同 ref 名称不足以授权回放。不同包间不能表达的扩展继续返回 `unsupported_native`，不能通过清空扩展取得成功。
 
 `TestCacheAliasEditorAgentAndForwardingShareContract` 检查编辑器管理接口、Agent、预览、启用、JSON/SSE 和 SQLite 的一致性。这是离线服务层集成测试，不代表浏览器 E2E 或真实供应商别名已验证。
 

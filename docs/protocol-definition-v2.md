@@ -1,144 +1,65 @@
-# Protocol definition v2 — implementation reference
+# Protocol package execution
 
-[Documentation index](README.en.md) · [Authoring reference](protocol-definition-reference.en.md)
+This URL remains for existing documentation links. The supported configuration
+is a schemaVersion 4 package, with DSL2 Mapping and the Maheshvara core2 model.
+The old Definition/Module language is retired. The [three-part contract](protocol-three-part-contract.md)
+is the normative execution reference; the [cutover record](protocol-three-part-cutover-2026-11-14.md)
+tracks completion and acceptance.
 
-The runtime serves public/custom ingress, upstreams, the editor, Agent, previews and probes. This reference describes executable definitions; see the [runtime contract](protocol-cutover-v2.md) for shared limits.
+## Sources and the conversion hub
 
-## Definition and execution
+`spec.json` declares external documents, operations, constraints and stream
+lifecycle. `mapping.json` declares that protocol's independent wire-to-core and
+core-to-wire programs, native ownership, model policy, target dispositions and
+samples. Both sources form one immutable package and one activation unit.
 
-`backend/protocol.Definition` is the configuration contract. `schemaVersion: 2`
-is independent of the semantic document's `schemaVersion: 1`, the author's
-`version`, and `CompilerVersion`. `DescribeSchema()` generates the definition
-and semantic schemas together with the operation and capability catalogs.
+Maheshvara is the center of the conversion topology. A request from protocol A
+to B executes A's decoder and B's encoder through the core. Responses and events
+use the reverse pairing. No Mapping parses another provider's wire format, and
+no supplier-pair converter bypasses the core. DSL operations are generic
+mechanisms; they do not dispatch on provider names.
 
-Each direction is independent: `decode_request`, `encode_request`,
-`decode_response`, `encode_response`, `decode_event`, `encode_event`. A mapping
-selects one registered `module`, one `transform`, or event `rules`. A module can
-have an `after` expression to construct a different target layout. In `after`,
-`input` is the module output and `root` is the original semantic input. There
-is no inverse-map generation and no script evaluation.
+`CompileSources` and complete-package compilation use the same backend. A
+request pins its compiled revision, limits, model and resource scope. Updating
+configuration affects subsequent requests; it does not recompile or mutate an
+in-flight execution.
 
-The compiler registers `openai-chat`, `responses`, `anthropic`, and `gemini`
-from `backend/protocol/builtin`. Each implements request/response and upstream
-stream event decoding/client encoding against the ordered semantic model.
-Declarative protocols can implement all directions without using any module.
-Client WebSocket events additionally use `decode_client_event` and
-`encode_upstream_event`. See the [session](protocol-sessions-v2.md) and
-[task](protocol-jobs-v2.md) references for their distinct lifecycle contracts.
+## Validation and ownership
 
-Minimal object construction:
+Spec checks the external input before Mapping decodes it. Core checks enforce
+semantic associations, resource ownership and lifecycle. Target dispositions
+handle only declared representation changes. Final wire validation applies
+after encoding and any user wire changes. These checks concern different
+objects; one cannot replace another merely because it ran earlier.
 
-```json
-{
-  "op": "object",
-  "fields": {
-    "deployment": {"op": "read", "path": "/model"},
-    "history": {"op": "read", "path": "/content"}
-  }
-}
-```
+Missing, null, false, zero and empty containers remain distinct. Numeric values
+are not routed through floating-point conversion. Unknown fields retain their
+namespace and source ownership; undeclared cross-protocol use is rejected.
+Native replay requires matching provenance, scope, semantic state and delivery
+conditions, and cannot restore intentionally removed fields.
 
-Expressions support `read`, `literal`, `omit`, `object`, `array`, `map`,
-`flatmap`, `filter`, `choose`, `if`, `enum`, `cast`, `merge`, `concat`, `join`,
-`sort`, `associate`, `exists`, `equal`, `all`, `any`, `not`, `parse_json`,
-`stringify_json`, and compile-time `ref`. Paths use RFC 6901 JSON pointers.
-Array iteration preserves input order. Sort is stable and association rejects
-duplicate identities. Merge requires an explicit collision policy.
+Streaming state belongs to one flow. Failed frames do not commit state or
+delivery positions. A terminal must be observed, not fabricated from EOF.
+Declared usage snapshots, tool fragments and protected continuation state keep
+their distinct accounting and ownership rules.
 
-Missing, null, false, zero, empty strings and empty containers are distinct.
-Read of a missing field yields omission unless `required` is true. Array
-operations require an array; use an explicit `if`/`exists` to map optional
-arrays. Invalid JSON tool input is an error, not an empty object. Native JSON
-numbers keep their representation; exact numeric comparisons are bounded to
-avoid unbounded allocation from huge exponents.
+## Configuration and evidence
 
-All configuration objects reject unknown keys. Only `extensions` is inert
-author metadata. Named expression recursion, unused references, invalid
-schema paths, statically incompatible types, uncovered declared enum branches
-and increased engine limits are compilation errors. Dynamic inputs are also
-checked against their schemas. Limits bound depth, nodes, state, edits and
-buffered bytes. The runtime checks cancellation during traversal.
+The live catalog publishes package, spec, mapping, semantic and binding schemas,
+the DSL operation catalog and generic conversion actions. It does not advertise
+modules or the retired definition schema. Configuration objects are strictly
+decoded, and authoring never installs executable code.
 
-Event rules require `unknownEvent: "reject"`. Ignorable wire frames need an
-explicit rule yielding an empty array. An HTTP status alone is never a
-semantic terminal event. `EventReplay` and `SessionReplay` handle association and lifecycle;
-the immutable compiler stores no per-request mutable state.
+Every package supplies static examples of expected output and rejection.
+Verification binds the package, compiler and sample identities; saving alone
+does not activate a revision. Editor, Agent, preview, verification and actual
+forwarding share this contract. Full fixtures live under
+`backend/protocol/testdata/packages` and the default source pairs under
+`backend/protocol/builtin/packages`.
 
-## Cache intents and capabilities
-
-A request's `cache` list holds cache intents; `Kind` selects the policy and is one of:
-
-- `breakpoint` — an Anthropic-style `cache_control` marker on a request, block or
-  tool node. Only an Anthropic target emits it.
-- `key` — a cache key (`prompt_cache_key`), Chat/Responses.
-- `retention` — the maximum-retention setting (`prompt_cache_retention`),
-  Chat/Responses. It is decoded for compatibility even though the provider marks
-  the field deprecated.
-- `resource` — an explicit cache-resource reference (`cachedContent`), Gemini.
-- `mode` — the `explicit`/`implicit` selector carried inside the
-  `prompt_cache_options` object, Chat/Responses.
-- `options.ttl` — the minimum-lifetime string carried in the same
-  `prompt_cache_options` object, Chat/Responses. It is independent of `retention`
-  (a maximum lifetime) and of a breakpoint TTL; keep the three settings separate
-  even when they travel together.
-- `prewarm` — a request to populate the cache before the first read, Responses
-  only.
-
-An unknown `Kind` is rejected explicitly rather than dropped. The capability
-catalog adds `cache.options` (covering `mode` and `options.ttl`) and
-`cache.prewarm` beside the existing `cache.breakpoints`, `cache.keys`,
-`cache.retention` and `cache.resources`. Cache capabilities are declared
-**per-direction**: an encoder checks the declaration of the direction it is
-encoding, not only the definition's top-level `capabilities`.
-
-## Native preservation
-
-`native.preserve: true` requires the corresponding decoder for each encoder.
-Compatible family, wire version, direction and resource scope authorize
-native replay; a matching protocol ID or `type` string does not.
-
-The runtime compares original and updated mapped values and applies changes
-to the native document. Unchanged extensions, explicit nulls and original
-array order survive. Removed fields are deleted. Clearing tools does not replay
-the original tools. Foreign protocols receive only explicitly mapped fields.
-
-For arrays with multiple modified items, declare stable item keys:
-
-```json
-{"preserve": true, "arrayKeys": {"/tools": "/name", "/history": "/id"}}
-```
-
-Keys must exist and be unique. A changed key denotes a replacement item.
-Unambiguous single edits and unchanged items can be matched without keys;
-Fully mapped subtrees can be replaced directly; ambiguous associations of
-unmapped native fields are rejected. Pointer paths are exact, not wildcards.
-Native-preserving event mappings currently require one semantic event per
-wire frame; compound response/item events can retain the complete frame.
-Multiple semantic outputs with native replay enabled fail explicitly.
-
-Provider/account/model/session resources are stamped from gateway context,
-including nested content, tools and cache references. Ordinary expressions
-cannot replace their declared scope. Same-wire opaque resources still require
-compatible scope when replayed.
-
-## Legacy import
-
-`relay.ImportLegacyProtocol` returns a draft plus located blocking issues.
-It imports a proven subset of annotated request bodies and response modules,
-preserving target field paths, credentials and literal JSON. Unproven string
-templates, conditional defaults, aliases, model discovery, response overrides
-and stream rules remain explicit migration issues. The original configuration
-is retained in inert `extensions.legacyImport` for repair.
-
-Import is not activation. It neither executes an old template inside v2 nor
-substitutes a simpler protocol to make migration appear successful. The migration service provides graph preview, repair, backup and transactional cutover. The old
-execution runtime has been removed; import types only preserve old definitions.
-
-WebSocket and asynchronous task operations are installed in the gateway
-compiler. Declaring an engine feature or capability is not verification.
-Activation requires hash-bound offline evidence; real-provider evidence is
-recorded independently.
-
-## Validation
-
-Fixtures must cover declared capabilities, native extensions, field presence, exact numbers, edits and negative inputs. Two independent mapping examples are `backend/protocol/testdata/text-alpha.json` and `text-beta.json`. Offline success does not establish provider acceptance; see [validation](protocol-release-readiness.en.md).
+The new execution chain is initialized in an independent database. Old
+configuration, bindings, tasks and continuation state are not translated.
+Existing databases, logs and credentials remain untouched. There is no
+runtime fallback to the old engine. Functional, race, resource and performance
+acceptance must complete before release; old revisions serve only as isolated
+external performance references.

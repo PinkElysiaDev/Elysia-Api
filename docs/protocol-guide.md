@@ -2,7 +2,7 @@
 
 [文档索引](README.md) · [English](protocol-guide.en.md) · [定义参考](protocol-definition-reference.md) · [验证方法](protocol-release-readiness.md)
 
-网关通过一套 `backend/protocol` 引擎运行内置协议和自定义协议。编辑器、Agent、预览、离线验证和真实转发共用编译器、语义模型与不可变修订；relay 负责传输和路由装配。旧 Maheshvara 转换器与模板执行器已删除，旧配置只可导入迁移。
+网关通过一套 `backend/protocol` 引擎运行内置协议和自定义协议。大自在天 core2 是协议转换网络的中心：每个协议的 Mapping 只负责自己的 wire 与大自在天双向转换。Spec 描述外部协议合同，DSL 提供通用执行机制。编辑器、Agent、预览、离线验证和真实转发共用编译器与不可变修订；relay 负责传输和路由装配。当前只接受 v4 协议包，不提供旧格式的导入迁移或兼容执行。切换验收见[实施记录](protocol-three-part-cutover-2026-11-14.md)。
 
 ## “无损”的范围
 
@@ -10,12 +10,12 @@
 
 ```mermaid
 flowchart LR
-  A[编辑器 / Agent] --> B[版本化定义]
+  A[编辑器 / Agent] --> B[Spec + Mapping 协议包]
   B --> C[编译与能力检查]
   C --> D[样例与组合验证]
   D --> E[启用不可变修订]
-  E --> F[入口解码 → 有序语义模型 → 上游编码]
-  F --> G[响应/事件解码 → 校验 → 客户端编码]
+  E --> F[来源 Mapping → 大自在天 → 目标 Mapping]
+  F --> G[目标 Spec 校验 → 实际交付]
 ```
 
 运行时固定协议版本、模型源和资源作用域。热更新只影响后续请求。配置变更使旧报告失效；真实输入与响应仍须遵守已验证契约。
@@ -47,9 +47,7 @@ flowchart LR
 
 保存不等于启用。修订比较和回滚也使用验证服务；不能回滚到当前引擎无法加载或未通过验证的版本。
 
-完整可运行的从零样例见 [`text-alpha.json`](../backend/protocol/testdata/text-alpha.json)、[`text-beta.json`](../backend/protocol/testdata/text-beta.json)。实时与任务样例位于同目录的 `session-{alpha,beta}.json`、`job-{alpha,beta}.json`，均不引用内置 shape。实际供应商仍需补足其文档、字段和样例。
-
-完整的缓存自定义协议示例见 [cached-text](examples/cached-text-v2.json)：请求策略位于 `promptPolicy`，响应用量位于 `meter`，不引用内置适配器，使用相同的离线验证器验收。
+从零样例见 [text-alpha](../backend/protocol/testdata/packages/text-alpha) 和 [text-beta](../backend/server/testdata/protocols/text-beta) 的 Spec/Mapping 两份源。将它们按 `{ "schemaVersion":4,"spec":...,"mapping":... }` 组合为完整包后录入编辑器；实际供应商仍需补足外部合同、双向映射和样例。
 
 ## Agent 工作流
 

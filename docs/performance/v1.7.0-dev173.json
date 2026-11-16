@@ -1,0 +1,2752 @@
+{
+  "source": {
+    "releaseCommit": "9b72829a40a6f73cbe82604a6d04e397d8bdf634",
+    "releaseSHA256": "06b878052d2cd9a16f1b7a0be2359257116f6d318945b1fd912645db48644970",
+    "currentCompiler": "2.0.0-dev.173",
+    "currentSourceSHA256": "110ae220068489d05f89c4d5e8996d329b2727864e5f1b74e667f00a6f205579",
+    "currentBinarySHA256": "377c2139112d5443608fce1972f5901c09e89818a16c9e0ce8e4ca077287d1e4"
+  },
+  "estimator": "Existing seeded bootstrap 95% interval of independent medians; five observations per condition; alternating collection order is not a paired estimator",
+  "windows": 80,
+  "requests": 103680,
+  "warmupRequests": 1840,
+  "providerRequestsIncludingWarmup": 105520,
+  "availability": {
+    "allocationBytes": false,
+    "allocationCount": false,
+    "gcPause": false,
+    "sampledHeapPeak": false,
+    "workingSetPeak": "20 ms sampling",
+    "heap": "boundary and natural recovery; no forced GC"
+  },
+  "runtime": {
+    "GOMAXPROCS": "2",
+    "GOGC": "100",
+    "GOMEMLIMIT": "2GiB",
+    "CGO_ENABLED": "0",
+    "GOTOOLCHAIN": "local"
+  },
+  "limitations": [
+    "No allocation counters in release standalone",
+    "Current WebUI embed placeholder; no WebUI or cold-start timings measured",
+    "Official asset reports vcs.modified=true; identify by exact asset SHA rather than claim pristine source build",
+    "Current AppVersion label remains 1.7.0 for historical harness; compiler and source identity distinguish it"
+  ],
+  "records": [
+    {
+      "name": "burst-1-C-production",
+      "version": "C-production",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 2430.4818982206034,
+        "cpuMS": 0.81634521484375,
+        "p50MS": 1.5058,
+        "p95MS": 3.3576,
+        "p99MS": 4.6631,
+        "peakRSSMiB": 546.54296875,
+        "recoveryRSSMiB": 545.24609375,
+        "recoveryHeapMiB": 63.25538635253906,
+        "gcCycles": 13
+      },
+      "runSHA256": "ca770ee346e1cc676539fa6bac2ea2ba2ea127957052aa8bc5225e7127229330",
+      "measurementsSHA256": "5bd1d7d6676b4acc55726dd5f4a752eeff1d940b5f9dbc5ad8ed3bb5706ee1eb"
+    },
+    {
+      "name": "burst-1-R-release",
+      "version": "R-release",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 3875.90370726026,
+        "cpuMS": 0.507354736328125,
+        "p50MS": 1.0288,
+        "p95MS": 2.0563,
+        "p99MS": 2.6663,
+        "peakRSSMiB": 94.29296875,
+        "recoveryRSSMiB": 93.953125,
+        "recoveryHeapMiB": 7.5823516845703125,
+        "gcCycles": 73
+      },
+      "runSHA256": "848b50f5bff5b8a9b435c58d4b0dd82df4e02fe0adb5074c7a033adbc4384e56",
+      "measurementsSHA256": "0860c6468792725b6aa43a77fb74496d0021c9065b99fbe6c7d2f9da6040d495"
+    },
+    {
+      "name": "burst-2-C-production",
+      "version": "C-production",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 2398.3908764648936,
+        "cpuMS": 0.83160400390625,
+        "p50MS": 1.506,
+        "p95MS": 3.538,
+        "p99MS": 4.9792,
+        "peakRSSMiB": 545.17578125,
+        "recoveryRSSMiB": 539.94140625,
+        "recoveryHeapMiB": 83.95317077636719,
+        "gcCycles": 12
+      },
+      "runSHA256": "36b04c9bfd47a281eb99f527921dfe836bd7128a69a649ffb8b4fffa6c8b00ff",
+      "measurementsSHA256": "a3bae9770e6b933225ab8e44fd5946fd989b84a677d3715db1de0d98bfd5fde8"
+    },
+    {
+      "name": "burst-2-R-release",
+      "version": "R-release",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 3836.9929965510155,
+        "cpuMS": 0.51116943359375,
+        "p50MS": 1.0294,
+        "p95MS": 2.0454,
+        "p99MS": 2.589,
+        "peakRSSMiB": 93.515625,
+        "recoveryRSSMiB": 93.63671875,
+        "recoveryHeapMiB": 10.326576232910156,
+        "gcCycles": 75
+      },
+      "runSHA256": "a31ec5ac0c1bfb0dee4b0c77ea7b6162adb0f0f47675cb750cbde0ea6bda3010",
+      "measurementsSHA256": "be57bd0927805a7ad0b82984022666f0786c1f25a461f1483a46a5a3d382b29f"
+    },
+    {
+      "name": "burst-3-C-production",
+      "version": "C-production",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 2364.795310684799,
+        "cpuMS": 0.823974609375,
+        "p50MS": 1.5397,
+        "p95MS": 3.4643,
+        "p99MS": 4.6974,
+        "peakRSSMiB": 492.9921875,
+        "recoveryRSSMiB": 492.9921875,
+        "recoveryHeapMiB": 85.99181365966797,
+        "gcCycles": 15
+      },
+      "runSHA256": "1bcd04f62311c48159a918e1e43a0061a8cec0b4e8b64b167e2ee65ae7e9d162",
+      "measurementsSHA256": "b779260f923a3fcefefc42fab8a814752a4ed74f988e658bdc2a88747b96ee74"
+    },
+    {
+      "name": "burst-3-R-release",
+      "version": "R-release",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 3841.723252986668,
+        "cpuMS": 0.499725341796875,
+        "p50MS": 1.0291,
+        "p95MS": 2.0617,
+        "p99MS": 2.6129,
+        "peakRSSMiB": 93.2890625,
+        "recoveryRSSMiB": 93.38671875,
+        "recoveryHeapMiB": 8.498519897460938,
+        "gcCycles": 81
+      },
+      "runSHA256": "2a2ded4a1f0fd6327d843e4466969b7ebd1149450e5618695f1a82ddf1d3f6b3",
+      "measurementsSHA256": "cd810183f4331818ad7c09c933d143693d538bf63ddcbd1c5ede891bf46a1e42"
+    },
+    {
+      "name": "burst-4-C-production",
+      "version": "C-production",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 2339.084439177951,
+        "cpuMS": 0.83160400390625,
+        "p50MS": 1.5351,
+        "p95MS": 3.6379,
+        "p99MS": 5.1817,
+        "peakRSSMiB": 490.63671875,
+        "recoveryRSSMiB": 488.44921875,
+        "recoveryHeapMiB": 114.201416015625,
+        "gcCycles": 12
+      },
+      "runSHA256": "1bab250716b5912923dc5d3ca5dd25c0eec7b0262ffe26bde7014270a001a10e",
+      "measurementsSHA256": "674d57668f5b5819153562f8742174ec17491269f1ab294fb66787842fb72482"
+    },
+    {
+      "name": "burst-4-R-release",
+      "version": "R-release",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 3839.2728177328663,
+        "cpuMS": 0.499725341796875,
+        "p50MS": 1.0293,
+        "p95MS": 2.065,
+        "p99MS": 2.7374,
+        "peakRSSMiB": 91.63671875,
+        "recoveryRSSMiB": 91.796875,
+        "recoveryHeapMiB": 7.777801513671875,
+        "gcCycles": 78
+      },
+      "runSHA256": "58f3a4accadf32bf4b0e0a8953cba03ce8a2ec865701e6e92ab419f692f7850a",
+      "measurementsSHA256": "6f518f398303f2ea4a60edae2ee7848021434450683366fdf4e2f2cba4b13efb"
+    },
+    {
+      "name": "burst-5-C-production",
+      "version": "C-production",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 2403.228540404192,
+        "cpuMS": 0.804901123046875,
+        "p50MS": 1.5078,
+        "p95MS": 3.3429,
+        "p99MS": 4.7838,
+        "peakRSSMiB": 511.265625,
+        "recoveryRSSMiB": 508.58984375,
+        "recoveryHeapMiB": 117.96987915039062,
+        "gcCycles": 13
+      },
+      "runSHA256": "47ec0e48ec3108b569711a04a74bc7680ef68cc9eb4a37b78a7c866388ce033e",
+      "measurementsSHA256": "5ed3597f4b68c4dc4de7c1b64574314efa11000f70734ad70e0d7500f4f015a0"
+    },
+    {
+      "name": "burst-5-R-release",
+      "version": "R-release",
+      "scenario": "burst",
+      "observations": {
+        "throughput": 3840.4445314545155,
+        "cpuMS": 0.499725341796875,
+        "p50MS": 1.0299,
+        "p95MS": 2.0418,
+        "p99MS": 2.6426,
+        "peakRSSMiB": 94.4140625,
+        "recoveryRSSMiB": 82.8125,
+        "recoveryHeapMiB": 12.221412658691406,
+        "gcCycles": 69
+      },
+      "runSHA256": "fd3ca4516fd53c10c7d45ae66559ee455a087e046625349c1d9bc30d1af378ff",
+      "measurementsSHA256": "141f9f7b5b4420a15fcafc5649e5a3c04a162f5dfe99b2be04d1d333419998fd"
+    },
+    {
+      "name": "cross-json-1-C-production",
+      "version": "C-production",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1059.4018186949659,
+        "cpuMS": 0.732421875,
+        "p50MS": 1.0267,
+        "p95MS": 1.0913,
+        "p99MS": 1.556,
+        "peakRSSMiB": 499.75390625,
+        "recoveryRSSMiB": 499.7890625,
+        "recoveryHeapMiB": 98.51448059082031,
+        "gcCycles": 1
+      },
+      "runSHA256": "b02a8856da2ca997c104e1ac898971c7b970e2c6d31c259bad2774c5e5b46103",
+      "measurementsSHA256": "04e4789982e8162158efc40aca864499a3db5bbfe8210a26589aa03155ac4934"
+    },
+    {
+      "name": "cross-json-1-R-release",
+      "version": "R-release",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1224.845512771287,
+        "cpuMS": 0.885009765625,
+        "p50MS": 0.5195,
+        "p95MS": 1.0532,
+        "p99MS": 1.5284,
+        "peakRSSMiB": 71.44140625,
+        "recoveryRSSMiB": 67.60546875,
+        "recoveryHeapMiB": 8.118354797363281,
+        "gcCycles": 13
+      },
+      "runSHA256": "10987afa22587fc7b95e46283443ebb92717b6fc551d15e601368b292c96a15e",
+      "measurementsSHA256": "9ba1a3361fb8a652f182e0368a1a54ed626d69012d9052e17d6bd1fbfc622c30"
+    },
+    {
+      "name": "cross-json-2-C-production",
+      "version": "C-production",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1045.0591968883361,
+        "cpuMS": 0.946044921875,
+        "p50MS": 1.0262,
+        "p95MS": 1.0602,
+        "p99MS": 1.5836,
+        "peakRSSMiB": 535.5234375,
+        "recoveryRSSMiB": 535.55859375,
+        "recoveryHeapMiB": 138.05350494384766,
+        "gcCycles": 1
+      },
+      "runSHA256": "f41bc20273a034253cfce11bb064f75f22bdebc3bee88cee88411de909e18505",
+      "measurementsSHA256": "0610c60bd347523a5a251bd3d70de5a3223db582c542c02af37da0bbb0788937"
+    },
+    {
+      "name": "cross-json-2-R-release",
+      "version": "R-release",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1175.5160216864338,
+        "cpuMS": 0.701904296875,
+        "p50MS": 0.541,
+        "p95MS": 1.0656,
+        "p99MS": 1.5331,
+        "peakRSSMiB": 74.16796875,
+        "recoveryRSSMiB": 70.59765625,
+        "recoveryHeapMiB": 8.462425231933594,
+        "gcCycles": 11
+      },
+      "runSHA256": "c6c733d0b35a9245d36275a7b559aa7a15f384c77cb9de3ff6ed21f1b8674815",
+      "measurementsSHA256": "a0a54fa9bd02250f0f9dbd47e7d4075b1f5914728805845e858e49201fc5d2da"
+    },
+    {
+      "name": "cross-json-3-C-production",
+      "version": "C-production",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1033.6651829264354,
+        "cpuMS": 0.9765625,
+        "p50MS": 1.0275,
+        "p95MS": 1.0791,
+        "p99MS": 2.5725,
+        "peakRSSMiB": 495.46875,
+        "recoveryRSSMiB": 495.06640625,
+        "recoveryHeapMiB": 63.246368408203125,
+        "gcCycles": 2
+      },
+      "runSHA256": "a5a7d9fec1e1091ac9d50687120dd4fc96f2e6f76ed36b2dfe4d0a033040e4e7",
+      "measurementsSHA256": "7e670c58dbcf01e98195da16f07377fa9d548810dcb8586fb7ea48fab2e97a91"
+    },
+    {
+      "name": "cross-json-3-R-release",
+      "version": "R-release",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1229.1282264015783,
+        "cpuMS": 0.732421875,
+        "p50MS": 0.5188,
+        "p95MS": 1.0525,
+        "p99MS": 1.0995,
+        "peakRSSMiB": 71.78125,
+        "recoveryRSSMiB": 68.875,
+        "recoveryHeapMiB": 10.324264526367188,
+        "gcCycles": 11
+      },
+      "runSHA256": "e9cc10f2989f0a48c77d919c6d1fa23dfb57f558f5ab63f5cac2c6abab3162f9",
+      "measurementsSHA256": "a3e593e4fe1e7975fbe1b8a5d0bd96b0670b6c2885f7476793918fca3fd40075"
+    },
+    {
+      "name": "cross-json-4-C-production",
+      "version": "C-production",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1016.0179597049658,
+        "cpuMS": 1.03759765625,
+        "p50MS": 1.0271,
+        "p95MS": 1.0851,
+        "p99MS": 2.0955,
+        "peakRSSMiB": 496.8828125,
+        "recoveryRSSMiB": 496.48046875,
+        "recoveryHeapMiB": 89.55859375,
+        "gcCycles": 2
+      },
+      "runSHA256": "dd5ee53e7172895e69b399fc6a80cd2b0e011b69d3d5d8f1d5230f53a07ed942",
+      "measurementsSHA256": "ebc577475c1d4bfcd329564b71a724e18020410e904f83210bc6edea1065504f"
+    },
+    {
+      "name": "cross-json-4-R-release",
+      "version": "R-release",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1217.5011027658913,
+        "cpuMS": 0.701904296875,
+        "p50MS": 0.523,
+        "p95MS": 1.0543,
+        "p99MS": 1.5052,
+        "peakRSSMiB": 71.1640625,
+        "recoveryRSSMiB": 67.25,
+        "recoveryHeapMiB": 9.313385009765625,
+        "gcCycles": 13
+      },
+      "runSHA256": "17ef02d6b16ff3e48a6e82661319bac18e1e63b020a408e1cb2ab4ad4e763ff8",
+      "measurementsSHA256": "d653b6b6eed1d270640045daa2912c463a94a300400430f8d259e07239ac41ff"
+    },
+    {
+      "name": "cross-json-5-C-production",
+      "version": "C-production",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1038.7378199368277,
+        "cpuMS": 0.823974609375,
+        "p50MS": 1.0258,
+        "p95MS": 1.0879,
+        "p99MS": 2.076,
+        "peakRSSMiB": 482.9453125,
+        "recoveryRSSMiB": 482.54296875,
+        "recoveryHeapMiB": 61.34712219238281,
+        "gcCycles": 3
+      },
+      "runSHA256": "5020d34b1aebd8243338a689afeffe6d6d045476d33a9fc88ebcbf15e013b9b2",
+      "measurementsSHA256": "faeb048b19a9a9f5cb1c54e5a63881ef9a5490c8ac169d08f2c86fc43732580f"
+    },
+    {
+      "name": "cross-json-5-R-release",
+      "version": "R-release",
+      "scenario": "cross-json",
+      "observations": {
+        "throughput": 1212.8758138349333,
+        "cpuMS": 0.762939453125,
+        "p50MS": 0.52,
+        "p95MS": 1.053,
+        "p99MS": 1.5045,
+        "peakRSSMiB": 69.79296875,
+        "recoveryRSSMiB": 67.79296875,
+        "recoveryHeapMiB": 13.126762390136719,
+        "gcCycles": 11
+      },
+      "runSHA256": "4862690c178ba078e53badeebf82a1b945efde0f4196b67128809fc65b9a2db6",
+      "measurementsSHA256": "9b710a1144c850ca8ca3ed050d17d240d4e011f4b19f9981d8f17f4ec00cdc98"
+    },
+    {
+      "name": "cross-stream-1-C-production",
+      "version": "C-production",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 26.828858856077407,
+        "cpuMS": 34.423828125,
+        "p50MS": 26.8247,
+        "p95MS": 35.8378,
+        "p99MS": 41.0552,
+        "peakRSSMiB": 514.5625,
+        "recoveryRSSMiB": 479.3125,
+        "recoveryHeapMiB": 65.03382110595703,
+        "gcCycles": 32,
+        "firstFrameP50MS": 1.553,
+        "firstFrameP99MS": 2.6936
+      },
+      "runSHA256": "3604ac3a90c18997a41fca07ff8a62d4a797bb197203eff7eb7180f5e12a3aae",
+      "measurementsSHA256": "914992d53ce7c1d1b55caff4c7fe8b067785bb239cbbd667f4bb804e042a4615"
+    },
+    {
+      "name": "cross-stream-1-R-release",
+      "version": "R-release",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 45.55469298218922,
+        "cpuMS": 15.9912109375,
+        "p50MS": 12.9488,
+        "p95MS": 13.996,
+        "p99MS": 14.3622,
+        "peakRSSMiB": 66.8515625,
+        "recoveryRSSMiB": 61.14453125,
+        "recoveryHeapMiB": 7.6119537353515625,
+        "gcCycles": 199,
+        "firstFrameP50MS": 1.0302,
+        "firstFrameP99MS": 2.1183
+      },
+      "runSHA256": "48d1600d137d160aed1142c935a743dddf9e904c7acb2137a521c8d0f5d9ce23",
+      "measurementsSHA256": "efc2e7b45d13efdf6305b5aaa01072270c6a63a729110d64e19f1bfffd635f57"
+    },
+    {
+      "name": "cross-stream-2-C-production",
+      "version": "C-production",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 27.11842918871787,
+        "cpuMS": 33.5693359375,
+        "p50MS": 26.7095,
+        "p95MS": 34.1542,
+        "p99MS": 35.3915,
+        "peakRSSMiB": 500.3203125,
+        "recoveryRSSMiB": 465.48046875,
+        "recoveryHeapMiB": 87.41808319091797,
+        "gcCycles": 35,
+        "firstFrameP50MS": 1.54,
+        "firstFrameP99MS": 3.3071
+      },
+      "runSHA256": "00c961dd9c88e29325f9d2b02b6c042a66df835b9780f741222ad7a7d195f7c1",
+      "measurementsSHA256": "68cae182dbb47a77953e43914008fb38a5fa25d12e44c72fb38bb2b0f7bae9aa"
+    },
+    {
+      "name": "cross-stream-2-R-release",
+      "version": "R-release",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 45.20251893861943,
+        "cpuMS": 15.869140625,
+        "p50MS": 13.051,
+        "p95MS": 13.9634,
+        "p99MS": 14.4899,
+        "peakRSSMiB": 63.4765625,
+        "recoveryRSSMiB": 59.734375,
+        "recoveryHeapMiB": 12.531089782714844,
+        "gcCycles": 197,
+        "firstFrameP50MS": 1.0286,
+        "firstFrameP99MS": 2.5908
+      },
+      "runSHA256": "26e838e968f7a5dfbf816c2b5140371dff01cdce5f5830cbab87fd800886b347",
+      "measurementsSHA256": "39bdaf00f68b96ecac522d83f15511523c62c5c06ddefc905970df1cd87b8743"
+    },
+    {
+      "name": "cross-stream-3-C-production",
+      "version": "C-production",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 26.835834737130526,
+        "cpuMS": 33.203125,
+        "p50MS": 26.8008,
+        "p95MS": 35.1489,
+        "p99MS": 35.9819,
+        "peakRSSMiB": 500.609375,
+        "recoveryRSSMiB": 466.6328125,
+        "recoveryHeapMiB": 92.76876068115234,
+        "gcCycles": 31,
+        "firstFrameP50MS": 1.5426,
+        "firstFrameP99MS": 2.5977
+      },
+      "runSHA256": "5ee7f0854485c9b9292a4fb0bdee425d9adbebe3213b4ba3cde25b162c457c5e",
+      "measurementsSHA256": "10cdf63bac47ccb27c4c676ccb38a3ecfcf118cf9d6552129557ba680e43eaaa"
+    },
+    {
+      "name": "cross-stream-3-R-release",
+      "version": "R-release",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 45.339530208081875,
+        "cpuMS": 16.2353515625,
+        "p50MS": 12.9721,
+        "p95MS": 13.9694,
+        "p99MS": 15.5215,
+        "peakRSSMiB": 65.30859375,
+        "recoveryRSSMiB": 60.90625,
+        "recoveryHeapMiB": 8.306060791015625,
+        "gcCycles": 198,
+        "firstFrameP50MS": 1.0367,
+        "firstFrameP99MS": 2.0992
+      },
+      "runSHA256": "1ed05a511cc3a69047d2d01d9d0788a004c47884a2c7c773c70f31083c96c1dd",
+      "measurementsSHA256": "e36436a02fc716f26f285d58bbcf447d8947ce4b2b2ae3d3b8326dea4abc7500"
+    },
+    {
+      "name": "cross-stream-4-C-production",
+      "version": "C-production",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 26.846563812866446,
+        "cpuMS": 34.0576171875,
+        "p50MS": 26.7534,
+        "p95MS": 34.6497,
+        "p99MS": 35.0638,
+        "peakRSSMiB": 520.9609375,
+        "recoveryRSSMiB": 486.3671875,
+        "recoveryHeapMiB": 88.0963134765625,
+        "gcCycles": 35,
+        "firstFrameP50MS": 1.5399,
+        "firstFrameP99MS": 2.6044
+      },
+      "runSHA256": "9bc09973bb74eb80e5a3b3d1c7fb8288a34e6cd853fc5519a6fc7b3e256babd9",
+      "measurementsSHA256": "3ddb1d94e1cda4768ce633b7538bad2c5743b2b25ccc842036504538152e9ec5"
+    },
+    {
+      "name": "cross-stream-4-R-release",
+      "version": "R-release",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 45.02420772255914,
+        "cpuMS": 15.380859375,
+        "p50MS": 12.9363,
+        "p95MS": 14.0418,
+        "p99MS": 14.8983,
+        "peakRSSMiB": 66.66796875,
+        "recoveryRSSMiB": 59.71875,
+        "recoveryHeapMiB": 8.369171142578125,
+        "gcCycles": 198,
+        "firstFrameP50MS": 1.046,
+        "firstFrameP99MS": 2.0992
+      },
+      "runSHA256": "0b5cec356774321dc3847dafbba715d067c1e1d87c9dd938d6b48dc18ac55744",
+      "measurementsSHA256": "c3d852c130d67299bba832467ea56c14a5b39cbdf40525bf2aa5a07089e094c0"
+    },
+    {
+      "name": "cross-stream-5-C-production",
+      "version": "C-production",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 26.687343798247017,
+        "cpuMS": 34.423828125,
+        "p50MS": 26.7714,
+        "p95MS": 35.207,
+        "p99MS": 37.4622,
+        "peakRSSMiB": 521.01953125,
+        "recoveryRSSMiB": 485.96484375,
+        "recoveryHeapMiB": 59.445404052734375,
+        "gcCycles": 31,
+        "firstFrameP50MS": 1.5438,
+        "firstFrameP99MS": 2.6172
+      },
+      "runSHA256": "1d104fb1b86d8690fe79bd750851f3bc8d3ba7496455754f71c923adce0f838f",
+      "measurementsSHA256": "f06aed69abc29fede606cdcdbdcf72c78fcc08e7663198dbdcfaeff93dd83cc3"
+    },
+    {
+      "name": "cross-stream-5-R-release",
+      "version": "R-release",
+      "scenario": "cross-stream",
+      "observations": {
+        "throughput": 45.54930288571203,
+        "cpuMS": 15.7470703125,
+        "p50MS": 12.9556,
+        "p95MS": 13.9131,
+        "p99MS": 14.454,
+        "peakRSSMiB": 64.875,
+        "recoveryRSSMiB": 60.24609375,
+        "recoveryHeapMiB": 8.058174133300781,
+        "gcCycles": 199,
+        "firstFrameP50MS": 1.0503,
+        "firstFrameP99MS": 2.5772
+      },
+      "runSHA256": "f521c8ba8b07980b799bcb6aeff3c2ab547ccda932e2d6b8df2cf671df37b621",
+      "measurementsSHA256": "b4779c7bfb51fb5cb2fa11ef6d7e8d5b2e818af0042ed4ae31ed54346aa02f33"
+    },
+    {
+      "name": "history-1-C-production",
+      "version": "C-production",
+      "scenario": "history",
+      "observations": {
+        "throughput": 97.51405068909865,
+        "cpuMS": 10.7421875,
+        "p50MS": 8.8682,
+        "p95MS": 15.0609,
+        "p99MS": 16.5044,
+        "peakRSSMiB": 530.70703125,
+        "recoveryRSSMiB": 495.73828125,
+        "recoveryHeapMiB": 58.996986389160156,
+        "gcCycles": 43
+      },
+      "runSHA256": "46f2e03fb31880301ad24fb11377d9b025cb804140acb67d982bcb7af3464042",
+      "measurementsSHA256": "d77ae8e3869775dab20ed30b07bb3f2710022ba9bc8b37e30ffa610de415b926"
+    },
+    {
+      "name": "history-1-R-release",
+      "version": "R-release",
+      "scenario": "history",
+      "observations": {
+        "throughput": 119.07818599268414,
+        "cpuMS": 7.080078125,
+        "p50MS": 7.7538,
+        "p95MS": 9.8109,
+        "p99MS": 10.349,
+        "peakRSSMiB": 67.16015625,
+        "recoveryRSSMiB": 66.28515625,
+        "recoveryHeapMiB": 9.940811157226562,
+        "gcCycles": 256
+      },
+      "runSHA256": "2c94aaa9d3946db8f832dd58c23e3b0e52422c7d3ce6328b6a8400d81bd65bac",
+      "measurementsSHA256": "778980a2fb1edf372ead89fbd99a113e2b873f22f25f185a60f35725d5cca347"
+    },
+    {
+      "name": "history-2-C-production",
+      "version": "C-production",
+      "scenario": "history",
+      "observations": {
+        "throughput": 97.99009679928747,
+        "cpuMS": 11.1083984375,
+        "p50MS": 9.7677,
+        "p95MS": 14.4276,
+        "p99MS": 15.0945,
+        "peakRSSMiB": 494.1171875,
+        "recoveryRSSMiB": 460.6796875,
+        "recoveryHeapMiB": 76.78852844238281,
+        "gcCycles": 43
+      },
+      "runSHA256": "4744c62ff77a5afc3450aa86a67b43f4f0ab4f6a75edcceb83b4c8ef84f7a693",
+      "measurementsSHA256": "b5a597366627e14d00c59ad6b47f432d46c7464287f777bae93384e2e0effea0"
+    },
+    {
+      "name": "history-2-R-release",
+      "version": "R-release",
+      "scenario": "history",
+      "observations": {
+        "throughput": 119.36355167740062,
+        "cpuMS": 7.14111328125,
+        "p50MS": 7.7471,
+        "p95MS": 9.7967,
+        "p99MS": 10.3315,
+        "peakRSSMiB": 67.4609375,
+        "recoveryRSSMiB": 66.29296875,
+        "recoveryHeapMiB": 10.033973693847656,
+        "gcCycles": 257
+      },
+      "runSHA256": "121c12fc3db8ea7182486ac2e46ef54be4aa4829de97dbb5762be12e2540f81d",
+      "measurementsSHA256": "a1e33013640353d8550a8477aa0ec5dd13be32f1d30d937362bfcc679a4729d4"
+    },
+    {
+      "name": "history-3-C-production",
+      "version": "C-production",
+      "scenario": "history",
+      "observations": {
+        "throughput": 97.06055888834722,
+        "cpuMS": 11.23046875,
+        "p50MS": 9.7829,
+        "p95MS": 14.9657,
+        "p99MS": 15.4923,
+        "peakRSSMiB": 520.0859375,
+        "recoveryRSSMiB": 484.109375,
+        "recoveryHeapMiB": 58.373992919921875,
+        "gcCycles": 46
+      },
+      "runSHA256": "2786aed4429fcaed48bf933d1d6c2cc3b9b8cab90ee57716d9f77ab370036eea",
+      "measurementsSHA256": "5f5b455b560a5dbe795c34eb38c309eb5486cafed0fa3caca6220083e1873865"
+    },
+    {
+      "name": "history-3-R-release",
+      "version": "R-release",
+      "scenario": "history",
+      "observations": {
+        "throughput": 119.00174825654304,
+        "cpuMS": 7.2021484375,
+        "p50MS": 7.7532,
+        "p95MS": 9.7984,
+        "p99MS": 10.3006,
+        "peakRSSMiB": 68.2734375,
+        "recoveryRSSMiB": 66.734375,
+        "recoveryHeapMiB": 10.319160461425781,
+        "gcCycles": 256
+      },
+      "runSHA256": "3ffe6a0a24cbd28d6cea2abd6048ef057ba9f1ba989e66d0f610cda55744873e",
+      "measurementsSHA256": "1c25deaae85cd6fe7007f771bfe8991dbef9402be7d518f6226ed2a6b7216f39"
+    },
+    {
+      "name": "history-4-C-production",
+      "version": "C-production",
+      "scenario": "history",
+      "observations": {
+        "throughput": 98.52745711986924,
+        "cpuMS": 10.6201171875,
+        "p50MS": 8.8661,
+        "p95MS": 14.968,
+        "p99MS": 15.4958,
+        "peakRSSMiB": 474.88671875,
+        "recoveryRSSMiB": 440.67578125,
+        "recoveryHeapMiB": 85.1267318725586,
+        "gcCycles": 42
+      },
+      "runSHA256": "5ed296a27c04e974c6108a6ba73236abb3b0ef587f7e14fe935ed3b1699e1bcf",
+      "measurementsSHA256": "56419d30938bceb1c853cc3c09d1ef6511110c1d46536527e69f5c4a9bfcfc64"
+    },
+    {
+      "name": "history-4-R-release",
+      "version": "R-release",
+      "scenario": "history",
+      "observations": {
+        "throughput": 118.77093975743077,
+        "cpuMS": 7.01904296875,
+        "p50MS": 7.7708,
+        "p95MS": 9.7914,
+        "p99MS": 10.2857,
+        "peakRSSMiB": 67.69921875,
+        "recoveryRSSMiB": 66.62890625,
+        "recoveryHeapMiB": 10.044281005859375,
+        "gcCycles": 256
+      },
+      "runSHA256": "fc2eb3796b3c33fc2e19a09a1c5ac051faa22deb525cae399039ef01a12cf50f",
+      "measurementsSHA256": "8fb044471d13d2986eccdc9990fc550ba8a9158140121a8a44f7099ad1f7c085"
+    },
+    {
+      "name": "history-5-C-production",
+      "version": "C-production",
+      "scenario": "history",
+      "observations": {
+        "throughput": 98.84055015422408,
+        "cpuMS": 10.68115234375,
+        "p50MS": 10.2326,
+        "p95MS": 12.9124,
+        "p99MS": 16.038,
+        "peakRSSMiB": 480.171875,
+        "recoveryRSSMiB": 446.02734375,
+        "recoveryHeapMiB": 50.56120300292969,
+        "gcCycles": 42
+      },
+      "runSHA256": "ceaba6ab55fc3b2ba8e416e5403d982c8226f39b5de8aa3482a8554950c28a69",
+      "measurementsSHA256": "e66599c9aaae817bab062f5598031b6b6c91ceb6cc52be7d32c0986bd3899a4b"
+    },
+    {
+      "name": "history-5-R-release",
+      "version": "R-release",
+      "scenario": "history",
+      "observations": {
+        "throughput": 116.84036630185088,
+        "cpuMS": 7.32421875,
+        "p50MS": 7.8241,
+        "p95MS": 9.8611,
+        "p99MS": 10.3128,
+        "peakRSSMiB": 69.83984375,
+        "recoveryRSSMiB": 67.64453125,
+        "recoveryHeapMiB": 10.338523864746094,
+        "gcCycles": 260
+      },
+      "runSHA256": "62d8e07bb344ef837039347f4ba7c3771d3ae397f85a551564d73704a9778f92",
+      "measurementsSHA256": "33fea608442e53e2624f90b048d587aca6dafd4a1013e05a221e6cc9ec8ca185"
+    },
+    {
+      "name": "image-1-C-production",
+      "version": "C-production",
+      "scenario": "image",
+      "observations": {
+        "throughput": 33.52427415428536,
+        "cpuMS": 29.541015625,
+        "p50MS": 25.7087,
+        "p95MS": 49.8977,
+        "p99MS": 55.2863,
+        "peakRSSMiB": 534.98046875,
+        "recoveryRSSMiB": 499.74609375,
+        "recoveryHeapMiB": 77.20915985107422,
+        "gcCycles": 42
+      },
+      "runSHA256": "7997c1261417c205fd47613eee918c49d650d3e42d66ad4f0ce82f738a863b02",
+      "measurementsSHA256": "6dfd8b5f8df718980df40a67d2c6f62f83800139f07431559df669a95f6d8cc9"
+    },
+    {
+      "name": "image-1-R-release",
+      "version": "R-release",
+      "scenario": "image",
+      "observations": {
+        "throughput": 37.357432145842715,
+        "cpuMS": 19.53125,
+        "p50MS": 24.7774,
+        "p95MS": 45.7035,
+        "p99MS": 53.4405,
+        "peakRSSMiB": 84.65234375,
+        "recoveryRSSMiB": 74.79296875,
+        "recoveryHeapMiB": 11.795982360839844,
+        "gcCycles": 214
+      },
+      "runSHA256": "d0893275e5f817ddbca3ca5502d00c80ccc2606a64dcc3500b4f0641189c1f73",
+      "measurementsSHA256": "60cb82fbba8d11e645a3792925d78b09ee54b2c4fa1de614d4594db3afca9bb8"
+    },
+    {
+      "name": "image-2-C-production",
+      "version": "C-production",
+      "scenario": "image",
+      "observations": {
+        "throughput": 33.065713740351434,
+        "cpuMS": 29.4189453125,
+        "p50MS": 26.8494,
+        "p95MS": 47.9095,
+        "p99MS": 54.9492,
+        "peakRSSMiB": 488.95703125,
+        "recoveryRSSMiB": 455.125,
+        "recoveryHeapMiB": 93.01985931396484,
+        "gcCycles": 41
+      },
+      "runSHA256": "7e69f865ed74135b91e4a5890cc1287a785e12f064e757f31ff4f0eef4bc17e1",
+      "measurementsSHA256": "a2444f6136a096b389de99fbd77b57d57f3aa97b9e3f3a3bc7c51d2af6264f09"
+    },
+    {
+      "name": "image-2-R-release",
+      "version": "R-release",
+      "scenario": "image",
+      "observations": {
+        "throughput": 42.415175778760855,
+        "cpuMS": 18.06640625,
+        "p50MS": 18.7378,
+        "p95MS": 40.715,
+        "p99MS": 50.0329,
+        "peakRSSMiB": 87.12109375,
+        "recoveryRSSMiB": 77.5,
+        "recoveryHeapMiB": 18.83538818359375,
+        "gcCycles": 211
+      },
+      "runSHA256": "1f7a9a937e8b5fdddc3f279a0d9f7fa5b006b637a77d61cf806be3d7f9805142",
+      "measurementsSHA256": "100241bb94e210dad89bad9df858fb13fc871415ce44b9eca40d95afea7bc710"
+    },
+    {
+      "name": "image-3-C-production",
+      "version": "C-production",
+      "scenario": "image",
+      "observations": {
+        "throughput": 35.141182445881206,
+        "cpuMS": 28.1982421875,
+        "p50MS": 26.2432,
+        "p95MS": 46.1642,
+        "p99MS": 60.7227,
+        "peakRSSMiB": 502.7734375,
+        "recoveryRSSMiB": 469.0625,
+        "recoveryHeapMiB": 93.01139068603516,
+        "gcCycles": 42
+      },
+      "runSHA256": "2f604e4905a7e47a7968d27e53da940475db1c58ab25d44b8c472e4472ca4a36",
+      "measurementsSHA256": "78022df19a079f6fb81a5a8755896627a944167ea2251c0f7f5475282a07e78b"
+    },
+    {
+      "name": "image-3-R-release",
+      "version": "R-release",
+      "scenario": "image",
+      "observations": {
+        "throughput": 41.02865373864472,
+        "cpuMS": 21.3623046875,
+        "p50MS": 21.1354,
+        "p95MS": 44.133,
+        "p99MS": 46.8099,
+        "peakRSSMiB": 87.6171875,
+        "recoveryRSSMiB": 71.62890625,
+        "recoveryHeapMiB": 18.82799530029297,
+        "gcCycles": 219
+      },
+      "runSHA256": "73a072be6657b526c91535e442345156e96c4a473b98aa3802cf20c90f13b496",
+      "measurementsSHA256": "1bc0b54f22f363fd5b68b6ce6a2a51b202325bf6b7f839316832e2adbcb23893"
+    },
+    {
+      "name": "image-4-C-production",
+      "version": "C-production",
+      "scenario": "image",
+      "observations": {
+        "throughput": 36.14583919879585,
+        "cpuMS": 28.9306640625,
+        "p50MS": 23.1874,
+        "p95MS": 46.0531,
+        "p99MS": 68.8707,
+        "peakRSSMiB": 477.9921875,
+        "recoveryRSSMiB": 442.75,
+        "recoveryHeapMiB": 92.87661743164062,
+        "gcCycles": 43
+      },
+      "runSHA256": "5afff9af73525262853f08b73e0abcefcc788ee6c43842bf1f62735286e98f78",
+      "measurementsSHA256": "3f19010a71d35739a54bd00c6952d497e4d5bba57f3f1477d2c727a227e04411"
+    },
+    {
+      "name": "image-4-R-release",
+      "version": "R-release",
+      "scenario": "image",
+      "observations": {
+        "throughput": 38.18996853952162,
+        "cpuMS": 19.53125,
+        "p50MS": 21.1019,
+        "p95MS": 45.2854,
+        "p99MS": 47.4727,
+        "peakRSSMiB": 82.0078125,
+        "recoveryRSSMiB": 76.01171875,
+        "recoveryHeapMiB": 18.261062622070312,
+        "gcCycles": 216
+      },
+      "runSHA256": "cfe476c09d861b5652306d071f60cb421323cf7ceea3ef0e2c2b755dfb3ccd00",
+      "measurementsSHA256": "719e189da95cb618f6549f2958962ddca3805dcd29d3992de0bc71125a77c045"
+    },
+    {
+      "name": "image-5-C-production",
+      "version": "C-production",
+      "scenario": "image",
+      "observations": {
+        "throughput": 36.179237368810696,
+        "cpuMS": 28.4423828125,
+        "p50MS": 25.6534,
+        "p95MS": 45.6772,
+        "p99MS": 47.933,
+        "peakRSSMiB": 507.69921875,
+        "recoveryRSSMiB": 480.76953125,
+        "recoveryHeapMiB": 107.86161804199219,
+        "gcCycles": 34
+      },
+      "runSHA256": "3a84796b9c8d5ead4e405a5eb4b6c75e9b19ee88318e122330945a317e981a51",
+      "measurementsSHA256": "381ce5ba0fd8289c67987db2d8cfff5bad4cc422c9563f71b54da1f931ba520f"
+    },
+    {
+      "name": "image-5-R-release",
+      "version": "R-release",
+      "scenario": "image",
+      "observations": {
+        "throughput": 36.721331341048106,
+        "cpuMS": 19.1650390625,
+        "p50MS": 23.6378,
+        "p95MS": 46.3286,
+        "p99MS": 59.4423,
+        "peakRSSMiB": 84.1796875,
+        "recoveryRSSMiB": 70.7890625,
+        "recoveryHeapMiB": 18.419227600097656,
+        "gcCycles": 213
+      },
+      "runSHA256": "019b7e34d5b680f8031abd0f8db7b2f5f6efe255de379b0b0f75241fc5590713",
+      "measurementsSHA256": "bbcf3c95256e9892779e409e6148cbf37df627cd49ce0634a301adbd680ae2a7"
+    },
+    {
+      "name": "short-1-C-production",
+      "version": "C-production",
+      "scenario": "short",
+      "observations": {
+        "throughput": 978.4698647167469,
+        "cpuMS": 0.919342041015625,
+        "p50MS": 1.0278,
+        "p95MS": 1.0942,
+        "p99MS": 2.0879,
+        "peakRSSMiB": 500.62109375,
+        "recoveryRSSMiB": 488.00390625,
+        "recoveryHeapMiB": 77.0985107421875,
+        "gcCycles": 19
+      },
+      "runSHA256": "f42859ff2840d55e8d59bc1852ada1f2dcd4aebe3d5773456b1b7382eb168083",
+      "measurementsSHA256": "e28c1e0e43a23e098da8eece1427d59b72947ae39af9e98c45f4b75b7c9066b8"
+    },
+    {
+      "name": "short-1-R-release",
+      "version": "R-release",
+      "scenario": "short",
+      "observations": {
+        "throughput": 1377.66976912562,
+        "cpuMS": 0.640869140625,
+        "p50MS": 0.516,
+        "p95MS": 1.0402,
+        "p99MS": 1.0817,
+        "peakRSSMiB": 77.54296875,
+        "recoveryRSSMiB": 77.54296875,
+        "recoveryHeapMiB": 9.350051879882812,
+        "gcCycles": 105
+      },
+      "runSHA256": "ae2304c8cf01c3bf5d7128dcd877bee5619a6b98b4c42d630c4326875d00f321",
+      "measurementsSHA256": "d4654e6d493c75b7c1a1ac5063a58e9524e9a429492f005f5025c77882408cc1"
+    },
+    {
+      "name": "short-2-C-production",
+      "version": "C-production",
+      "scenario": "short",
+      "observations": {
+        "throughput": 968.708973690919,
+        "cpuMS": 0.965118408203125,
+        "p50MS": 1.0273,
+        "p95MS": 1.1141,
+        "p99MS": 2.1082,
+        "peakRSSMiB": 536.55859375,
+        "recoveryRSSMiB": 523.43359375,
+        "recoveryHeapMiB": 75.47531127929688,
+        "gcCycles": 18
+      },
+      "runSHA256": "703b53bb5a832385c08b36d66603f6f07cdc7c5844c32b7e3473a665d2b257f1",
+      "measurementsSHA256": "34c249eda9093b8e9750d543b1c8e55fa227768601b192b07b8c3b8f89549e47"
+    },
+    {
+      "name": "short-2-R-release",
+      "version": "R-release",
+      "scenario": "short",
+      "observations": {
+        "throughput": 1385.9593654038556,
+        "cpuMS": 0.583648681640625,
+        "p50MS": 0.5161,
+        "p95MS": 1.0385,
+        "p99MS": 1.0869,
+        "peakRSSMiB": 90.3203125,
+        "recoveryRSSMiB": 90.47265625,
+        "recoveryHeapMiB": 11.404289245605469,
+        "gcCycles": 93
+      },
+      "runSHA256": "204bdcd0a061faed6d7a6e582a4ccc771299c414c51d6c7b2024ba7a02d6d638",
+      "measurementsSHA256": "2db2220a4a9132bf323489103e460790093feeb8c2c238b1b1fe8cc21d3ad0de"
+    },
+    {
+      "name": "short-3-C-production",
+      "version": "C-production",
+      "scenario": "short",
+      "observations": {
+        "throughput": 985.5933016615236,
+        "cpuMS": 1.007080078125,
+        "p50MS": 1.0278,
+        "p95MS": 1.0877,
+        "p99MS": 2.0683,
+        "peakRSSMiB": 446.07421875,
+        "recoveryRSSMiB": 440.80859375,
+        "recoveryHeapMiB": 62.41172790527344,
+        "gcCycles": 21
+      },
+      "runSHA256": "e4a79748eebfa65fa87cba4193d7f625038389514af7da6dd2d748f5324cbd3e",
+      "measurementsSHA256": "350e184937c610b82d9db2fc1a7bc8a5600b1dbf5533318f76647def08a7135f"
+    },
+    {
+      "name": "short-3-R-release",
+      "version": "R-release",
+      "scenario": "short",
+      "observations": {
+        "throughput": 1382.0114474815407,
+        "cpuMS": 0.64849853515625,
+        "p50MS": 0.5162,
+        "p95MS": 1.0395,
+        "p99MS": 1.0964,
+        "peakRSSMiB": 89.4921875,
+        "recoveryRSSMiB": 89.64453125,
+        "recoveryHeapMiB": 8.756431579589844,
+        "gcCycles": 96
+      },
+      "runSHA256": "3da26e221d22af006fc60bd065bbbac6e2b588b2441b92fdf42b4577397c8016",
+      "measurementsSHA256": "f1a681d38e05281345b71c0b1fc389f27281d5fc6ff1570f3ccd2dcf27ced8a9"
+    },
+    {
+      "name": "short-4-C-production",
+      "version": "C-production",
+      "scenario": "short",
+      "observations": {
+        "throughput": 980.4773929106121,
+        "cpuMS": 0.949859619140625,
+        "p50MS": 1.0274,
+        "p95MS": 1.0877,
+        "p99MS": 2.0737,
+        "peakRSSMiB": 485.00390625,
+        "recoveryRSSMiB": 479.6484375,
+        "recoveryHeapMiB": 73.42655181884766,
+        "gcCycles": 18
+      },
+      "runSHA256": "3d8cda4742d09061bb251d1863f1964eb544fc3cad08000e0c057822defab53b",
+      "measurementsSHA256": "fa684b893f01f27b41a44841f8af138ac9079561e665a1bd3e568d769ce76580"
+    },
+    {
+      "name": "short-4-R-release",
+      "version": "R-release",
+      "scenario": "short",
+      "observations": {
+        "throughput": 1390.8255429049816,
+        "cpuMS": 0.640869140625,
+        "p50MS": 0.5155,
+        "p95MS": 1.0379,
+        "p99MS": 1.0804,
+        "peakRSSMiB": 88.5625,
+        "recoveryRSSMiB": 88.80078125,
+        "recoveryHeapMiB": 6.461883544921875,
+        "gcCycles": 103
+      },
+      "runSHA256": "62201e7a5c4e5382b743de67aeb4e00a358aa782a3bd963ee917e752ea114d3b",
+      "measurementsSHA256": "c61e34e7b9a6d4c7da946f0c72ddf4e646dfcb367a457eb374a1f9d1d89a8bbd"
+    },
+    {
+      "name": "short-5-C-production",
+      "version": "C-production",
+      "scenario": "short",
+      "observations": {
+        "throughput": 962.9105475848481,
+        "cpuMS": 0.980377197265625,
+        "p50MS": 1.0279,
+        "p95MS": 1.5055,
+        "p99MS": 2.1254,
+        "peakRSSMiB": 474.23828125,
+        "recoveryRSSMiB": 468.52734375,
+        "recoveryHeapMiB": 82.6551284790039,
+        "gcCycles": 17
+      },
+      "runSHA256": "5ddfa784152afa8166236c4fb0231c59648ab006c5546d5ccda07522039806a8",
+      "measurementsSHA256": "54655ea11721ff33e19ccf1db95e60b258b7f28aa0b57b54f3e6ae1bbc89f72b"
+    },
+    {
+      "name": "short-5-R-release",
+      "version": "R-release",
+      "scenario": "short",
+      "observations": {
+        "throughput": 1387.7719402813545,
+        "cpuMS": 0.63323974609375,
+        "p50MS": 0.516,
+        "p95MS": 1.0402,
+        "p99MS": 1.0909,
+        "peakRSSMiB": 89.49609375,
+        "recoveryRSSMiB": 89.6484375,
+        "recoveryHeapMiB": 9.005386352539062,
+        "gcCycles": 97
+      },
+      "runSHA256": "f0c9881439147949d25cbd9cefd0358c8e94e02ae253cdb240fb0deb551a4510",
+      "measurementsSHA256": "25f4427ce5dccc46ad753fec98e9b8a77fc7be1216261c0ee2dfab05ca6330c7"
+    },
+    {
+      "name": "stream-1-C-production",
+      "version": "C-production",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 27.47124860194416,
+        "cpuMS": 34.0576171875,
+        "p50MS": 25.9984,
+        "p95MS": 34.1275,
+        "p99MS": 35.0719,
+        "peakRSSMiB": 465.51171875,
+        "recoveryRSSMiB": 429.75390625,
+        "recoveryHeapMiB": 84.60943603515625,
+        "gcCycles": 38,
+        "firstFrameP50MS": 1.5454,
+        "firstFrameP99MS": 3.1076
+      },
+      "runSHA256": "f038130721cebd3d466c83b411563cf450430438353a046f77b8589aa5f9c67f",
+      "measurementsSHA256": "b4539e0cdf13af4e14fcabab3c3fa4c9d43112bc3ad520873e67bb88c8188a60"
+    },
+    {
+      "name": "stream-1-R-release",
+      "version": "R-release",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 52.30315513471311,
+        "cpuMS": 13.671875,
+        "p50MS": 10.2964,
+        "p95MS": 10.8463,
+        "p99MS": 11.4756,
+        "peakRSSMiB": 66.51171875,
+        "recoveryRSSMiB": 59.1015625,
+        "recoveryHeapMiB": 9.720687866210938,
+        "gcCycles": 148,
+        "firstFrameP50MS": 1.0257,
+        "firstFrameP99MS": 1.609
+      },
+      "runSHA256": "1fd6c6ed21ecefa8a4573a486f74b2ff86a484521e0ef5a55fdf810360f17b89",
+      "measurementsSHA256": "f2fdf6482b4cdc6515b29296efb6763caf154da3b6101bf18f65814513cc758f"
+    },
+    {
+      "name": "stream-2-C-production",
+      "version": "C-production",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 27.527022611427558,
+        "cpuMS": 34.1796875,
+        "p50MS": 25.9251,
+        "p95MS": 33.6912,
+        "p99MS": 35.3801,
+        "peakRSSMiB": 523.2109375,
+        "recoveryRSSMiB": 487.56640625,
+        "recoveryHeapMiB": 82.95047760009766,
+        "gcCycles": 38,
+        "firstFrameP50MS": 1.5441,
+        "firstFrameP99MS": 2.6523
+      },
+      "runSHA256": "b98749cc5dc75c364b651a1b57ef526abbd4111684f164ed3ea3f09ab5770dd4",
+      "measurementsSHA256": "fa2d270a112d7b86bb6f21cf68116ef244a673c3b257d6f00fdfcc822a8da5b1"
+    },
+    {
+      "name": "stream-2-R-release",
+      "version": "R-release",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 52.453012243311655,
+        "cpuMS": 12.5732421875,
+        "p50MS": 10.2777,
+        "p95MS": 10.9104,
+        "p99MS": 11.3414,
+        "peakRSSMiB": 67.953125,
+        "recoveryRSSMiB": 61,
+        "recoveryHeapMiB": 11.662528991699219,
+        "gcCycles": 146,
+        "firstFrameP50MS": 1.0269,
+        "firstFrameP99MS": 2.0833
+      },
+      "runSHA256": "1eddec40ebbec5acc4ec37822341c25673da82eb34746f319d4b85b343e15963",
+      "measurementsSHA256": "b787d0a597869bfbc39c443499eeedd202030a8d0aafc8ff9b82ab1e793d8cbb"
+    },
+    {
+      "name": "stream-3-C-production",
+      "version": "C-production",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 27.74138406793241,
+        "cpuMS": 33.8134765625,
+        "p50MS": 25.7984,
+        "p95MS": 33.7579,
+        "p99MS": 34.2888,
+        "peakRSSMiB": 473.1328125,
+        "recoveryRSSMiB": 436.453125,
+        "recoveryHeapMiB": 52.08106994628906,
+        "gcCycles": 38,
+        "firstFrameP50MS": 1.5451,
+        "firstFrameP99MS": 3.1715
+      },
+      "runSHA256": "ede215e1962e37f21ea611cb5ad68a4e492a9676d2a471f03e601887bb33cd02",
+      "measurementsSHA256": "6c1eacd336e1bb4bda6338b4d482e492124b41d1ffdcdb08399fb2cc64c4d043"
+    },
+    {
+      "name": "stream-3-R-release",
+      "version": "R-release",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 52.53812502924485,
+        "cpuMS": 12.3291015625,
+        "p50MS": 9.8589,
+        "p95MS": 10.8407,
+        "p99MS": 10.8986,
+        "peakRSSMiB": 64.01953125,
+        "recoveryRSSMiB": 59.1328125,
+        "recoveryHeapMiB": 10.483055114746094,
+        "gcCycles": 146,
+        "firstFrameP50MS": 1.0265,
+        "firstFrameP99MS": 1.5981
+      },
+      "runSHA256": "9ee0ea9df3eadc6096db2d1414c03249f010f8be91fdf8701c01ac5df62e6704",
+      "measurementsSHA256": "f6bd1302a11e90aea2863143f582dde4c2d59b6bfe09e0f96a5854d16a2f8cf7"
+    },
+    {
+      "name": "stream-4-C-production",
+      "version": "C-production",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 27.362088979204685,
+        "cpuMS": 33.0810546875,
+        "p50MS": 25.839,
+        "p95MS": 34.3893,
+        "p99MS": 35.0399,
+        "peakRSSMiB": 474.0546875,
+        "recoveryRSSMiB": 438.20703125,
+        "recoveryHeapMiB": 86.35893249511719,
+        "gcCycles": 35,
+        "firstFrameP50MS": 1.5434,
+        "firstFrameP99MS": 3.168
+      },
+      "runSHA256": "2c9197a669dbf0fe1b26fa3c069336f6f8c3a09b137f738fe9e5754b1edd3cc0",
+      "measurementsSHA256": "df4b10d3a002542f499747ec7913129495e3b19af885c0a1e81e9615d9fecfd8"
+    },
+    {
+      "name": "stream-4-R-release",
+      "version": "R-release",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 53.129107258743524,
+        "cpuMS": 12.939453125,
+        "p50MS": 9.8084,
+        "p95MS": 10.7849,
+        "p99MS": 10.9268,
+        "peakRSSMiB": 63.8671875,
+        "recoveryRSSMiB": 58.703125,
+        "recoveryHeapMiB": 8.895378112792969,
+        "gcCycles": 143,
+        "firstFrameP50MS": 1.0254,
+        "firstFrameP99MS": 2.055
+      },
+      "runSHA256": "1e622dbb84ed85edef007569d0833b50ae12449390b7d401042bbb72693d6eb9",
+      "measurementsSHA256": "da6490e1aefb8e1bfc575a4637308fd6d4ddb4db4b4fac71284d3126e73978a1"
+    },
+    {
+      "name": "stream-5-C-production",
+      "version": "C-production",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 27.53402872530569,
+        "cpuMS": 33.5693359375,
+        "p50MS": 26.1007,
+        "p95MS": 33.9494,
+        "p99MS": 34.9132,
+        "peakRSSMiB": 471.33984375,
+        "recoveryRSSMiB": 435.6796875,
+        "recoveryHeapMiB": 88.36512756347656,
+        "gcCycles": 35,
+        "firstFrameP50MS": 1.5454,
+        "firstFrameP99MS": 3.5256
+      },
+      "runSHA256": "1664d2ab57755ec0e37f5ace7169e56137debf3a7ad4aca2df9c58a15a994d6b",
+      "measurementsSHA256": "917fee2029d92f7b9930e21cdf89b7a7320afbc1b837ddb0e959fdb55a416317"
+    },
+    {
+      "name": "stream-5-R-release",
+      "version": "R-release",
+      "scenario": "stream",
+      "observations": {
+        "throughput": 52.02290243250963,
+        "cpuMS": 12.5732421875,
+        "p50MS": 10.3082,
+        "p95MS": 10.9476,
+        "p99MS": 11.4282,
+        "peakRSSMiB": 67.421875,
+        "recoveryRSSMiB": 59.17578125,
+        "recoveryHeapMiB": 10.476783752441406,
+        "gcCycles": 143,
+        "firstFrameP50MS": 1.0277,
+        "firstFrameP99MS": 2.0586
+      },
+      "runSHA256": "034b4625f52137f0cb6cc8b6c753d393fad74ae71abe0fd1c6473018c8d9f17f",
+      "measurementsSHA256": "4b68e9a876ca932668c8865b85bbafcc1b00986a6442d423f27aed07d8a3c3ee"
+    },
+    {
+      "name": "tools-1-C-production",
+      "version": "C-production",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 338.3977665483035,
+        "cpuMS": 2.899169921875,
+        "p50MS": 2.5787,
+        "p95MS": 4.1093,
+        "p99MS": 6.2467,
+        "peakRSSMiB": 501.390625,
+        "recoveryRSSMiB": 487.07421875,
+        "recoveryHeapMiB": 97.54969787597656,
+        "gcCycles": 22
+      },
+      "runSHA256": "842a467295c3eadccdf27c16643f8f91181e6235408d1f58199802bb1ec4fd81",
+      "measurementsSHA256": "7f8cec8fdd8df8fc44c38cfe3adf6a52f3dfd0c98474b540794504bfa2f9461d"
+    },
+    {
+      "name": "tools-1-R-release",
+      "version": "R-release",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 401.7843777837252,
+        "cpuMS": 2.227783203125,
+        "p50MS": 2.5634,
+        "p95MS": 3.0897,
+        "p99MS": 3.1494,
+        "peakRSSMiB": 73.55078125,
+        "recoveryRSSMiB": 65.078125,
+        "recoveryHeapMiB": 11.878524780273438,
+        "gcCycles": 90
+      },
+      "runSHA256": "1c88c96c80d6a39e6c08c6c15e0e67d584761c97920bd04caa34da0800b97c30",
+      "measurementsSHA256": "a2f147f351af0aef154e3d49acf645fb92652f0562a945195a9161a120c16da2"
+    },
+    {
+      "name": "tools-2-C-production",
+      "version": "C-production",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 341.26414771511986,
+        "cpuMS": 2.777099609375,
+        "p50MS": 2.5748,
+        "p95MS": 4.1103,
+        "p99MS": 6.7101,
+        "peakRSSMiB": 525.7578125,
+        "recoveryRSSMiB": 506.08984375,
+        "recoveryHeapMiB": 58.45063781738281,
+        "gcCycles": 23
+      },
+      "runSHA256": "801ebf7acdaa7fa08fa8e8ab6fd60cff3e6ed65f71cd1092110b995558f3f69e",
+      "measurementsSHA256": "925226e1de98ea2626ea2e582587af8e85c06b342c5ba226306f567ef1fe1282"
+    },
+    {
+      "name": "tools-2-R-release",
+      "version": "R-release",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 399.94438273427596,
+        "cpuMS": 2.1514892578125,
+        "p50MS": 2.5637,
+        "p95MS": 3.0874,
+        "p99MS": 3.5984,
+        "peakRSSMiB": 67.97265625,
+        "recoveryRSSMiB": 65.41015625,
+        "recoveryHeapMiB": 9.467231750488281,
+        "gcCycles": 90
+      },
+      "runSHA256": "f9623fc132dd30719cdeeb5d7e435ab2cb6a0ac36709c5ff4b4ea8aeb6a2b069",
+      "measurementsSHA256": "dca7282acd56845f0166a1d7b4aca4a7c6ae5ead0a131bef9bdb163b05912206"
+    },
+    {
+      "name": "tools-3-C-production",
+      "version": "C-production",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 338.9049214157594,
+        "cpuMS": 2.8228759765625,
+        "p50MS": 2.5767,
+        "p95MS": 4.1179,
+        "p99MS": 6.2848,
+        "peakRSSMiB": 526.1953125,
+        "recoveryRSSMiB": 512.9609375,
+        "recoveryHeapMiB": 94.70896911621094,
+        "gcCycles": 21
+      },
+      "runSHA256": "0d2b5db0f1af5ea99dee3d502e4d2352e1431fbf1cf1a1205597a9762300f3c8",
+      "measurementsSHA256": "6141768155634f47aab74c2a9f7811161dc332c67a9eb78b9f08a3a1cdba88a2"
+    },
+    {
+      "name": "tools-3-R-release",
+      "version": "R-release",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 400.7507815422956,
+        "cpuMS": 2.1209716796875,
+        "p50MS": 2.5627,
+        "p95MS": 3.0837,
+        "p99MS": 3.1248,
+        "peakRSSMiB": 71.98828125,
+        "recoveryRSSMiB": 64.99609375,
+        "recoveryHeapMiB": 9.155570983886719,
+        "gcCycles": 98
+      },
+      "runSHA256": "7f388d2f56833a0d7015d1aa37f22526a6022dfde03bf8f4f068ad23d9d002af",
+      "measurementsSHA256": "8f12cee8ae30cf2424cc61e891ef5c6296dc3c545519a3313c0f4137ac945f37"
+    },
+    {
+      "name": "tools-4-C-production",
+      "version": "C-production",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 341.3150502238097,
+        "cpuMS": 2.9296875,
+        "p50MS": 2.5742,
+        "p95MS": 4.1417,
+        "p99MS": 6.7575,
+        "peakRSSMiB": 487.4609375,
+        "recoveryRSSMiB": 468.9296875,
+        "recoveryHeapMiB": 54.432411193847656,
+        "gcCycles": 25
+      },
+      "runSHA256": "ae49408f8d796f9f0828d7f0c367c0caa1c60dda97955bf84f78280cd1a268d5",
+      "measurementsSHA256": "f20c0f95146eb099ff033781bb6d44aabdaa53da1cf0175a6b3f157ca1d18ce1"
+    },
+    {
+      "name": "tools-4-R-release",
+      "version": "R-release",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 401.2871441902694,
+        "cpuMS": 1.9989013671875,
+        "p50MS": 2.5625,
+        "p95MS": 3.0879,
+        "p99MS": 3.1248,
+        "peakRSSMiB": 71.40625,
+        "recoveryRSSMiB": 65.57421875,
+        "recoveryHeapMiB": 11.959037780761719,
+        "gcCycles": 83
+      },
+      "runSHA256": "fa6c1b963975f4b58e78708310f51697e1665721b249242d929c1752308e3c8b",
+      "measurementsSHA256": "143990669f4a96e1b92ca5cd3c97a002c245f3b6bee13211e96eb7b9b6661641"
+    },
+    {
+      "name": "tools-5-C-production",
+      "version": "C-production",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 339.7159231753672,
+        "cpuMS": 2.8839111328125,
+        "p50MS": 2.5802,
+        "p95MS": 4.115,
+        "p99MS": 6.2375,
+        "peakRSSMiB": 512.265625,
+        "recoveryRSSMiB": 494.51171875,
+        "recoveryHeapMiB": 98.92317199707031,
+        "gcCycles": 21
+      },
+      "runSHA256": "86da202e740b56c19b15fda020e9c2b18899d288d387b70947f7faa290fba928",
+      "measurementsSHA256": "a3169cb188a295c6aa241c747ea2157461d9ce5c9f1ee8ed123d3626cbfde785"
+    },
+    {
+      "name": "tools-5-R-release",
+      "version": "R-release",
+      "scenario": "tools",
+      "observations": {
+        "throughput": 402.1250897271059,
+        "cpuMS": 2.0751953125,
+        "p50MS": 2.5617,
+        "p95MS": 3.0832,
+        "p99MS": 3.148,
+        "peakRSSMiB": 70.2578125,
+        "recoveryRSSMiB": 65.0078125,
+        "recoveryHeapMiB": 9.944259643554688,
+        "gcCycles": 92
+      },
+      "runSHA256": "a52b68f1e533b37fca94bca3af1d2b1169d63da8617f70405421244796456e07",
+      "measurementsSHA256": "28fef21a70fb98e61504ab0180a2bba2ce118c189c7e918bcaf32c8397ac8909"
+    }
+  ],
+  "comparisons": {
+    "burst": {
+      "throughput": {
+        "beforeMedian": 3840.4445314545155,
+        "afterMedian": 2398.3908764648936,
+        "ratio": 0.6245086621669123,
+        "interval95": [
+          0.6090660651443012,
+          0.6328647317554387
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 0.499725341796875,
+        "afterMedian": 0.823974609375,
+        "ratio": 1.6488549618320612,
+        "interval95": [
+          1.5970149253731343,
+          1.6641221374045803
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 1.0293,
+        "afterMedian": 1.5078,
+        "ratio": 1.4648790440104924,
+        "interval95": [
+          1.4627938605012627,
+          1.4958709802778587
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 2.0563,
+        "afterMedian": 3.4643,
+        "ratio": 1.6847249914895688,
+        "interval95": [
+          1.6256869133881247,
+          1.7691484705539078
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 2.6426,
+        "afterMedian": 4.7838,
+        "ratio": 1.8102626201468253,
+        "interval95": [
+          1.7475706875136992,
+          1.9608340270945284
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 93.515625,
+        "afterMedian": 511.265625,
+        "ratio": 5.467167919799499,
+        "interval95": [
+          5.221597021100538,
+          5.858596432459593
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 93.38671875,
+        "afterMedian": 508.58984375,
+        "ratio": 5.446061822897059,
+        "interval95": [
+          5.230392771991467,
+          6.1414622641509435
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 8.498519897460938,
+        "afterMedian": 85.99181365966797,
+        "ratio": 10.118445882012859,
+        "interval95": [
+          6.869350796093353,
+          15.061477067598814
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 75,
+        "afterMedian": 13,
+        "ratio": 0.17333333333333334,
+        "interval95": [
+          0.15384615384615385,
+          0.2
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      }
+    },
+    "cross-json": {
+      "throughput": {
+        "beforeMedian": 1217.5011027658913,
+        "afterMedian": 1038.7378199368277,
+        "ratio": 0.8531719746101639,
+        "interval95": [
+          0.8345109153468521,
+          0.8836441194962366
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 0.732421875,
+        "afterMedian": 0.946044921875,
+        "ratio": 1.2916666666666667,
+        "interval95": [
+          0.96,
+          1.4166666666666667
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "inconclusive"
+      },
+      "p50MS": {
+        "beforeMedian": 0.52,
+        "afterMedian": 1.0267,
+        "ratio": 1.9744230769230768,
+        "interval95": [
+          1.897781885397412,
+          1.978989976869699
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 1.0532,
+        "afterMedian": 1.0851,
+        "ratio": 1.0302886441321686,
+        "interval95": [
+          1.0066464109380935,
+          1.0361754652487656
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": false,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 1.5052,
+        "afterMedian": 2.076,
+        "ratio": 1.3792187084772787,
+        "interval95": [
+          1.032939795186224,
+          1.888130968622101
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 71.44140625,
+        "afterMedian": 496.8828125,
+        "ratio": 6.955109628738586,
+        "interval95": [
+          6.699425922999947,
+          7.495981190879764
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 67.79296875,
+        "afterMedian": 496.48046875,
+        "ratio": 7.323480265053298,
+        "interval95": [
+          7.012504841476235,
+          7.899913569576491
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 9.313385009765625,
+        "afterMedian": 89.55859375,
+        "ratio": 9.616116337517735,
+        "interval95": [
+          5.942033162334044,
+          14.823128733440155
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 11,
+        "afterMedian": 2,
+        "ratio": 0.18181818181818182,
+        "interval95": [
+          0.07692307692307693,
+          0.2727272727272727
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      }
+    },
+    "cross-stream": {
+      "throughput": {
+        "beforeMedian": 45.339530208081875,
+        "afterMedian": 26.835834737130526,
+        "ratio": 0.5918860344156582,
+        "interval95": [
+          0.5886109466897373,
+          0.5981188835495245
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 15.869140625,
+        "afterMedian": 34.0576171875,
+        "ratio": 2.146153846153846,
+        "interval95": [
+          2.0763358778625953,
+          2.2142857142857144
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 12.9556,
+        "afterMedian": 26.7714,
+        "ratio": 2.066395998641514,
+        "interval95": [
+          2.0512910888054554,
+          2.0715973680958855
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 13.9694,
+        "afterMedian": 35.1489,
+        "ratio": 2.5161352670837687,
+        "interval95": [
+          2.4449296319097455,
+          2.5654501982905495
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 14.4899,
+        "afterMedian": 35.9819,
+        "ratio": 2.4832400499658385,
+        "interval95": [
+          2.3181973391746933,
+          2.8333666899012413
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 65.30859375,
+        "afterMedian": 514.5625,
+        "ratio": 7.878940127998086,
+        "interval95": [
+          7.504658112146247,
+          8.106338461538462
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 60.24609375,
+        "afterMedian": 479.3125,
+        "ratio": 7.955910004538676,
+        "interval95": [
+          7.64257311441765,
+          8.137558869701726
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 8.306060791015625,
+        "afterMedian": 87.41808319091797,
+        "ratio": 10.524613940398202,
+        "interval95": [
+          6.976095830986773,
+          11.512379745900638
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 198,
+        "afterMedian": 32,
+        "ratio": 0.16161616161616163,
+        "interval95": [
+          0.15577889447236182,
+          0.17676767676767677
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      },
+      "firstFrameP50MS": {
+        "beforeMedian": 1.0367,
+        "afterMedian": 1.5426,
+        "ratio": 1.4879907398475933,
+        "interval95": [
+          1.4687232219365896,
+          1.5008749756951196
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "firstFrameP99MS": {
+        "beforeMedian": 2.1183,
+        "afterMedian": 2.6172,
+        "ratio": 1.2355190482934428,
+        "interval95": [
+          1.0079543690827255,
+          1.561204739649719
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      }
+    },
+    "history": {
+      "throughput": {
+        "beforeMedian": 119.00174825654304,
+        "afterMedian": 97.99009679928747,
+        "ratio": 0.823434094329784,
+        "interval95": [
+          0.8156229661357984,
+          0.8386664634903255
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 7.14111328125,
+        "afterMedian": 10.7421875,
+        "ratio": 1.5042735042735043,
+        "interval95": [
+          1.4666666666666666,
+          1.5826086956521739
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 7.7538,
+        "afterMedian": 9.7677,
+        "ratio": 1.2597307126828134,
+        "interval95": [
+          1.1409507386626858,
+          1.3196884108437152
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 9.7984,
+        "afterMedian": 14.9657,
+        "ratio": 1.527361610058785,
+        "interval95": [
+          1.3178069888961461,
+          1.5370774820378836
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 10.3128,
+        "afterMedian": 15.4958,
+        "ratio": 1.5025793189046621,
+        "interval95": [
+          1.463666511519665,
+          1.6003801101543713
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 67.69921875,
+        "afterMedian": 494.1171875,
+        "ratio": 7.298713288327275,
+        "interval95": [
+          6.955658542167296,
+          7.839189890946858
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 66.62890625,
+        "afterMedian": 460.6796875,
+        "ratio": 6.914111508471596,
+        "interval95": [
+          6.603430110044486,
+          7.440288444626839
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 10.044281005859375,
+        "afterMedian": 58.996986389160156,
+        "ratio": 5.873689351656331,
+        "interval95": [
+          5.033829994743734,
+          8.475144395392716
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 256,
+        "afterMedian": 43,
+        "ratio": 0.16796875,
+        "interval95": [
+          0.16342412451361868,
+          0.1796875
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      }
+    },
+    "image": {
+      "throughput": {
+        "beforeMedian": 38.18996853952162,
+        "afterMedian": 35.141182445881206,
+        "ratio": 0.9201678815083254,
+        "interval95": [
+          0.8059175899599887,
+          0.968461569509586
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 19.53125,
+        "afterMedian": 28.9306640625,
+        "ratio": 1.48125,
+        "interval95": [
+          1.3542857142857143,
+          1.6013513513513513
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 21.1354,
+        "afterMedian": 25.7087,
+        "ratio": 1.2163810479101413,
+        "interval95": [
+          1.0353547991314667,
+          1.3720233965566928
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 45.2854,
+        "afterMedian": 46.1642,
+        "ratio": 1.0194058129110044,
+        "interval95": [
+          0.9964514360459845,
+          1.133837651971018
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": false,
+        "assessment": "inconclusive"
+      },
+      "p99MS": {
+        "beforeMedian": 50.0329,
+        "afterMedian": 55.2863,
+        "ratio": 1.1049989107167484,
+        "interval95": [
+          0.9244124133823892,
+          1.3765082575665213
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "inconclusive"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 84.65234375,
+        "afterMedian": 502.7734375,
+        "ratio": 5.939273683724793,
+        "interval95": [
+          5.580606330806955,
+          6.319736052789442
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 74.79296875,
+        "afterMedian": 469.0625,
+        "ratio": 6.271478560610017,
+        "interval95": [
+          5.872580645161291,
+          6.791579295883457
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 18.419227600097656,
+        "afterMedian": 93.01139068603516,
+        "ratio": 5.049690068737846,
+        "interval95": [
+          4.191769683689932,
+          7.885005914794618
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 214,
+        "afterMedian": 42,
+        "ratio": 0.19626168224299065,
+        "interval95": [
+          0.1588785046728972,
+          0.20093457943925233
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      }
+    },
+    "short": {
+      "throughput": {
+        "beforeMedian": 1385.9593654038556,
+        "afterMedian": 978.4698647167469,
+        "ratio": 0.7059874114214235,
+        "interval95": [
+          0.6947610237506964,
+          0.7116926094218515
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 0.640869140625,
+        "afterMedian": 0.965118408203125,
+        "ratio": 1.505952380952381,
+        "interval95": [
+          1.4345238095238095,
+          1.65359477124183
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 0.516,
+        "afterMedian": 1.0278,
+        "ratio": 1.991860465116279,
+        "interval95": [
+          1.9905057159465223,
+          1.9937924345295832
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 1.0395,
+        "afterMedian": 1.0942,
+        "ratio": 1.0526214526214526,
+        "interval95": [
+          1.0456642953278215,
+          1.4482924482924482
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 1.0869,
+        "afterMedian": 2.0879,
+        "ratio": 1.9209678903302971,
+        "interval95": [
+          1.8959574663122192,
+          1.95546968442359
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 89.4921875,
+        "afterMedian": 485.00390625,
+        "ratio": 5.419511130510694,
+        "interval95": [
+          4.9845045831514625,
+          6.254647121051836
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 89.64453125,
+        "afterMedian": 479.6484375,
+        "ratio": 5.350559937252168,
+        "interval95": [
+          4.917294871236219,
+          6.185582590297718
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 9.005386352539062,
+        "afterMedian": 75.47531127929688,
+        "ratio": 8.381129728877946,
+        "interval95": [
+          6.618151263427534,
+          11.680079152557582
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 97,
+        "afterMedian": 18,
+        "ratio": 0.18556701030927836,
+        "interval95": [
+          0.17142857142857143,
+          0.21649484536082475
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      }
+    },
+    "stream": {
+      "throughput": {
+        "beforeMedian": 52.453012243311655,
+        "afterMedian": 27.527022611427558,
+        "ratio": 0.5247939333538955,
+        "interval95": [
+          0.518115662613499,
+          0.5292674464102833
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 12.5732421875,
+        "afterMedian": 33.8134765625,
+        "ratio": 2.6893203883495147,
+        "interval95": [
+          2.4732142857142856,
+          2.742574257425743
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 10.2777,
+        "afterMedian": 25.9251,
+        "ratio": 2.5224612510581164,
+        "interval95": [
+          2.506645195087406,
+          2.647425169136516
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 10.8463,
+        "afterMedian": 33.9494,
+        "ratio": 3.130044346920148,
+        "interval95": [
+          3.0879894412670486,
+          3.1706019564275376
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 11.3414,
+        "afterMedian": 35.0399,
+        "ratio": 3.089556844833971,
+        "interval95": [
+          3.02333045303049,
+          3.2180188281063624
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 66.51171875,
+        "afterMedian": 473.1328125,
+        "ratio": 7.113525577024726,
+        "interval95": [
+          6.936249712577604,
+          7.866447407059376
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 59.1328125,
+        "afterMedian": 436.453125,
+        "ratio": 7.380895759017044,
+        "interval95": [
+          7.154969262295082,
+          8.245276786893909
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 10.476783752441406,
+        "afterMedian": 84.60943603515625,
+        "ratio": 8.07589791241417,
+        "interval95": [
+          4.971093340945651,
+          9.511617714538117
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 146,
+        "afterMedian": 38,
+        "ratio": 0.2602739726027397,
+        "interval95": [
+          0.23972602739726026,
+          0.26573426573426573
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      },
+      "firstFrameP50MS": {
+        "beforeMedian": 1.0265,
+        "afterMedian": 1.5451,
+        "ratio": 1.5052118850462737,
+        "interval95": [
+          1.5029701041970982,
+          1.506826604251999
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "firstFrameP99MS": {
+        "beforeMedian": 2.055,
+        "afterMedian": 3.168,
+        "ratio": 1.5416058394160583,
+        "interval95": [
+          1.2906569343065692,
+          1.984544146173581
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      }
+    },
+    "tools": {
+      "throughput": {
+        "beforeMedian": 401.2871441902694,
+        "afterMedian": 339.7159231753672,
+        "ratio": 0.8465656777040724,
+        "interval95": [
+          0.8427848201308464,
+          0.8516890445235151
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "cpuMS": {
+        "beforeMedian": 2.1209716796875,
+        "afterMedian": 2.8839111328125,
+        "ratio": 1.3597122302158273,
+        "interval95": [
+          1.2907801418439717,
+          1.4427480916030535
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p50MS": {
+        "beforeMedian": 2.5627,
+        "afterMedian": 2.5767,
+        "ratio": 1.0054629882545754,
+        "interval95": [
+          1.0043296797597223,
+          1.006828735318219
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": false,
+        "assessment": "regression"
+      },
+      "p95MS": {
+        "beforeMedian": 3.0874,
+        "afterMedian": 4.115,
+        "ratio": 1.3328366910669172,
+        "interval95": [
+          1.3307749603290262,
+          1.3414847444451643
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "p99MS": {
+        "beforeMedian": 3.148,
+        "afterMedian": 6.2848,
+        "ratio": 1.9964421855146124,
+        "interval95": [
+          1.7465540240106714,
+          2.147369431643625
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "peakRSSMiB": {
+        "beforeMedian": 71.40625,
+        "afterMedian": 512.265625,
+        "ratio": 7.173960612691466,
+        "interval95": [
+          6.816931329332413,
+          7.536348485719212
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryRSSMiB": {
+        "beforeMedian": 65.078125,
+        "afterMedian": 494.51171875,
+        "ratio": 7.598739495798319,
+        "interval95": [
+          7.205642256902761,
+          7.882232893157263
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "recoveryHeapMiB": {
+        "beforeMedian": 9.944259643554688,
+        "afterMedian": 94.70896911621094,
+        "ratio": 9.523983937567035,
+        "interval95": [
+          4.887570295280049,
+          10.44900712311899
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "regression"
+      },
+      "gcCycles": {
+        "beforeMedian": 90,
+        "afterMedian": 22,
+        "ratio": 0.24444444444444444,
+        "interval95": [
+          0.22448979591836735,
+          0.2777777777777778
+        ],
+        "samples": [
+          5,
+          5
+        ],
+        "seed": 20261003,
+        "shouldInvestigate": true,
+        "assessment": "improvement"
+      }
+    }
+  },
+  "formalD0Acceptance": false
+}

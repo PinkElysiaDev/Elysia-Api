@@ -1,18 +1,129 @@
 # 协议包 v4 与 DSL v2 契约
 
-本规范取代迁移期间对旧引擎内部行为的等价要求。正确性依据是外部协议语义和具名客户端兼容声明；旧引擎只作为独立性能参考。实现进度见[实施记录](protocol-three-part-implementation-2026-11-01.md)，本规范中的目标不代表已经全部上线。
+本规范定义当前唯一支持的协议包与执行模型。正确性依据是外部协议语义和具名客户端兼容声明；旧引擎只作为隔离的性能参考，不进入生产执行或测试运行时。当前切换与验收状态见[三分切换记录](protocol-three-part-cutover-2026-11-14.md)，迁移历史见[实施记录](protocol-three-part-implementation-2026-11-01.md)。
+
+下文按版本记录的实施范围是历史状态，当前执行合同以最新版本说明及三分切换记录为准。
+
+## 来源开场与传输证明（dev.157）
+
+`conversionDefaults.sourcePrelude` 只用于 `source_event`，独占该规则的执行内容。`first`／`next`
+各有对象 schema 和可选 `when`；配对 `when` 与有序 `set:[{path,value}]` 只允许纯局部表达式，
+读取 `input`（下一帧）和 `root`（首帧），不得读宿主或状态。更新路径不能是根或互相重叠，
+只替换双方均已存在的值。理由必须明确；源 decoder 指纹、身份和资源限制共同绑定规则。
+
+执行器最多暂存一帧及其复制的传输元数据，计入共享流预算。原帧与修正帧通过独立来源 Spec 后，
+才交给原生命周期解码器。实际改写产生来源路径的 lossy_compatible 诊断，strict 拒绝；禁用、
+不匹配或改写谓词为 false 时不获得规范化。干净 EOF 交付暂存原帧，取消和传输错误释放状态。
+原始 provider 记录只记录一次且保持原字节，不能用修正帧覆盖审计证据。
+
+组合报告可含 `transport:http_json`，表示只验证普通 HTTP JSON 请求／响应。它与协议修订、
+策略、父绑定、样例哈希一起持久化；路由时不能匹配 SSE、NDJSON 或会话请求。只有完整证明及
+通用能力档案均未通过时，才另行计算该受限证明。完整报告和原始流拒绝仍保留，不贡献正向覆盖。
+
+Spec 的共享 `WireAssertion.ref` 可带调用者的 `when`，在选择 `path` 之前求值；命名约束内部
+仍在所选值作用域执行，不能由调用者覆盖 schema、check 或诊断。纯错误信封借此跳过成功元数据
+约束，不复制整套约束或放宽原有字段检查。
+
+## 来源余项、部分用量与失败边界（dev.157）
+
+Chat 和 Anthropic 的完整响应将未知根字段、未知 usage 字段及计量子对象余项保存到自身
+`attributes["wire:<family>"]`。自身 Mapping 在无根 Native 时仍能重建这些余项；已识别计数由当前核心值
+生成，余项与映射结果冲突时拒绝。其他协议只检查所有者，不能解析外部余项或静默删除它们。
+Anthropic 空消息的 children 在核心中可省略，自身 Mapping 明确重建为空 content 数组。
+
+Anthropic 来源 Spec 接受单独到达的缓存及思考计数，用共享 `usage-counters` 约束检查类型、非负性和 int64
+范围。来源 Mapping 在自身流状态中累计已识别的原始计数，合并分批到达的 TTL 桶后重新计算核心 input、
+cacheCreation 和 total。只有一个 TTL 桶时不推断缺失桶为零；显式零覆盖先前观测值。usage-only 尾帧无需
+捏造 delta。最终客户端的起始帧与完整响应仍保留必需计数校验，不能用来源的部分快照合同替代最终输出合同。
+
+可选 `failureObservation` 只观察被来源 Spec 拒绝的失败帧，原始拒绝仍成立；它不能读宿主或流状态，也不能
+授权重放。`Event.UnmappedPaths` 是来源 Mapping 声明的原始路径证据，核心不再识别厂商帧中的扩展布局。
+`warn` effect 只记录声明的警告，不改变输入、输出或放宽校验。
+
+HTTP 错误响应投影不携带仅适用于事件的续传转换绑定。流中真实 operation.failed/cancelled 会释放未完成的
+续传收集器，再继续正常的失败转换、最终 Spec 校验和交付；已封装的续传状态及关联校验保持。
+
+## 中心语义与来源所有权（dev.156）
+
+实际匹配的停止字符串使用响应 `attributes.stopSequence`，未命中时不产生该属性。
+Anthropic Mapping 将其映射到自身 `stop_sequence` 和 `stop_reason:"stop_sequence"`，JSON 与 SSE
+遵守同一规则；未命中时由自身 Mapping 构造必需的 null。其他目标不能表示此属性时明确拒绝。
+核心语义比较不再识别或删除厂商专用的停止序列属性。
+
+Chat 和 Responses 的响应及终态事件编码只接受目标已声明的响应属性，未知核心属性不能静默省略。
+Chat 对尚未投影的 summary/structured reasoning 在请求、响应和事件中保持一致拒绝。
+Responses 自身的 summary/content 文本成员通过同一所有者重建方法合并扩展字段；冲突仍拒绝。
+源 instructions 字符串对应的消息或文本节点被加入无法表达的属性时，编码拒绝，不能只取第一个 payload。
+
+Responses 的 moderation 由来源 Mapping 生成具有来源路径的元数据，不再同时留在 wire 余项中。
+null、空对象可跨协议规范化并记诊断；非空状态需要目标等价表示。同源重建无需根 Native。
+派生 output_text 的一致性检查发生在同源元数据保留判断之前，当前正文编辑不能绕过这项检查。
+
+Spec 的实体完成动作可声明 `requireSealedPayload:true`，要求此前有 `sealPayload:true` 的快照；
+该声明仅允许有载荷实体的 `entity_finish`。检查发生在身份、关系、属性及正文写入之前。
+未声明此条件的实体仍按原合同完成。Responses 的 reasoning_text 内容 part 使用该条件，
+普通文本及 summary 的完成边界继续由各自 Spec 独立声明。
+
+Gemini Spec 对 safetySettings 的 category 解码后检查唯一性，等价 Unicode 转义不能规避重复检查。
+该集合约束失败定位到 `/safetySettings`，核心 safety 校验仍可定位具体重复成员。
+Gemini part 先校验对象及已出现字段的类型，再检查是否存在支持的载荷或签名，首错位置稳定。
+
+以上修改没有提高节点数或深度限制。Responses 复用重复条件，并将仅返回字面量的选择分支写为 enum；
+不改变匹配值、默认分支或未知值拒绝行为。
+
+请求的身份使用 `parameters.user`；安全配置使用 `parameters.safety = null | [{category, threshold}]`。
+category 为 `harassment`、`hate-speech`、`sexual-content`、`dangerous-content`、`civic-integrity`；threshold 为
+`off`、`none`、`low`、`medium`、`high`、`default`。来源 Mapping 解释自己的枚举，目标只读取这些核心值。
+无法识别的来源结构整体保留在自身 `wire:<family>` 中，不授予核心语义，也不由其他协议解读内部字段。
+
+推理参数只使用 `ReasoningIntent`。旧 `reasoning_effort`、`responses_reasoning`、`anthropic_thinking`、
+`anthropic_output_config`、`gemini_thinking` 核心参数包装在编码和来源归一化边界整体拒绝。
+各协议 Mapping 将自身推理余项放入 `parameters["wire:<family>"]`，自身编码合并这些余项和当前核心控制，
+相撞字段拒绝。null、空对象及未知成员能够在移除 Native 后同源重建。跨协议时，可省略的空余项由**来源**
+`modelPolicy.normalize` 处理并记录规范化诊断；目标不会解析其他协议的推理字段。禁用这条来源处理所在的
+规则后，剩余外部所有者仍由目标编码拒绝，编码器不能兜底删除。
+
+Responses 的 include 选择在来源 Mapping 转成 `ClientOutput.RequireContinuationState`。
+唯一的已知选择器完全由该布尔值表达；null、空数组、未知选择器和需要保留的自身布局放入自身 wire 余项。
+自身编码服从当前核心布尔值，不能由原始选择器恢复已经取消的续传要求。目标协议只消费核心交付意图；
+未知来源选择器跨协议拒绝。核心已移除 `rawResponsesInclude`、`responsesIncludeResolved`，预置 Agent 也只
+生成核心续传意图。最终 Responses wire 校验会拒绝后续编辑对续传选择的增加或删除。
+
+上下文截断使用 `parameters.contextTruncation = null | "auto" | "disabled"`。没有等价行为的目标拒绝此约束，
+规则禁用时编码守卫仍拒绝。未恢复的历史使用核心 session resource 表达。当前 Responses Spec 明确拒绝非空
+previous_response_id；null 的同源布局保存在自身 wire 余项，并由来源声明跨协议省略。
+
+`Usage.Attribution` 的核心形状为 `{items:{name:bucket}, requestFields:{name:counts}}`。
+counts 可含 `input`、`output`、`cacheRead`、`cacheCreation`；bucket 还可含 `content:[counts]`。
+计数必须为非负 int64，缓存读取与创建之和不得超过已提供的 input，子项累计不得超过已提供的父项小计。
+`Usage.CacheBilling` 为 `{basis:"cache-allocation", billed, observed, policyRevision, ruleId}`；
+三个数字为非负 int64，ruleId 非空。billed 和 observed 是独立证据，不替代模型 token 计数。
+两种账本均区分缺失、null、空对象；未知来源账本保留为来源所有者的整体余项。
+Responses Spec 独立检查外部账本类型、范围和小计，Mapping 双向改写字段，Go 核心只检查上述中立算术。
+
+加密续传资源与普通签名分别声明恢复规则。预置 `*-encrypted-state` 规则在缺少已认证恢复通道时拒绝，
+compatible 模式也不能删除加密状态。普通签名的既有取舍继续由其自身规则声明。
+
+通用 DSL 编译器把空数组构造器和空数组字面量视为相同的空分支证明；非空构造或 opaque 值不能因此获得
+Native 权限。`project` 的字段缺失证明可沿原始来源继续推导，仍不能覆盖未证明的字段写入。
+流 finalizer 允许 `with_input` 绑定来自 state 的值；其 source 及未绑定 input/root 仍不得读取当前事件。
+这些规则适用于全部协议，不包含厂商分支。
 
 ## 三部分与发布单位
 
 - DSL 提供读取、结构操作、关联、增量、状态、编码、计量和诊断原语，不根据供应商名选择语义。
 - `spec.json` 描述外部端点、文档、实体关系、事件顺序和生命周期；不负责核心映射或跨协议取舍。
-- `mapping.json` 声明双向核心映射、来源规范化、目标投影、模型策略和样例。
+- `mapping.json` 只声明本协议与大自在天的双向映射，以及本协议的来源规范化、目标投影、模型策略和样例。
+
+大自在天（core2）是整个转换拓扑的中心。A → B 是 `Mapping A: A → 大自在天` 与 `Mapping B: 大自在天 → B` 的组合，不存在绕过核心的 A/B 专用转换器。目标 Mapping 读取大自在天语义，不解析其他供应商的 wire 对象。协议对用于选择转换策略，不改变中心拓扑。Native 回放、签名和续传仍受核心来源、作用域、语义和交付证明约束。
+
+Spec、Mapping 是两份共同发布的配置；配置说明解释两者及 DSL 的实际行为。不能把“说明”当作不参与执行的 Mapping，也不能将旧 codec 包装为一个 DSL 原语。
 
 两份源以 `{ "schemaVersion": 4, "spec": ..., "mapping": ... }` 形成单一发布包。Mapping 的 `dslVersion` 为 2，`coreVersion` 为 2；转换策略的 `schemaVersion` 为 2。保存、验证、激活以整包为单位，共同确定修订哈希；请求固定编译快照，不解析配置。
 
 Spec 和 Mapping 各有自己的 `expressions` 符号表。命名程序按静态输入、词法槽位和权限编译复用，执行值与可变状态不共享。引用闭包进入实际使用方向的指纹。循环、未定义或不可达引用，以及深度超限，在编译时拒绝。
 
-Spec 的 `constraints` 是独立的具名断言组。文档或事件用 `{ "ref": "名称", "path": "/子文档" }` 调用；省略 path 表示当前输入，root 始终指向原文档。相同静态作用域共享已编译检查，不展开整份 JSON，也不共享执行状态。引用不能覆盖组内检查；循环、未定义、不可达和超深引用在编译时拒绝。约束及其表达式依赖共同进入使用文档的指纹。
+Spec 的 `constraints` 是独立的具名断言组。文档或事件用 `{ "ref": "名称", "path": "/子文档" }` 调用；省略 path 表示当前输入，root 始终指向原文档。调用可声明 `when`，它在调用者作用域中求值，成立后才选择 path 并执行整组检查；条件不成立时不读取该子文档。相同静态作用域共享已编译检查，不展开整份 JSON，也不共享执行状态。引用不能覆盖组内检查；循环、未定义、不可达和超深引用在编译时拒绝。调用条件、约束及其表达式依赖共同进入使用文档的指纹，条件不能绕过取消和资源限额。
 
 结构断言可省略 `code`，由真实边界归因：入站请求为 `invalid_input`，上游响应／事件为 `upstream_contract_violation`，出站为 `conversion_rejected`。显式声明的关联、能力及其他业务诊断保留；错误位置始终包含调用处的实际数组索引和子路径。这样同一外部结构可用于请求历史、JSON 响应及流快照，无须复制不同错误码的整套 schema。
 
@@ -31,13 +142,27 @@ Spec 的 `constraints` 是独立的具名断言组。文档或事件用 `{ "ref"
 
 ## 检查与所有权
 
+编码方向的 `effects` 可声明 `scope: "metadata"`、`kind: "reject"`。条件只读取当前核心元数据记录；执行器遍历响应、历史节点、事件节点及终态快照的实际所有者。该检查不修改数据，也不代替转换规则：禁用目标投影后，残留的不可表达字段必须拒绝，不能由编码器再次降级或静默遗漏。诊断优先使用记录的原文路径，没有原文路径时使用核心所有者路径。外部字段类型仍由本协议 Spec 声明。
+
+`scope: "node"` 的拒绝条件读取当前核心节点，诊断 `path` 相对于该节点的实际位置。四份 Mapping 用它检查节点上的 `wire:` 扩展是否属于自身命名空间，不读取其他协议扩展的内部字段。例如 Anthropic Spec 校验工具 `caller` 的结构，Mapping 仅将精确的 `{"type":"direct"}` 识别为普通客户端调用；其他 caller 仍由原协议持有，未经映射不能在跨协议编码中丢失。
+
+`each.select: "node"` 可以设置当前节点的 `payload`，但必须在同一步声明 `normalize` 或 `degrade` 诊断，不能修改来源、Native、资源、节点种类或子节点所有权。Anthropic 和 Gemini 的目标 Mapping 使用该能力，将无内容、无受保护资源的空可见思考规范化为空字符串；已存在的内容、显式 null 和结构化思考不进入这条规则。禁用规则后，最终 Spec 拒绝缺少必需内容字段的输出。Gemini 的 JSON 和 SSE 共用 `part-content` 约束，思考标记本身不能替代内容或签名。
+
 执行链为读取与外部校验、核心映射、目标规则、编码与必要最终校验、交付。
 
-一次不可变输入可共享有界字段索引和只读视图。同一输入、同一合同和限额的成功校验可以复用；失败与取消不能缓存成成功，帧间不保留读取缓存。同步校验可借用字符串，进入核心或流状态的小字段必须取得独立所有权。
+一次不可变输入可共享有界字段索引和只读视图。同一输入、同一合同和限额的成功校验可以复用；失败与取消不能缓存成成功，帧间不保留读取缓存。源流式帧的视图同时绑定宿主提供的载体上下文，Spec 断言、外部生命周期和 Mapping 读取相同的 `context`；相同 JSON 正文配上不同的 SSE 事件名不能复用旧校验证明。上下文不保存在跨帧状态中。同步校验可借用字符串，进入核心或流状态的小字段必须取得独立所有权。
+
+请求身份只有一个核心所有者 `parameters.user`，值为字符串或显式 null。来源 Mapping 提取自身身份字段，例如 Anthropic 的 `metadata.user_id`；目标只读取核心身份，不读取 `anthropic_metadata` 等旧包装。来源元数据中的未知成员仍属于自身 `wire:` 扩展，不能冒充通用标签或在跨协议时静默丢弃。`parameters.metadata` 单独表示字符串值的通用跟踪标签；它与用户身份不是同一字段。
 
 外部生命周期与转换后的核心生命周期检查不同对象，不能互相替代。配置编译能够证明的静态条件不在执行时重复验证；用户修改的输出根据影响范围验证，无法确定范围时执行一次完整最终校验。内部已证明条件直接使用；外部输入、配置、权限、资源和 I/O 错误返回结构化诊断。
 
 流状态归属单一流及 Scope。声明槽位在编译时绑定；有序 `state_update` 的右侧读取同一前置快照，后续动作可读取其结果，帧失败不提交槽位。工具参数、文本和数组按实际需要增量保存；不反复编码完整前缀。交付位置只在对应帧成功发送后推进。
+
+节点元数据只有显式 `update: "append"` 才追加数组；未声明时替换快照。来源 Mapping 必须区分增量和快照，核心不再根据供应商名称或 `logprobs` 字段名推断追加。追加标记只属于节点增量事件，不能进入已收集的快照、响应级元数据或传输帧字段。
+
+不透明会话状态统一使用 `control.updated` 和 `ControlState`，已退役 `ResponsesTurnState` 专用模型及转换器。Spec 校验外部状态帧，Mapping 捕获其实际载荷位置；核心收据绑定来源、作用域、帧序号和编解码指纹。原生状态帧可以先于响应出现，不能建立响应身份或进入正文。获准省略的状态及辅助事件通过 `EncodeFrames` 直接编码时也产生空帧列表，且仍检查收据归属和取消。降级诊断保留实际来源帧序号，不包含状态内容。
+
+Responses 的 `obfuscation` 只在六类文本、拒绝、工具参数和思考 delta 中作为字符串 padding 识别。同协议编码将它绑定到原 delta 种类，不移动到终态或历史；跨协议按显式目标规则降级，严格模式和禁用规则保留拒绝边界。其他位置的同名字段仍是未知扩展。
 
 Spec 的流合同声明外部 `namespaces`、`entities` 及父子关系；实体载荷可以是文本、JSON 或数组，不以核心 NodeKind/EventReplay 充当外部合同。数组增量只检查新增元素，完整快照校对已观察前缀。合同失败后该实例不可继续接收或提交交付。相同文档可用 `base` 复用已编译结构与生命周期，仅附加断言；不能覆盖基文档，也不能循环引用。
 
@@ -49,7 +174,7 @@ Mapping 的 `buffer_text`／`buffer_array` 按固定通道和项目身份保存�
 
 原生复合帧由 `nativeReplay: "original_frame"` 声明动态字段属于原帧，配套 observer 只同步后续重建需要的状态。`nativeWhen` 可进一步限定哪些合法来源帧适合原样交付；不满足时按正常语义重建，不以目标校验失败作为回退条件。原生回放仍检查双向映射指纹、Scope 与语义摘要。输出批次使用实际已交付位置及当前批次偏移计算序号；计算序号不提前提交交付。
 
-`nativeWhen` 可以只读本次请求的 `runtime.clientOutput`，据客户端展示偏好选择原生交付或语义编码。dev.132 另开放只读 `runtime.encoding.hasRendered`：本方向此前是否执行过语义编码，用于声明聚合帧的重放取舍；它不是成功交付或正文等价证明。不能读取其他运行时元数据、任意流状态或交付位置。usage 收集是网关策略，客户端是否展示 usage 是独立意图。完整请求转换统一填充收集设置及缺省展示设置，显式的 `includeUsage:false` 不被缺省值覆盖；单阶段预览不重复执行完整请求转换。
+`nativeWhen` 可以只读本次请求的 `runtime.clientOutput`，据客户端展示偏好选择原生交付或语义编码。`runtime.encoding.hasRendered` 表示本方向此前是否执行过语义编码，用于声明聚合帧的重放取舍；它不是成功交付或正文等价证明。dev.150 允许读取与目标修订及 Scope 绑定的 `/stream/*`、`/delivered/maxItemIndex` 和当前批次的 `/emission/offset`；交付位置只在成功写入并 Flush 后提交。不能读取任意运行时元数据或 Mapping 状态。usage 收集是网关策略，客户端是否展示 usage 是独立意图。完整请求转换统一填充收集设置及缺省展示设置，显式的 `includeUsage:false` 不被缺省值覆盖；单阶段预览不重复执行完整请求转换。
 
 `encode_request.finalCheck` 是最终 wire 与客户端意图的只读检查。它读取 `input/root` 和 `runtime.clientOutput`，不能访问流状态或执行身份。在原生协调、请求 wire 规则之后，由 `ValidateRequestOutput` 与最终 Spec 共用当前输入视图执行一次；基础 `EncodeRequestValue` 只返回编码结果。网关、Agent 收集、预览及独立／组合验证共同使用该边界。实际 wire 修改后的路由权限复核仍独立保留，普通请求不额外解码。
 
@@ -124,7 +249,7 @@ Gemini 的 error／output 包络由 Mapping 双向表达，独立错误状态在
 
 默认 Spec 的具名约束覆盖 Gemini safetySettings、Responses truncation／previous_response_id、Anthropic metadata 以及 OpenAI metadata／user；来源、重建与最终出站引用相同合同。Gemini 类别使用解码后的字符串身份去重，同协议未知枚举和扩展保留，跨协议的可表达性仍由目标 Mapping 决定。最终用户 wire 修改由既有 ValidateRequestOutput 检查，不重新解码核心请求。
 
-核心版本 2 不再通过共享 Go 检查这些供应商字段。默认 Mapping 在省略源追踪载体前检查其形状；自定义包可以在同名参数位置声明不同的外部类型。工具选项、关联、资源作用域与 reasoning 的核心约束继续保留。旧 codec 的校验仅留在旧核心版本路径，随旧链退役一起删除。
+核心版本 2 不再通过共享 Go 检查这些供应商字段。默认 Mapping 在省略源追踪载体前检查其形状；自定义包可以在同名参数位置声明不同的外部类型。工具选项、关联、资源作用域与 reasoning 的核心约束继续保留。dev.116 阶段暂留的旧 codec 校验已随生产切换退役，当前没有旧核心版本执行路径。
 
 raw 编码不再接受数字／对象用户标识或静默忽略非对象 tracking metadata。旧错误文字及非原文位置不作为迁移门槛；非法字段的来源检查和最终出站检查分别使用输入错误和转换拒绝。
 
@@ -211,10 +336,23 @@ Responses 的 include 原表示由 `ClientOutput.RawResponsesInclude` 持有；`
 response-text／250 明确处理完整响应多根及文本合并。编码器不再隐式分组、展开或选择
 第一个 refusal；JSON 独立候选保持独立，空响应保留一个空 assistant choice。
 
+Chat 的 history-order／255 在核心中显式排列消息子节点，使其顺序与独立的 reasoning、content、
+tool_calls、refusal 字段一致。位置改变产生降级诊断，严格模式拒绝；禁用规则后，编码阶段拒绝
+尚未处理的交错顺序。自身已成形的 Chat 消息不再被 assistant-history 无条件合并。
+
 通用 unfold_children、merge_text 与 utf16_length 不解释供应商字段。引用结构、长度
 口径、附属数据聚合及损失诊断由 Mapping 声明。未处理的身份、资源、缓存及扩展拒绝合并。
 annotations 的外部类型由 Spec 声明，已知值进入核心 metadata；输出保留原文位置、
 所属内容、条目顺序以及已声明的 null／空数组形式。
+
+来源 Mapping 通过 metadata.meaning 声明中立语义：empty、information、state、resources、
+service-tier、token-probabilities、url-references、visible-text、buffering、padding。
+目标仅根据核心语义进行投影；codec、name 和 value 保留来源自身的重建信息，目标不能用它们
+解析其他供应商。URL 引用另存为 references 数组，每项为 url、title、start、end；位置采用
+UTF-16 code unit。来源 Spec 检查外部结构，来源 Mapping 提取规范形式，目标 Mapping 编写自己的
+外部形式。未知引用扩展保留资源语义，不能因为含 URL 而丢弃其余字段。
+文本合并同时声明 value 与 references 的更新；最终引用关联校验只读取规范引用，保留
+原内容归属和实际交付证明。缺失核心语义的外来元数据仍拒绝，不由目标猜测分类。
 
 回归使用显式目标规则和手写合法输出期望，替代旧测试对隐式分组、非法响应数组和旧错误
 文字的要求。仍直接断言关联、引用、Native 重建、输入隔离及最终 wire 合同。
@@ -336,8 +474,8 @@ CoreVersion。Mapping 的 encode_response 构造正文，ValidateResponseOutput 
 映射失败记录为次因，不尝试另一协议。内部诊断保存在结算日志，不额外塞入供应商错误正文。
 非法上游错误体保留真实 HTTP 状态并使用通用描述，不通过专用字段猜错误类别，也不向客户端泄露原始正文。
 
-任务控制等宿主管理出口仍使用其自身合同；本切片不宣称全部入口统一或旧链已退役。新包 public
-入口直接使用 Spec 完整路径；仅旧核心的基地址前缀适配仍留待最终删除。
+任务控制等宿主管理出口使用其自身合同。dev.131 切片当时尚未完成全部入口切换；当前 public
+入口统一使用 Spec 完整路径，旧核心基地址前缀适配已删除。基地址与版本路径按本规范显式配置。
 
 ## 客户端模型目录（dev.134）
 
@@ -357,8 +495,8 @@ id／name／maxTokens 及分页信息），执行共享 operation plan，并在�
 最终合同失败时，使用已选协议的错误出口；不尝试旧格式。
 
 本批保持既有目录成员策略，没有改变 token 的模型组过滤合同。只给现有 Chat／Gemini 客户端
-目录添加默认编码声明；Responses／Anthropic 继续只有已支持的上游发现。旧生产默认仍保留其
-既有目录 handler，按核心版本在执行前选择，待生产切换统一删除；新包失败不会回退到它。
+目录添加默认编码声明；Responses／Anthropic 继续只有已支持的上游发现。dev.134 阶段暂留的旧
+目录 handler 已随生产切换删除，当前模型目录只执行所选包的声明程序。
 
 ## 上游输入计数声明（dev.135）
 
@@ -378,5 +516,47 @@ Mapping 使用已有 with_input 及共享请求表达式，不添加供应商 Go
 `mode: "count_tokens"`、operation、direction 和 input；路径中的模型通过公开的
 `conversionContext.model` 提供。CLI 对应 `--model`，宿主内部 Scope 不接受 JSON 伪造。
 
-本批仅完成编译、样例和离线预览。实际 HTTP 路由将在下一批接线：只选择声明计数操作的候选，
-不能回退本地估算，计数结果不能写入生成 token 账本。生产默认切换和正式性能验收尚未完成。
+dev.135 切片当时仅完成编译、样例和离线预览。当前实际 HTTP 计数入口已接入所选包，
+只选择声明计数操作的候选，不能回退本地估算，计数结果不能写入生成 token 账本。
+生产默认已切换至三分执行；正式性能验收仍独立记录在[切换记录](protocol-three-part-cutover-2026-11-14.md)。
+
+
+## 请求头控制声明（dev.150）
+
+`Mapping.headerControls` 包含 `headers` 和 `program`。前者是非空、无重复的小写 HTTP 头名列表；宿主只读取这些头。程序输入是按头名索引的 token 数组：以逗号分隔、去除两端空白、忽略空项，token 本身区分大小写。程序必须返回且仅返回 `{"interleavedThinking": boolean}`。程序没有运行时状态权限，执行遵守包的资源限制。
+
+入站使用实际收到的头，出站在编译时使用 `Spec.operations.<name>.headers`。默认 Anthropic Mapping 明确匹配 `anthropic-beta` 中完整的 `interleaved-thinking-2025-05-14` token；Go 宿主不识别协议名称、beta 头名或具体开关值。修改 Spec 的头部或 Mapping 的判断都会改变修订哈希与验证证据。未声明 `headerControls` 的协议不启用该控制，也不会读取头部。
+## 请求范围证据
+
+目标 Mapping 可以通过 `verificationScopes` 声明需要独立验证的核心请求范围。通用 DSL 执行只读谓词，Spec 的外部合同保持独立；每份通过证据仍需完整重放。配置、支持子集、身份和范围外行为见[请求范围与组合验证](protocol-verification-scopes.md)。
+
+## 响应观测与缓存保留期明细
+
+所有转换遵循 `Spec wire ↔ 大自在天/Core2 ↔ Spec wire`。Responses Spec 校验外部形状，Responses Mapping 解释并重建外部字段；通用核心仅校验中立语义。其他目标 Mapping 只识别下列 meaning 和用量明细键，不读取 Responses 原始字段。JSON 与 SSE 共用观测编解码表达式。
+
+`ResponseMetadata` 的以下 meaning 必须属于 `location:"response"`：
+
+| meaning | canonical Value | 含义 |
+| --- | --- | --- |
+| `image-context-compression` | `true`、`false` 或 `null` | 来源本次响应已生效的图像上下文压缩观测；null 表示显式未报告 |
+| `input-transformations` | 有序记录数组或 `null` | 来源执行时移除输入的历史观测；[] 表示没有列出的移除，null 表示显式未报告 |
+
+输入变换记录为 `{"sourceItemId":"source-input","kind":"reasoning","action":"remove","reason":"model-mismatch"}`。reason 仅允许 `organization-mismatch`、`end-user-mismatch`、`model-mismatch`、`prefix-mismatch`、`turn-boundary`。顺序和来源输入 ID 均保留；重复流快照替换该观测，不追加记录。ID 不提供跨账户资源权限，不是输出 item 引用，不授权恢复历史或执行新的移除。图像观测也不会变成下一次请求的压缩控制。
+
+字段缺失不制造 metadata；false 不等于缺失或 null。同源去除 Native 后仍由 Mapping 重建字段，修改 canonical Value 会改变输出。Responses 的 image、变换记录和保留期对象不接受尚无中立解释的额外成员，Spec 在来源边界准确拒绝，不能丢弃成员后声称已完整转换。
+
+Chat、Anthropic、Gemini 的 `response-metadata`、`event-metadata` 及历史响应规则对非 null 图像观测采用具名有损投影：compatible 报告 `conversion_degraded`，strict 拒绝。精确的空变换数组可报告 `conversion_normalized` 后省略；null 图像、null 或非空变换数组要求保留，当前跨目标拒绝。关闭规则后所有者守卫仍生效。诊断带来源 path、规则 ID 和策略哈希，不修改原始来源对象。
+
+`Usage.Details` 的 `cache_creation.30m_tokens`、`cache_creation.12h_tokens` 是写缓存保留期分项，计量与流快照边界见[缓存用量契约](cache-usage-contracts.md)。这些扩展不新增厂商 DSL 操作，不改变现有 JSON 节点或表达式深度上限；共享表达式抽取须同时验证展开语义、引用深度及编译结果。
+
+## DSL 读取与配置编码
+
+Expression 在可选读取位置支持 `"$input/model"` 等 [read 简写](protocol-dsl-primitives.md#read-简写)。该能力属于通用 DSL：Spec 继续声明外部协议合同，Mapping 继续声明本协议与大自在天／Core2 之间的双向转换。简写不会增加 Spec 间的直接转换，也不会解析 literal、enum 或样例中的不透明 JSON。配置编码保留声明形式与精确数值；声明变化继续受修订指纹和重新验证约束。
+
+`matches_charset` 只判断字符串是否由声明的字符集合组成，协议名称的字符集合与长度上限由各自 Spec／Mapping 配置。Expression 编码器根据真实字段声明生成，在一棵表达式树内共用输出缓冲区；字段顺序、缺省省略及非法编辑的拒绝行为保持原合同。这些实现不提供额外协议权限，也不代表正式性能验收已经通过。
+
+## 执行账本与输出约束
+
+大自在天 Usage 的 `executionSpeed`／`executions` 表达来源的执行事实。Anthropic Spec 定义自身字段结构，Mapping 负责与中立账本双向转换；其他目标通过具名规则报告披露损失。内部来源记录先于客户端投影保存，分项不会再次加入父 token 计数，未知内容保留来源所有权。JSON 与 SSE 的支持范围分别声明，SSE 的显式 iterations 仍拒绝未确定的更新语义。字段、配置、精度与持久化合同见[执行速度与分次执行用量](execution-usage-contract.md)。
+
+请求 `parameters.outputConstraint` 是独立的中立输出约束。各协议 Mapping 只连接自身格式与该核心字段，Spec 约束自身格式和名称；通用 DSL 不识别厂商字段。未知格式仍归来源所有，不能与核心形成双重所有权。名称／描述的具名取舍、strict 拒绝、禁用规则后的编码守卫以及独立的 `output.constraints` 能力证据见[结构化输出约束](protocol-output-constraints.md)。较窄的文本组合报告不能替代结构化输出证明。

@@ -264,8 +264,8 @@ WantedBy=multi-user.target
 - API Key、模型和分组只存 SQLite；不读取或导入 `tokens`、`modelGroups`、`customProtocols`。
 - 协议只使用当前定义与显式绑定，平台为 `custom:<协议 ID>`；模型引用必须为 `sourceId:modelId`。
 - 已删除旧协议迁移接口、历史预置改名/路径修补和旧日志布局回填。
-- 内置协议模块始终使用当前统一语义；`requires` 只声明所需引擎能力，不选择历史实现。自定义样例与转换规则需要重新验证，旧验证证据不再授权执行。
-- `responses_storage` 规则必须显式填写 `sourceCodec`、`targetCodec`、`onUnsupported`；不再把缺失来源当成 Responses。
+- 协议必须使用 `schemaVersion: 4` 的 Spec／Mapping 包，Mapping 使用 DSL2／Core2。预置直接加载随程序发布的两份源，自定义样例与转换规则需要按当前编译器重新验证；旧验证证据不授权执行。
+- API 对象存储意图使用 `clientOutput.responsesStorage`；来源与目标 Mapping 分别声明解码和目标处理。配置方式见[三分契约](protocol-three-part-contract.md)，旧 `requires` 字段与 `responses_storage` 动作不再支持。
 - 用量筛选使用 `keyName`、`groupName`、`modelName`、`sourceId` 的重复参数；删除 `modelGroup` 别名和 `keyHash` 筛选。
 - 全局和目录专用代理统一使用 `http://` 代理地址（HTTPS 目标经 CONNECT 访问）；目录代理不再接受旧 `https://` / SOCKS 地址例外。
 

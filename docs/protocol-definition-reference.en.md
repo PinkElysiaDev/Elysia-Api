@@ -1,8 +1,10 @@
-# Custom protocol definition reference (v2)
+# Custom protocol package reference (v4)
 
 [简体中文](protocol-definition-reference.md) · [User guide](protocol-guide.en.md) · [Detailed implementation](protocol-definition-v2.md)
 
-The configuration format is `schemaVersion: 2`; semantic documents use version 1. Author version, content hash and compiler version are independent. Legacy request/response/shape templates are import-only. Read the live contract with `GET /api/admin/protocols/schema` or `elysia protocol schema`: [Definition](../backend/protocol/definition.go), [semantic model](../backend/protocol/model.go), [compiler](../backend/protocol/compiler.go).
+The package format is `{ "schemaVersion":4,"spec":...,"mapping":... }`; Mapping uses DSL2 and the central Maheshvara core2 contract. Author version, revision hash and compiler version are independent. Retired formats are neither imported nor executed. Read the live contract with `GET /api/admin/protocols/schema` or `elysia protocol schema`. See [ProtocolPackage](../backend/protocol/protocol_package.go), the [core model](../backend/protocol/model.go) and the [three-part contract](protocol-three-part-contract.md).
+
+Each Mapping connects only its own external protocol to and from Maheshvara. Provider pairs compose through the core; they do not have dedicated converters.
 
 ## Runtime value-schema validation
 
@@ -14,7 +16,7 @@ The compiler translates the restricted `ValueSchema` language into draft 2020-12
 
 ## Generated JSON Schema
 
-The live catalog uses **`github.com/invopop/jsonschema` v0.14.0** to reflect the Go models into JSON Schema draft 2020-12. It provides definition, binding, conversion-policy, and semantic schemas. Structs reject unknown properties; JSON `omitempty` and `omitzero` tags control required fields. The protocol's `Value` type is explicitly mapped to an unrestricted JSON schema, retaining arbitrary JSON values, including null, false, zero, and large numbers. Cache-intent descriptions use the library's `jsonschema_description` tag.
+The live catalog uses **`github.com/invopop/jsonschema` v0.14.0** to reflect the Go models into JSON Schema draft 2020-12. It provides package, Spec, Mapping, binding, conversion-policy and semantic schemas; retired definitionSchema and modules entries are absent. Structs reject unknown properties; JSON `omitempty` and `omitzero` tags control required fields. The protocol's `Value` type is explicitly mapped to an unrestricted JSON schema, retaining arbitrary JSON values, including null, false, zero, and large numbers. Cache-intent descriptions use the library's `jsonschema_description` tag.
 
 ### Schema representation migration
 
@@ -31,31 +33,33 @@ All existing catalog constraints matched the pre-migration output after normaliz
 
 ## Complete examples
 
-Import [text-alpha](../backend/protocol/testdata/text-alpha.json) or [text-beta](../backend/protocol/testdata/text-beta.json) into the editor. Both are complete standalone definitions. Tool/multi-turn examples are exercised in [compiler tests](../backend/protocol/compiler_test.go). Adjacent session and job fixtures demonstrate WebSocket and asynchronous operations. A mapping fragment alone is not an activatable definition.
+[text-alpha](../backend/protocol/testdata/packages/text-alpha) and [text-beta](../backend/server/testdata/protocols/text-beta) each contain a Spec/Mapping pair. Combine the pair into a complete v4 package before saving. Incomplete fragments cannot be activated.
 
-## Definition fields
+## Package fields
 
 | Field | Contract |
 | --- | --- |
-| `id`, `name`, `version` | Identity, display name and author version; ID is not semantic provenance |
-| `family`, `wireVersion` | Native compatibility identity, further constrained by direction and resource scope |
-| `requires` | Required installed engine features; declaring a feature cannot install it |
-| `capabilities` | Verifiable capabilities, optionally narrowed per direction |
-| `directions` | Independently authored encoders/decoders; no mechanical inversion |
-| `operations` | Relative endpoints, methods, transport, credential placement, input schema and workflow configuration |
-| `expressions` | Compile-time reusable expressions; recursive references rejected |
-| `native` | Preservation policy and stable array identities when required |
-| `limits` | May narrow engine depth/node/state/buffer limits |
-| `samples` | Mapping fixtures, expected output/errors, event sequences and capability evidence |
-| `sessionSamples`, `taskSamples`, `modelSamples` | Workflow evidence |
-| `agent` | Parameter policy, tool result input type, thinking levels and examples |
-| `extensions` | Explicit inert metadata area; unknown configuration keys elsewhere fail |
+| `spec.id/name/version` | Protocol identity, display name and author version |
+| `spec.family/wireVersion` | External contract identity; scope and provenance still apply |
+| `spec.requires` | Required implemented engine features |
+| `spec.documents/constraints` | External documents, reusable assertions and stream lifecycle |
+| `spec.operations` | Paths, methods, transports, credentials and workflow contracts |
+| `mapping.coreVersion/dslVersion` | Core and DSL versions, both 2 |
+| `mapping.capabilities` | Verifiable capabilities, optionally narrowed by direction |
+| `mapping.directions` | Independently authored wire/core directions |
+| `mapping.operations` | Direction selections and task/model/token-count programs |
+| `spec.expressions`, `mapping.expressions` | Independent compile-time symbol tables |
+| `mapping.native` | Preservation policy and stable array identities |
+| `mapping.conversionDefaults` | Named target dispositions of core intents |
+| `mapping.limits` | Resource limits no greater than the engine limits |
+| `mapping.samples` and workflow samples | Exact results, rejection cases and capability evidence |
+| `mapping.agent` | Agent parameters, client output intents and examples |
 
 Directions: `decode_request`, `encode_request`, `decode_response`, `encode_response`, `decode_event`, `encode_event`, `decode_client_event`, `encode_upstream_event`. Partial implementations are permitted only for matching uses.
 
 ## Expressions
 
-Each mapping selects a `module`, `transform` or event `rules`. Modules are `openai-chat`, `responses`, `anthropic`, `gemini`. An explicit `after` uses module output as `input` and original input as `root`. `initial` emits one declared prefix before the first nonempty decoded event. Mapping input/output schemas and operation input schemas are independently enforced.
+Each direction selects its Spec `document`, a DSL `program`, and semantic `effects`. Streams can additionally declare bounded state, incremental programs and finalizers. There are no module, after, or legacy transform/rules execution modes. External, core and final wire checks validate different boundaries.
 
 Encoding fragment using JSON Pointers:
 
@@ -65,7 +69,10 @@ Encoding fragment using JSON Pointers:
 
 Operations: `read`, `literal`, `omit`, `object`, `array`, `map`, `flatmap`, `filter`, `choose`, `if`, `enum`, `cast`, `merge`, `concat`, `join`, `sort`, `associate`, `exists`, `equal`, `all`, `any`, `not`, `parse_json`, `stringify_json`, `strip_prefix`, `ref`. Sources are `input`, `item`, `root`, `context`; obtain exact allowed parameters from the schema.
 
-Missing/null/false/zero/empty values remain distinct. `exists` includes null and zero. `join(source)` requires strings; casts cannot truncate numbers. Unknown branches fail. Invalid function arguments are not replaced by `{}`. Iteration only traverses input data; there is no executable script or recursive expression facility.
+Missing/null/false/zero/empty values remain distinct. `exists` includes null and zero. `join(source)` requires strings; casts cannot truncate numbers. Unknown branches fail. Invalid function arguments are not replaced by `{}`. Bounded walk/visit/recur traverse explicitly selected inputs under the engine budgets. Executable scripts and cyclic symbol references are rejected.
+
+
+Optional reads also accept an explicit-source JSON string: `"$input/model"`, `"$root/path"`, `"$item/path"`, `"$context/path"`, `"$runtime/path"`, `"$state/slot/path"`, or `"$binding/name/path"`. Omit the pointer to read the source itself; a trailing slash selects an empty key. Pointers and binding-name segments use RFC 6901 escaping. Required reads use object form. Only Expression positions interpret compact strings; literal, enum and sample values remain data. Existing scope permissions, missing/null behavior, compiled depth and execution budgets remain in force. The catalog exposes an object/string `oneOf`. Valid shorthand survives package retrieval, encoding and recompilation; existing object declarations stay objects. A changed authored form has its own revision fingerprint and requires fresh verification.
 
 ## Cache, errors and events
 
@@ -95,12 +102,8 @@ All paths below use the `/api/admin/protocols` namespace and existing management
 Preview modes: mapping/session/task/models/count_tokens/agent. Exact payloads are defined by the [handlers](../backend/server/protocol_revision_admin.go) and [PreviewInput](../backend/protocol/authoring.go). Missing coverage or stale hash/compiler evidence blocks activation; uploading `passed:true` cannot authorize it.
 
 
-## Default request hint projection
+## Default core dispositions
 
-The shared conversion action registry includes `request_projection`, a request action at default order 130. Its value is `{sourceCodec?, targetCodec}`, using `openai-chat`, `responses`, `anthropic` or `gemini`; an omitted source codec leaves defaults unknown. It retains mapped cache hints and request tracking metadata; recognized hints without a target representation are omitted in compatible mode with info-level `conversion_degraded` and `lossy_compatible` fidelity. Strict mode rejects actual loss before upstream invocation. Empty hints and known inactive non-streaming output options use `conversion_normalized` with preserved fidelity. Function tool `strict` is preserved across Chat, Responses and Anthropic. Chat/Anthropic non-strict defaults become explicit `false` in Responses. Responses automatic strictness cannot be reproduced across APIs: compatible mode warns and uses the target default, while strict mode rejects that candidate. Gemini omission of explicit strictness is also lossy. Tool schemas are never rewritten.
+Target Mapping declarations generate default conversion rules with stable IDs. Requests and responses operate on core intents; no sourceCodec/targetCodec switch selects a Go implementation. The editor reads the current generic action catalog, and custom rule values remain exact JSON.
 
-The existing `stream_options` action also handles Anthropic custom-tool `eager_input_streaming` preferences (boolean or null). The default rule supplies the actual target codec in `value`, using the same codec enum. Anthropic streaming requests retain the preference. Other targets omit unrepresentable per-tool streaming timing in compatible mode with info-level `conversion_degraded` and `lossy_compatible`; strict mode rejects either explicit boolean value. Non-streaming preferences and a cross-protocol default null normalize without an effect. Tool schemas, input payloads, associations and signatures remain intact, and unknown tool properties still require explicit mapping. Rules without a target codec do not guess a tool-streaming mapping.
-
-Tool-result status uses the existing `tool_result_object` and `tool_result_text` actions. The object action preserves a true error flag in `response.error` and normalizes false to an ordinary result; caller data named `error` is protected from being misclassified. Text-to-object wrapping and joining plain text result blocks remain diagnosed shape changes rejected in strict mode. Media, scoped state and unknown block extensions require explicit mapping. The text action accepts an optional actual target codec in `value`, supplied by the default policy: Anthropic retains the boolean flag, while Chat and Responses normalize false and represent true with a `[Tool error] ` text marker. The latter emits a warning with `lossy_compatible` fidelity and is rejected in strict mode. Without a target codec, the text action retains status. Invalid boolean flags are rejected before authored removal, tool inputs and associations remain unchanged, and native snapshots cannot restore a projected flag.
-
-Chat and Responses retain `metadata` and `user`; the recognized `metadata.user_id` mapping retains the tracking identity. Unknown extensions require explicit cross-protocol mappings. Tool `strict` omissions remain warnings in compatible mode and fail in strict mode. Cache resources, prewarm, cache mode, minimum lifetime, generation constraints, safety, storage and session references keep their dedicated validation. Projection runs on a candidate copy and native replay cannot resurrect omitted fields. Runtime forwarding, management preview, combination verification and the built-in Agent use the same pipeline. Compiler changes use startup revalidation and preset upgrades without database migrations or version-specific fallback branches.
+Compatible mode permits only declared, diagnosed losses; strict mode rejects them. Disabling a default by ID does not make the encoder silently perform its work. Unknown semantics and required provider/authorization/resource constraints remain protected. See the [three-part contract](protocol-three-part-contract.md) for field ownership and rule semantics.

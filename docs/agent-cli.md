@@ -105,7 +105,7 @@ Usage:
   elysia code ls [prefix] [flags]
 
 Examples:
-  示例：elysia code ls backend/protocol/builtin/definitions
+  示例：elysia code ls backend/protocol/builtin/packages
 
 Flags:
   -h, --help   help for ls
@@ -119,13 +119,13 @@ Flags:
 elysia code read <路径>
 <path>: 仓库相对路径(先 code ls 浏览)
 
-详细说明：读取源码快照中的一个文件(仓库相对路径,如 backend/protocol/compiler.go 或 packages/webui/src/lib/protocol-v2.ts);输出较长时配合 grep/head 管道截取。预置协议原文在 backend/protocol/builtin/definitions/ 下；协议指南在 docs/ 下。
+详细说明：读取源码快照中的一个文件(仓库相对路径,如 backend/protocol/compiler.go 或 packages/webui/src/lib/protocol-v2.ts);输出较长时配合 grep/head 管道截取。预置协议的 spec.json 与 mapping.json 在 backend/protocol/builtin/packages/ 各协议目录下；协议指南在 docs/ 下。
 
 Usage:
   elysia code read [path] [flags]
 
 Examples:
-  示例：elysia code read backend/protocol/builtin/definitions/anthropic-messages.json
+  示例：elysia code read backend/protocol/builtin/packages/anthropic/mapping.json
 
 Flags:
   -h, --help   help for read

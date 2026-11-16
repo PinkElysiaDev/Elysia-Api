@@ -1,8 +1,10 @@
-# 自定义协议定义参考（v2）
+# 自定义协议包参考（v4）
 
 [English](protocol-definition-reference.en.md) · [使用指南](protocol-guide.md) · [实现参考](protocol-definition-v2.md)
 
-当前格式是 `schemaVersion: 2`，语义文档为版本 1；作者 `version`、内容哈希和编译器版本独立。旧 request/response/shape 模板只可导入迁移，不再执行。实时事实来源为 `GET /api/admin/protocols/schema` 或 `elysia protocol schema`，对应 [Definition](../backend/protocol/definition.go)、[语义模型](../backend/protocol/model.go)、[编译器](../backend/protocol/compiler.go)。
+当前包格式为 `{ "schemaVersion":4,"spec":...,"mapping":... }`；Mapping 使用 DSL2 和大自在天 core2。作者 `version`、包修订哈希和编译器版本独立。旧格式不导入迁移，也不执行。实时事实来源为 `GET /api/admin/protocols/schema` 或 `elysia protocol schema`，对应 [ProtocolPackage](../backend/protocol/protocol_package.go)、[核心模型](../backend/protocol/model.go)与[三分契约](protocol-three-part-contract.md)。
+
+大自在天是唯一转换中心。每个 Mapping 只实现本协议与大自在天的双向映射，两个协议之间通过核心组合，不编写协议对专用转换器。
 
 ## 运行时值 Schema 校验
 
@@ -31,31 +33,33 @@ catalog 包装及语义根节点 `request`、`response`、`event`、`task`、`mo
 
 ## 完整样例
 
-从零定义的 [text-alpha](../backend/protocol/testdata/text-alpha.json) 与 [text-beta](../backend/protocol/testdata/text-beta.json) 可直接录入编辑器。工具及完整多轮示例见 [编译器回归](../backend/protocol/compiler_test.go)；WebSocket、异步任务使用同目录的 session 和 job 样例。不要将不完整片段当作可启用协议。
+从零定义的 [text-alpha](../backend/protocol/testdata/packages/text-alpha) 与 [text-beta](../backend/server/testdata/protocols/text-beta) 各含 Spec/Mapping。将两份源组装为完整 v4 包后录入编辑器，不要将不完整片段当作可启用协议。协议包、编译器版本和样例共同决定验证证据。
 
-## 定义组成
+## 协议包组成
 
 | 字段 | 约束 |
 | --- | --- |
-| `id` / `name` / `version` | 身份、显示名和作者版本；ID 不等于语义来源身份 |
-| `family` / `wireVersion` | 原生内容兼容身份；仍受方向和资源作用域检查 |
-| `requires` | 所需已安装引擎功能；不能靠声明安装新机制 |
-| `capabilities` | 可验证能力；方向可进一步收窄 |
-| `directions` | 独立解码/编码映射，不能机械反转 |
-| `operations` | 相对路径、方法、传输、鉴权位置、输入约束和会话/任务/目录配置 |
-| `expressions` | 编译时复用的声明式表达式；拒绝循环引用 |
-| `native` | 原生保留策略及需要时的数组稳定身份 |
-| `limits` | 只能在引擎上限内收窄深度、节点、状态及缓冲限制 |
-| `samples` | 映射样例与预期结果、失败诊断、事件序列及能力证据 |
-| `sessionSamples` / `taskSamples` / `modelSamples` | 对应工作流证据 |
-| `agent` | Agent 参数映射、工具结果格式、思考档位及样例 |
-| `extensions` | 明确允许的惰性元数据；其它未知配置键报错 |
+| `spec.id/name/version` | 身份、显示名和作者版本；ID 不等于核心来源身份 |
+| `spec.family/wireVersion` | 外部合同兼容身份；仍受方向和资源作用域检查 |
+| `spec.requires` | 所需已实现引擎功能；不能靠声明安装新机制 |
+| `spec.documents/constraints` | 外部文档与可复用具名断言，包括事件生命周期 |
+| `spec.operations` | 路径、方法、传输、鉴权位置及会话/任务/目录合同 |
+| `mapping.coreVersion/dslVersion` | 均为 2，固定核心合同与声明语言 |
+| `mapping.capabilities` | 可验证能力；方向可进一步收窄 |
+| `mapping.directions` | 本协议与大自在天的独立双向映射，不能机械反转 |
+| `mapping.operations` | 操作对应的方向，以及任务、目录、计数等映射 |
+| `spec.expressions` / `mapping.expressions` | 各自独立的编译期符号表，拒绝循环或不可达引用 |
+| `mapping.native` | 原生保留策略及数组稳定身份 |
+| `mapping.conversionDefaults` | 对核心意图的具名目标规则，不创建协议对转换器 |
+| `mapping.limits` | 只能在引擎上限内收窄资源限制 |
+| `mapping.samples` 与其他样例集合 | 预期结果、失败诊断、事件序列与工作流证据 |
+| `mapping.agent` | Agent 参数、客户端意图、工具结果格式与样例 |
 
 方向：`decode_request`、`encode_request`、`decode_response`、`encode_response`、`decode_event`、`encode_event`、`decode_client_event`、`encode_upstream_event`。定义可以只实现部分方向，但使用场景必须匹配。
 
 ## 映射表达式
 
-一个方向选择 `module`、`transform` 或事件 `rules`。内置模块为 `openai-chat`、`responses`、`anthropic`、`gemini`。`after` 对模块输出执行明确的后映射；其 `input` 为模块结果、`root` 为原输入。`initial` 在首个非空事件前输出一次声明的事件前缀。`input`/`output` schema 校验类型，操作级 `input` 另检查最终 HTTP 正文。
+一个方向以 `document` 选择 Spec 合同，以 `program` 声明 DSL 程序，以 `effects` 声明语义保留、规范化或拒绝。流式方向可声明受限状态、增量与终结程序。没有 `module`、`after` 或旧 `transform/rules` 执行模式。外部合同、核心语义和最终出站分别校验各自对象；不能因上游检查过就取消不同对象的检查。
 
 字段读取使用 JSON Pointer：
 
@@ -65,7 +69,7 @@ catalog 包装及语义根节点 `request`、`response`、`event`、`task`、`mo
 
 这只是编码方向片段。表达式目录包含 `read`、`literal`、`omit`、`object`、`array`、`map`、`flatmap`、`filter`、`choose`、`if`、`enum`、`cast`、`merge`、`concat`、`join`、`sort`、`associate`、`exists`、`equal`、`all`、`any`、`not`、`parse_json`、`stringify_json`、`strip_prefix`、`ref`。取值来源为 `input`、`item`、`root`、`context`。准确参数从 schema 读取。
 
-缺失、null、false、0、空字符串/数组/对象均不同。`exists` 包含明确零值和 null；`join(source)` 只接受字符串数组；`cast` 不截断数值。未知分支报错，非法 function JSON 不用 `{}` 代替。循环只能遍历输入，禁止任意脚本和递归。
+缺失、null、false、0、空字符串/数组/对象均不同。`exists` 包含明确零值和 null；`join(source)` 只接受字符串数组；`cast` 不截断数值。未知分支报错，非法 function JSON 不用 `{}` 代替。`walk/visit/recur` 只遍历显式选择的输入并服从预算，不允许任意脚本或循环符号引用。具体语义以[原语说明](protocol-dsl-primitives.md)和实时 catalog 为准。
 
 ## 缓存、错误和事件
 
@@ -93,3 +97,9 @@ usage 的 `input/output/total/cacheRead/cacheCreation` 是带 `count` 和 `origi
 | `POST /reload` | 编译成功后原子重载 |
 
 预览支持 `mapping/session/task/models/count_tokens/agent`。接口正文以 [处理器](../backend/server/protocol_revision_admin.go) 与 [PreviewInput](../backend/protocol/authoring.go) 为准。样例覆盖不充分、哈希或编译器过期均阻止启用；上传 `passed:true` 不能绕过验证。
+
+## 可选 read 简写
+
+可选读取可以写成显式来源的字符串：`"$input/model"`、`"$root/path"`、`"$item/path"`、`"$context/path"`、`"$runtime/path"`、`"$state/slot/path"` 或 `"$binding/name/path"`。省略指针读取来源本身，末尾的斜线读取空字符串键；路径和绑定名段遵守 RFC 6901 转义。required read 继续使用对象形式。
+
+只有 Expression 位置解释简写；literal、enum、Schema 和样例中的值仍是数据。现有作用域权限、缺失与 null 的区别、编译深度及执行预算不变。目录公开对象／字符串 `oneOf`；合法简写经配置读取、编码和重新编译后保留，已有对象声明保持对象形式。修改声明形式会产生新的修订指纹，必须重新验证。完整语法见 [DSL read 简写](protocol-dsl-primitives.md#read-简写)。

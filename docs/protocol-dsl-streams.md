@@ -1,6 +1,6 @@
-# DSL 流式契约与执行状态
+# DSL 流式契约迁移记录
 
-本文描述已经接入 v3 编译入口的能力及剩余缺口，不代表四预置已完成迁移或通过性能验收。总进度见 [本轮闭合记录](protocol-dsl-closure-2026-10-31.md)。
+本文保留 2026-10-31 阶段的流式实现与缺口；下文的“当前”“尚未接通”和 v3 均指当时记录。当前四个预置已使用 package4／DSL2／Core2 的 Spec／Mapping 执行 JSON 与流式转换。现行合同见[三分契约](protocol-three-part-contract.md)，实际支持范围及未闭合验收见[切换记录](protocol-three-part-cutover-2026-11-14.md)。以下阶段结果不作追溯改写，也不构成正式性能验收。
 
 ## Spec 独立校验
 

@@ -1,5 +1,17 @@
 # Cache usage contracts and focused verification
 
+[??](cache-usage-contracts.md) ? [Validation](protocol-release-readiness.en.md)
+
+## Responses cache write retention observations
+
+A non-null `usage.input_tokens_details.cache_write_tokens_details` must contain both `ttl_30m_tokens` and `ttl_12h_tokens`. The source Spec rejects empty or partial objects, unknown members, negatives, fractions and int64 overflow. Responses Mapping converts them to the neutral `Usage.Details` keys `cache_creation.30m_tokens` and `cache_creation.12h_tokens`, retaining observed zeros and integers above the JavaScript safe-integer range.
+
+These counters partition cache creation by retention at write time. They are not elapsed lifetime, additional input or charges. When CacheCreation is known, the complete pair must equal it; cache reads plus writes must fit Input. Subtraction avoids overflow, and no detail is added to Input, Output or Total again. Sparse authored core knowledge does not imply zero for an absent bucket, while encoding a complete Responses object requires both buckets. The 30m/12h buckets are not aliases for another protocol's 5m/1h buckets and do not establish pricing or actual cache lifetime.
+
+Absence stays absent. Explicit null creates no Counter and remains a source-owned usage remainder. Same-source encoding merges that remainder with mapped usage and rejects leaf collisions. Chat, Anthropic and Gemini use named `response-usage-projection` / `event-usage-projection` rules: compatible mode may omit known duration counters with `conversion_degraded` diagnostics carrying the core path, rule ID and policy hash; strict mode and disabled rules reject that loss. Client projection does not mutate source accounting. Null or unknown remainders do not qualify for the known-counter omission rule.
+
+SSE counters are snapshots: repeating a pair does not accumulate it, and final observed zeros replace earlier nonzero values. The supported boundary is conservative. After a non-null pair is reported, every later response snapshot that explicitly supplies usage must retain a complete non-null pair. Null or empty usage, changed totals without the pair, and withdrawn details are rejected. A progress event with no usage update remains valid; completed/incomplete responses must retain the pair. This prevents earlier details from masquerading as a current observation. SDK types and saved zero-only live examples do not prove broader partial-update semantics.
+
 [中文](cache-usage-contracts.md) · [Validation](protocol-release-readiness.en.md)
 
 A cache hit, an observable counter, and faithful forwarding are separate claims. Missing is not zero. Accepted fields do not prove a hit or a TTL's time behavior.
@@ -43,8 +55,8 @@ Nonzero cache reads, creation and TTL behavior require independent checks for ea
 
 The [mapping patch](examples/cache-usage-alias.mapping.json) and [sample](examples/cache-usage-alias.sample.json) illustrate a **synthetic** contract, `usage.provider_metrics.write_tokens`. They are not complete definitions or an interpretation of any provider’s private billing fields. Use a real alias only after establishing its contract and observing evidence.
 
-1. Copy the Chat definition under a new ID, retaining capabilities, operations, samples, directions and extensions.
-2. Merge the patch's `decode_response.after` and `decode_event.after`. If an `after` already exists, explicitly compose transformations and test them instead of overwriting it.
+1. Copy the Chat v4 package under a new Spec ID, retaining both sources, capabilities, operations, samples, directions and extensions.
+2. In `mapping.expressions`, copy `decode-usage` to `standard-decode-usage` and `stream-decode-usage` to `standard-stream-decode-usage`, then merge the example's `expressions`. Both directions reuse `cache-usage`; their original programs and field effects remain intact.
 3. Append the sample and add actual JSON, stream, zero, missing and conflicting-field cases. The example gives standard semantic counters priority, including explicit zero, and reads the alias only when standard creation is absent.
 4. Verify, preview, save the draft, activate the exact revision, then check binding and forwarding.
 
@@ -52,7 +64,7 @@ Agent uses the same service: `elysia protocol draft`, `validate`, `verify`, `pre
 
 If an old sample expected `cache_write_tokens` as an unknown extension, update that field's assertion to `expected.usage.cacheCreation={"count":originalValue,"origin":"observed"}`, including zero. Keep the original inclusive input total. Adjust only the consumed field's old extension path, retaining unrelated extensions and every sample. Preview the complete semantic diff and reverify; do not remove failing samples to bypass version validation.
 
-`module` decodes the base wire format. Within `after`, `input` is semantic content and `root` is the original response/frame. Event transformations operate on the current frame's events. Native replay requires both decoder and encoder compatibility, including referenced expression implementations. A shared family or ref name is insufficient. Other unmapped extensions still receive `unsupported_native`; deleting extensions is not a valid substitute for compatibility.
+The Mapping uses `let` to bind the original decoder's usage result as `decoded-usage`. The common `cache-usage` expression reads the original response/frame from `root`, preserving standard counters and their explicit zero values. Stream usage is evaluated on its current frame. Native replay requires both decoder and encoder compatibility, including referenced expression implementations. A shared family or ref name is insufficient. Other unmapped extensions still receive `unsupported_native`; deleting extensions is not a valid substitute for compatibility.
 
 `TestCacheAliasEditorAgentAndForwardingShareContract` checks editor management APIs, Agent, preview, activation, JSON/SSE and SQLite together. This is an offline service integration test, not browser E2E or a live provider-alias claim.
 

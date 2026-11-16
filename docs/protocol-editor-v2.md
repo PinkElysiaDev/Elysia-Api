@@ -5,18 +5,26 @@ are drafts. Saving does not activate them. Define the supported directions,
 operations and capabilities; add expected request/response/event examples; save;
 run offline verification; then activate the exact verified revision.
 
-Basic forms edit identity and capabilities. Direction and operation forms use
-the running engine's catalog and expose module choices, independent mappings,
-transport, HTTP method and relative path. JSON sections cover complete mapping
-expressions, tools/content, native preservation, event examples, session limits
-and interleaved traces, task flows and task fixtures. Full JSON remains available
-for every supported definition field. Unknown keys are rejected by the server.
+Basic forms edit `/spec` identity and `/mapping` capabilities. The two source
+tabs edit and import/export `spec.json` and `mapping.json`; full JSON contains
+the complete schemaVersion 4 package. Spec declares the external contract and
+operations. Mapping independently maps that protocol to and from the central
+Maheshvara (大自在天) core2 contract. There are no module choices or direct
+provider-pair converters. Unknown configuration keys are rejected by the server.
 
 The source text is the single editable document. Form changes replace only the
 selected field, preserving large integer literals, explicit null/false/zero,
 arrays and extension objects. Incomplete JSON sections survive tab changes and
 block saving/activation until corrected. Draft writes use the previous hash;
 conflicts never overwrite a newer editor/Agent revision silently.
+
+Expression fields accept both full objects and compact optional reads, for example
+`"$input/model"` or `"$binding/message/content"`. The live schema exposes their
+`oneOf` and the read operation help lists the supported sources. Required reads
+retain object form. Literal, enum and sample strings are data. Source tabs,
+import/export and unrelated form edits preserve the authored compact form;
+server compilation retains the existing scope, pointer and budget checks.
+Changing authoring syntax creates a different revision that needs verification.
 
 Conversion preview invokes the same typed runtime as gateway forwarding. It
 supports request/response mappings, event sequences, complete mixed session
@@ -32,7 +40,7 @@ draft or reverify and roll back. The service enforces these gates even if a
 client calls the API directly. A real upstream validation record is not inferred
 from offline examples or an HTTP 200 response.
 
-The legacy editor has been removed. Imported definitions must be repaired and
+Retired protocol formats cannot be saved or executed. Current packages must be
 verified through this editor before activation. Use
 `node scripts/test-protocol-e2e.mjs` for an isolated backend/browser test.
 
@@ -50,7 +58,7 @@ $env:ELYSIA_DEV_PROXY='http://127.0.0.1:18765'
 $env:PROTOCOL_E2E_URL='http://127.0.0.1:18765'
 $env:PROTOCOL_E2E_TOKEN='<isolated-panel-token>'
 # From packages/webui
-../../node_modules/.bin/playwright.cmd test tests/protocol-v2.spec.ts --project=chromium --workers=1
+node node_modules/@playwright/test/cli.js test tests/protocol-v2.spec.ts --project=chromium --workers=1
 ```
 
 Without `PROTOCOL_E2E_URL`, the integration case explicitly skips. The independent

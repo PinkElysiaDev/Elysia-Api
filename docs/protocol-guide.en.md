@@ -2,11 +2,13 @@
 
 [Documentation index](README.en.md) · [简体中文](protocol-guide.md) · [Definition reference](protocol-definition-reference.en.md) · [Validation](protocol-release-readiness.en.md)
 
-One `backend/protocol` engine serves built-in and custom protocols. The editor,
-Agent, previews, offline verification and live forwarding share its compiler,
-ordered semantic model and immutable revisions. Relay assembles routing and
-transports. The old Maheshvara converter and template executor have been removed;
-old configuration is accepted only by the migration importer.
+One `backend/protocol` engine serves built-in and custom protocols. Maheshvara
+(大自在天, core2) is the conversion hub: each Mapping only connects its own wire
+protocol to and from that core. Spec declares the external contract; DSL supplies
+provider-independent execution. The editor, Agent, previews, verification and
+live forwarding share its compiler and immutable revisions. Only v4 packages
+are accepted; retired formats are neither imported nor executed. See the
+[cutover record](protocol-three-part-cutover-2026-11-14.md) for acceptance status.
 
 ## Fidelity contract
 
@@ -20,12 +22,12 @@ cross-provider reuse of scoped cache resources.
 
 ```mermaid
 flowchart LR
-  A[Editor / Agent] --> B[Versioned definition]
+  A[Editor / Agent] --> B[Spec + Mapping package]
   B --> C[Compile and capability checks]
   C --> D[Fixture and combination verification]
   D --> E[Activate immutable revision]
-  E --> F[Ingress decode → ordered semantics → upstream encode]
-  F --> G[Response/event decode → validation → client encode]
+  E --> F[Source Mapping → Maheshvara core → Target Mapping]
+  F --> G[Target Spec validation → Delivery]
 ```
 
 Requests pin revisions and account/resource scope. Reload affects subsequent
@@ -62,12 +64,12 @@ contracts and independent evidence; requests are not stripped to fit a target.
 Saving does not activate. Revision comparison and rollback share the verifier;
 an incompatible or unverified old revision cannot be activated.
 
-A complete cache-capable standalone definition is [cached-text](examples/cached-text-v2.json): request policy lives at `promptPolicy`, response accounting at `meter`; it passes the same offline verifier.
-
-Complete standalone fixtures: [`text-alpha`](../backend/protocol/testdata/text-alpha.json),
-[`text-beta`](../backend/protocol/testdata/text-beta.json), and the adjacent
-`session-{alpha,beta}.json` / `job-{alpha,beta}.json` files. None use built-in
-shapes. Real vendors still require their own documented mappings and examples.
+Standalone source pairs are available in
+[`text-alpha`](../backend/protocol/testdata/packages/text-alpha) and
+[`text-beta`](../backend/server/testdata/protocols/text-beta). Combine their
+Spec/Mapping sources as a schemaVersion 4 package before saving in the editor.
+Real providers still require their own external contracts, bidirectional core
+mappings and examples.
 
 ## Agent workflow
 

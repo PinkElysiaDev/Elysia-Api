@@ -535,8 +535,8 @@ elysia protocol schema [--section <section>] [--type <type>]
 
 Without a section, return the installed compiler/schema version, features,
 directions, transports, operation kinds and capabilities. Sections are
-`package`, `spec`, `mapping`, `definition`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
-`events`, `diagnostics`, `modules`. `--type` selects a named type from a section
+`package`, `spec`, `mapping`, `semantic`, `binding`, `directions`, `capabilities`, `operations`,
+`events`, `diagnostics`. `--type` selects a named type from a section
 containing `$defs`; it is not valid for a list catalog.
 
 ```text
@@ -725,11 +725,11 @@ elysia code ls [prefix]
 ```
 
 List sorted repository-relative paths, optionally filtered by a positional
-prefix. The snapshot includes backend Go, definitions/fixtures, WebUI source,
+prefix. The snapshot includes backend Go, Spec/Mapping packages and fixtures, WebUI source,
 protocol guides and CLI references.
 
 ```text
-elysia code ls backend/protocol/builtin/definitions
+elysia code ls backend/protocol/builtin/packages
 elysia code ls packages/webui/src/lib/
 elysia code ls docs/
 ```
@@ -742,11 +742,12 @@ elysia code read <path>
 
 Read one repository-relative snapshot file. Browse with `code ls` first; use
 `grep`/`head` pipelines to limit large output. Missing paths return an error and
-may include a nearby path hint. Presets in `backend/server/presets/` are historical
-migration inputs; active v2 definitions live under `backend/protocol/builtin/definitions/`.
+may include a nearby path hint. Historical migration fixtures do not execute.
+Active protocols have separate `spec.json` and `mapping.json` sources in each
+protocol directory under `backend/protocol/builtin/packages/`.
 
 ```text
-elysia code read backend/protocol/builtin/definitions/anthropic-api.json
+elysia code read backend/protocol/builtin/packages/anthropic/mapping.json
 elysia code read docs/protocol-guide.en.md
 ```
 

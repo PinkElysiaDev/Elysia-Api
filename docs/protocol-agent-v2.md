@@ -8,9 +8,11 @@ tool is an adapter to that CLI; it does not have another protocol interpreter.
 
 1. Read the provider documentation and complete request/response/event examples.
 2. Run `elysia protocol schema`. Fetch individual sections with `--section
-   definition|semantic|binding|directions|capabilities|operations|events|diagnostics|modules`.
+   package|spec|mapping|semantic|binding|directions|capabilities|operations|events|diagnostics`.
    Use `--type Request` (or another named type) to avoid truncating large schemas.
-3. Write a complete `schemaVersion: 2` definition using `protocol draft '<JSON>'`.
+3. Write a complete `schemaVersion: 4` package containing `spec` and `mapping`
+   using `protocol draft '<JSON>'`. Mapping uses DSL2/core2 and only converts
+   its own wire protocol to and from the central Maheshvara (大自在天) model.
 4. Run `protocol validate`, `protocol preview --direction <direction> --sample
    '<JSON>'`, and `protocol verify`. Session/task previews use `--mode`,
    `--sample-id`, `--operation`, `--kind` and `--purpose`, as in the editor.
@@ -30,7 +32,7 @@ Rollback passes the current compiler's verification gate again.
 
 `protocol test --operation <id> --sample '<semantic Request JSON>' --base-url
 <URL> [--api-key <key>]` requires passing offline evidence and an explicit model.
-It uses the same typed adapters, secure outbound client, capability checks and
+It uses the same compiled mappings, secure outbound client, capability checks and
 event replay as gateway forwarding. HTTP JSON, SSE and NDJSON generation probes
 are implemented; session/task probes and v2 model-discovery probes explicitly
 report their missing workflow instead of running generation mappings.
@@ -42,7 +44,7 @@ model and contract outcome. They do not store prompts, outputs or credentials.
 Success means the observed exchange passed the declared contract, not that all
 capabilities, models, provider cache hits or repeated requests were tested.
 
-Agent model calls with a v2 binding pin its revision, require function-tool
+Agent model calls pin their package revision, require function-tool
 support from both model and binding, and check actual requests/responses before
 consumption. They use declared HTTP generation operations. Streaming results
 use a bounded collector over the shared event replay; no generation is replayed

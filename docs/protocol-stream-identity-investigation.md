@@ -1,5 +1,7 @@
 # 真实Responses流的后续迁移依据
 
+本文是 2026-10-30 迁移阶段的历史调查，以下“现有”“尚未实施”和 v3 指当时状态。当前 Responses 默认 Spec／Mapping 已执行流身份与生命周期校验；现行合同和边界见[三分契约](protocol-three-part-contract.md)、[Responses 元数据](protocol-responses-metadata.md)及[切换记录](protocol-three-part-cutover-2026-11-14.md)。调查中的原始发现与待办不追溯改写为验收通过。
+
 本页是源码与既有样例审查，尚未实施新身份契约，也没有通过新增实测宣布真实Responses流已迁移。
 当前通用文本／JSON工具Spec的成功不能替代下面这些边界。
 

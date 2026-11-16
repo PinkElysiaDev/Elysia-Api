@@ -33,7 +33,7 @@ These routes inherit the existing admin authentication and authorization.
 | Route under `/api/admin/protocols` | Behavior |
 | --- | --- |
 | `GET /` | Drafts, persisted active pointers and actually loaded hashes |
-| `GET /schema` | Current compiler schemas, modules, capabilities and diagnostics |
+| `GET /schema` | Current package, Spec, Mapping and core schemas, DSL operations, capabilities and diagnostics |
 | `POST /validate` | Strictly compile the supplied definition |
 | `POST /preview` | Execute typed request/response/event mapping and show provenance |
 | `POST /combinations` | Verify two supplied protocol definitions together |
@@ -53,10 +53,10 @@ report cannot authorize activation. Body size and unknown request keys are
 checked. Revision conflicts return HTTP 409. Invalid definitions and failed
 verification return structured diagnostics; missing revisions return 404.
 
-The old custom-protocol PUT endpoint recognizes versioned definitions and
-saves them through this service as drafts. It cannot install a v2 definition
-in the legacy registry or overwrite its draft with a v1 payload. Public and custom gateway paths use the pinned versioned registry; legacy definitions require import and verification.
+Public and custom gateway paths use the same pinned v4 package registry. Legacy
+definitions are rejected; this cutover uses a new isolated database and provides
+no old-format import or migration. See the [cutover record](protocol-three-part-cutover-2026-11-14.md).
 
 ## Validation
 
-Test save/activation separation, conflicting edits, pinned in-flight revisions, rollback, corrupt storage, stale reports and concurrent reloads. Complete offline examples are `backend/protocol/testdata/text-alpha.json` and `text-beta.json`; they do not establish compatibility with a real hosted service. See [validation](protocol-release-readiness.en.md).
+Test save/activation separation, conflicting edits, pinned in-flight revisions, rollback, corrupt storage, stale reports and concurrent reloads. Offline examples use separate Spec/Mapping sources in `backend/server/testdata/protocols/text-alpha` and `text-beta`; they do not establish compatibility with a real hosted service. See [validation](protocol-release-readiness.en.md).

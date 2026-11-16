@@ -24,7 +24,7 @@ type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 ## 协议修订与能力绑定
 
-协议使用 `schemaVersion: 2` 定义，语义模型独立使用版本 1。作者版本、定义哈希与编译器版本分别记录。草稿、不可变修订、活动指针和离线/真实验证报告彼此独立；保存不启用。模型源和模型组的绑定记录方向、能力、传输及组合证据，不能仅凭 `platform` 推断工具或媒体能力。
+协议使用 `schemaVersion: 4` 的完整 Spec／Mapping 包；Mapping 声明 `dslVersion: 2`、`coreVersion: 2`，只连接自身外部协议与大自在天 Core2。转换策略的 `schemaVersion: 2` 是独立版本。作者版本、定义哈希与编译器版本分别记录。草稿、不可变修订、活动指针和离线/真实验证报告彼此独立；保存不启用。模型源和模型组的绑定记录方向、能力、传输及组合证据，不能仅凭 `platform` 推断工具或媒体能力。
 
 当前契约见 [protocol-v2.ts](../packages/webui/src/lib/protocol-v2.ts) 和[协议参考](protocol-definition-reference.md)。前端以原始 JSON 文本编辑定义；不要把携带长整数和原生扩展的配置经普通 JavaScript 对象往返后再保存。用量语义区分缺失与明确零值，缓存策略区分 TTL、键和有作用域的资源引用。
 

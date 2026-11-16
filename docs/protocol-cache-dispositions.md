@@ -1,5 +1,7 @@
 # 声明式缓存意图处置
 
+本文保留 2026-10-29 迁移阶段的原型边界与回归记录；下文 v3、“本批”和未切换状态均指当时。当前预置已通过 package4／DSL2／Core2 的目标 Mapping 声明缓存处置，现行规则及 Native 边界见[三分契约](protocol-three-part-contract.md)和[缓存用量合同](cache-usage-contracts.md)。以下原始阶段限制保留，不作为当前完整能力清单。
+
 此能力仅接入独立编译的 v3 包。四个现有预置与生产加载入口未改变。历史保留字段的声明原型另见[请求历史保留说明](protocol-history-declarations.md)。
 
 目标 `encode_request` 可以声明 `scope: "cache_intents"` 的 `drop` 或 `default` effect。`path`、`target` 必须为空，不接受 aggregate layout。`when` 必须存在，使用当前 `CacheIntent` 作为 `input`／`root`；不能读取请求上下文。引用表达式在编译时解析，运行时不重新编译。

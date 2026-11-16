@@ -1,5 +1,7 @@
 # 请求历史保留的声明式原型
 
+本文保存 2026-10-29 迁移阶段的历史原型和验收边界；下文“本批”“仍在”和未切换状态均指当时。当前运行时已移除旧供应商补丁，历史保留由各协议自己的 Mapping 与 Core2 双向转换。现行规则见[三分契约](protocol-three-part-contract.md)和[思考与存储意图](protocol-reasoning.md)，以下原型结果保持原样。
+
 本批接通 `reasoning.historyRetention` 的有限值映射与目标取舍。四个原型位于 `backend/protocol/testdata/history/`，只验证文本请求的历史控制切片；不是正式预置，不覆盖完整供应商协议。请求使用受限文本形态，响应样例是合成的独立文本合同。
 
 四个现有预置与 `normalizeAnthropicThinkingRetention` 旧补丁仍在。生产加载入口未切换，不能将本批记为四预置迁移完成。

@@ -264,8 +264,8 @@ The backend provides no backward compatibility or automatic migration. Use a new
 - API keys, models and groups live only in SQLite; `tokens`, `modelGroups` and `customProtocols` are not read or imported.
 - Protocols use current definitions and explicit bindings with `custom:<protocol ID>` platforms. Model references must be `sourceId:modelId`.
 - Legacy protocol migration endpoints, preset rename/path repairs and historical log-layout backfills have been removed.
-- Built-in modules always use current canonical semantics. `requires` declares engine capabilities; it no longer selects historical implementations. Custom fixtures and conversion rules must be reverified; old evidence cannot authorize execution.
-- `responses_storage` rules require explicit `sourceCodec`, `targetCodec` and `onUnsupported`; a missing source no longer implies Responses.
+- Protocols require `schemaVersion: 4` Spec/Mapping packages, with DSL2/Core2 declared by Mapping. Presets load their two bundled sources. Custom fixtures and conversion rules must be reverified with the current compiler; old evidence cannot authorize execution.
+- API object-storage intent belongs to `clientOutput.responsesStorage`; source and target Mappings declare decoding and target handling. See the [three-part contract (Chinese)](protocol-three-part-contract.md). The old `requires` field and `responses_storage` action are no longer supported.
 - Usage filters use repeated `keyName`, `groupName`, `modelName` and `sourceId` parameters. The `modelGroup` alias and `keyHash` filter are removed.
 - Global and catalog-specific proxy URLs use the same `http://` contract (HTTPS targets use CONNECT); catalog overrides no longer accept historical HTTPS/SOCKS proxy exceptions.
 

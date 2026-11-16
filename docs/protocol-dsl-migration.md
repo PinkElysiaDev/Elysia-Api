@@ -1,10 +1,8 @@
-# 协议 DSL 改造进度与不变量
+# 协议 DSL 迁移历史与不变量（dev.78–dev.101）
 
-实施分支：`refactor/protocol-dsl`。本文早期行为基线为 `d40e1940 / dev.78`；当前编译器为 dev.101。
+本文保存 dev.78–dev.101 阶段的迁移过程。实施分支为 `refactor/protocol-dsl`，早期行为基线为 `d40e1940 / dev.78`；下文的“当前”“尚未切换”和阶段缺口均指记录时状态。
 
-当前两源声明、已验证入口和切换阻断以[能力迁移清单](protocol-dsl-capability-status.md)
-及[本轮闭合记录](protocol-dsl-closure-2026-10-31.md)为准。下文保留早期阶段的实现与证据，
-不能把历史完成项或旧缺口直接当作当前完整状态；生产四预置尚未切换。
+当前四个运行时预置已加载 Spec／Mapping，唯一执行格式为 package4、DSL2、Core2。现行规范见[三分契约](protocol-three-part-contract.md)，执行范围与未闭合验收见[能力清单](protocol-dsl-capability-status.md)及[切换记录](protocol-three-part-cutover-2026-11-14.md)。以下历史证据与原始结论保留，不代表当前功能或性能已经全部验收。
 
 2026-10-30 后续完整迁移以 `476688e7` 重新固定基线。用户已选择两份源文件整体发布、
 最终不兼容旧协议配置，并允许优化内部表示及错误包装；外部转换能力和隔离结果仍须保持。

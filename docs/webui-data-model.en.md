@@ -24,7 +24,7 @@ Legacy values `openai`, `openai-compatible`, and `claude` remain readable; use c
 
 ## Protocol revisions and capability bindings
 
-Definitions use `schemaVersion: 2`; semantic documents independently use version 1. Author version, definition hash and compiler version are distinct. Drafts, immutable revisions, active pointers, offline reports and real-target reports are separate; saving does not activate. Source/group bindings record direction, capability, transport and composition evidence; `platform` alone does not establish tool or media support.
+Protocols use complete Spec/Mapping packages with `schemaVersion: 4`. Each Mapping declares `dslVersion: 2` and `coreVersion: 2`, connecting only its own wire protocol and the shared Core2. Conversion policies independently use `schemaVersion: 2`. Author version, definition hash and compiler version are distinct. Drafts, immutable revisions, active pointers, offline reports and real-target reports are separate; saving does not activate. Source/group bindings record direction, capability, transport and composition evidence; `platform` alone does not establish tool or media support.
 
 See [protocol-v2.ts](../packages/webui/src/lib/protocol-v2.ts) and the [definition reference](protocol-definition-reference.en.md). The editor retains raw JSON text; do not round-trip definitions with long integers/native extensions through ordinary JavaScript objects. Usage distinguishes absent and explicit-zero counters; cache semantics separate TTL, keys and scoped resource references.
 
