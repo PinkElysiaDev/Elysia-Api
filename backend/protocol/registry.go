@@ -17,10 +17,13 @@ type registrySnapshot struct {
 // Service is shared by the editor, Agent and gateway. Administrative mutations
 // are serialized; request reads pin a compiled pointer without locking or SQL.
 type Service struct {
-	compiler   *Compiler
-	repository Repository
-	mu         sync.Mutex
-	snapshot   atomic.Pointer[registrySnapshot]
+	compiler      *Compiler
+	repository    Repository
+	mu            sync.Mutex
+	snapshot      atomic.Pointer[registrySnapshot]
+	retained      map[string]*Compiled
+	retainedOrder []string
+	retainedBytes int
 }
 
 // NewService creates an empty registry. Reload validates persisted activations
@@ -257,8 +260,8 @@ func (service *Service) RemoveActive(id string, commit func() error) error {
 	return nil
 }
 
-// DeleteRetained serializes durable history deletion with activation. Compiled
-// graphs already pinned by requests stay valid; graph reuse grants no authority.
+// DeleteRetained serializes durable history deletion and graph eviction with
+// activation. Graphs already pinned by requests stay valid; reuse grants no authority.
 func (service *Service) DeleteRetained(id, hash string, commit func() error) error {
 	if IsPresetProtocolID(id) {
 		return draftInputError("/id", fmt.Errorf("preset protocol %q is read-only; its history refreshes with the engine", id))
@@ -271,6 +274,7 @@ func (service *Service) DeleteRetained(id, hash string, commit func() error) err
 	if err := commit(); err != nil {
 		return err
 	}
+	service.dropRetained(id + "/" + hash)
 	return nil
 }
 

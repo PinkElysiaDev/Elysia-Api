@@ -32,8 +32,9 @@ func (session *CompilationSession) Compile(value Value) (*Compiled, []Conversion
 	return session.compile(value, "")
 }
 
-// CompilePreset admits the first successful source for a recognized preset ID.
-// The caller selects embedded sources; identity matching is not verification.
+// CompilePreset retains the first successful source per ID for this session.
+// Process-lifetime pinning additionally requires the exact embedded source bytes;
+// neither form of graph reuse grants verification or activation authority.
 func (session *CompilationSession) CompilePreset(id string, value Value) (*Compiled, []ConversionIssue) {
 	return session.compile(value, id)
 }
@@ -51,7 +52,9 @@ func (session *CompilationSession) compile(value Value, presetID string) (*Compi
 	_, hasAdmission := session.presets[presetID]
 	if !hasAdmission && IsPresetProtocolID(presetID) && compiled.Identity().DefinitionID == presetID {
 		session.presets[presetID] = sessionCompilation{source: value, compiled: compiled}
-		processCompilations.admitPreset(presetID, compiled)
+	}
+	if presetID != "" {
+		processCompilations.admitPreset(presetID, session.service.compiler.compilationKey(value.Bytes()), compiled)
 	}
 	return compiled, nil
 }

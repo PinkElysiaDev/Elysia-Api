@@ -324,9 +324,56 @@ func (service *Service) LoadRevision(ctx context.Context, id, hash string) (*Com
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	// The process cache reuses graphs, not database authorization. Historical
-	// loads still require the durable revision and current-engine evidence.
-	return service.loadVerifiedRevision(ctx, id, hash)
+	// Retention keeps the process cache's weak graph live, not authorization.
+	// Always reread durable bytes/evidence and run CanActivate, even on a hit.
+	key := id + "/" + hash
+	compiled, err := service.loadVerifiedRevision(ctx, id, hash)
+	if err != nil {
+		service.dropRetained(key)
+		return nil, err
+	}
+	service.retainRevision(key, compiled)
+	return compiled, nil
+}
+
+// These helpers require service.mu. Hits never refresh FIFO order. The byte
+// budget counts definition bytes, as before; it is not a graph-heap estimate.
+func (service *Service) retainRevision(key string, compiled *Compiled) {
+	if service.retained[key] == compiled {
+		return
+	}
+	service.dropRetained(key)
+	size := compiled.definition.Len()
+	limits := service.compiler.limits
+	if size > limits.BufferBytes || limits.StateItems <= 0 {
+		return
+	}
+	for len(service.retainedOrder) > 0 && (service.retainedBytes+size > limits.BufferBytes || len(service.retained) >= limits.StateItems) {
+		service.dropRetained(service.retainedOrder[0])
+	}
+	if service.retained == nil {
+		service.retained = map[string]*Compiled{}
+	}
+	service.retained[key] = compiled
+	service.retainedOrder = append(service.retainedOrder, key)
+	service.retainedBytes += size
+}
+
+func (service *Service) dropRetained(key string) {
+	compiled := service.retained[key]
+	if compiled == nil {
+		return
+	}
+	service.retainedBytes -= compiled.definition.Len()
+	delete(service.retained, key)
+	for index, entry := range service.retainedOrder {
+		if entry == key {
+			copy(service.retainedOrder[index:], service.retainedOrder[index+1:])
+			service.retainedOrder[len(service.retainedOrder)-1] = ""
+			service.retainedOrder = service.retainedOrder[:len(service.retainedOrder)-1]
+			break
+		}
+	}
 }
 
 // ReadReport returns current-engine offline evidence for the selected revision.

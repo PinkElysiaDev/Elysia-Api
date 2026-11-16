@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"hash"
@@ -39,12 +40,19 @@ func TestMain(m *testing.M) {
 		}
 	}
 	processCompilations.mu.Unlock()
-	for id, compiled := range presets {
+	for id, preset := range presets {
+		compiled := preset.compiled
 		key := keys[compiled]
+		if key != preset.key || !isEmbeddedPreset(id, key, compiled) {
+			fmt.Fprintln(os.Stderr, "preset cache sentinel: source identity mismatch:", id)
+			code = 1
+		}
 		compiler, err := NewCompiler(key.limits, []string{featureWebSocketTransport, featureAsyncTasks})
 		var document ProtocolPackage
 		if err == nil {
-			err = decodeContract(compiled.definition.Bytes(), &document)
+			// Recompile the exact admitted source. The canonical definition can
+			// compact literal Value spellings held by otherwise identical plans.
+			err = decodeContract(embeddedPresets()[id].value.Bytes(), &document)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "preset cache sentinel:", id, err)
@@ -66,6 +74,30 @@ func compiledGraphFingerprint(compiled *Compiled) [32]byte {
 	var result [32]byte
 	copy(result[:], digest.Sum(nil))
 	return result
+}
+
+func TestCompiledFingerprintNonStringMapKeys(t *testing.T) {
+	values := map[Value]int{StringValue("first"): 1, StringValue("second"): 2, StringValue("third"): 3}
+	fingerprint := func() string {
+		digest := sha256.New()
+		fingerprintValue(digest, reflect.ValueOf(values), make(map[uintptr]bool))
+		return string(digest.Sum(nil))
+	}
+	expected := fingerprint()
+	for range 100 {
+		if fingerprint() != expected {
+			t.Fatal("non-string map keys made the graph sentinel nondeterministic")
+		}
+	}
+	values[StringValue("first")] = 4
+	if fingerprint() == expected {
+		t.Fatal("the graph sentinel ignored a changed map value")
+	}
+	delete(values, StringValue("first"))
+	values[StringValue("replacement")] = 1
+	if fingerprint() == expected {
+		t.Fatal("the graph sentinel ignored a changed map key")
+	}
 }
 
 // Traverse pointer contents, not addresses, and detect cycles on the current
@@ -103,7 +135,17 @@ func fingerprintValue(digest hash.Hash, value reflect.Value, stack map[uintptr]b
 		}
 	case reflect.Map:
 		keys := value.MapKeys()
-		slices.SortFunc(keys, func(a, b reflect.Value) int { return strings.Compare(a.String(), b.String()) })
+		slices.SortFunc(keys, func(a, b reflect.Value) int {
+			if a.Kind() == reflect.String {
+				return strings.Compare(a.String(), b.String())
+			}
+			// Value/other non-string keys all have the same reflect.String
+			// placeholder. Sort their complete contents, not map iteration order.
+			left, right := sha256.New(), sha256.New()
+			fingerprintValue(left, a, maps.Clone(stack))
+			fingerprintValue(right, b, maps.Clone(stack))
+			return bytes.Compare(left.Sum(nil), right.Sum(nil))
+		})
 		for _, key := range keys {
 			fingerprintValue(digest, key, stack)
 			fingerprintValue(digest, value.MapIndex(key), stack)

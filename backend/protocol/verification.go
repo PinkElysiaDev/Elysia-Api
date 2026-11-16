@@ -19,10 +19,9 @@ type verificationResult struct {
 // It performs no network I/O and can never produce upstream verification.
 func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	verifiedAt := time.Now().UTC()
-	// RequestBodyLimit is the only caller context value affecting offline
-	// execution. Non-default budgets bypass memoization rather than creating an
-	// unbounded per-revision map. Cancellation is never cached or hidden.
-	if compiled.verification == nil || RequestBodyLimit(ctx) != DefaultRequestBodyBytes || ctx.Err() != nil {
+	// The context-input inventory lives with verificationMemoEligible. Alternate
+	// contexts execute normally instead of growing a per-revision memo map.
+	if compiled.verification == nil || !verificationMemoEligible(ctx) {
 		return verifyUncached(ctx, compiled, verifiedAt)
 	}
 	memo := compiled.verification
@@ -34,6 +33,9 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 	if memo.report != nil {
 		report := cloneVerificationReport(*memo.report)
 		report.VerifiedAt = verifiedAt
+		if ctx.Err() != nil {
+			return verifyUncached(ctx, compiled, verifiedAt)
+		}
 		return report
 	}
 	report := verifyUncached(ctx, compiled, verifiedAt)

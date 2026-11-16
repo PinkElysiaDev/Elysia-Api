@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"context"
 	"slices"
 	"sync"
 )
@@ -10,6 +11,19 @@ import (
 type verificationMemo struct {
 	mu     sync.Mutex
 	report *VerificationReport
+}
+
+// Offline fixture execution reads requestBudgetKey via RequestBodyLimit
+// (wire/request/mapping/native/phase limits) and documentMetricsKey via the
+// document measurement/normalization helpers. The latter contains mutable
+// execution-local facts, so even a default-sized metrics owner bypasses reuse.
+// EvaluationContext values/scope/state/operation come from immutable fixtures or
+// synthetic builders, not ctx. Combination/profile-only keys are unreachable.
+// Cancellation and deadline expiry are observed through ctx.Err(), including
+// after waiting for the memo and after cloning a hit. See the correction note
+// for the full call-path inventory and the excluded context readers.
+func verificationMemoEligible(ctx context.Context) bool {
+	return RequestBodyLimit(ctx) == DefaultRequestBodyBytes && ctx.Value(documentMetricsKey{}) == nil && ctx.Err() == nil
 }
 
 func cloneVerificationReport(report VerificationReport) VerificationReport {

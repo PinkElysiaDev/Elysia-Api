@@ -23,7 +23,7 @@ func compileSharedCacheFixture(t *testing.T, document ProtocolPackage) *Compiled
 }
 
 func newTestCompilationCache() *compilationCache {
-	return &compilationCache{entries: map[compilationKey]weak.Pointer[Compiled]{}, flights: map[compilationKey]*compilationFlight{}, presets: map[string]*Compiled{}}
+	return &compilationCache{entries: map[compilationKey]weak.Pointer[Compiled]{}, flights: map[compilationKey]*compilationFlight{}, presets: map[string]presetCompilation{}}
 }
 
 func TestCompilationCacheIdentity(t *testing.T) {
@@ -65,6 +65,110 @@ func TestCompilationCacheIdentity(t *testing.T) {
 		t.Fatal("compiler versions shared a graph")
 	}
 	runtime.KeepAlive(first)
+}
+
+func TestCompilationCachePinsOnlyEmbeddedPresetBytes(t *testing.T) {
+	compiler, err := NewCompiler(DefaultLimits(), []string{featureWebSocketTransport, featureAsyncTasks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	embedded, err := embeddedPresetPackage("anthropic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	variant := fixtureValue(t, verifiedTextPackage(t, PresetAnthropicID))
+	for _, raw := range [][]byte{variant.Bytes(), append([]byte(" "), embedded.Bytes()...)} {
+		cache := newTestCompilationCache()
+		variantKey := compiler.compilationKey(raw)
+		variantGraph, issues := cache.compile(variantKey, func() (*Compiled, []ConversionIssue) { return compiler.Compile(raw) })
+		if err := IssuesError(issues); err != nil {
+			t.Fatal(err)
+		}
+		cache.admitPreset(PresetAnthropicID, variantKey, variantGraph)
+		if len(cache.presets) != 0 {
+			t.Fatal("a preset-ID variant was pinned")
+		}
+		key := compiler.compilationKey(embedded.Bytes())
+		builds := 0
+		build := func() (*Compiled, []ConversionIssue) {
+			builds++
+			return compiler.Compile(embedded.Bytes())
+		}
+		graph, issues := cache.compile(key, build)
+		if IssuesError(issues) != nil || graph == variantGraph || builds != 1 {
+			t.Fatal("embedded bytes reused a variant graph", issues)
+		}
+		cache.admitPreset(PresetAnthropicID, key, graph)
+		if len(cache.presets) != 1 || cache.presets[PresetAnthropicID].compiled != graph {
+			t.Fatal("a variant admitted first prevented embedded pinning")
+		}
+		// Prove the strong preset lookup, independently from the weak entry.
+		delete(cache.entries, key)
+		for range 3 {
+			warm, issues := cache.compile(key, build)
+			cache.admitPreset(PresetAnthropicID, key, warm)
+			if IssuesError(issues) != nil || warm != graph || builds != 1 {
+				t.Fatal("warm embedded admission did not reuse its pinned graph", issues)
+			}
+		}
+		for _, changed := range []compilationKey{
+			{version: key.version + "-next", limits: key.limits, features: key.features, source: key.source},
+			{version: key.version, limits: Limits{}, features: key.features, source: key.source},
+			{version: key.version, limits: key.limits, source: key.source},
+		} {
+			other, _ := cache.compile(changed, func() (*Compiled, []ConversionIssue) { return &Compiled{}, nil })
+			if other == graph {
+				t.Fatal("preset lookup bypassed the complete admission key")
+			}
+		}
+		cache.presets[PresetGeminiID] = cache.presets[PresetAnthropicID]
+		delete(cache.presets, PresetAnthropicID)
+		other, _ := cache.compile(key, func() (*Compiled, []ConversionIssue) { return &Compiled{}, nil })
+		if other == graph {
+			t.Fatal("preset lookup failed to check the ID and embedded source identity")
+		}
+	}
+}
+
+func TestCompilationCacheUnknownPresetNeverPins(t *testing.T) {
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
+	cache := newTestCompilationCache()
+	raw := fixtureValue(t, verifiedTextPackage(t, "unknown-preset")).Bytes()
+	compiled, issues := compiler.Compile(raw)
+	if err := IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	cache.admitPreset("unknown-preset", compiler.compilationKey(raw), compiled)
+	if len(cache.presets) != 0 {
+		t.Fatal("unknown preset ID pinned a graph")
+	}
+}
+
+func TestCompilationSessionVariantCannotPreventEmbeddedPinning(t *testing.T) {
+	service, _, variant := newCompilationSessionFixture(t)
+	session := service.NewCompilationSession()
+	defer session.Close()
+	first, issues := session.CompilePreset(PresetAnthropicID, variant)
+	if err := IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	embedded, err := embeddedPresetPackage("anthropic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, issues := session.CompilePreset(PresetAnthropicID, embedded)
+	if IssuesError(issues) != nil || graph == first {
+		t.Fatal("embedded preset inherited a variant", issues)
+	}
+	processCompilations.mu.Lock()
+	pinned := processCompilations.presets[PresetAnthropicID]
+	processCompilations.mu.Unlock()
+	if pinned.compiled != graph || pinned.key != service.compiler.compilationKey(embedded.Bytes()) {
+		t.Fatal("session's first variant blocked process pinning of embedded bytes")
+	}
+	if session.presets[PresetAnthropicID].compiled != first {
+		t.Fatal("process pinning changed the session's exact first-source contract")
+	}
 }
 
 func TestCompilationCacheDoesNotCacheFailures(t *testing.T) {
@@ -212,6 +316,95 @@ func TestVerificationMemoClonesEvidenceAndStampsEachCall(t *testing.T) {
 	}
 	if report := Verify(limited, compiled); report.Passed {
 		t.Fatal("cached evidence hid a different request budget")
+	}
+}
+
+func TestVerificationMemoContextInputs(t *testing.T) {
+	for _, input := range []string{"request-budget", "document-metrics"} {
+		t.Run(input, func(t *testing.T) {
+			compiled := compileSharedCacheFixture(t, verifiedTextPackage(t, "memo-context-"+input))
+			ctx := t.Context()
+			if input == "request-budget" {
+				var err error
+				ctx, err = WithRequestBodyLimit(ctx, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				ctx = withDocumentMetrics(ctx, 64<<10)
+			}
+			if verificationMemoEligible(ctx) {
+				t.Fatal("a non-default execution input was memo eligible")
+			}
+			cold := Verify(ctx, compiled)
+			if compiled.verification.report != nil || cold.Passed != (input == "document-metrics") {
+				t.Fatal("alternate context populated the memo or changed its verdict", cold.Issues)
+			}
+			if normal := Verify(t.Context(), compiled); !normal.Passed || compiled.verification.report == nil {
+				t.Fatal("alternate context poisoned default verification", normal.Issues)
+			}
+			memo := compiled.verification.report
+			warm := Verify(ctx, compiled)
+			uncached := verifyUncached(ctx, compiled, warm.VerifiedAt)
+			cold.VerifiedAt = warm.VerifiedAt
+			if !reflect.DeepEqual(warm, uncached) || !reflect.DeepEqual(warm, cold) || compiled.verification.report != memo {
+				t.Fatal("default memo changed alternate-context evidence")
+			}
+		})
+	}
+}
+
+func TestVerificationMemoExpiredDeadlineCannotUseWarmEvidence(t *testing.T) {
+	compiled := compileSharedCacheFixture(t, verifiedTextPackage(t, "memo-warm-deadline"))
+	if report := Verify(t.Context(), compiled); !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	if report := Verify(ctx, compiled); report.Passed {
+		t.Fatal("warm evidence hid deadline expiry")
+	}
+}
+
+type verificationCancelContext struct {
+	context.Context
+	cancel context.CancelFunc
+	reads  int
+	at     int
+}
+
+func (ctx *verificationCancelContext) Err() error {
+	ctx.reads++
+	if ctx.reads == ctx.at {
+		ctx.cancel()
+	}
+	return ctx.Context.Err()
+}
+
+func TestVerificationMemoDoesNotCachePartialExecution(t *testing.T) {
+	compiled := compileSharedCacheFixture(t, verifiedTextPackage(t, "memo-partial"))
+	base, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctx := &verificationCancelContext{Context: base, cancel: cancel, at: 5}
+	if report := Verify(ctx, compiled); report.Passed || compiled.verification.report != nil || ctx.reads < 5 {
+		t.Fatal("partially canceled execution became cached evidence", report.Issues)
+	}
+	if report := Verify(t.Context(), compiled); !report.Passed {
+		t.Fatal("partial execution poisoned subsequent verification", report.Issues)
+	}
+}
+
+func TestVerificationMemoRechecksCancellationAfterClone(t *testing.T) {
+	compiled := compileSharedCacheFixture(t, verifiedTextPackage(t, "memo-cancel-clone"))
+	if report := Verify(t.Context(), compiled); !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	memo := compiled.verification.report
+	base, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctx := &verificationCancelContext{Context: base, cancel: cancel, at: 3}
+	if report := Verify(ctx, compiled); report.Passed || compiled.verification.report != memo {
+		t.Fatal("cloning a warm report hid cancellation or changed cached evidence")
 	}
 }
 

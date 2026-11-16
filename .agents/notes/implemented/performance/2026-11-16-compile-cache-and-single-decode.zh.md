@@ -10,7 +10,7 @@ Status: implemented
 
 `protocol` 持有进程级缓存，覆盖 `Compiler.Compile`、`CompilePackage`、`CompileSources`、`Service.Validate`、编译会话和持久化修订重载。键由 `CompilerVersion`、完整引擎 `Limits`、排序后的已安装 feature 身份，以及**精确原始定义字节**的 SHA-256 组成，不做 JSON 归一化。Mapping 自带的 limits 和全部样例也包含在这些字节中。不同拼写、limits、features 或编译器版本不能共用一个执行图。
 
-条目保存 `weak.Pointer[Compiled]`。同一键的并发未命中共享一次编译；错误不缓存，每个等待方拥有独立诊断。`runtime.AddCleanup` 仅在弱引用身份仍匹配时删除失效元数据，因此旧清理任务不会误删替代条目。四个已知预置 ID 各自第一次显式准入的成功源码被强引用保留：最多四个图，每个 ID 一个，不强留其他拼写、配置或自定义定义。生产注册表本来也会持有这些预置图。编译会话保留首次准入和发布契约，但移除了冗余的线性去重遍历。原有 Service 级历史强引用缓存被移除；历史加载重新读取持久化定义和报告。
+条目保存 `weak.Pointer[Compiled]`。同一键的并发未命中共享一次编译；错误不缓存，每个等待方拥有独立诊断。`runtime.AddCleanup` 仅在弱引用身份仍匹配时删除失效元数据，因此旧清理任务不会误删替代条目。仅显式准入且与内嵌包字节完全相同的源码被强引用保留：最多四个图，每个 ID 一个，读取时核对完整准入键。其他拼写、配置和作者变体不会被进程级固定。生产注册表本来也会持有这些预置图。编译会话保留首次准入和发布契约，但移除了冗余的线性去重遍历。历史加载在引擎字节数和条目数限制内保留进程缓存的图，同时仍重新读取持久化定义和报告。修正后的固定规则、context 输入和保留决策由[编译缓存修正](2026-11-16-compile-cache-corrections.zh.md)记录。
 
 执行图复用不是授权。重载和发布仍读取修订，核对 identity/hash，读取权威数据库报告并执行 `CanActivate`。缺失、失败、过期或不匹配的数据库证据不能被缓存的离线证据替代。原子快照、请求 pin、回滚和修复隔离保持不变。
 
@@ -26,9 +26,9 @@ Status: implemented
 
 - 编译源码身份、编译器版本、引擎/定义 limits 和已安装 features。
 - 普通样例、事件序列、model、token-count、task、session 和 Agent 的全部夹具，包括样例 ID/顺序、scope、context、input、期望输出/诊断和 capability 声明；这些都包含在完整定义字节中。
-- 有效请求体预算。只缓存默认预算；非默认预算绕过 memo，而不是扩张每个图的选项 map。
+- 有效请求体预算和调用方持有的文档 metrics。仅默认预算且没有传入 metrics owner 时使用 memo；其他输入绕过 memo，而不是扩张每个图的选项 map。完整 context 读取清单见[编译缓存修正](2026-11-16-compile-cache-corrections.zh.md)。
 
-离线执行没有 provider/network 输入，使用显式的合成 operation 身份和时间。组合/profile 验证是独立路径，不缓存。Context metrics 不改变证据。取消、deadline 超时、失败和部分执行永不填充 memo。等待者取得 memo 锁后再次检查取消。每次调用获得 checks、嵌套 capabilities、coverage、issues、target scope 的深拷贝，并填写自己的 `VerifiedAt`。给定相同时间戳，缓存和不缓存的报告字节一致。**命中缓存意味着本进程内本次调用没有重新执行这些夹具**；它不是新的上游证据，也不允许忽略持久化报告。
+离线执行没有 provider/network 输入，使用显式的合成 operation 身份和时间。组合/profile 验证是独立路径，不缓存。传入的 context metrics 会保守地绕过 memo，尽管其只存储与策略无关的事实。取消、deadline 超时、失败和部分执行永不填充 memo。等待者取得 memo 锁后再次检查取消。每次调用获得 checks、嵌套 capabilities、coverage、issues、target scope 的深拷贝，并填写自己的 `VerifiedAt`。给定相同时间戳，缓存和不缓存的报告字节一致。**命中缓存意味着本进程内本次调用没有重新执行这些夹具**；它不是新的上游证据，也不允许忽略持久化报告。
 
 ### Decoding and schema reuse
 
@@ -56,7 +56,7 @@ Status: implemented
 
 ## Consequences
 
-不变的注册表和测试服务器共享不可变可执行图，不共享请求状态，也不授予激活权限。首次准入后，热服务器启动不再执行预置编译或验证。自定义图及其证据仍可回收，弱引用元数据异步清理。最多四个首次准入的预置图保留至进程结束。编译入口仍需对精确字节做 SHA-256；源码对入口还检查独立边界。缓存 Verify 分配独立报告 slice，而不是返回可修改的共享证据。源码诊断回退有意保留冷兼容路径。
+不变的注册表和测试服务器共享不可变可执行图，不共享请求状态，也不授予激活权限。首次准入后，热服务器启动不再执行预置编译或验证。自定义图及其证据仍可回收，弱引用元数据异步清理。最多四个与内嵌字节完全相同的预置图保留至进程结束；已验证历史图另有 Service 持有的有界保留。编译入口仍需对精确字节做 SHA-256；源码对入口还检查独立边界。缓存 Verify 分配独立报告 slice，而不是返回可修改的共享证据。源码诊断回退有意保留冷兼容路径。
 
 ## Measurements
 
