@@ -170,7 +170,8 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
 	bytes := 2
 	shouldCapture := plan.when.needsItemCapture(state.capture, state.walkBody)
-	for index, item := range items {
+	for index := range items {
+		item := &items[index]
 		child := state
 		child.capture = nil
 		if shouldCapture {
@@ -180,7 +181,7 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 		child.item = item.value
 		child.itemOutput = nil
 		if item.node != nil {
-			child.itemOutput = &item
+			child.itemOutput = item
 		}
 		value, err := plan.when.buildNode(&child)
 		if err != nil {
@@ -191,7 +192,7 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 			return plannedOutput{}, err
 		}
 		if isMatch {
-			bytes += appendPlannedItem(node, plannedOutput{item, normalizedOutputBytes(item)}, state.cache)
+			bytes += appendPlannedItem(node, plannedOutput{*item, normalizedOutputBytes(*item)}, state.cache)
 		}
 	}
 	return plannedOutput{JSONOutput{node: node}, bytes}, nil
