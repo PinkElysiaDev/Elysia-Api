@@ -18,6 +18,11 @@ cp scripts/protocol-audit/config.example.json scripts/protocol-audit/config.loca
 - `baseUrl` 可带 `/v1`、`/v1beta` 或代理前缀，不要填完整推理端点（如 `/v1/chat/completions`）。Gemini 模型名不加 `models/`。
 - 已有配置可直接复用；`config.local.json` 含真实密钥，请注意隐私安全。
 
+临时后端通过当前 Spec/Mapping 激活修订运行。脚本先核对四个协议的加载身份与离线验证，创建模型源后，
+通过 `PUT /api/admin/protocols/bindings` 单独绑定修订，再创建模型组。源配置中的旧 `chat_completions`、
+`anthropic` 等 platform 值不再使用。已有渠道地址末尾的 API 版本前缀由活动 Spec 的操作路径识别，
+避免重复拼接；不会改变原渠道的其他路径前缀。绑定证据中的失败组合仍保留，配置成功不表示所有转换方向通过。
+
 **3. 首次安装测试依赖：**
 
 ```sh

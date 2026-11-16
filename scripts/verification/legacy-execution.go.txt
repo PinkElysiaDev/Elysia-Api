@@ -1,0 +1,81 @@
+// Archived-engine measurement only. Never compiled into the production gateway.
+type conversionExecutionProof struct {
+	Execution, Commit, Compiler string
+	Packages                    map[string]string
+	Policies                    map[string]string
+}
+
+func conversionExecutionIdentity(t *testing.T, server *Server) *conversionExecutionProof {
+	t.Helper()
+	proof, err := readConversionExecutionIdentity(t.Context(), server, conversionExecution(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return proof
+}
+
+func readConversionExecutionIdentity(ctx context.Context, server *Server, execution string) (*conversionExecutionProof, error) {
+	proof := &conversionExecutionProof{Execution: execution, Commit: AppCommit,
+		Compiler: protocol.CompilerVersion, Packages: map[string]string{}, Policies: map[string]string{}}
+	service, err := server.protocolService()
+	if err != nil {
+		return proof, err
+	}
+	view := service.View()
+	for _, id := range []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID} {
+		compiled, ok := view.Pin(id)
+		if !ok {
+			return proof, fmt.Errorf("measurement protocol is not active: %s", id)
+		}
+		proof.Packages[id] = compiled.Hash()
+		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse, protocol.DecodeEvent, protocol.EncodeEvent} {
+			if proof.Execution != "legacy" || compiled.Codec(direction) == "" {
+				return proof, fmt.Errorf("measurement execution %s does not match active protocol %s/%s (revision %s, codec %q)", execution, id, direction, compiled.Hash(), compiled.Codec(direction))
+			}
+		}
+	}
+	bindings, err := server.store.ListProtocolBindings(ctx)
+	if err != nil {
+		return proof, err
+	}
+	for _, binding := range bindings {
+		if proof.Packages[binding.Binding.ProtocolID] != binding.Binding.RevisionHash {
+			return proof, fmt.Errorf("measurement binding does not select the active revision: %s", binding.Binding.ProtocolID)
+		}
+		for _, report := range binding.Combinations {
+			if report.Passed {
+				proof.Policies[report.SourceHash+":"+report.TargetHash+":"+report.ContextHash] = report.PolicyHash
+			}
+		}
+	}
+	if len(proof.Policies) == 0 {
+		return proof, fmt.Errorf("measurement has no verified conversion policies")
+	}
+	return proof, nil
+}
+
+func checkReloadedConversionExecution(ctx context.Context, server *Server, before *conversionExecutionProof) error {
+	after, err := readConversionExecutionIdentity(ctx, server, before.Execution)
+	if directory := os.Getenv("ELYSIA_FLAME_OUTPUT"); directory != "" {
+		raw, encodeErr := json.MarshalIndent(after, "", "  ")
+		if encodeErr != nil {
+			return encodeErr
+		}
+		if writeErr := os.WriteFile(filepath.Join(directory, "reload-execution.json"), raw, 0600); writeErr != nil {
+			return writeErr
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if !maps.Equal(before.Packages, after.Packages) || !maps.Equal(before.Policies, after.Policies) {
+		return fmt.Errorf("measurement reload changed active revisions or conversion policies")
+	}
+	return nil
+}
+
+func conversionProviderIdentity(t *testing.T) *conversionExecutionProof {
+	t.Helper()
+	return &conversionExecutionProof{Execution: conversionExecution(t), Commit: AppCommit, Compiler: protocol.CompilerVersion,
+		Packages: map[string]string{}}
+}

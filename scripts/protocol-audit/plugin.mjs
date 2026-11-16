@@ -11,6 +11,7 @@ import { persistedCall, eventSequence } from './src/evidence.mjs'
 import { redactor } from './src/audit.mjs'
 import { captureProxy } from './src/plugin-proxy.mjs'
 import { serialize } from './src/concurrency.mjs'
+import { readAuditProtocols, buildAuditSource, configureAuditRoute } from './src/bindings.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const args = {}
@@ -44,15 +45,15 @@ async function command(_name, argv, cwd) {
 try {
   gateway = await localInstance(root, command, undefined, config.timeoutMs)
   clean = redactor([key, gateway.panel, gateway.token])
-  async function admin(path, body) {
-    const response = await fetch(`${gateway.baseUrl}/api/admin/${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { authorization: `Bearer ${gateway.panel}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+  async function admin(path, body, method = body === undefined ? 'GET' : 'POST') {
+    const response = await fetch(`${gateway.baseUrl}/api/admin/${path}`, { method, headers: { authorization: `Bearer ${gateway.panel}`, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
     const result = await response.json()
     if (!response.ok || !result.ok) throw new Error(`Management ${path} failed: ${clean(JSON.stringify(result))}`)
     return result.data
   }
   await admin('api-tokens', { name: 'plugin-audit', token: gateway.token, enabled: true, allowedGroups: [], scopes: [] })
-  await admin('model-sources', { id: 'plugin-audit', name: 'plugin-audit', baseUrl: target.baseUrl, apiKey: key, platform: 'anthropic', enabled: true, autoFetchModels: false, manualModels: [{ id: target.model, name: target.model, type: 'llm', enabled: true, available: true, toolsCapable: true }] })
-  await admin('model-groups', { id: 'plugin-audit', name: 'plugin-audit', enabled: true, models: [`plugin-audit:${target.model}`], strategy: 'sequential', maxRetries: 0, type: 'llm', toolsCapable: true })
+  const contracts = await readAuditProtocols(admin)
+  await configureAuditRoute(admin, buildAuditSource(target, 'plugin-audit', key, contracts.anthropic), contracts.anthropic)
   report.runtime = await admin('protocols'); report.bindings = await admin('protocols/bindings')
   proxy = await captureProxy(gateway.baseUrl, async transport => {
     const trace = await persistedCall(gateway.baseUrl, gateway.panel, transport.requestId)
@@ -63,7 +64,7 @@ try {
     await save()
     console.log(`Captured ${transport.method} ${transport.path.split('?')[0]} HTTP ${transport.status}; persisted=${trace.available}`)
   }, error => { report.captureError = clean(error.message); console.error('Evidence capture failed:', clean(error.message)) })
-  const baseUrl = proxy.baseUrl
+  const baseUrl = `${proxy.baseUrl}/gateway/${contracts.anthropic.id}`
   const vars = { ANTHROPIC_BASE_URL: baseUrl, ANTHROPIC_AUTH_TOKEN: gateway.token, ANTHROPIC_API_KEY: gateway.token, ANTHROPIC_MODEL: 'plugin-audit', ANTHROPIC_DEFAULT_HAIKU_MODEL: 'plugin-audit', ANTHROPIC_DEFAULT_SONNET_MODEL: 'plugin-audit', ANTHROPIC_DEFAULT_OPUS_MODEL: 'plugin-audit', CLAUDE_CONFIG_DIR: join(args.out, 'claude'), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }
   await writeFile(join(profile, 'User', 'settings.json'), JSON.stringify({ 'claudeCode.environmentVariables': Object.entries(vars).map(([name,value])=>({name,value})), 'claudeCode.disableLoginPrompt': true, 'claudeCode.useTerminal': false, 'claudeCode.attachOpenFile': false, 'telemetry.telemetryLevel': 'off' }, null, 2), { mode: 0o600 })
   await writeFile(join(args.out, 'ready.json'), JSON.stringify({ profile, workspace, extensions, baseUrl, extensionVersion: extensionPackage.version, stopFile: join(args.out, 'STOP') }, null, 2))

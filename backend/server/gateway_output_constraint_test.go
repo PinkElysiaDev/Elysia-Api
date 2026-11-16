@@ -19,16 +19,44 @@ const gatewayOutputName = "answer_format"
 const gatewayNumericOutputSchema = `{"type":"object","properties":{"answer":{"type":"number","enum":[9007199254740993,9007199254740992,1.25,1e-3,-0,0.0,1,1.0,10e-1]},"fixed":{"type":"integer","enum":[9007199254740993]}},"required":["answer","fixed"],"additionalProperties":false}`
 const gatewayStringOutputSchema = `{"type":"object","properties":{"answer":{"type":"string","enum":["ExactCase","exactcase"," 大自在天 ","","é","e\u0301","😀","ExactCase"]}},"required":["answer"],"additionalProperties":false}`
 
+type gatewayOutputCase struct {
+	name, schema  string
+	hasStringEnum bool
+}
+
+type gatewayOutputFixture struct {
+	server   *Server
+	packages map[string]*protocol.Compiled
+	target   string
+	calls    atomic.Int32
+	received atomic.Pointer[protocol.Value]
+}
+
 func TestGatewayOutputConstraintDirections(t *testing.T) {
-	testGatewayOutputConstraintDirections(t, gatewayOutputSchema, false)
-}
-
-func TestGatewayOutputNumericEnumDirections(t *testing.T) {
-	testGatewayOutputConstraintDirections(t, gatewayNumericOutputSchema, false)
-}
-
-func TestGatewayOutputStringEnumDirections(t *testing.T) {
-	testGatewayOutputConstraintDirections(t, gatewayStringOutputSchema, true)
+	cases := []gatewayOutputCase{
+		{name: "schema", schema: gatewayOutputSchema},
+		{name: "numeric-enum", schema: gatewayNumericOutputSchema},
+		{name: "string-enum", schema: gatewayStringOutputSchema, hasStringEnum: true},
+	}
+	for _, target := range gatewayPackageNames {
+		t.Run(target, func(t *testing.T) {
+			t.Parallel()
+			fixture := newGatewayOutputFixture(t, target)
+			// A target owns its store and provider; related cases remain serial so
+			// each request observes only its own call count and captured wire.
+			for _, test := range cases {
+				t.Run(test.name, func(t *testing.T) {
+					for _, source := range gatewayPackageNames {
+						for _, operation := range []string{"generate", "stream"} {
+							t.Run(source+"/"+operation, func(t *testing.T) {
+								fixture.checkRequest(t, source, operation, test)
+							})
+						}
+					}
+				})
+			}
+		})
+	}
 }
 
 func TestGatewayOutputConstraintRejectsStaleEvidence(t *testing.T) {
@@ -87,83 +115,78 @@ func gatewayOutputRejectionPath(source, target string, hasStringEnum bool) strin
 	return ""
 }
 
-func testGatewayOutputConstraintDirections(t *testing.T, schema string, hasStringEnum bool) {
+func newGatewayOutputFixture(t *testing.T, targetName string) *gatewayOutputFixture {
 	t.Helper()
-	for _, targetName := range gatewayPackageNames {
-		t.Run(targetName, func(t *testing.T) {
-			server, _ := newProtocolAdminTestServer(t)
-			packages := defaultGatewayPackages(t, server)
-			target := packages[targetName]
-			jsonReply := buildPackageGatewayReply(t, target, false)
-			streamReply := buildPackageGatewayReply(t, target, true)
-			var calls atomic.Int32
-			var received atomic.Pointer[protocol.Value]
-			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				calls.Add(1)
-				body, err := io.ReadAll(request.Body)
-				if err != nil {
-					t.Error(err)
-					writer.WriteHeader(http.StatusBadRequest)
-					return
-				}
-				value, err := protocol.ParseValue(body)
-				if err != nil {
-					t.Error(err)
-					writer.WriteHeader(http.StatusBadRequest)
-					return
-				}
-				received.Store(&value)
-				fields, err := value.ReadObject()
-				if err != nil {
-					t.Error(err)
-					writer.WriteHeader(http.StatusBadRequest)
-					return
-				}
-				if fields["stream"].JSONString() == "true" || request.URL.Query().Get("alt") == "sse" {
-					writer.Header().Set("Content-Type", "text/event-stream")
-					_, _ = writer.Write(streamReply)
-					return
-				}
-				writer.Header().Set("Content-Type", "application/json")
-				_, _ = writer.Write(jsonReply)
-			}))
-			t.Cleanup(provider.Close)
-			setupGatewayModelWithCapabilities(t, server, target, provider.URL, protocol.CapabilitySet{
-				protocol.TextCapability: true, protocol.UsageCapability: true, protocol.OutputConstraintsCapability: true,
-			})
-			for _, sourceName := range gatewayPackageNames {
-				for _, isStream := range []bool{false, true} {
-					operation := "generate"
-					if isStream {
-						operation = "stream"
-					}
-					t.Run(sourceName+"/"+operation, func(t *testing.T) {
-						source := packages[sourceName]
-						body := buildGatewayOutputRequest(t, sourceName, isStream, schema)
-						path := strings.ReplaceAll(source.Operations()[operation].Path, "{model}", "group")
-						request := httptest.NewRequest(http.MethodPost, "/gateway/"+source.Identity().DefinitionID+path, strings.NewReader(body))
-						request.Header.Set("Authorization", "Bearer gateway-test-token")
-						request.Header.Set("Content-Type", "application/json")
-						before := calls.Load()
-						reply := httptest.NewRecorder()
-						serveTestHTTP(server.engine, reply, request)
-						if rejectionPath := gatewayOutputRejectionPath(sourceName, targetName, hasStringEnum); rejectionPath != "" {
-							if reply.Code == http.StatusOK || calls.Load() != before || !strings.Contains(reply.Body.String(), rejectionPath) {
-								t.Fatal("unsupported output constraint reached upstream or lost its diagnostic", rejectionPath, reply.Code, calls.Load()-before, reply.Body.String())
-							}
-							return
-						}
-						if reply.Code != http.StatusOK || calls.Load() != before+1 || reply.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
-							t.Fatal("schema request failed at the actual gateway", reply.Code, calls.Load()-before, reply.Body.String())
-						}
-						checkGatewayOutputWire(t, targetName, *received.Load(), schema)
-						response := collectPackageGatewayReply(t, source, reply, isStream, protocol.Scope{})
-						checkPackageGatewayReply(t, response, "hi", 20, 2)
-					})
-				}
-			}
-		})
+	server, _ := newProtocolAdminTestServer(t)
+	fixture := &gatewayOutputFixture{server: server, packages: defaultGatewayPackages(t, server), target: targetName}
+	target := fixture.packages[targetName]
+	jsonReply := buildPackageGatewayReply(t, target, false)
+	streamReply := buildPackageGatewayReply(t, target, true)
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		fixture.calls.Add(1)
+		isStream, err := fixture.captureRequest(request)
+		if err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if isStream {
+			writer.Header().Set("Content-Type", "text/event-stream")
+			_, _ = writer.Write(streamReply)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write(jsonReply)
+	}))
+	t.Cleanup(provider.Close)
+	setupGatewayModelWithCapabilities(t, server, target, provider.URL, protocol.CapabilitySet{
+		protocol.TextCapability: true, protocol.UsageCapability: true, protocol.OutputConstraintsCapability: true,
+	})
+	return fixture
+}
+
+func (fixture *gatewayOutputFixture) captureRequest(request *http.Request) (bool, error) {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		return false, err
 	}
+	value, err := protocol.ParseValue(body)
+	if err != nil {
+		return false, err
+	}
+	fields, err := value.ReadObject()
+	if err != nil {
+		return false, err
+	}
+	fixture.received.Store(&value)
+	return fields["stream"].JSONString() == "true" || request.URL.Query().Get("alt") == "sse", nil
+}
+
+func (fixture *gatewayOutputFixture) checkRequest(t *testing.T, sourceName, operation string, test gatewayOutputCase) {
+	t.Helper()
+	source := fixture.packages[sourceName]
+	isStream := operation == "stream"
+	body := buildGatewayOutputRequest(t, sourceName, isStream, test.schema)
+	path := strings.ReplaceAll(source.Operations()[operation].Path, "{model}", "group")
+	request := httptest.NewRequest(http.MethodPost, "/gateway/"+source.Identity().DefinitionID+path, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer gateway-test-token")
+	request.Header.Set("Content-Type", "application/json")
+	before := fixture.calls.Load()
+	fixture.received.Store(nil)
+	reply := httptest.NewRecorder()
+	serveTestHTTP(fixture.server.engine, reply, request)
+	if rejectionPath := gatewayOutputRejectionPath(sourceName, fixture.target, test.hasStringEnum); rejectionPath != "" {
+		if reply.Code == http.StatusOK || fixture.calls.Load() != before || !strings.Contains(reply.Body.String(), rejectionPath) {
+			t.Fatal("unsupported output constraint reached upstream or lost its diagnostic", rejectionPath, reply.Code, fixture.calls.Load()-before, reply.Body.String())
+		}
+		return
+	}
+	if reply.Code != http.StatusOK || fixture.calls.Load() != before+1 || reply.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
+		t.Fatal("schema request failed at the actual gateway", reply.Code, fixture.calls.Load()-before, reply.Body.String())
+	}
+	checkGatewayOutputWire(t, fixture.target, *fixture.received.Load(), test.schema)
+	response := collectPackageGatewayReply(t, source, reply, isStream, protocol.Scope{})
+	checkPackageGatewayReply(t, response, "hi", 20, 2)
 }
 
 func buildGatewayOutputRequest(t *testing.T, name string, isStream bool, schema string) string {

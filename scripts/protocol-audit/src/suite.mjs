@@ -8,7 +8,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import assert from 'node:assert/strict'
 import { runAudit, planAudit, redactor, codeCheck, exchange, runLogger } from './audit.mjs'
-import { protocols, requestBody, followupBody, endpoint, inspectReply } from './protocols.mjs'
+import { protocols, requestBody, followupBody, inspectReply } from './protocols.mjs'
 import { localInstance } from './local.mjs'
 import { mapConcurrent, serialize } from './concurrency.mjs'
 import { eventSequence, failureCategory, failureAnalysis, providerFailures, persistedCall, requestSelection, describeHTTPFailure, failureCounts, compatibilityObservations, finishCompatibilityCoverage, compatibilityCounts } from './evidence.mjs'
@@ -16,6 +16,7 @@ import { regressionCases, assertNativeSystemRequest } from './regressions.mjs'
 import { atomicFile } from './report-file.mjs'
 import { cancellationProbe, assertCancellationRecord } from './cancellation.mjs'
 import { checkPersistence } from './persistence.mjs'
+import { readAuditProtocols, buildAuditSource, configureAuditSource, configureAuditRoute, buildAuditGatewayEndpoint } from './bindings.mjs'
 
 export const groups = ['daily', 'protocol', 'sdk', 'errors', 'persistence', 'code']
 const toolDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -95,7 +96,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
   outputDir = resolve(outputDir || join(toolDir, 'results', `${new Date().toISOString().replaceAll(':', '-')}-${randomUUID().slice(0, 8)}`))
   await mkdir(dirname(outputDir), { recursive: true }); await mkdir(outputDir, { mode: 0o700 }); await mkdir(join(outputDir, 'evidence'))
   const secrets = plan.api.targets.flatMap(t => [t.apiKey, ...[t.apiKeyEnv, ...Object.values(t.headersEnv || {})].filter(Boolean).map(k => env[k])]).filter(Boolean)
-  let clean = redactor(secrets), instance, counter = 0
+  let clean = redactor(secrets), instance, contracts, counter = 0
   const currentCase = new AsyncLocalStorage()
   const log = runLogger(outputDir, value => clean(value))
   log(`RUN START groups=${plan.groups.join(',')} concurrency=${plan.api.concurrency} project=${plan.root}`)
@@ -199,16 +200,15 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
     const key = target.apiKey ?? env[target.apiKeyEnv]
     if (target.auth !== 'none' && (!key || /[\r\n]/.test(key))) throw blocked(`渠道 ${target.id} 缺少有效密钥：填写 apiKey 或设置 ${target.apiKeyEnv}`)
     if (Object.keys(target.headersEnv || {}).length) throw blocked('暂不支持 headersEnv；请使用标准密钥认证的渠道')
-    return { id, name: id, baseUrl: target.baseUrl, apiKey: key || '', platform: target.protocol === 'chat' ? 'chat_completions' : target.protocol, enabled: true, autoFetchModels: false, manualModels: [{ id: target.model, name: target.model, type: 'llm', enabled: true, available: true, toolsCapable: true, visionCapable: target.vision === true }] }
+    return buildAuditSource(target, id, key || '', contracts[target.protocol])
   }
   async function route(target, id) {
     ready()
-    await admin('model-sources', source(target, id))
-    await admin('model-groups', { id, name: id, enabled: true, models: [`${id}:${target.model}`], strategy: 'sequential', maxRetries: 0, type: 'llm', toolsCapable: true, visionCapable: target.vision === true })
+    await configureAuditRoute(admin, source(target, id), contracts[target.protocol])
     return { id, model: id, upstreamTarget: target.id }
   }
   async function call(protocol, model, stream = false, options = {}, body) {
-    const url = new URL(endpoint(instance.baseUrl, protocol, model, stream))
+    const url = new URL(buildAuditGatewayEndpoint(instance.baseUrl, contracts[protocol], model, stream))
     return http(url.pathname + url.search, body || requestBody(protocol, model, stream, 'text', '', plan.api.maxOutputTokens), { token: instance.token, ...options })
   }
   await save()
@@ -219,6 +219,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
         instance = await localInstance(plan.root, command, signal, plan.api.timeoutMs, plan.api.maxResponseBytes)
         secrets.push(instance.panel, instance.token); clean = redactor(secrets)
         await admin('api-tokens', { name: 'audit-relay', token: instance.token, enabled: true, allowedGroups: [], scopes: [] })
+        contracts = await readAuditProtocols(admin)
         await runtimeEvidence('startup')
       }, 'source-code')
       if (!ok && instance) { await instance.close(); instance = undefined }
@@ -250,7 +251,8 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
           })
           await run('model-discovery', '从真实上游拉取非空模型列表并保存', async () => {
             needRoute(); const discovery = `${id}-discovery`
-            await admin('model-sources', { ...source(target, discovery), autoFetchModels: true, manualModels: [] })
+            const saved = await configureAuditSource(admin, { ...source(target, discovery), manualModels: [] }, contracts[protocol])
+            await admin(`model-sources/${discovery}`, { ...saved, autoFetchModels: true }, 'PUT')
             await admin(`model-sources/${discovery}/fetch`, {})
             let state; const deadline = Date.now() + plan.api.timeoutMs
             do {
@@ -341,7 +343,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
         }
         if (current === 'sdk') for (const ingress of protocols) for (const stream of plan.api.streams) for (const sdkName of sdkVariants(ingress)) sdkTasks.push(() => run(`${ingress}-${stream ? 'sse' : 'json'}/${sdkName}`, '实际 SDK 发送请求并消费真实网关响应', async item => {
           needRoute()
-          item.sdk = await consume(ingress, { baseUrl: instance.baseUrl, apiKey: instance.token, model: id, ...plan.api, sdkName, signal, onExchange: async detail => {
+          item.sdk = await consume(ingress, { baseUrl: `${instance.baseUrl}/gateway/${contracts[ingress].id}`, apiKey: instance.token, model: id, ...plan.api, sdkName, signal, onExchange: async detail => {
             const path = await evidence('sdk-http.json', { caseId: item.id, ...detail }, item)
             ;(item.calls ||= []).push(await captureCall(detail.response || {}, { request: detail.request, owner: item, protocol: ingress }))
             ;(item.httpStatuses ||= []).push(detail.response?.status)
@@ -379,7 +381,7 @@ export async function runSuite(input, { group = 'all', configDir = process.cwd()
         }
         if (current === 'persistence') {
           const token = randomUUID(); secrets.push(token); clean = redactor(secrets)
-          await checkPersistence({ run, needRoute, admin, recovery, runtimeEvidence, id, token, source: source(target, id),
+          await checkPersistence({ run, needRoute, admin, recovery, runtimeEvidence, id, token, source: configured ? { ...source(target, id), platform: `custom:${contracts[protocol].id}` } : undefined,
             restart: () => instance.restart(), call: options => call(protocol, id, false, options),
             checkTokenReply: result => checkReply(result, protocol, replyOptions),
           })

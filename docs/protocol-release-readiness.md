@@ -22,13 +22,29 @@
 在仓库根目录执行，按改动选择相关检查：
 
 ```bash
-go -C backend test ./... -count=1 -timeout=15m
+# Gemini 流式参数、签名与续传：内置边界和网关专项
+npm run test:protocol -- --suite=gemini-stream --race
+# 输出约束：内置包专项与真实网关并行，每包只执行一次
+npm run test:protocol -- --suite=output --race
+# 通用转换或编译器改动：完整 protocol / builtin，以及较广的 gateway 集成
+npm run test:protocol -- --suite=conversion
+# 完整后端：选择一次普通或 race 运行，不再自动叠加两遍
+npm run test:protocol -- --suite=all --race
 go -C backend vet ./...
-go -C backend test -race ./protocol/... ./storage ./relay ./server -count=1 -timeout=20m
 node scripts/test-protocol-e2e.mjs
 ```
 
 race 需要受支持的 Go 平台和 C 工具链。浏览器集成使用隔离后端与数据库；环境要求见[开发指南](development.md)。不能因为测试耗时或缺少环境而把未执行项标成通过。
+
+按改动选择上述一个测试范围；完整范围已包含专项，不需要对未再修改的代码重复执行专项。普通运行和 race 是显式选项；只有涉及普通／CGO 构建差异等独立问题时才同时运行。默认最多两个独立工作进程，每个 `GOMAXPROCS=2`；`--jobs=1..4` 调整包级并行，包内并行测试上限为2。完整范围由 Go 的包调度执行，保留现有 Fuzz 种子和可选跳过。Windows 可通过 `CC` 指定已有 C 编译器，未指定时才准备固定工具链。
+
+仅修改 Gemini 流式 Mapping 时优先选 `gemini-stream`；`conversion` 包含其他协议、日志策略及路由边界，不应作为每次局部修复的固定前置。
+
+每轮结果写入仓库外层 `.cache/protocol-check-*`：保留命令、源码身份、各包日志、通过／失败／跳过数和耗时。专项零匹配会失败；不同包独立失败的结果全部保留，不自动重试。HTTP 网关的普通、数值、字符串 Schema 共用每个目标的初始化，仍逐项验证全部96个请求及陈旧证据拒绝；独立目标可并行，目标内部请求保持顺序。
+
+测试范围由入口选项控制，执行时清空继承的 `GOFLAGS`，避免外部 `-run`／`-skip` 过滤器把完整检查缩成少量用例后误报通过。
+
+CI 每次只执行完整 race 正确性检查及 vet；20次重复压力、定时 fuzz 和基准通过手动工作流的 `deep_checks` 开启。本地可执行 `node scripts/verify-protocol.mjs race --stress-only --seed=123`。这些深度检查没有被当作普通通过项，也不与正式性能测量同时运行。测试或文档改动通常只需相关验证，不自动触发六平台发行构建。
 
 | 改动 | 重点回归 |
 | --- | --- |

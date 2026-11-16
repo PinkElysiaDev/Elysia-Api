@@ -11,11 +11,7 @@ export async function instrumentLegacyExecution(root, output, runnerRoot) {
     if (source.split(before).length !== 2) throw new Error(`Archived collector differs at ${before}`)
     return source.replace(before, after)
   }
-  let helper = await readFile(join(runnerRoot, 'backend/server/conversion_execution_test.go'), 'utf8')
-  helper = helper.slice(helper.indexOf('type conversionExecutionProof'))
-  const start = helper.indexOf('func configureConversionExecution')
-  helper = helper.slice(0, start) + helper.slice(helper.indexOf('func conversionExecutionIdentity'))
-  helper = helper.slice(0, helper.indexOf('func TestConversionExecution'))
+  let helper = await readFile(join(runnerRoot, 'scripts/verification/legacy-execution.go.txt'), 'utf8')
   helper += '\nfunc conversionExecution(t *testing.T) string {\n t.Helper()\n if protocol.CompilerVersion != "2.0.0-dev.101" || os.Getenv("ELYSIA_CONVERSION_HTTP_EXECUTION") != "legacy" { t.Fatal("reference A must use dev.101 legacy execution") }\n return "legacy"\n}\n'
   const providerHelper = await readFile(join(runnerRoot, 'backend/server/conversion_provider_test.go'), 'utf8')
   helper += '\n' + providerHelper.slice(providerHelper.indexOf('func configureConversionProvider'))

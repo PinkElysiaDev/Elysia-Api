@@ -9,6 +9,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "node scripts/build-standalone.mjs",
+    "test:protocol": "node scripts/verify-protocol.mjs check",
     "test:macos-app": "node scripts/test-macos-app.mjs",
     "build:macos-app": "node scripts/build-macos-app.mjs",
     "build:webui": "npm run build --workspace @root/webui",

@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import threading
@@ -35,6 +36,8 @@ SCENARIOS = {
     'cross-stream': {'requests': 128, 'cross': True, 'stream': True},
 }
 PACKAGES = ['openai-chat', 'openai-responses', 'anthropic', 'google-generate-content']
+PACKAGE_VERSION, DSL_VERSION, CORE_VERSION = 4, 2, 2
+CORE_DIRECTIONS = {'decode_request', 'encode_request', 'decode_response', 'encode_response', 'decode_event', 'encode_event'}
 
 
 def read_json(path):
@@ -222,6 +225,129 @@ def configure_gateway(url, upstream, packages, scenario, directory):
     return {'protocols': active_protocols(url), 'bindings': bindings}
 
 
+def read_production_packages(source):
+    """Read the immutable candidate's real defaults without installing test packages."""
+    documents = {}
+    for name in PACKAGES:
+        path = Path(source) / 'backend/protocol/builtin/packages' / name
+        spec, mapping = read_json(path / 'spec.json'), read_json(path / 'mapping.json')
+        if (mapping['coreVersion'] != CORE_VERSION or mapping['dslVersion'] != DSL_VERSION
+                or not CORE_DIRECTIONS <= mapping['directions'].keys()):
+            raise RuntimeError(f'candidate default does not implement the three-part contract: {name}')
+        documents[spec['id']] = {'schemaVersion': PACKAGE_VERSION, 'spec': spec, 'mapping': mapping}
+    return documents
+
+
+def read_production_compiler(source):
+    declaration = (Path(source) / 'backend/protocol/definition.go').read_text(encoding='utf-8')
+    match = re.search(r'^const CompilerVersion = "([^"]+)"$', declaration, re.MULTILINE)
+    if not match:
+        raise RuntimeError('frozen candidate has no declared compiler version')
+    return match[1]
+
+
+def production_route(documents, scenario):
+    source_id = scenario.get('ingress') or ('anthropic-messages' if scenario.get('image') else 'openai-chat-completions')
+    target_id = scenario.get('target') or ('anthropic-messages' if scenario.get('cross') or scenario.get('image') else 'openai-chat-completions')
+    transport = 'sse' if scenario.get('stream') else 'http_json'
+
+    def operation_path(protocol_id):
+        operations = [operation for operation in documents[protocol_id]['spec']['operations'].values()
+                      if operation['kind'] == 'generate' and operation['transport'] == transport]
+        if len(operations) != 1 or operations[0]['method'] != 'POST' or not operations[0]['path'].startswith('/'):
+            raise RuntimeError(f'candidate has no unique generation operation: {protocol_id}/{transport}')
+        return operations[0]['path']
+
+    return {'source': source_id, 'target': target_id, 'transport': transport,
+            'ingressPath': '/gateway/' + source_id + operation_path(source_id), 'upstreamPath': operation_path(target_id)}
+
+
+def read_production_defaults(url, documents, compiler):
+    runtime = admin(url, 'protocols')
+    schema = admin(url, 'protocols/schema')
+    if not runtime['runtimeReady'] or runtime.get('runtimeFailures') or runtime.get('runtimeError'):
+        raise RuntimeError('production protocol runtime is not ready')
+    if schema['packageVersion'] != PACKAGE_VERSION or schema['compilerVersion'] != compiler:
+        raise RuntimeError('production compiler differs from the frozen candidate')
+    loaded = runtime['loaded']
+    active = {entry['protocolId']: entry['revisionHash'] for entry in runtime['active']}
+    enabled = {entry['id']: entry for entry in admin(url, 'protocols/enabled')['items']}
+    if set(loaded) != set(documents):
+        raise RuntimeError('production did not load exactly the shipped default packages')
+    reports = {}
+    for protocol_id, expected in documents.items():
+        revision_hash = loaded[protocol_id]
+        if active.get(protocol_id) != revision_hash:
+            raise RuntimeError(f'active and loaded revision differ: {protocol_id}')
+        entry = enabled[protocol_id]
+        if entry['revision'] != revision_hash or not entry['preset'] or not CORE_DIRECTIONS <= set(entry['directions']):
+            raise RuntimeError(f'production default is not executable: {protocol_id}')
+        evidence = admin(url, f'protocols/{protocol_id}/revisions/{revision_hash}')
+        revision, report = evidence['revision'], evidence['report']
+        document = revision['definition']
+        if isinstance(document, str):
+            document = json.loads(document)
+        if revision['hash'] != revision_hash or document != expected:
+            raise RuntimeError(f'production default differs from frozen Spec/Mapping: {protocol_id}')
+        if (not report or not report['passed'] or report['kind'] != 'offline' or report['compilerVersion'] != compiler
+                or report['definitionHash'] != revision_hash or not report['samplesHash']):
+            raise RuntimeError(f'production default lacks current activation evidence: {protocol_id}')
+        reports[protocol_id] = report['samplesHash']
+    return loaded, enabled, reports
+
+
+def read_production_configuration(url, documents, compiler, commit, scenario):
+    loaded, _, samples = read_production_defaults(url, documents, compiler)
+    bindings = admin(url, 'protocols/bindings')
+    route = production_route(documents, scenario)
+    sources = [entry for entry in bindings if entry['kind'] == 'source' and entry['sourceId'] == 's']
+    if len(sources) != 1 or sources[0].get('unbound'):
+        raise RuntimeError('production source has no unique explicit protocol binding')
+    source = sources[0]
+    binding = source['binding']
+    if (binding['protocolId'] != route['target'] or binding['revisionHash'] != loaded[route['target']]
+            or route['transport'] not in binding['transports']):
+        raise RuntimeError('production source binding differs from the selected active revision/transport')
+    policies = {}
+    for report in source['combinations']:
+        if not report['passed'] or report['sourceHash'] != loaded[route['source']] or report['targetHash'] != loaded[route['target']]:
+            continue
+        if report.get('transport', '') not in ('', route['transport']):
+            continue
+        if (report['compilerVersion'] != compiler or report['kind'] != 'offline'
+                or report['sourceSamplesHash'] != samples[route['source']] or report['targetSamplesHash'] != samples[route['target']]
+                or not report.get('policyHash') or not report.get('contextHash')):
+            raise RuntimeError('production route evidence is stale or incomplete')
+        policies[':'.join((report['sourceHash'], report['targetHash'], report['contextHash']))] = report['policyHash']
+    if not policies:
+        raise RuntimeError('production route has no verified conversion policy')
+    proof = {'Execution': 'production', 'Commit': commit, 'Compiler': compiler, 'Packages': loaded, 'Policies': policies}
+    return {'protocols': loaded, 'bindings': bindings, 'execution': proof, 'route': route, 'samples': samples}
+
+
+def configure_production_gateway(url, upstream, scenario, directory, documents, compiler, commit):
+    loaded, enabled, _ = read_production_defaults(url, documents, compiler)
+    route = production_route(documents, scenario)
+    target_id = route['target']
+    source = dict(id='s', name='local', baseUrl=upstream, apiKey='synthetic',
+                  enabled=True, autoFetchModels=False, manualModels=[dict(id='m', name='m', enabled=True,
+                  available=True, origin='manual', toolsCapable=True, visionCapable=True)])
+    # The current API owns bindings separately from source credentials/model metadata.
+    admin(url, 'model-sources', 'POST', source)
+    transports = sorted({operation['transport'] for operation in documents[target_id]['spec']['operations'].values()
+                         if operation['kind'] == 'generate'})
+    binding = {'kind': 'source', 'sourceId': 's', 'binding': {'protocolId': target_id,
+               'revisionHash': loaded[target_id], 'capabilities': enabled[target_id]['capabilities'], 'transports': transports}}
+    save_json(directory / 'source-binding.json', binding)
+    admin(url, 'protocols/bindings', 'PUT', binding)
+    admin(url, 'model-groups', 'POST', dict(id='g', name='grp', enabled=True, models=['s:m'],
+          strategy='round-robin', maxRetries=0, toolsCapable=True, visionCapable=True))
+    admin(url, 'api-tokens', 'POST', dict(name='profile', token=TOKEN, enabled=True, allowedGroups=['grp']))
+    configuration = read_production_configuration(url, documents, compiler, commit, scenario)
+    save_json(directory / 'bindings.json', configuration['bindings'])
+    return configuration
+
+
 class ProcessMemoryCounters(ctypes.Structure):
     _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + [(name, ctypes.c_size_t) for name in
         ['PeakWorkingSetSize', 'WorkingSetSize', 'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage',
@@ -329,7 +455,7 @@ def serve_metrics(metrics):
     return server
 
 
-def run_case(version, scene, phase, mode, output, requests=None, provider_fixture=None, prepare_fixture=None):
+def run_case(version, scene, phase, mode, output, requests=None, provider_fixture=None, prepare_fixture=None, driver_cwd=None):
     output.mkdir(parents=True)
     builds = read_json(EVIDENCE / 'builds.json')['versions']
     variant = 'C' if version.startswith('C-') else version
@@ -342,7 +468,10 @@ def run_case(version, scene, phase, mode, output, requests=None, provider_fixtur
         expected_sha = read_json(EVIDENCE / 'attribution-build/build.json')['binarySHA256']
     assert digest(binary) == expected_sha
     packages = version == 'C-package'
+    is_production = version == 'C-production'
     scenario = SCENARIOS[scene]
+    documents = read_production_packages(builds[variant]['source']) if is_production else None
+    compiler = read_production_compiler(builds[variant]['source']) if is_production else None
     env = environment()
     env.update(ELYSIA_CONVERSION_HTTP_EXECUTION='packages', ELYSIA_FLAME_WORKLOAD='image' if scenario.get('image') else 'small',
                ELYSIA_FLAME_MODE=mode, ELYSIA_FLAME_OUTPUT=str(output), ELYSIA_FLAME_SOURCE='' if scenario.get('image') else 'openai-chat-completions',
@@ -359,6 +488,8 @@ def run_case(version, scene, phase, mode, output, requests=None, provider_fixtur
     env['ELYSIA_FLAME_GATEWAY_PATH'] = '/gateway/' + ('measure-' if packages else '') + source_id + ingress_path
     if scenario.get('ingress'):
         env['ELYSIA_FLAME_GATEWAY_PATH'] = '/gateway/' + ('measure-' if packages else '') + scenario['ingress'] + '/v1/messages'
+    if is_production:
+        env['ELYSIA_FLAME_GATEWAY_PATH'] = production_route(documents, scenario)['ingressPath']
     children, metrics, proxy = Children(), None, None
     record = dict(version=version, scenario=scene, phase=phase, mode=mode, binary=binary, binarySHA256=expected_sha,
                   environment=env, status='running', metricsAvailability={
@@ -395,6 +526,8 @@ def run_case(version, scene, phase, mode, output, requests=None, provider_fixtur
         config_path = output / 'config.json'
         save_json(config_path, config)
         gateway_env = environment() | {'ELYSIA_PARENT_STDIN': '1'}
+        if is_production:
+            gateway_env['ELYSIA_CONVERSION_HTTP_EXECUTION'] = 'production'
         gateway_ready = output / 'gateway-ready.json'
         if is_instrumented:
             gateway_env.update(ELYSIA_VERSIONED_CONFIG=str(config_path), ELYSIA_VERSIONED_READY=str(gateway_ready))
@@ -405,9 +538,14 @@ def run_case(version, scene, phase, mode, output, requests=None, provider_fixtur
         record['health'] = wait_gateway(url, gateway)
         assert record['health']['version'] == '1.7.0'
         assert builds[variant]['commit'].startswith(record['health']['commit']), 'gateway commit differs'
-        record['configuration'] = configure_gateway(url, provider_address['URL'], packages, scenario, output)
+        if is_production:
+            record['configuration'] = configure_production_gateway(url, provider_address['URL'], scenario, output,
+                                                                   documents, compiler, builds[variant]['commit'])
+        else:
+            record['configuration'] = configure_gateway(url, provider_address['URL'], packages, scenario, output)
         admin(url, 'protocols/reload', 'POST', {})
-        reloaded = {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')}
+        reloaded = (read_production_configuration(url, documents, compiler, builds[variant]['commit'], scenario)
+                    if is_production else {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')})
         save_json(output / 'reloaded-identity.json', reloaded)
         assert reloaded == record['configuration'], 'reload changed active protocol/binding identity'
         if prepare_fixture:
@@ -419,6 +557,9 @@ def run_case(version, scene, phase, mode, output, requests=None, provider_fixtur
         gateway_address = {'URL': url, 'Metrics': f'http://127.0.0.1:{proxy.server_port}', 'PID': gateway.pid,
                            'Execution': {'Execution': 'packages' if packages else 'legacy', 'Commit': builds[variant]['commit'],
                                          'Packages': record['configuration']['protocols']}}
+        if is_production:
+            gateway_address['Execution'] = record['configuration']['execution']
+            save_json(output / 'production-execution.json', gateway_address['Execution'])
         external = output / 'external.json'
         save_json(external, {'provider': provider_address, 'gateway': gateway_address})
         env['ELYSIA_CONVERSION_HTTP_EXTERNAL'] = str(external)
@@ -426,17 +567,22 @@ def run_case(version, scene, phase, mode, output, requests=None, provider_fixtur
         record['driverSHA256'] = digest(driver)
         command = [driver, '-test.run=^TestConversionFlamegraph$', '-test.v', '-test.timeout=15m']
         record['driverCommand'] = command
+        if driver_cwd is not None:
+            record['driverCWD'] = str(driver_cwd)
         record['provider'] = {'binary': str(provider_binary), 'sha256': digest(provider_binary), 'identity': provider_address['Execution']}
         save_json(output / 'run.json', record)
-        execute(command, ROOT / 'backend/server', output / 'driver.log', env)
+        execute(command, Path(driver_cwd) if driver_cwd is not None else ROOT / 'backend/server', output / 'driver.log', env)
         if provider_fixture:
             provider_after = request(provider_address['Metrics'])
             assert provider_after['Recovered'] == (requests or scenario['requests']) + int(env['ELYSIA_FLAME_WARMUP']), 'recovery did not execute for every measured and warmup request'
             record['recovery'] = provider_after
         if phase == 'attribution':
             record['attribution'] = request(counter_url)['Attribution']
-        after = {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')}
+        after = (read_production_configuration(url, documents, compiler, builds[variant]['commit'], scenario)
+                 if is_production else {'protocols': active_protocols(url), 'bindings': admin(url, 'protocols/bindings')})
         assert after == record['configuration'], 'active protocol/binding identity drift'
+        if is_production:
+            record['finalConfiguration'] = after
         record['status'] = 'passed'
     except Exception as error:
         record.update(status='failed', error=str(error))

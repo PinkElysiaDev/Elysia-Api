@@ -11,7 +11,7 @@ const args = process.argv.slice(2)
 const option = (name, fallback) => args.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback
 const root = resolve(option('source', resolve(dirname(fileURLToPath(import.meta.url)), '..')))
 if (args.includes('--help')) {
-  console.log('Usage: node scripts/benchmark-performance.mjs --execution=legacy|packages|production --expect-commit=FULL_COMMIT --output=NEW_DIRECTORY [--source=SOURCE_DIRECTORY] [--provider-build=COMPLETED_BUILD_DIRECTORY] [--mode=all|micro|measure|profile] [--cases=chat-short,stream256,...] [--requests=32] [--repeats=3] [--idle-ms=1000] [--seconds=15] [--profiles=chat-short,stream256,image2]')
+  console.log('Usage: node scripts/benchmark-performance.mjs --execution=legacy|production --expect-commit=FULL_COMMIT --output=NEW_DIRECTORY [--source=SOURCE_DIRECTORY] [--provider-build=COMPLETED_BUILD_DIRECTORY] [--mode=all|micro|measure|profile] [--cases=chat-short,stream256,...] [--requests=32] [--repeats=3] [--idle-ms=1000] [--seconds=15] [--profiles=chat-short,stream256,image2]')
   process.exit(0)
 }
 const integer = (name, fallback, max) => {
@@ -22,7 +22,7 @@ const integer = (name, fallback, max) => {
 const mode = option('mode', 'all')
 if (!['all', 'micro', 'measure', 'profile'].includes(mode)) throw new Error('Invalid mode')
 const execution = option('execution', '')
-if (!['legacy', 'packages', 'production'].includes(execution)) throw new Error('Explicit --execution is required')
+if (!['legacy', 'production'].includes(execution)) throw new Error('Explicit --execution is required')
 const expectedCommit = option('expect-commit', '')
 if (!/^[a-f0-9]{40}$/.test(expectedCommit)) throw new Error('--expect-commit must contain the full source commit')
 if (execution === 'legacy' && expectedCommit !== 'b2844846ca111492972264c508825e2f56cc4ff1') throw new Error('Legacy comparison must use the archived dev.101 source')

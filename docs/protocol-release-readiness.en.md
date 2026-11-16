@@ -22,13 +22,25 @@ Record skips, expected rejections, rate limits and unfinished experiments separa
 Run relevant checks from the repository root:
 
 ```bash
-go -C backend test ./... -count=1 -timeout=15m
+npm run test:protocol -- --suite=gemini-stream --race
+npm run test:protocol -- --suite=output --race
+npm run test:protocol -- --suite=conversion
+npm run test:protocol -- --suite=all --race
 go -C backend vet ./...
-go -C backend test -race ./protocol/... ./storage ./relay ./server -count=1 -timeout=20m
 node scripts/test-protocol-e2e.mjs
 ```
 
 Race checks need a supported Go platform and C toolchain. Browser integration uses an isolated backend and database; see [development](development.en.md). Slow tests or unavailable environments must remain explicitly unverified.
+
+Choose one scope for the change. Full checks already include focused cases; do not repeat them on unchanged code. Ordinary and race runs are explicit alternatives unless a separate build-mode concern requires both. The default is two independent workers, each with `GOMAXPROCS=2`; `--jobs=1..4` controls package concurrency, while parallel tests within a package are capped at two. Full runs retain existing Fuzz seeds and optional skips. On Windows, an explicit `CC` uses the installed compiler; otherwise the pinned toolchain is prepared.
+
+Prefer `gemini-stream` for changes confined to Gemini stream Mapping, signatures and continuation. The broader `conversion` suite includes other protocols, logging policies and routing boundaries; it is not a mandatory prerequisite for every local fix.
+
+Evidence is retained in the parent workspace's `.cache/protocol-check-*` directories, including commands, source identity, per-package logs, counts and timings. Empty test selections fail and commands are not automatically retried. The output constraint matrix shares initialization per target while retaining all 96 requests and stale-evidence refusals. Targets are isolated and may run concurrently; requests within a target remain sequential.
+
+Runner options control test selection. Inherited `GOFLAGS` are cleared so external `-run` or `-skip` filters cannot silently reduce a full check to a few passing tests.
+
+CI runs one complete race pass and vet. Repeated stress, timed fuzzing and benchmarks are available through the manual workflow's `deep_checks` option. Locally, use `node scripts/verify-protocol.mjs race --stress-only --seed=123`. These checks remain separate from performance measurement. Test or documentation edits need relevant validation, without automatically repeating six-platform release builds.
 
 | Change | Focused regression coverage |
 | --- | --- |

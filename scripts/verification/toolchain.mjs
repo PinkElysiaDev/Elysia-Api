@@ -23,6 +23,10 @@ async function digest(path) {
 
 /** Prepares a pinned compiler in the workspace cache; never changes system PATH. */
 export async function prepareRaceEnvironment(root) {
+  if (process.env.CC) {
+    const version = execFileSync(process.env.CC, ['--version'], { encoding: 'utf8', windowsHide: true }).trim()
+    return { env: { ...process.env, CGO_ENABLED: '1' }, evidence: { kind: 'configured', compiler: process.env.CC, compilerVersion: version } }
+  }
   if (process.platform !== 'win32') return { env: { ...process.env, CGO_ENABLED: '1' }, evidence: { kind: 'installed', cc: process.env.CC || 'cc' } }
   const cache = join(dirname(root), '.cache', 'toolchains')
   await mkdir(cache, { recursive: true })

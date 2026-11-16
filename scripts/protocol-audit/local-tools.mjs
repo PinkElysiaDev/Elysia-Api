@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { localInstance } from './src/local.mjs'
 import { persistedCall } from './src/evidence.mjs'
 import { consumeToolRoundTrip } from './src/sdk-tools.mjs'
+import { readAuditProtocols, buildAuditSource, configureAuditRoute } from './src/bindings.mjs'
 
 const directory = process.argv[2]
 if (!directory) throw new Error('Usage: node scripts/protocol-audit/local-tools.mjs <ELYSIA_AUDIT_CAPTURE directory>')
@@ -53,22 +54,22 @@ try {
     const result = spawnSync(args[0], args.slice(1), { cwd, encoding: 'utf8', windowsHide: true })
     assert.equal(result.status, 0, `Local build failed: ${result.stderr}`)
   }, undefined, 60000)
-  const admin = async (path, body) => {
-    const response = await fetch(`${gateway.baseUrl}/api/admin/${path}`, { method: 'POST', headers: { authorization: `Bearer ${gateway.panel}`, 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const admin = async (path, body, method = body === undefined ? 'GET' : 'POST') => {
+    const response = await fetch(`${gateway.baseUrl}/api/admin/${path}`, { method, headers: { authorization: `Bearer ${gateway.panel}`, 'content-type': 'application/json' }, body: JSON.stringify(body) })
     const reply = await response.json()
     assert.ok(response.status === 200 && reply.ok, `Setup failed: ${path}: ${JSON.stringify(reply)}`)
     return reply.data
   }
   await admin('api-tokens', { name: 'local-sdk-tools', token: gateway.token, enabled: true, allowedGroups: [], scopes: [] })
+  const contracts = await readAuditProtocols(admin)
   for (const [upstream, protocol] of Object.entries(codecs)) {
     const source = `sdk-${protocol}`
-    await admin('model-sources', { id: source, name: source, baseUrl: `http://127.0.0.1:${provider.address().port}`, apiKey: 'synthetic-provider-key', platform: protocol === 'chat' ? 'chat_completions' : protocol, enabled: true, autoFetchModels: false, manualModels: [{ id: 'm', name: 'm', type: 'llm', enabled: true, available: true, toolsCapable: true }] })
-    await admin('model-groups', { id: source, name: source, enabled: true, models: [`${source}:m`], strategy: 'sequential', maxRetries: 0, type: 'llm', toolsCapable: true })
+    await configureAuditRoute(admin, buildAuditSource({ model: 'm', baseUrl: `http://127.0.0.1:${provider.address().port}` }, source, 'synthetic-provider-key', contracts[protocol]), contracts[protocol])
     for (const [ingress, client] of Object.entries(codecs)) for (const stream of [false, true]) {
       const result = { upstream, ingress, stream, passed: false, evidence: [] }
       active = { upstream, stream, upstreamRequests: [], providerErrors: [] }
       try {
-        result.sdk = await consumeToolRoundTrip(client, { baseUrl: gateway.baseUrl, apiKey: gateway.token, model: source, timeoutMs: 15000, onExchange: async detail => {
+        result.sdk = await consumeToolRoundTrip(client, { baseUrl: `${gateway.baseUrl}/gateway/${contracts[client].id}`, apiKey: gateway.token, model: source, timeoutMs: 15000, onExchange: async detail => {
           const trace = await persistedCall(gateway.baseUrl, gateway.panel, detail.response.headers['x-elysia-request-id'])
           result.evidence.push({ sdk: detail.sdk, round: detail.round, request: JSON.parse(detail.request.body), status: detail.response.status,
             persisted: { available: trace.available, status: trace.record?.statusCode, error: trace.record?.error, ingressRevision: trace.record?.ingressRevision, upstreamRevision: trace.record?.upstreamRevision, policyHash: trace.record?.conversionPolicyHash, diagnostics: trace.record?.conversionIssues } })

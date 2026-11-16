@@ -7,13 +7,26 @@ import { createHash } from 'node:crypto'
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 
+async function hashGitDiff(root, commit) {
+  const digest = createHash('sha256')
+  const child = spawn('git', ['diff', '--binary', commit], { cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  let diagnostic = ''
+  child.stdout.on('data', bytes => digest.update(bytes))
+  child.stderr.on('data', bytes => { diagnostic += bytes.toString() })
+  await new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', code => code === 0 ? resolve() : reject(new Error(`Cannot identify working source: ${diagnostic}`)))
+  })
+  return digest.digest('hex')
+}
+
 async function sourceIdentity(root) {
   const git = args => execFileSync('git', args, { cwd: root, windowsHide: true })
   const baseCommit = git(['rev-parse', 'HEAD']).toString().trim()
   const paths = git(['ls-files', '--others', '--exclude-standard', '-z']).toString().split('\0').filter(path => /\.(go|mjs|yml)$/.test(path))
   const untracked = {}
   for (const path of paths) untracked[path] = hash(await readFile(join(root, path)))
-  return { baseCommit, trackedDiffSHA256: hash(git(['diff', '--binary', baseCommit])), untrackedSourceSHA256: untracked }
+  return { baseCommit, trackedDiffSHA256: await hashGitDiff(root, baseCommit), untrackedSourceSHA256: untracked }
 }
 
 function stopProcess(child) {
