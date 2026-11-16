@@ -12572,8 +12572,26 @@
                               "name": "part"
                             },
                             "otherwise": {
-                              "op": "object",
-                              "fields": {}
+                              "op": "if",
+                              "when": {
+                                "op": "exists",
+                                "source": {
+                                  "op": "read",
+                                  "from": "binding",
+                                  "path": "",
+                                  "name": "previous"
+                                }
+                              },
+                              "then": {
+                                "op": "read",
+                                "from": "binding",
+                                "path": "/node/input/value",
+                                "name": "previous"
+                              },
+                              "otherwise": {
+                                "op": "object",
+                                "fields": {}
+                              }
                             }
                           }
                         }

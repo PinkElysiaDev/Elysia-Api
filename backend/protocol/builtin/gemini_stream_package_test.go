@@ -169,6 +169,92 @@ func TestGeminiPackageStreamLateUsageAndIdlessCalls(t *testing.T) {
 	}
 }
 
+func TestGeminiPackageStreamToolArgumentUpdates(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "google-generate-content")
+	scope := p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}
+	const arguments = `{"n":9007199254740993}`
+	const signature = "sig-tool"
+	for _, test := range []struct {
+		name, initialArgs, update, expectedArgs, signature string
+	}{
+		{"omitted", `,"args":` + arguments, `{"functionCall":{"id":"call","name":"lookup"}}`, arguments, ""},
+		{"signed_omitted", `,"args":` + arguments, `{"functionCall":{"id":"call","name":"lookup"},"thoughtSignature":"` + signature + `"}`, arguments, signature},
+		{"unchanged", `,"args":` + arguments, `{"functionCall":{"id":"call","name":"lookup","args":` + arguments + `}}`, arguments, ""},
+		{"initially_omitted", "", `{"functionCall":{"id":"call","name":"lookup"}}`, `{}`, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			frames, response := decodePackageStream(t, compiled, makeGeminiToolUpdateFrames(test.initialArgs, test.update), scope)
+			checkGeminiToolInput(t, response, test.expectedArgs, test.signature)
+			rendered := encodePackageStream(t, compiled, frames, scope, false)
+			_, rebuilt := decodePackageStream(t, compiled, rendered, scope)
+			checkGeminiToolInput(t, rebuilt, test.expectedArgs, test.signature)
+		})
+	}
+	t.Run("explicit_empty_rejected", func(t *testing.T) {
+		options := p.EvaluationContext{Scope: scope, State: p.NewEvaluationState()}
+		defer options.State.Release()
+		validation, err := compiled.NewWireInputStreamValidation(scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer validation.Release()
+		target := compiled.Target(p.DecodeEvent, scope)
+		target.Direction = p.EncodeEvent
+		collector, err := p.NewResponseCollector(target, compiled.ResourceLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		raws := makeGeminiToolUpdateFrames(`,"args":`+arguments, `{"functionCall":{"id":"call","name":"lookup","args":{}}}`)
+		for index, raw := range raws[:2] {
+			frame, err := validation.DecodeFrame(t.Context(), testValue(t, raw), options)
+			if err != nil {
+				t.Fatal("explicit empty arguments must pass their wire contract", err)
+			}
+			for _, event := range frame.Events {
+				_, _, err := collector.Consume(event)
+				if err == nil {
+					continue
+				}
+				var failure *p.ConversionError
+				if index != 1 || !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.UpstreamContractViolation || failure.Issues[0].Path != "snapshot" {
+					t.Fatal("argument replacement failed outside the snapshot guard", err)
+				}
+				return
+			}
+		}
+		t.Fatal("explicit empty arguments were treated as an omitted update")
+	})
+}
+
+func makeGeminiToolUpdateFrames(initialArgs, update string) []string {
+	return []string{
+		`{"responseId":"r","modelVersion":"m","candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call","name":"lookup"` + initialArgs + `}}]}}]}`,
+		`{"candidates":[{"content":{"parts":[` + update + `]}}]}`,
+		`{"candidates":[{"finishReason":"STOP"}]}`,
+	}
+}
+
+func checkGeminiToolInput(t *testing.T, response *p.Response, arguments, signature string) {
+	t.Helper()
+	calls := messageLeaves(t, response)
+	if len(calls) != 1 {
+		t.Fatal("argument update changed the call count", calls)
+	}
+	call := calls[0]
+	if call.Kind != p.ToolCallNode || !call.CallID.IsString("call") || !call.Name.IsString("lookup") || call.Input == nil || call.Input.Value != testValue(t, arguments) {
+		t.Fatal("argument update changed the call identity or exact input", call)
+	}
+	if signature == "" {
+		if len(call.Resources) != 0 {
+			t.Fatal("unsigned call acquired a resource", call.Resources)
+		}
+		return
+	}
+	if len(call.Resources) != 1 || !call.Resources[0].ID.IsString(signature) {
+		t.Fatal("argument update lost its signature association", call.Resources)
+	}
+}
+
 func TestGeminiPackageHistoryConsumesExplicitCall(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "google-generate-content")
 	raw := []byte(`{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"lookup","args":{}}},{"functionCall":{"id":"b","name":"lookup","args":{}}}]},{"role":"user","parts":[{"functionResponse":{"id":"a","name":"lookup","response":{"a":true}}},{"functionResponse":{"name":"lookup","response":{"b":true}}}]}]}`)

@@ -206,24 +206,38 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 	activateDiscoveryPresets(t, s)
 	service, _ := s.protocolService()
 	upstream, _ := service.Pin(protocol.PresetGeminiID)
+	ingress, _ := service.Pin(protocol.PresetAnthropicID)
+	const firstArguments = `{"key":"a","n":9007199254740993}`
 	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		raw, _ := io.ReadAll(r.Body)
 		if calls == 2 {
-			for _, expected := range []string{`"thoughtSignature":"signature-a"`, `"thoughtSignature":"signature-b"`, `"functionResponse"`, `answer-a`, `answer-b`} {
+			for _, expected := range []string{`"functionResponse"`, `answer-a`, `answer-b`} {
 				if !strings.Contains(string(raw), expected) {
 					t.Errorf("missing %s in %s", expected, raw)
 				}
 			}
+			checkGatewayGeminiToolHistory(t, raw, firstArguments)
+		}
+		if calls == 1 {
+			w.Header().Set("Content-Type", "text/event-stream")
+			for _, frame := range []string{
+				`{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call-a","name":"lookup","args":` + firstArguments + `}}]}}]}`,
+				`{"candidates":[{"content":{"parts":[{"functionCall":{"id":"call-a","name":"lookup"},"thoughtSignature":"signature-a"},{"functionCall":{"id":"call-b","name":"lookup","args":{"key":"b"}},"thoughtSignature":"signature-b"}]}}]}`,
+				`{"candidates":[{"finishReason":"STOP"}]}`,
+			} {
+				_, _ = io.WriteString(w, "data: "+frame+"\n\n")
+			}
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call-a","name":"lookup","args":{"key":"a"}},"thoughtSignature":"signature-a"},{"functionCall":{"id":"call-b","name":"lookup","args":{"key":"b"}},"thoughtSignature":"signature-b"}]},"finishReason":"STOP"}]}`)
 	}))
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
-	yes := true
-	if _, err := s.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{ToolsCapable: &yes}); err != nil {
+	isToolsCapable := true
+	if _, err := s.store.UpdateModel(t.Context(), "upstream-model", "gateway-source", storage.ModelPatch{ToolsCapable: &isToolsCapable}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "gateway-group", Name: "group", Enabled: true, ToolsCapable: true, Models: []string{"gateway-source:upstream-model"}, Strategy: "sequential"}); err != nil {
@@ -236,17 +250,29 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 		r.Header.Set("x-elysia-session-id", "tools")
 		rec := httptest.NewRecorder()
 		serveTestHTTP(s.engine, rec, r)
-		if rec.Code != 200 {
+		if rec.Code != 200 || rec.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 			t.Fatalf("HTTP %d: %s", rec.Code, rec.Body)
 		}
 		return rec
 	}
-	first := call(`{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
+	first := call(`{"model":"group","max_tokens":100,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	if !strings.Contains(first.Body.String(), protocol.ContinuationPrefix) || !strings.Contains(first.Body.String(), `"type":"message_stop"`) {
+		t.Fatal("tool stream did not deliver its continuation and terminal", first.Body)
+	}
+	scope := protocol.Scope{Provider: "fixture", Account: "fixture", Model: "group"}
+	response := collectPackageGatewayReply(t, ingress, first, true, scope)
+	wire, err := ingress.EncodeResponse(t.Context(), response, protocol.EvaluationContext{Scope: scope})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var result struct {
 		Content json.RawMessage `json:"content"`
 	}
-	if err := sonic.ConfigStd.Unmarshal(first.Body.Bytes(), &result); err != nil {
+	if err := sonic.ConfigStd.Unmarshal(wire, &result); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(result.Content), protocol.ContinuationPrefix) || !strings.Contains(string(result.Content), `9007199254740993`) {
+		t.Fatal("collected tool history lost the carrier or exact arguments", string(result.Content))
 	}
 	call(`{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":` + string(result.Content) + `},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-a","content":"answer-a"},{"type":"tool_result","tool_use_id":"call-b","content":"answer-b"}]}]}`)
 	if calls != 2 {
@@ -254,19 +280,57 @@ func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
 	}
 }
 
-func TestGatewayStrictLateGeminiSignature(t *testing.T) {
-	testGatewayStrictLateGeminiSignature(t, false, false)
+func checkGatewayGeminiToolHistory(t *testing.T, raw []byte, firstArguments string) {
+	t.Helper()
+	var request struct {
+		Contents []struct {
+			Parts []struct {
+				FunctionCall *struct {
+					ID, Name string
+					Args     json.RawMessage
+				}
+				ThoughtSignature string
+			}
+		}
+	}
+	if err := sonic.ConfigStd.Unmarshal(raw, &request); err != nil {
+		t.Error(err)
+		return
+	}
+	observed := 0
+	for _, content := range request.Contents {
+		for _, part := range content.Parts {
+			call := part.FunctionCall
+			if call == nil {
+				continue
+			}
+			arguments, signature := firstArguments, "signature-a"
+			if observed == 1 {
+				arguments, signature = `{"key":"b"}`, "signature-b"
+			}
+			expectedID := fmt.Sprintf("call-%c", 'a'+observed)
+			actual, err := protocol.ParseValue(call.Args)
+			expected, _ := protocol.ParseValue([]byte(arguments))
+			if err != nil || actual != expected || call.ID != expectedID || call.Name != "lookup" || part.ThoughtSignature != signature {
+				t.Errorf("recovered tool signature changed its input or association: %s", raw)
+			}
+			observed++
+		}
+	}
+	if observed != 2 {
+		t.Errorf("recovered history has %d tool calls: %s", observed, raw)
+	}
 }
 
-func TestPackageGatewayStrictLateGeminiSignature(t *testing.T) {
-	for _, editDelta := range []bool{false, true} {
-		t.Run(fmt.Sprintf("edited=%v", editDelta), func(t *testing.T) {
-			testGatewayStrictLateGeminiSignature(t, true, editDelta)
+func TestGatewayStrictLateGeminiSignature(t *testing.T) {
+	for _, shouldEditDelta := range []bool{false, true} {
+		t.Run(fmt.Sprintf("edited=%v", shouldEditDelta), func(t *testing.T) {
+			testGatewayStrictLateGeminiSignature(t, shouldEditDelta)
 		})
 	}
 }
 
-func testGatewayStrictLateGeminiSignature(t *testing.T, isPackage, editDelta bool) {
+func testGatewayStrictLateGeminiSignature(t *testing.T, shouldEditDelta bool) {
 	t.Parallel()
 	s, cfgPath := newProtocolAdminTestServer(t)
 	s.store.Close()
@@ -278,22 +342,14 @@ func testGatewayStrictLateGeminiSignature(t *testing.T, isPackage, editDelta boo
 	t.Cleanup(func() {
 		s.store.Close()
 	})
-	var upstream *protocol.Compiled
-	if isPackage {
-		upstream = defaultGatewayPackages(t, s)["google-generate-content"]
-	} else {
-		activateDiscoveryPresets(t, s)
-	}
+	upstream := defaultGatewayPackages(t, s)["google-generate-content"]
 	service, _ := s.protocolService()
-	if !isPackage {
-		upstream, _ = service.Pin(protocol.PresetGeminiID)
-	}
 	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.Header().Set("Content-Type", "text/event-stream")
 		first := "hel"
-		if editDelta {
+		if shouldEditDelta {
 			first = "proof-input-prefix"
 		}
 		for _, frame := range []string{
@@ -309,7 +365,7 @@ func testGatewayStrictLateGeminiSignature(t *testing.T, isPackage, editDelta boo
 	setupGatewayModel(t, s, upstream, provider.URL)
 	bindings, _ := s.store.ListProtocolBindings(t.Context())
 	bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "strict", Name: "strict", Mode: "strict", Rules: []protocol.ConversionRule{}}}
-	if editDelta {
+	if shouldEditDelta {
 		// Strict mode rejects the edit itself; compatible mode reaches the later
 		// signature boundary and must still reject an invalid recovery proof.
 		bindings[0].Conversion.Overrides.Mode = "compatible"
@@ -336,7 +392,7 @@ func testGatewayStrictLateGeminiSignature(t *testing.T, isPackage, editDelta boo
 	if calls != 1 {
 		t.Fatal("continuation handling changed generation count", calls, rec.Code, rec.Body.String())
 	}
-	if editDelta {
+	if shouldEditDelta {
 		if rec.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" || !strings.Contains(rec.Body.String(), "/continuation") || strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) {
 			t.Fatal("modified text retained the source continuation proof", rec.Code, rec.Body.String())
 		}

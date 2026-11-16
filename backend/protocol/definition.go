@@ -1,7 +1,7 @@
 package protocol
 
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.172"
+const CompilerVersion = "2.0.0-dev.173"
 
 // Preset protocol identifiers. Presets ship with the engine, are read-only for
 // authoring, and are refreshed to the shipped revision on every startup;
