@@ -105,14 +105,3 @@ func TestPackageCaptureTagsSurviveReadsButNotPayloadInspection(t *testing.T) {
 		t.Fatal("disabled capture retained an origin", err)
 	}
 }
-
-func TestLegacyTypedMappingKeepsItsOriginContract(t *testing.T) {
-	document := testDefinition("legacy-origins", "m", "h", "t", "r")
-	request := literalExpression(map[string]any{"content": []any{map[string]any{"kind": "text", "payload": "hello", "native": map[string]any{"source": map[string]any{"path": "/old"}, "value": "legacy"}}}})
-	document.Directions[DecodeRequest] = Mapping{Transform: &request}
-	compiled := compileTestDefinition(t, document)
-	output, err := compiled.DecodeRequest(t.Context(), []byte(`{}`), EvaluationContext{})
-	if err != nil || output.Content[0].Native == nil || output.Content[0].Native.Source.Path != "/old" {
-		t.Fatal("v3 guard changed the legacy mapping contract", err)
-	}
-}

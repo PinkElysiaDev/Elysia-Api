@@ -56,13 +56,18 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 				if err == nil {
 					route, err = prepareContinuationEvidence(ctx, conversion, recoveryTarget, ConversionResponse, response.Content, route)
 				}
-			} else {
-				route, err = conversion.PreviewRecovery(input.ConversionPhase, input.Input, route)
 			}
 		}
 		if err == nil {
 			if input.ConversionPhase == ConversionSourceEvent {
-				output, err = service.PreviewSourceEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
+				source, exists := service.View().Pin(route.Source.DefinitionID)
+				if !exists || source.Identity() != route.Source {
+					err = operationMetadataError("/context", "preview source revision changed")
+				} else {
+					state := NewSourceEventState(conversion, route, source, sink)
+					defer state.Release()
+					output, err = state.Sequence(ctx, input.Input)
+				}
 			} else if input.ConversionPhase == ConversionWire && input.Direction == EncodeEvent {
 				output, err = service.previewWireEvents(ctx, conversion, route, input.Input, input.Sequence, sink)
 			} else {
@@ -149,11 +154,9 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 		var preferences AgentPreferences
 		err = decodeContract(input.Input.Bytes(), &preferences)
 		if err == nil {
-			if compiled.packagePlan != nil {
-				semantic, err = compiled.prepareAgentSettings(ctx, preferences, nil)
-			} else {
-				semantic, err = compiled.BuildAgentParameters(ctx, preferences)
-			}
+
+			semantic, err = compiled.prepareAgentSettings(ctx, preferences, nil)
+
 		}
 		if err == nil {
 			output, err = EncodeValue(semantic)
@@ -213,20 +216,6 @@ func (service *Service) PreviewWorkflow(ctx context.Context, input PreviewInput)
 	return PreviewResult{Output: output, Semantic: value, Issues: []ConversionIssue{}}
 }
 
-// PreviewSourceEvents resolves installed modules before applying source rules.
-func (service *Service) PreviewSourceEvents(ctx context.Context, conversion *CompiledConversion, route ConversionContext, input Value, isSequence bool, sink *DiagnosticSink) (Value, error) {
-	if !isSequence {
-		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires sequence: true")
-	}
-	view := service.View()
-	source, hasSource := view.Pin(route.Source.DefinitionID)
-	target, hasTarget := view.Pin(route.Target.DefinitionID)
-	if !hasSource || !hasTarget || source.Identity() != route.Source || target.Identity() != route.Target {
-		return Value{}, streamIssue(InvalidInput, "/context", "preview protocol selection changed; reload the preview")
-	}
-	return NewSourceEventState(conversion, route, source, target, sink).Sequence(ctx, input)
-}
-
 // Preview validates an unsaved definition and executes its typed adapter.
 func (service *Service) Preview(ctx context.Context, raw []byte, direction Direction, input Value, isSequence bool, options EvaluationContext) PreviewResult {
 	compiled, issues := service.compiler.Compile(raw)
@@ -254,7 +243,7 @@ func (service *Service) previewCompiled(ctx context.Context, compiled *Compiled,
 		err = compiled.ValidateWireOutput(direction, result.output)
 	}
 	// Package sequence fixtures already checked each final batch and delivery.
-	if direction == EncodeEvent && (!isSequence || compiled.packagePlan == nil) {
+	if direction == EncodeEvent && !isSequence {
 		var frames []Value
 		if result.output.Decode(&frames) == nil {
 			var validator *WireStreamValidation

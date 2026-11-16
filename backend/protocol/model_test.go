@@ -88,7 +88,7 @@ func TestOrderedContractRoundTrip(t *testing.T) {
 	if !strings.Contains(string(encoded), native) {
 		t.Fatalf("native JSON altered: %s", encoded)
 	}
-	for _, bad := range []string{`{"schemaVersion":2}`, `{"schemaVersion":1,"typo":true}`, string(encoded) + ` {}`} {
+	for _, bad := range []string{`{"schemaVersion":1}`, `{"schemaVersion":2,"typo":true}`, string(encoded) + ` {}`} {
 		if _, err := DecodeRequestContract([]byte(bad)); err == nil {
 			t.Fatalf("invalid contract accepted: %s", bad)
 		}

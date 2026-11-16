@@ -12,7 +12,6 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -43,7 +42,7 @@ func testGatewayEncryptedReasoningContinuation(t *testing.T, isPackage bool) {
 			})
 			var upstream, ingress *protocol.Compiled
 			if isPackage {
-				packages := seedGatewayPackages(t, s)
+				packages := defaultGatewayPackages(t, s)
 				upstream, ingress = packages["openai-responses"], packages["anthropic"]
 			} else {
 				activateDiscoveryPresets(t, s)
@@ -145,13 +144,7 @@ func testGatewayEncryptedReasoningContinuation(t *testing.T, isPackage bool) {
 				content, _ = sonic.ConfigStd.Marshal(ordered)
 			}
 			history := []byte(`{"model":"group","max_tokens":64,"messages":[{"role":"assistant","content":` + string(content) + `}]}`)
-			var tokens []string
-			var err error
-			if isPackage {
-				_, tokens, err = ingress.ExtractContinuations(t.Context(), mustProtocolValue(t, string(history)), protocol.EvaluationContext{})
-			} else {
-				_, tokens, err = builtin.ExtractContinuationCarriers(history, "claude", 1<<20)
-			}
+			_, tokens, err := ingress.ExtractContinuations(t.Context(), mustProtocolValue(t, string(history)), protocol.EvaluationContext{})
 			if err != nil || len(tokens) != 1 || calls != 1 {
 				t.Fatal("carrier count", len(tokens), calls, err)
 			}
@@ -177,7 +170,7 @@ func testGatewayEncryptedReasoningContinuation(t *testing.T, isPackage bool) {
 			}
 			found := false
 			for _, issue := range record.ConversionIssues {
-				if issue.Fidelity == "recoverable_wrapped" && strings.HasSuffix(issue.RuleID, "-signatures") && issue.PolicyHash != "" {
+				if issue.Fidelity == "recoverable_wrapped" && (issue.RuleID == "response-encrypted-state" || issue.RuleID == "event-encrypted-state") && issue.PolicyHash != "" {
 					found = true
 				}
 			}
@@ -196,12 +189,12 @@ func testGatewayEncryptedReasoningContinuation(t *testing.T, isPackage bool) {
 				}
 				policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "disable-request-recovery"}
 				for _, rule := range protocol.DefaultConversionPolicy(ingress, upstream).Rules {
-					if rule.ID == "request-signatures" {
+					if rule.Phase == protocol.ConversionRequest && rule.Action == "continuation_recovery" {
 						rule.Enabled = false
-						policy.Rules = []protocol.ConversionRule{rule}
+						policy.Rules = append(policy.Rules, rule)
 					}
 				}
-				if len(policy.Rules) != 1 {
+				if len(policy.Rules) != 2 {
 					t.Fatal("request recovery rule is missing")
 				}
 				bindings, err := s.store.ListProtocolBindings(t.Context())

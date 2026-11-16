@@ -10,17 +10,17 @@ import (
 
 func TestPlannedEventDecodingMatchesJSONBoundary(t *testing.T) {
 	definition := textVerificationDefinition(t, "planned-events")
-	definition.Native.Preserve = false
+	definition.Mapping.Native.Preserve = false
 	for _, direction := range []Direction{DecodeEvent, DecodeClientEvent} {
-		definition.Directions[direction] = Mapping{Transform: expressionPointer(readExpression("input", ""))}
+		definition.Mapping.Directions[direction] = ProtocolDirectionMapping{Effects: generationFixtureEffects(direction), Document: testDocument(direction), IsEventBatch: true, Program: readExpression("input", "")}
 		compiled := compileTestDefinition(t, definition)
 		if !compiled.mappings[direction].hasCoreOutputPlan {
 			t.Fatal("event output plan was not selected", direction)
 		}
 		for _, raw := range []string{
-			`{"type":"item.delta","itemId":"a","delta":"hello <world>"}`,
-			`[{"type":"response.started","responseId":"r"},{"type":"usage.updated","usage":{"input":{"count":0,"origin":"observed"}}}]`,
-			`[]`, `null`, `[{"type":"native","unknown":true}]`, `[{"index":"bad"}]`,
+			`{"schemaVersion":2,"type":"item.delta","itemId":"a","delta":"hello <world>"}`,
+			`[{"schemaVersion":2,"type":"response.started","responseId":"r"},{"schemaVersion":2,"type":"usage.updated","usage":{"input":{"count":0,"origin":"observed"}}}]`,
+			`[]`, `null`, `[{"schemaVersion":2,"type":"native","unknown":true}]`, `[{"index":"bad"}]`,
 		} {
 			input := Value{raw: raw}
 			for _, cancelled := range []bool{false, true} {
@@ -58,13 +58,20 @@ func decodeEventsThroughJSON(ctx context.Context, compiled *Compiled, direction 
 	return events, nil
 }
 
+func eventValues(value Value) ([]Value, error) {
+	if value.IsObject() {
+		return []Value{value}, nil
+	}
+	return readArray(value)
+}
+
 func TestPlannedEventArrayDoesNotRetainLargeSibling(t *testing.T) {
 	definition := textVerificationDefinition(t, "event-ownership")
-	definition.Directions[DecodeEvent] = Mapping{Transform: expressionPointer(readExpression("input", ""))}
+	definition.Mapping.Directions[DecodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeEvent), Document: testDocument(DecodeEvent), IsEventBatch: true, Program: readExpression("input", "")}
 	compiled := compileTestDefinition(t, definition)
 	// The retained event is large enough to be shared when measured alone, but
 	// must not retain the much larger frame that also contained its sibling.
-	input := Value{raw: `[{"type":"item.delta","itemId":"a","delta":"` + strings.Repeat("x", 90<<10) + `"},{"type":"item.delta","itemId":"b","delta":"` + strings.Repeat("y", 2<<20) + `"}]`}
+	input := Value{raw: `[{"schemaVersion":2,"type":"item.delta","itemId":"a","delta":"` + strings.Repeat("x", 90<<10) + `"},{"schemaVersion":2,"type":"item.delta","itemId":"b","delta":"` + strings.Repeat("y", 2<<20) + `"}]`}
 	events, err := compiled.decodeEventValues(t.Context(), DecodeEvent, input, EvaluationContext{})
 	if err != nil || len(events) != 2 {
 		t.Fatal("event batch failed", err)
@@ -76,16 +83,16 @@ func TestPlannedEventArrayDoesNotRetainLargeSibling(t *testing.T) {
 
 func TestPlannedEventResourcesOwnStorage(t *testing.T) {
 	definition := textVerificationDefinition(t, "event-resource-ownership")
-	definition.Native.Preserve = false
-	definition.Capabilities[DocumentsCapability] = true
-	definition.Capabilities[RealtimeMediaCapability] = true
-	definition.Directions[DecodeEvent] = Mapping{Transform: expressionPointer(readExpression("input", ""))}
+	definition.Mapping.Native.Preserve = false
+	definition.Mapping.Capabilities[DocumentsCapability] = true
+	definition.Mapping.Capabilities[RealtimeMediaCapability] = true
+	definition.Mapping.Directions[DecodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeEvent), Document: testDocument(DecodeEvent), IsEventBatch: true, Program: readExpression("input", "")}
 	compiled := compileTestDefinition(t, definition)
-	options := EvaluationContext{Scope: Scope{Provider: "provider", Account: "account"}}
+	options := EvaluationContext{State: NewEvaluationState(), Scope: Scope{Provider: "provider", Account: "account"}}
 	resourceID := `"` + strings.Repeat("r", 256<<10) + `"`
 	// Each ID exceeds the view-sharing threshold. Retaining either identifier
 	// must not retain the other event payloads in this compound frame.
-	input := Value{raw: `[{"type":"item.started","itemId":"resource","item":{"kind":"text","payload":"text","resources":[{"kind":"file","id":` + resourceID + `}]}},{"type":"media.received","media":{"type":"audio","format":"pcm","reference":{"kind":"file","id":` + resourceID + `}}},{"type":"item.delta","itemId":"sibling","delta":"` + strings.Repeat("x", 256<<10) + `"}]`}
+	input := Value{raw: `[{"schemaVersion":2,"type":"item.started","itemId":"resource","item":{"kind":"text","payload":"text","resources":[{"kind":"file","id":` + resourceID + `}]}},{"schemaVersion":2,"type":"media.received","media":{"type":"audio","format":"pcm","reference":{"kind":"file","id":` + resourceID + `}}},{"schemaVersion":2,"type":"item.delta","itemId":"sibling","delta":"` + strings.Repeat("x", 256<<10) + `"}]`}
 	borrowed, err := compiled.decodeEventValues(t.Context(), DecodeEvent, input, options)
 	if err != nil || len(borrowed) != 3 {
 		t.Fatal("event fixture failed", err)

@@ -12,13 +12,13 @@ func TestLongReplayRetainsBoundedStateAndLateUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replay.Consume(Event{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}}); err != nil {
+	if _, err := replay.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}}); err != nil {
 		t.Fatal(err)
 	}
 	chunk := StringValue(strings.Repeat("x", 4096))
 	// Four times the retention budget is sufficient to catch accumulation.
 	for range 4 * limits.BufferBytes / 4096 {
-		if _, err := replay.Consume(Event{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("text"), Delta: chunk}); err != nil {
+		if _, err := replay.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("text"), Delta: chunk}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -26,9 +26,9 @@ func TestLongReplayRetainsBoundedStateAndLateUsage(t *testing.T) {
 		t.Fatal("forwarded text grew retained state")
 	}
 	for _, event := range []Event{
-		{SchemaVersion: 1, Type: ItemFinished, ItemID: StringValue("text")},
-		{SchemaVersion: 1, Type: ResponseFinished},
-		{SchemaVersion: 1, Type: UsageUpdated, Usage: &Usage{Input: &Counter{Count: 100, Origin: ObservedCount}, CacheRead: &Counter{Count: 80, Origin: ObservedCount}}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemFinished, ItemID: StringValue("text")},
+		{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished},
+		{SchemaVersion: SemanticSchemaVersion, Type: UsageUpdated, Usage: &Usage{Input: &Counter{Count: 100, Origin: ObservedCount}, CacheRead: &Counter{Count: 80, Origin: ObservedCount}}},
 	} {
 		if _, err := replay.Consume(event); err != nil {
 			t.Fatal(err)

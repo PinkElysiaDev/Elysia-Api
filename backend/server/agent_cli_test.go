@@ -244,7 +244,7 @@ func TestCLIAllCommandsResolve(t *testing.T) {
 		`elysia key create --name k1 --allowed-groups g1`,
 		`elysia key delete --name k1`,
 		`elysia protocol preview --sample '{"model":"m"}'`,
-		`elysia protocol test --base-url https://u.io --api-key sk --operation generate --sample '{"schemaVersion":1,"model":"m"}'`,
+		`elysia protocol test --base-url https://u.io --api-key sk --operation generate --sample '{"schemaVersion":2,"model":"m"}'`,
 		`elysia protocol models --base-url https://u.io`,
 		`elysia protocol save`,
 		`elysia protocol read --id anthropic-messages`,
@@ -539,7 +539,7 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 	if result.OK || result.Data.(map[string]any)["error"] != "invalid_path" {
 		t.Fatalf("path traversal must be rejected: %+v", result)
 	}
-	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/protocol/builtin/definitions/anthropic-messages.json"}`))
+	result = read.Execute(t.Context(), nil, json.RawMessage(`{"path":"backend/protocol/builtin/packages/anthropic/spec.json"}`))
 	if snapshotAvailable() {
 		if !result.OK || !strings.Contains(result.Data.(map[string]any)["content"].(string), `"anthropic-messages"`) {
 			t.Fatalf("preset original must be readable from the snapshot: %+v", result.Summary)
@@ -548,7 +548,14 @@ func TestCLICodeSnapshotCommands(t *testing.T) {
 		t.Fatalf("placeholder build must surface the notice: %+v", result)
 	}
 	if snapshotAvailable() {
-		for _, path := range []string{"packages/webui/src/lib/protocol-v2.ts", "docs/protocol-guide.md", "docs/protocol-guide.en.md", "docs/examples/cached-text-v2.json"} {
+		for _, path := range []string{
+			"backend/protocol/builtin/packages/anthropic/mapping.json",
+			"packages/webui/src/lib/protocol-v2.ts",
+			"docs/protocol-guide.md",
+			"docs/protocol-guide.en.md",
+			"docs/examples/cached-text/spec.json",
+			"docs/examples/cached-text/mapping.json",
+		} {
 			args, err := sonic.ConfigStd.Marshal(map[string]string{"path": path})
 			if err != nil {
 				t.Fatal(err)

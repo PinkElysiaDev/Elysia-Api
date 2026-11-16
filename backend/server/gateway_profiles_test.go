@@ -30,7 +30,7 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	request := func(body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/chat/completions", strings.NewReader(body))
+		r := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/v1/chat/completions", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		response := httptest.NewRecorder()
 		serveTestHTTP(s.engine, response, r)
@@ -64,8 +64,8 @@ func TestGatewayProfilesRejectUnsupportedInputAndUnexpectedOutput(t *testing.T) 
 func TestSourceSavePreservesOperatorBindingAndRejectsStaleRevision(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
-	definition := loadGatewayDefinition(t, "text-alpha")
-	activateGatewayDefinition(t, s, definition)
+	definition := loadGatewayFixture(t, "text-alpha")
+	activateGatewayFixture(t, s, definition)
 	source := storage.ModelSource{ID: "new-source", Name: "Original", Platform: "custom:text-alpha", BaseURL: "https://example.invalid", Enabled: true}
 	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatal(err)
@@ -87,8 +87,8 @@ func TestSourceSavePreservesOperatorBindingAndRejectsStaleRevision(t *testing.T)
 	if err != nil || bindings[0].Binding.Operation != "generate" {
 		t.Fatal("operator contract overwritten", bindings, err)
 	}
-	definition.Version = "2"
-	activateGatewayDefinition(t, s, definition)
+	definition.Spec.Version = "2"
+	activateGatewayFixture(t, s, definition)
 	source.Name = "Must not save"
 	if err := s.saveSource(t.Context(), source); err == nil {
 		t.Fatal("stale revision replaced without binding review")

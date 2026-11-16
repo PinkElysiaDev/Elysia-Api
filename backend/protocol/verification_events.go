@@ -16,28 +16,28 @@ func consumeVerificationEvents(replay *EventReplay, events []Event) error {
 // the terminal rather than a tail. Compare complete, independently validated
 // generations instead of requiring identical provider framing.
 func compareEventSequence(compiled *Compiled, sample Sample, expected, actual []Event) error {
+	return compareProjectedEventSequence(compiled, sample, expected, actual, nil)
+}
+
+func compareProjectedEventSequence(compiled *Compiled, sample Sample, expected, actual []Event, project func(*Response) error) error {
 	if !sample.Sequence {
 		return compareRoundTrip(compiled, sample, expected, actual)
 	}
 	containers := hasMessageEvents(expected)
-	before, err := collectVerificationSequence(compiled, sample, expected, containers)
+	before, err := collectVerificationSequence(compiled, sample, expected, containers, project)
 	if err != nil {
 		return err
 	}
-	after, err := collectVerificationSequence(compiled, sample, actual, containers)
+	after, err := collectVerificationSequence(compiled, sample, actual, containers, nil)
 	if err != nil {
 		return err
 	}
 	return compareRoundTrip(compiled, sample, before, after)
 }
 
-func collectVerificationSequence(compiled *Compiled, sample Sample, events []Event, containers bool) (Value, error) {
-	// Each sequence retains its source capabilities for collection. Target
-	// capability enforcement already happens while encoding and decoding.
+func collectVerificationSequence(compiled *Compiled, sample Sample, events []Event, containers bool, project func(*Response) error) (Value, error) {
+	// Projected events carry receipts bound to the actual target mapping.
 	target := compiled.target(EncodeEvent, EvaluationContext{Scope: sample.Scope})
-	if len(events) > 0 {
-		target.Protocol = events[0].Source
-	}
 	collector, err := NewResponseCollector(target, compiled.limits)
 	if err != nil {
 		return Value{}, err
@@ -71,6 +71,11 @@ func collectVerificationSequence(compiled *Compiled, sample Sample, events []Eve
 			Usage *Usage    `json:"usage,omitempty"`
 		}{failure.Type, failure.Error, response.Usage})
 	}
+	if project != nil {
+		if err := project(response); err != nil {
+			return Value{}, err
+		}
+	}
 	// ResponseFinished already establishes completion even if a protocol has no
 	// independent response status field. Item-local IDs are framing associations;
 	// call IDs, order, resources and all payload attributes remain comparable.
@@ -97,7 +102,7 @@ func comparableStreamOutput(nodes []Node) []Node {
 				continue
 			}
 			for _, child := range node.Children {
-				child.Metadata = MergeNodeMetadata(child.Metadata, node.Metadata, false)
+				child.Metadata = mergeNodeMetadata(child.Metadata, node.Metadata)
 				output = append(output, child)
 			}
 		} else {

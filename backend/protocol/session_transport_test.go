@@ -162,13 +162,13 @@ func TestSessionQueueCountsWritesInProgress(t *testing.T) {
 func TestSessionAdapterSharesTraceRulesAndUsage(t *testing.T) {
 	definition := sessionVerificationDefinition(t)
 	compiled := compileSessionDefinition(t, definition)
-	binding := Binding{ProtocolID: definition.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Capabilities, Transports: []Transport{WebSocket}}
+	binding := Binding{ProtocolID: definition.Spec.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Mapping.Capabilities, Transports: []Transport{WebSocket}}
 	operation := compiled.Operations()["session"]
 	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sessionTestContext(t, Scope{Model: "m"}), StringValue("m"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, step := range definition.SessionSamples[0].Steps {
+	for _, step := range definition.Mapping.SessionSamples[0].Steps {
 		frames, err := adapter.Convert(t.Context(), eventOrigin(step.Direction), SessionFrame{Payload: step.Input.Bytes()})
 		if err != nil {
 			t.Fatal(err)
@@ -194,7 +194,7 @@ func TestRunSessionInterleavesDirectionsAndFlushesExplicitClose(t *testing.T) {
 	definition := sessionVerificationDefinition(t)
 	compiled := compileSessionDefinition(t, definition)
 	operation := compiled.Operations()["session"]
-	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, Binding{Capabilities: definition.Capabilities}, sessionTestContext(t, Scope{Model: "m"}), StringValue("m"))
+	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, Binding{Capabilities: definition.Mapping.Capabilities}, sessionTestContext(t, Scope{Model: "m"}), StringValue("m"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestRunSessionInterleavesDirectionsAndFlushesExplicitClose(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- RunSession(ctx, client, upstream, *operation.Session, *operation.Session, adapter) }()
-	for _, step := range definition.SessionSamples[0].Steps {
+	for _, step := range definition.Mapping.SessionSamples[0].Steps {
 		input, output := upstream.input, client.output
 		if eventOrigin(step.Direction) == ClientEvent {
 			input, output = client.input, upstream.output
@@ -234,12 +234,12 @@ func TestRunSessionInterleavesDirectionsAndFlushesExplicitClose(t *testing.T) {
 
 func TestSessionAdapterPreservesDeclaredMediaAndRejectsModelChange(t *testing.T) {
 	definition := sessionVerificationDefinition(t)
-	definition.Capabilities[RealtimeMediaCapability] = true
+	definition.Mapping.Capabilities[RealtimeMediaCapability] = true
 	for _, direction := range []Direction{DecodeEvent, EncodeEvent, DecodeClientEvent, EncodeUpstreamEvent} {
-		definition.Directions[direction].Capabilities[RealtimeMediaCapability] = true
+		definition.Mapping.Directions[direction].Capabilities[RealtimeMediaCapability] = true
 	}
-	definition.Operations["session"].Session.InputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
-	definition.Operations["session"].Session.OutputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
+	definition.Spec.Operations["session"].Session.InputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
+	definition.Spec.Operations["session"].Session.OutputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
 	compiled := compileSessionDefinition(t, definition)
 	checkSessionAdapterMediaAndModel(t, compiled)
 }
@@ -262,7 +262,7 @@ func checkSessionAdapterMediaAndModel(t *testing.T, compiled *Compiled) {
 			t.Fatalf("binary altered: %v %v", frames, err)
 		}
 	}
-	configure := SessionFrame{Payload: []byte(`{"event":"session.configure","settings":{"schemaVersion":1,"source":{},"model":"group","content":null}}`)}
+	configure := SessionFrame{Payload: []byte(`{"event":"session.configure","settings":{"schemaVersion":2,"source":{},"model":"group","content":null}}`)}
 	frames, err := adapter.Convert(t.Context(), ClientEvent, configure)
 	if err != nil {
 		t.Fatal(err)

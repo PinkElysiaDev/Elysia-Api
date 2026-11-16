@@ -23,7 +23,12 @@ func TestPackageResponsesIncludeOwner(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := request.ClientOutput
-			if output.RawResponsesInclude.JSONString() != raw || output.RequireContinuationState != strings.Contains(raw, "reasoning.encrypted_content") || !request.Parameters["responses_include"].IsZero() {
+			owned, _ := request.Parameters["wire:openai_responses"].ReadObject()
+			ownedInclude := raw
+			if raw == `["reasoning.encrypted_content"]` {
+				ownedInclude = ""
+			}
+			if owned["include"].JSONString() != ownedInclude || output.RequireContinuationState != strings.Contains(raw, "reasoning.encrypted_content") || !request.Parameters["responses_include"].IsZero() {
 				t.Fatal("include intent lost its unique owner", output, request.Parameters)
 			}
 			for _, native := range []bool{true, false} {
@@ -47,7 +52,7 @@ func TestPackageResponsesIncludeOwner(t *testing.T) {
 			for _, enabled := range []bool{true, false} {
 				policy := p.DefaultConversionPolicy(source, target)
 				for i := range policy.Rules {
-					if policy.Rules[i].ID == "responses-include" {
+					if policy.Rules[i].ID == "reasoning-controls" {
 						policy.Rules[i].Enabled = enabled
 					}
 				}
@@ -59,22 +64,30 @@ func TestPackageResponsesIncludeOwner(t *testing.T) {
 				if err == nil {
 					_, err = target.EncodeRequestValue(t.Context(), converted, p.EvaluationContext{ClientOutput: converted.ClientOutput})
 				}
-				wantError := strings.Contains(raw, "future.selector") || !enabled && raw != ""
+				wantError := strings.Contains(raw, "future.selector") || !enabled && ownedInclude != ""
 				if (err != nil) != wantError {
 					t.Fatal("include disposition boundary changed", enabled, raw, err)
 				}
 			}
 		})
 	}
-	for _, compiled := range []*p.Compiled{source, target} {
-		conversion, err := p.ResolveConversion(declaredRulePolicy(t, source, compiled, "responses-include", "compatible"))
-		if err != nil {
-			t.Fatal(err)
+	for _, raw := range []string{`"opaque"`, `[7]`} {
+		wire := testValue(t, `{"model":"m","input":"hello","include":`+raw+`}`)
+		if _, err := source.DecodeRequestValue(t.Context(), wire, p.EvaluationContext{}); err == nil {
+			t.Fatal("source Spec accepted malformed selectors", raw)
 		}
-		for _, raw := range []string{`"opaque"`, `[7]`} {
-			request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Content: []p.Node{}, ClientOutput: &p.ClientOutput{RawResponsesInclude: testValue(t, raw)}}
-			if _, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: source.Identity(), Target: compiled.Identity()}, nil); err == nil {
-				t.Fatal("core input bypassed the declared include type", compiled.Identity(), raw)
+		if err := source.ValidateWireOutput(p.EncodeRequest, wire); err == nil {
+			t.Fatal("independent Spec accepted malformed selectors", raw)
+		}
+		for _, compiled := range []*p.Compiled{source, target} {
+			request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: []p.Node{},
+				Parameters: p.Object{"wire:openai_responses": testValue(t, `{"include":`+raw+`}`)}}
+			output, err := compiled.EncodeRequestValue(t.Context(), request, p.EvaluationContext{})
+			if err == nil {
+				err = compiled.ValidateRequestOutput(t.Context(), output, p.EvaluationContext{})
+			}
+			if err == nil {
+				t.Fatal("core extension bypassed its own Spec or foreign ownership guard", compiled.Identity(), raw)
 			}
 		}
 	}

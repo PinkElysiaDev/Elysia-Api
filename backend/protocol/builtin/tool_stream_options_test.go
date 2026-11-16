@@ -12,7 +12,7 @@ func TestToolInputStreamingProjection(t *testing.T) {
 	from := shippedProjectionProtocol(t, Anthropic)
 	to := shippedProjectionProtocol(t, Gemini)
 	raw := `{"model":"m","max_tokens":100,"stream":true,"messages":[{"role":"user","content":"lookup"}],"tools":[{"name":"lookup","input_schema":{"type":"object"},"eager_input_streaming":true}]}`
-	request, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+	request, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func TestToolInputStreamingProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+	wire, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestToolInputStreamingModesAndNativeOwnership(t *testing.T) {
 				for _, mode := range []string{"compatible", "strict"} {
 					t.Run(fmt.Sprintf("%s/%t/%s/%s", target, stream, value, mode), func(t *testing.T) {
 						raw := fmt.Sprintf(`{"model":"m","max_tokens":100,"stream":%t,"messages":[{"role":"user","content":"lookup"}],"tools":[{"name":"lookup","input_schema":{"type":"object","properties":{"eager_input_streaming":{"type":"boolean"}}},"eager_input_streaming":%s}]}`, stream, value)
-						request, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+						request, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -59,15 +59,15 @@ func TestToolInputStreamingModesAndNativeOwnership(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+						wire, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							t.Fatal(err)
 						}
-						back, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{})
+						back, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							t.Fatal(err)
 						}
-						kept := stream && target == Anthropic
+						kept := stream && target == Anthropic && value != "null"
 						if !back.Tools[0].Options["eager_input_streaming"].IsZero() != kept || !equivalentJSON(back.Tools[0].InputSchema, request.Tools[0].InputSchema) {
 							t.Fatal("stream preference or tool schema changed", string(wire))
 						}
@@ -77,7 +77,11 @@ func TestToolInputStreamingModesAndNativeOwnership(t *testing.T) {
 								continue
 							}
 							found = true
-							if issue.RuleID != "client-stream-options" || issue.Severity != p.SeverityInfo || (issue.Code == p.ConversionDegraded) != loss || (issue.Fidelity == "lossy_compatible") != loss {
+							severity := p.SeverityInfo
+							if loss {
+								severity = p.SeverityWarning
+							}
+							if issue.RuleID != "tool-options" || issue.Severity != severity || (issue.Code == p.ConversionDegraded) != loss || (issue.Fidelity == "lossy_compatible") != loss {
 								t.Fatal(issue)
 							}
 						}
@@ -99,14 +103,14 @@ func TestToolInputStreamingValidationAndUnknownExtensions(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Gemini)
 	for _, value := range []string{`1`, `"true"`, `[]`, `{}`} {
 		raw := `{"model":"m","max_tokens":100,"messages":[],"tools":[{"name":"lookup","input_schema":{"type":"object"},"eager_input_streaming":` + value + `}]}`
-		if _, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{}); err == nil {
+		if _, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatal("invalid streaming preference accepted", value)
 		}
-		request := &p.Request{SchemaVersion: p.SemanticSchemaVersion, Tools: []p.Tool{{Kind: p.FunctionTool, Options: p.Object{"eager_input_streaming": testValue(t, value)}}}}
+		request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Tools: []p.Tool{{Kind: p.FunctionTool, Options: p.Object{"eager_input_streaming": testValue(t, value)}}}}
 		policy := p.DefaultConversionPolicy(from, to)
 		policy.Rules = append(policy.Rules, p.ConversionRule{ID: "remove-before-project", Order: 1, Enabled: true, Phase: p.ConversionRequest, Action: "remove", Path: "/tools/0/options/eager_input_streaming"})
 		c, _ := p.ResolveConversion(policy)
-		if _, err := c.Request(t.Context(), request, p.ConversionContext{}, nil); err == nil {
+		if _, err := c.Request(t.Context(), request, fixtureConversionContext(t, c, p.ConversionRequest, request.Source), nil); err == nil {
 			t.Fatal("authored removal hid invalid input", value)
 		}
 	}
@@ -116,25 +120,25 @@ func TestToolInputStreamingValidationAndUnknownExtensions(t *testing.T) {
 			if unknown {
 				raw = strings.Replace(raw, `"eager_input_streaming":true`, `"eager_input_streaming":true,"future_streaming":true`, 1)
 			}
-			request, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+			request, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			native, err := from.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			native, err := from.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			sameJSON(t, native, raw)
 			policy := p.DefaultConversionPolicy(from, to)
 			for i := range policy.Rules {
-				if policy.Rules[i].Action == "stream_options" {
+				if policy.Rules[i].ID == "tool-options" {
 					policy.Rules[i].Enabled = enabled
 				}
 			}
 			c, _ := p.ResolveConversion(policy)
 			out, err := c.Request(t.Context(), request, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, nil)
 			if err == nil {
-				_, err = to.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				_, err = to.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 			}
 			if (err == nil) != (enabled && !unknown) {
 				t.Fatal("unknown extension or disabled projection bypassed guard", enabled, unknown, err)

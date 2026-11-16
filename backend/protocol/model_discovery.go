@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -10,7 +9,6 @@ import (
 // ModelDiscovery declares a bounded catalog decoder. Pagination only changes
 // one declared query parameter; provider responses cannot choose URLs or auth.
 type ModelDiscovery struct {
-	Decode          Mapping `json:"decode"`
 	CursorParameter string  `json:"cursorParameter,omitempty"`
 }
 
@@ -46,35 +44,6 @@ var modelPageSchema = ValueSchema{Type: ObjectType, Required: []string{"models"}
 	"next":    {Type: StringType, Nullable: true},
 	"hasMore": {Type: BooleanType},
 }}
-
-func (compiler *Compiler) compileModelMappings(compiled *Compiled, definition Definition, expressions *expressionCompiler) error {
-	compiled.modelMappings = map[string]compiledMapping{}
-	for name, operation := range definition.Operations {
-		if operation.Kind != "models" {
-			if operation.Models != nil {
-				return fmt.Errorf("operation %q: discovery mappings require models kind", name)
-			}
-			continue
-		}
-		if operation.Transport != HTTPJSON || operation.Method != "GET" || operation.Models == nil || operation.Request != "" || operation.Response != "" {
-			return fmt.Errorf("operation %q: model discovery requires GET HTTP JSON and its own decoder", name)
-		}
-		discovery := operation.Models
-		if err := checkModelCursor(operation); err != nil {
-			return fmt.Errorf("operation %q: %w", name, err)
-		}
-		mapping := discovery.Decode
-		if mapping.Module != "" || len(mapping.Rules) > 0 || mapping.Transform == nil || mapping.FrameBatch || mapping.After != nil || mapping.UnknownEvent != "" || mapping.Capabilities != nil {
-			return fmt.Errorf("operation %q: discovery requires an independent declarative transform", name)
-		}
-		entry, err := compiler.compileMapping(mapping, "/operations/"+name+"/models/decode", DecodeResponse, expressions)
-		if err != nil {
-			return err
-		}
-		compiled.modelMappings[name] = entry
-	}
-	return compiled.prepareModelEvidence(definition.ModelSamples)
-}
 
 func checkModelCursor(operation Operation) error {
 	cursor := operation.Models.CursorParameter
@@ -120,11 +89,9 @@ func (compiled *Compiled) DecodeModelPage(ctx context.Context, operation string,
 	}
 	var output Value
 	var err error
-	if compiled.packagePlan != nil {
-		output, err = compiled.executePackageModelMapping(ctx, operation, mapping, input)
-	} else {
-		output, err = compiled.executeOperationMapping(ctx, mapping, DecodeResponse, "/operations/"+operation+"/models/decode", input, EvaluationContext{})
-	}
+
+	output, err = compiled.executePackageModelMapping(ctx, operation, mapping, input)
+
 	if err != nil {
 		return page, err
 	}
@@ -157,19 +124,6 @@ func (compiled *Compiled) validateModelPage(operation string, page ModelPage) er
 	return nil
 }
 
-func (compiled *Compiled) executeOperationMapping(ctx context.Context, mapping compiledMapping, direction Direction, path string, input Value, options EvaluationContext) (Value, error) {
-	view := *compiled
-	view.mappings = map[Direction]compiledMapping{direction: mapping}
-	output, err := view.executeMapping(ctx, direction, input, options)
-	var conversion *ConversionError
-	if errors.As(err, &conversion) {
-		for index := range conversion.Issues {
-			conversion.Issues[index].Path = path + strings.TrimPrefix(conversion.Issues[index].Path, "/directions/"+string(direction))
-		}
-	}
-	return output, err
-}
-
 func verifyModelSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) {
 	if len(compiled.modelMappings) == 0 {
 		return
@@ -177,10 +131,10 @@ func verifyModelSamples(ctx context.Context, compiled *Compiled, report *Verific
 	terminal, continuation, encoded := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	samplesPath, operationsPath := "/modelSamples/", "/operations/"
 	operationSuffix := "/models"
-	if compiled.packagePlan != nil {
-		samplesPath, operationsPath = "/mapping/modelSamples/", "/mapping/operations/"
-		operationSuffix = "/decodeModels"
-	}
+
+	samplesPath, operationsPath = "/mapping/modelSamples/", "/mapping/operations/"
+	operationSuffix = "/decodeModels"
+
 	for _, sample := range compiled.verificationModelSamples() {
 		if sample.Direction == EncodeResponse {
 			output, err := compiled.previewModelEncoding(ctx, sample.Operation, sample.Input)

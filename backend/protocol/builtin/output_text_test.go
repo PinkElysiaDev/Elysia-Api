@@ -7,11 +7,66 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+func TestResponsesOutputTextPolicyAndCustomModules(t *testing.T) {
+	document, _ := testCompiled(t, Responses).Package()
+	document.Spec.ID = "custom-response-copy"
+	from, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	to := testCompiled(t, Chat)
+	for _, mode := range []string{"compatible", "strict"} {
+		for _, isEnabled := range []bool{true, false} {
+			policy := p.DefaultConversionPolicy(to, from)
+			policy.Mode = mode
+			for index := range policy.Rules {
+				if policy.Rules[index].ID == "response-metadata" {
+					policy.Rules[index].Enabled = isEnabled
+				}
+			}
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := from.DecodeResponse(t.Context(), liveAuditFixture(t, "output_text").Bytes(), fixtureOptions(p.EvaluationContext{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Isolate duplicate visible text from unrelated identity dispositions.
+			response.Attributes = nil
+			response.Content[0].ID, response.Content[0].Status = p.Value{}, p.Value{}
+			projected, err := conversion.Response(t.Context(), response, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, nil)
+			if err == nil {
+				_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
+			}
+			if (err == nil) != isEnabled {
+				t.Fatal("custom output text crossed the policy boundary", mode, isEnabled, err)
+			}
+		}
+	}
+	// Defaults come from the authored mapping, not the protocol name.
+	for index := range document.Mapping.ConversionDefaults {
+		rule := &document.Mapping.ConversionDefaults[index]
+		if rule.ID == "response-metadata" || rule.ID == "event-metadata" {
+			rule.Enabled = false
+		}
+	}
+	handwritten, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range p.DefaultConversionPolicy(handwritten, from).Rules {
+		if rule.Enabled && rule.Phase != p.ConversionRequest && (rule.ID == "response-metadata" || rule.ID == "event-metadata") {
+			t.Fatal("inferred an undeclared target metadata policy", rule)
+		}
+	}
+}
+
 func TestResponsesOutputTextProjection(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
 		to := shippedProjectionProtocol(t, target)
-		response, err := from.DecodeResponse(t.Context(), liveAuditFixture(t, "output_text").Bytes(), p.EvaluationContext{})
+		response, err := from.DecodeResponse(t.Context(), liveAuditFixture(t, "output_text").Bytes(), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -21,7 +76,7 @@ func TestResponsesOutputTextProjection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+		wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(target, err)
 		}
@@ -48,13 +103,13 @@ func TestResponsesOutputTextBoundaries(t *testing.T) {
 	for _, raw := range []string{`null`, `42`, `[]`, `{}`, `"different"`} {
 		fields, _ := liveAuditFixture(t, "output_text").ReadObject()
 		fields["output_text"] = testValue(t, raw)
-		_, err := from.DecodeResponse(t.Context(), object(fields).Bytes(), p.EvaluationContext{})
+		_, err := from.DecodeResponse(t.Context(), object(fields).Bytes(), fixtureOptions(p.EvaluationContext{}))
 		if err == nil || !strings.Contains(err.Error(), "/output_text") {
 			t.Fatal(raw, err)
 		}
 	}
 	for _, output := range []string{`null`, `"text"`} {
-		_, err := from.DecodeResponse(t.Context(), []byte(`{"output_text":"","output":`+output+`}`), p.EvaluationContext{})
+		_, err := from.DecodeResponse(t.Context(), []byte(`{"output_text":"","output":`+output+`}`), fixtureOptions(p.EvaluationContext{}))
 		if err == nil {
 			t.Fatal(output)
 		}
@@ -63,11 +118,8 @@ func TestResponsesOutputTextBoundaries(t *testing.T) {
 		`{"output_text":"","output":[]}`,
 		`{"output_text":"A&B","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A\u0026"}]},{"type":"function_call","id":"t","call_id":"c","name":"audit_echo","arguments":"{\"n\":9007199254740993}"},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"B"}]}]}`,
 	} {
-		r, err := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
-			t.Fatal(err)
-		}
-		if err = p.ValidateResponseOutputText(r); err != nil {
 			t.Fatal(err)
 		}
 		for i := range r.Metadata {
@@ -76,61 +128,8 @@ func TestResponsesOutputTextBoundaries(t *testing.T) {
 			}
 		}
 		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(shippedProjectionProtocol(t, Chat), from))
-		if _, err = conversion.Response(t.Context(), r, p.ConversionContext{}, nil); err == nil {
+		if _, err = conversion.Response(t.Context(), r, fixtureConversionContext(t, conversion, p.ConversionResponse, r.Source), nil); err == nil {
 			t.Fatal("mapped mismatch accepted")
-		}
-	}
-}
-
-func TestResponsesOutputTextPolicyAndCustomModules(t *testing.T) {
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	base := shippedProjectionProtocol(t, Responses).Definition()
-	base.ID = "legacy-response-copy"
-	raw, _ := p.EncodeValue(base)
-	from, issues := compiler.Compile(raw.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	to := shippedProjectionProtocol(t, Chat)
-	for _, mode := range []string{"compatible", "strict"} {
-		for _, enabled := range []bool{true, false} {
-			policy := p.DefaultConversionPolicy(to, from)
-			policy.Mode = mode
-			for i := range policy.Rules {
-				if policy.Rules[i].Action == "response_metadata" {
-					policy.Rules[i].Enabled = enabled
-				}
-			}
-			conversion, err := p.ResolveConversion(policy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			response, err := from.DecodeResponse(t.Context(), liveAuditFixture(t, "output_text").Bytes(), p.EvaluationContext{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Isolate duplicate text from unrelated resource/shape projection.
-			response.Attributes = nil
-			response.Content[0].ID, response.Content[0].Status = p.Value{}, p.Value{}
-			projected, err := conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
-			if err == nil {
-				_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
-			}
-			if (err == nil) != enabled {
-				t.Fatal(mode, enabled, err)
-			}
-		}
-	}
-	base.Directions[p.EncodeResponse] = p.Mapping{Transform: &p.Expression{Op: "read", Path: ""}}
-	base.Directions[p.EncodeEvent] = p.Mapping{Transform: &p.Expression{Op: "read", Path: ""}}
-	raw, _ = p.EncodeValue(base)
-	handwritten, issues := compiler.Compile(raw.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	for _, rule := range p.DefaultConversionPolicy(handwritten, from).Rules {
-		if rule.Phase != p.ConversionRequest && (rule.Action == "response_metadata" || rule.Action == "error_metadata") {
-			t.Fatal("inferred a handwritten target", rule)
 		}
 	}
 }

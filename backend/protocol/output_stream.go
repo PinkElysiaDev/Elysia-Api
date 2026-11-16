@@ -68,8 +68,6 @@ func (validation *WireStreamValidation) Release() {
 	}
 	validation.deliveryRanges = nil
 	validation.packageStream = nil
-	validation.decoder = nil
-	validation.replay = nil
 }
 
 func (runtime evaluationRuntime) readOutputStream(field string) (plannedOutput, error) {

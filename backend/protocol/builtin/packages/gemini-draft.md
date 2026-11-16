@@ -1,5 +1,7 @@
 # Gemini 请求与响应声明迁移草案
 
+本文保存 2026-10-30 迁移阶段的 Gemini 草案；下文“当前”“未启用”和空样例等描述均指当时记录。当前同名 Spec／Mapping 已作为 package4／DSL2／Core2 默认源加载，包含请求、响应、事件及验证样例。现行说明见[默认协议源](README.md)和[三分契约](../../../../docs/protocol-three-part-contract.md)，原始差分与拒绝结果保留。
+
 `google-generate-content/spec.json` 与 `google-generate-content/mapping.json` 是未启用的 v3 Spec/Mapping 候选，参照当前
 `google-generate-content` 2.1.6 的实现。它只声明 `decode_request`、`encode_request`、
 `decode_response`、`encode_response`；生产加载器、编译器版本和现有预置均未改变。

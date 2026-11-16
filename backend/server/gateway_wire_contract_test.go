@@ -14,7 +14,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 func TestGatewayChatWireContractFailure(t *testing.T) {
@@ -46,6 +45,22 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 			body, err := io.ReadAll(response.Body)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.name == "missing-role" {
+				if response.StatusCode != http.StatusOK || calls.Load() != 1 || response.Trailer.Get(gatewayStreamErrorTrailer) != "" || strings.Count(string(body), `"role":"assistant"`) != 1 || strings.Count(string(body), `"content":"hi"`) != 1 || !strings.Contains(string(body), "data: [DONE]") {
+					t.Fatal("declared role prelude did not complete the source stream", response.StatusCode, calls.Load(), string(body), response.Trailer)
+				}
+				service, err := s.protocolService()
+				if err != nil {
+					t.Fatal(err)
+				}
+				target, _ := service.Pin(protocol.PresetChatCompletionsID)
+				checkGatewayWireStream(t, target, string(body))
+				records := latestUsageRecords(t, s)
+				if len(records) != 1 || records[0].StatusCode != http.StatusOK || records[0].Error != "" {
+					t.Fatal("normalized stream recorded as a failure", records)
+				}
+				return
 			}
 			if response.StatusCode != 200 || calls.Load() != 1 || response.Trailer.Get(gatewayStreamErrorTrailer) == "" {
 				t.Fatal(response.StatusCode, calls.Load(), string(body), response.Trailer)
@@ -89,12 +104,13 @@ func TestGatewayChatWireContractFailure(t *testing.T) {
 func TestWireContractPreviewAndCombinationUseFinalFrames(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
-	d := presetDefinition(t, protocol.PresetChatCompletionsID)
-	d.ID, d.Native.Preserve = "chat-after-without-role", false
+	d := presetPackage(t, protocol.PresetChatCompletionsID)
+	d.Spec.ID, d.Mapping.Native.Preserve = "chat-after-without-role", false
 	bad := mustEncodedProtocolValue(t, []any{map[string]any{"id": "r", "model": "m", "created": 1, "object": "chat.completion.chunk", "choices": []any{map[string]any{"index": 0, "delta": map[string]any{"content": "hi"}, "finish_reason": "stop"}}}})
-	mapping := d.Directions[protocol.EncodeEvent]
-	mapping.After = &protocol.Expression{Op: "literal", Value: bad}
-	d.Directions[protocol.EncodeEvent] = mapping
+	mapping := d.Mapping.Directions[protocol.EncodeEvent]
+	original := mapping.Program
+	mapping.Program = protocol.Expression{Op: "let", Name: "generated", Source: &original, Body: &protocol.Expression{Op: "literal", Value: bad}}
+	d.Mapping.Directions[protocol.EncodeEvent] = mapping
 	definition := mustEncodedProtocolValue(t, d)
 	service, _ := s.protocolService()
 	input := mustEncodedProtocolValue(t, []protocol.Event{{SchemaVersion: protocol.SemanticSchemaVersion, Type: protocol.OperationFailed, Error: mustEncodedProtocolValue(t, map[string]string{"message": "synthetic"})}})
@@ -102,7 +118,7 @@ func TestWireContractPreviewAndCombinationUseFinalFrames(t *testing.T) {
 	if err := protocol.IssuesError(preview.Issues); err == nil || !strings.Contains(err.Error(), "/choices/0/delta/role") {
 		t.Fatal("preview accepted malformed after mapping", preview.Issues)
 	}
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), builtin.Modules(), nil)
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +127,13 @@ func TestWireContractPreviewAndCombinationUseFinalFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := protocol.VerifyCombination(t.Context(), c, c)
-	if err := protocol.IssuesError(report.Issues); report.Passed || err == nil || !strings.Contains(err.Error(), "/choices/0/delta/role") {
-		t.Fatal("combination ignored final after mapping", report.Issues)
+	hasFinalFrameFailure := false
+	for _, issue := range report.Issues {
+		if issue.Code == protocol.ConversionRejected && issue.Direction == protocol.EncodeEvent && issue.Path == "/choices/0/delta/role" && issue.Evidence == "declared-stream-text-decode" {
+			hasFinalFrameFailure = true
+		}
+	}
+	if report.Passed || !hasFinalFrameFailure {
+		t.Fatal("combination ignored malformed final frames", report.Issues)
 	}
 }

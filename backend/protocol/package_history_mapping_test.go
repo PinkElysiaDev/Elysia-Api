@@ -230,7 +230,7 @@ func TestHistoryValueMappingRejectsUnprovedRelations(t *testing.T) {
 	} {
 		document := historyPrototype(t, "anthropic")
 		change(&document)
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
 		value := fixtureValue(t, document)
 		if compiled, issues := compiler.CompilePackage(value.Bytes()); compiled != nil || IssuesError(issues) == nil {
 			t.Fatal("unproved history normalization compiled")

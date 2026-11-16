@@ -45,7 +45,7 @@ func TestStreamRetentionCombinesIndexesIdentitiesTrackersAndRanges(t *testing.T)
 	if _, err := decodePrimitiveText(t, compiled, options, map[string]any{"identity": map[string]any{"itemId": "base", "callId": "call", "index": 0}, "item_id": "item:base", "text": "tracked"}); err != nil || options.State.packageStateItems != 3 {
 		t.Fatal("aliases were charged as distinct identities", err, options.State.packageStateItems)
 	}
-	key := moduleStateKey{compiled: compiled, direction: DecodeEvent}
+	key := executionStateKey{compiled: compiled, direction: DecodeEvent}
 	before, bytes := options.State.packageStates[key], options.State.packageStateBytes
 	for _, fields := range []map[string]any{
 		{"record_key": "b", "record": "new"},

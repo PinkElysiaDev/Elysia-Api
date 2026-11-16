@@ -7,14 +7,14 @@ import (
 
 func TestRuntimeNativePreservationAndSemanticEdits(t *testing.T) {
 	definition := testDefinition("native", "model", "history", "functions", "answer")
-	definition.Native.Preserve = true
+	definition.Mapping.Native.Preserve = true
 	compiled := compileTestDefinition(t, definition)
 	input := []byte(`{"model":"old","extension":{"long":900719925474099312345,"null":null},"history":[{"kind":"message","speaker":"user","parts":[{"kind":"text","payload":"hello"}],"vendor":false}],"functions":[{"operation":"lookup","schema":{"type":"object"},"vendor":{"ttl":"1h"}}]}`)
-	request, err := compiled.DecodeRequest(t.Context(), input, EvaluationContext{})
+	request, err := compiled.DecodeRequest(t.Context(), input, EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	roundtrip, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{})
+	roundtrip, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestRuntimeNativePreservationAndSemanticEdits(t *testing.T) {
 	}
 	request.Model = StringValue("new")
 	request.Tools[0].Name = StringValue("renamed")
-	modified, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{})
+	modified, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestRuntimeNativePreservationAndSemanticEdits(t *testing.T) {
 		t.Fatalf("semantic edit lost: %s", modified)
 	}
 	request.Tools = nil
-	cleared, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{})
+	cleared, err := compiled.EncodeRequest(t.Context(), request, EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestRuntimeNativePreservationAndSemanticEdits(t *testing.T) {
 		t.Fatalf("deleted tools resurrected: %s", cleared)
 	}
 	foreign := compileTestDefinition(t, testDefinition("foreign", "model", "history", "functions", "answer"))
-	converted, err := foreign.EncodeRequest(t.Context(), request, EvaluationContext{})
+	converted, err := foreign.EncodeRequest(t.Context(), request, EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,12 +87,12 @@ func TestRuntimeStampsAllResourceScopes(t *testing.T) {
 
 func TestRuntimeRejectsInvalidResponseAndEvents(t *testing.T) {
 	compiled := compileTestDefinition(t, testDefinition("bad-response", "m", "h", "t", "r"))
-	if _, err := compiled.DecodeResponse(t.Context(), []byte(`{"r":[{"kind":"imaginary"}]}`), EvaluationContext{}); err == nil {
+	if _, err := compiled.DecodeResponse(t.Context(), []byte(`{"r":[{"kind":"imaginary"}]}`), EvaluationContext{State: NewEvaluationState()}); err == nil {
 		t.Fatal("unknown semantic content accepted")
 	}
 	for _, frame := range []string{`{"event":"token","token":"x"}`, `{"event":"unknown","token":"x","item":"i"}`} {
 		input, _ := ParseValue([]byte(frame))
-		if _, err := compiled.DecodeEvents(t.Context(), input, EvaluationContext{}); err == nil {
+		if _, err := compiled.DecodeEvents(t.Context(), input, EvaluationContext{State: NewEvaluationState()}); err == nil {
 			t.Fatalf("invalid event accepted: %s", frame)
 		}
 	}
@@ -100,15 +100,15 @@ func TestRuntimeRejectsInvalidResponseAndEvents(t *testing.T) {
 
 func TestRuntimeNativeEventPreservation(t *testing.T) {
 	definition := testDefinition("event-native", "m", "h", "t", "r")
-	definition.Native.Preserve = true
+	definition.Mapping.Native.Preserve = true
 	compiled := compileTestDefinition(t, definition)
 	frame, _ := ParseValue([]byte(`{"event":"token","item":"i","token":"before","extension":9007199254740993123}`))
-	events, err := compiled.DecodeEvents(t.Context(), frame, EvaluationContext{})
+	events, err := compiled.DecodeEvents(t.Context(), frame, EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	events[0].Delta = StringValue("after")
-	result, err := compiled.EncodeEvent(t.Context(), events[0], EvaluationContext{})
+	result, err := compiled.EncodeEvent(t.Context(), events[0], EvaluationContext{State: NewEvaluationState()})
 	if err != nil {
 		t.Fatal(err)
 	}

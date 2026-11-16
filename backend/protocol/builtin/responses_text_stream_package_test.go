@@ -3,97 +3,11 @@ package builtin
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
-
-func TestResponsesPackageSourceCapacity(t *testing.T) {
-	const messageCount = 48
-	limits := p.DefaultLimits()
-	limits.StateItems = 64
-	read := func(path string) []byte {
-		t.Helper()
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return raw
-	}
-	legacyCompiler, err := p.NewCompiler(limits, Modules(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy, issues := legacyCompiler.Compile(read("definitions/openai-responses.json"))
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	compiler, err := p.NewCompiler(limits, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate, issues := compiler.CompileSources(read("packages/openai-responses/spec.json"), read("packages/openai-responses/mapping.json"))
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	frames := []p.Value{testValue(t, `{"type":"response.created","response":{"id":"r","model":"m","object":"response","created_at":1,"status":"in_progress","output":[]}}`)}
-	var output []string
-	for index := range messageCount {
-		message := fmt.Sprintf(`{"type":"message","id":"m_%d","role":"assistant","status":"completed","content":[]}`, index)
-		frames = append(frames,
-			testValue(t, fmt.Sprintf(`{"type":"response.output_item.added","output_index":%d,"item":%s}`, index, strings.Replace(message, "completed", "in_progress", 1))),
-			testValue(t, fmt.Sprintf(`{"type":"response.output_item.done","output_index":%d,"item":%s}`, index, message)))
-		output = append(output, message)
-	}
-	frames = append(frames, testValue(t, `{"type":"response.completed","response":{"id":"r","model":"m","object":"response","created_at":1,"status":"completed","output":[`+strings.Join(output, ",")+`]}}`))
-	for name, compiled := range map[string]*p.Compiled{"legacy": legacy, "package": candidate} {
-		t.Run(name, func(t *testing.T) {
-			options := p.EvaluationContext{State: p.NewEvaluationState()}
-			defer options.State.Release()
-			var wire *p.WireStreamValidation
-			if compiled == candidate {
-				wire, err = compiled.NewWireInputStreamValidation(p.Scope{})
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			finishedMessages, finishedResponses := 0, 0
-			for index, frame := range frames {
-				var decoded *p.EventFrame
-				var err error
-				if wire != nil {
-					decoded, err = wire.DecodeFrame(t.Context(), frame, options)
-				} else {
-					decoded, err = compiled.DecodeFrame(t.Context(), frame, options)
-				}
-				if err != nil {
-					t.Fatal("source capacity decreased", index, err)
-				}
-				for _, event := range decoded.Events {
-					if event.Type == p.ItemFinished {
-						finishedMessages++
-					}
-					if event.Type == p.ResponseFinished {
-						finishedResponses++
-						if event.Response == nil || len(event.Response.Content) != messageCount {
-							t.Fatal("terminal output lost registered messages")
-						}
-					}
-				}
-			}
-			if finishedMessages != messageCount || finishedResponses != 1 {
-				t.Fatal("message or response completed more than once", finishedMessages, finishedResponses)
-			}
-			if wire != nil {
-				if err := wire.Finish(); err != nil {
-					t.Fatal(err)
-				}
-			}
-		})
-	}
-}
 
 func TestResponsesPackageDuplicateSourceStarts(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "openai-responses")

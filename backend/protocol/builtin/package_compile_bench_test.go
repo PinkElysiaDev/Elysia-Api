@@ -22,7 +22,7 @@ func BenchmarkPackageCompile(b *testing.B) {
 				return raw
 			}
 			spec, mapping := read("spec"), read("mapping")
-			compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
+			compiler, err := p.NewCompiler(p.DefaultLimits(), nil)
 			if err != nil {
 				b.Fatal(err)
 			}

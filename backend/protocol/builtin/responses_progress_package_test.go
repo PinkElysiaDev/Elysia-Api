@@ -1,11 +1,9 @@
 package builtin
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -14,8 +12,62 @@ const (
 	progressEnd   = `{"type":"response.completed","sequence_number":10,"response":{"id":"r","model":"m","status":"completed","output":[]}}`
 )
 
+func TestResponsesPackageProgressRejectsInvalidUpdates(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "openai-responses")
+	for _, fixture := range []struct {
+		name   string
+		prefix []string
+		frame  string
+	}{
+		{"identity-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"other","usage":{"input_tokens":null}}}`},
+		{"sequence-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"r","usage":{"input_tokens":null}}}`},
+		{"model-and-hosted-usage", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"input_tokens":null},"tool_usage":{"web_search":{"num_requests":null}}}}`},
+		{"cumulative-and-hosted-usage", []string{`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"output_tokens":2}}}`},
+			`{"type":"response.in_progress","sequence_number":2,"response":{"id":"r","usage":{"output_tokens_details":{"reasoning_tokens":3}},"tool_usage":{"web_search":{"num_requests":null}}}}`},
+		{"hosted-counter", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","tool_usage":{"web_search":{"num_requests":-1}}}}`},
+		{"nonarray-output", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","output":42}}`},
+		{"invalid-usage-tail", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","usage":{"output_tokens":null}}}`},
+		{"metadata-after-terminal", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","metadata":{"label":"late"}}}`},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			wire, err := compiled.NewWireInputStreamValidation(p.Scope{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, raw := range append([]string{progressStart}, fixture.prefix...) {
+				if err := wire.Consume(t.Context(), testValue(t, raw)); err != nil {
+					t.Fatal("valid progress prefix was rejected", err)
+				}
+			}
+			value := testValue(t, fixture.frame)
+			issue := requireResponsesWireRejection(t, compiled, wire.Consume(t.Context(), value))
+			// Several independent faults are present. The reported location must
+			// belong to the original frame; their rejection order is not a contract.
+			if issue.Path != "/" && (!strings.HasPrefix(issue.Path, "/") || fixturePointerValue(t, value.Bytes(), issue.Path) == nil) {
+				t.Fatal("progress rejection points outside the original frame", issue)
+			}
+		})
+	}
+}
+
+func TestResponsesPackageProgressRequiresRealTerminal(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "openai-responses")
+	wire, err := compiled.NewWireInputStreamValidation(p.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{progressStart, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","status":"completed","usage":{"input_tokens":1}}}`} {
+		if err := wire.Consume(t.Context(), testValue(t, raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := wire.Finish(); err == nil {
+		t.Fatal("an in_progress status or EOF invented the response terminal")
+	}
+}
+
 func TestResponsesPackageProgressSourceStream(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+	candidate := compileBuiltinPackage(t, "openai-responses")
 	for _, fixture := range []struct {
 		name   string
 		frames []string
@@ -52,9 +104,7 @@ func TestResponsesPackageProgressSourceStream(t *testing.T) {
 				}
 				return
 			}
-			oldOptions := p.EvaluationContext{State: p.NewEvaluationState()}
 			newOptions := p.EvaluationContext{State: p.NewEvaluationState()}
-			defer oldOptions.State.Release()
 			defer newOptions.State.Release()
 			wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
 			if err != nil {
@@ -68,15 +118,10 @@ func TestResponsesPackageProgressSourceStream(t *testing.T) {
 			}
 			for index, raw := range fixture.frames {
 				value := testValue(t, raw)
-				before, err := legacy.DecodeFrame(t.Context(), value, oldOptions)
-				if err != nil {
-					t.Fatal("legacy progress", index, err)
-				}
 				after, err := wire.DecodeFrame(t.Context(), value, newOptions)
 				if err != nil {
 					t.Fatal("declared progress", index, err)
 				}
-				assertResponsesControlObservations(t, candidate, before.Events, after.Events)
 				for _, event := range after.Events {
 					if _, _, err := collector.Consume(event); err != nil {
 						t.Fatal("progress semantic collection", index, err)
@@ -123,165 +168,5 @@ func TestResponsesPackageProgressSourceStream(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestResponsesPackageProgressReplacesLargeUsageField(t *testing.T) {
-	const fieldBytes = 4 << 20
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
-	oldOptions := p.EvaluationContext{State: p.NewEvaluationState()}
-	newOptions := p.EvaluationContext{State: p.NewEvaluationState()}
-	defer oldOptions.State.Release()
-	defer newOptions.State.Release()
-	replay, err := p.NewEventReplay(legacy.Target(p.EncodeEvent, p.Scope{}), legacy.ResourceLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Each update fits the 8 MiB wire/state budget. Replacing the same field
-	// must not charge an intermediate array containing both complete values.
-	for index, raw := range []string{
-		progressStart,
-		`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"vendor":"` + strings.Repeat("x", fieldBytes) + `"}}}`,
-		`{"type":"response.in_progress","sequence_number":2,"response":{"id":"r","usage":{"vendor":"` + strings.Repeat("y", fieldBytes) + `"}}}`,
-		progressEnd,
-	} {
-		value := testValue(t, raw)
-		before, err := legacy.DecodeFrame(t.Context(), value, oldOptions)
-		if err != nil {
-			t.Fatal("legacy source", index, err)
-		}
-		for _, event := range before.Events {
-			if _, err := replay.Consume(event); err != nil {
-				t.Fatal("legacy lifecycle", index, err)
-			}
-		}
-		if err := wire.Consume(t.Context(), value); err != nil {
-			t.Fatal("independent source contract", index, err)
-		}
-		after, err := candidate.DecodeFrame(t.Context(), value, newOptions)
-		if err != nil {
-			t.Fatal("declared source", index, err)
-		}
-		if index == 1 || index == 2 {
-			expected, err := p.EncodeValue(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(before.Events) != 1 || len(after.Events) != 1 || after.Events[0].Type != before.Events[0].Type || after.Events[0].Unmapped == nil || after.Events[0].Unmapped.Value != expected {
-				t.Fatal("usage replacement lost its current unknown field", index)
-			}
-		}
-	}
-	if err := replay.Finish(); err != nil {
-		t.Fatal("legacy EOF", err)
-	}
-	if err := wire.Finish(); err != nil {
-		t.Fatal("declared EOF", err)
-	}
-}
-
-func TestResponsesPackageProgressRejectsInvalidUpdates(t *testing.T) {
-	compiled := compileBuiltinPackage(t, "openai-responses")
-	for _, fixture := range []struct {
-		name   string
-		prefix []string
-		frame  string
-	}{
-		{"identity-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"other","usage":{"input_tokens":null}}}`},
-		{"sequence-and-usage", nil, `{"type":"response.in_progress","sequence_number":0,"response":{"id":"r","usage":{"input_tokens":null}}}`},
-		{"model-and-hosted-usage", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"input_tokens":null},"tool_usage":{"web_search":{"num_requests":null}}}}`},
-		{"cumulative-and-hosted-usage", []string{`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"output_tokens":2}}}`},
-			`{"type":"response.in_progress","sequence_number":2,"response":{"id":"r","usage":{"output_tokens_details":{"reasoning_tokens":3}},"tool_usage":{"web_search":{"num_requests":null}}}}`},
-		{"hosted-counter", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","tool_usage":{"web_search":{"num_requests":-1}}}}`},
-		{"nonarray-output", nil, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","output":42}}`},
-		{"invalid-usage-tail", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","usage":{"output_tokens":null}}}`},
-		{"metadata-after-terminal", []string{progressEnd}, `{"type":"response.in_progress","sequence_number":11,"response":{"id":"r","metadata":{"label":"late"}}}`},
-	} {
-		t.Run(fixture.name, func(t *testing.T) {
-			wire, err := compiled.NewWireInputStreamValidation(p.Scope{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, raw := range append([]string{progressStart}, fixture.prefix...) {
-				if err := wire.Consume(t.Context(), testValue(t, raw)); err != nil {
-					t.Fatal("valid progress prefix was rejected", err)
-				}
-			}
-			value := testValue(t, fixture.frame)
-			issue := requireResponsesWireRejection(t, compiled, wire.Consume(t.Context(), value))
-			// Several independent faults are present. The reported location must
-			// belong to the original frame; their rejection order is not a contract.
-			if issue.Path != "/" && (!strings.HasPrefix(issue.Path, "/") || migrationPointerValue(t, value.Bytes(), issue.Path) == nil) {
-				t.Fatal("progress rejection points outside the original frame", issue)
-			}
-		})
-	}
-}
-
-func TestResponsesPackageProgressRequiresRealTerminal(t *testing.T) {
-	compiled := compileBuiltinPackage(t, "openai-responses")
-	wire, err := compiled.NewWireInputStreamValidation(p.Scope{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, raw := range []string{progressStart, `{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","status":"completed","usage":{"input_tokens":1}}}`} {
-		if err := wire.Consume(t.Context(), testValue(t, raw)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := wire.Finish(); err == nil {
-		t.Fatal("an in_progress status or EOF invented the response terminal")
-	}
-}
-
-func TestResponsesPackageProgressPreservesExtensions(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
-	for _, raw := range []string{
-		`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","created":9007199254740993}}`,
-		`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","usage":{"prompt_cache_hit_tokens":9007199254740993}}}`,
-		`{"type":"response.in_progress","sequence_number":1,"response":{"id":"r","tool_usage":{"vendor":{"unit":9007199254740993}}}}`,
-	} {
-		beforeOptions := p.EvaluationContext{State: p.NewEvaluationState()}
-		afterOptions := p.EvaluationContext{State: p.NewEvaluationState()}
-		defer beforeOptions.State.Release()
-		defer afterOptions.State.Release()
-		wire, err := candidate.NewWireInputStreamValidation(p.Scope{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		start := testValue(t, progressStart)
-		if _, err := legacy.DecodeFrame(t.Context(), start, beforeOptions); err != nil {
-			t.Fatal(err)
-		}
-		if err := wire.Consume(t.Context(), start); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := candidate.DecodeFrame(t.Context(), start, afterOptions); err != nil {
-			t.Fatal(err)
-		}
-		value := testValue(t, raw)
-		before, err := legacy.DecodeFrame(t.Context(), value, beforeOptions)
-		if err != nil || len(before.Events) != 1 || before.Events[0].Unmapped == nil {
-			t.Fatal("legacy fixture must expose the extension", before, err)
-		}
-		if err := wire.Consume(t.Context(), value); err != nil {
-			t.Fatal(err)
-		}
-		after, err := candidate.DecodeFrame(t.Context(), value, afterOptions)
-		if err != nil || len(after.Events) != 1 || after.Events[0].Type != before.Events[0].Type || after.Events[0].Unmapped == nil {
-			t.Fatal("progress discarded an unknown field", after, err)
-		}
-		expected, err := sonic.ConfigStd.Marshal(value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		unmapped := after.Events[0].Unmapped
-		if unmapped.Source.Path != "" || unmapped.Source.Protocol != candidate.Identity() || unmapped.Source.Direction != p.DecodeEvent || !bytes.Equal(unmapped.Value.Bytes(), expected) {
-			t.Fatal("progress extension lost its original frame location or bytes", unmapped)
-		}
 	}
 }

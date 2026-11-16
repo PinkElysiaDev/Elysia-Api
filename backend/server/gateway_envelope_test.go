@@ -147,7 +147,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 			raw += `,"store":` + value
 		}
 		raw += `}`
-		req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(raw))
+		req := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(raw))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
 		before := calls
@@ -164,7 +164,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 			t.Fatal(value, rec.Code, rec.Body.String())
 		}
 	}
-	streamReq := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hello","stream":true,"store":true,"include":["reasoning.encrypted_content"]}`))
+	streamReq := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(`{"model":"group","input":"hello","stream":true,"store":true,"include":["reasoning.encrypted_content"]}`))
 	streamReq.Header.Set("Authorization", "Bearer gateway-test-token")
 	streamRec := httptest.NewRecorder()
 	serveTestHTTP(s.engine, streamRec, streamReq)
@@ -193,7 +193,7 @@ func TestGatewayResponsesStorage(t *testing.T) {
 	if len(seen) != 2 {
 		t.Fatal(streamRec.Body.String())
 	}
-	req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"next","store":false,"previous_response_id":"old-response"}`))
+	req := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(`{"model":"group","input":"next","store":false,"previous_response_id":"old-response"}`))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	before := calls
 	rec := httptest.NewRecorder()

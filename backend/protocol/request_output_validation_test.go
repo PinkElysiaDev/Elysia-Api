@@ -81,7 +81,7 @@ func TestPackageFinalRequestCheckRunsAfterWireRules(t *testing.T) {
 	if _, err := executeVerificationSample(t.Context(), compiled, Sample{ID: "intent", Direction: EncodeRequest, Input: input}); err == nil {
 		t.Fatal("independent verification omitted the final request check")
 	}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	service := &Service{compiler: compiler}
 	if result := service.Preview(t.Context(), fixtureValue(t, document).Bytes(), EncodeRequest, input, false, EvaluationContext{}); IssuesError(result.Issues) == nil {
 		t.Fatal("editor preview omitted the final request check")
@@ -96,7 +96,7 @@ func TestPackageFinalRequestCheckPermissions(t *testing.T) {
 		entry := document.Mapping.Directions[EncodeRequest]
 		entry.FinalCheck = expressionPointer(Expression{Op: "exists", Source: &read})
 		document.Mapping.Directions[EncodeRequest] = entry
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
 		_, issues := compiler.Compile(fixtureValue(t, document).Bytes())
 		if err := IssuesError(issues); err == nil || !strings.Contains(err.Error(), "finalCheck") {
 			t.Fatal("final request predicate acquired undeclared runtime or state access", issues)
@@ -106,7 +106,7 @@ func TestPackageFinalRequestCheckPermissions(t *testing.T) {
 	entry := document.Mapping.Directions[DecodeRequest]
 	entry.FinalCheck = expressionPointer(literalExpression(true))
 	document.Mapping.Directions[DecodeRequest] = entry
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	_, issues := compiler.Compile(fixtureValue(t, document).Bytes())
 	if err := IssuesError(issues); err == nil || !strings.Contains(err.Error(), "requires request encoding") {
 		t.Fatal("a non-request-output direction declared an unused final check", issues)

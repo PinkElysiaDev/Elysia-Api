@@ -14,7 +14,7 @@ func TestPlannedCoreDecodingMatchesJSONBoundary(t *testing.T) {
 		for _, useIdentity := range []bool{false, true} {
 			definition := testDefinition("planned-decode", "m", "h", "t", "r")
 			if useIdentity {
-				definition.Directions[direction] = Mapping{Transform: expressionPointer(readExpression("input", ""))}
+				definition.Mapping.Directions[direction] = ProtocolDirectionMapping{Effects: generationFixtureEffects(direction), Document: testDocument(direction), Program: readExpression("input", "")}
 			}
 			compiled := compileTestDefinition(t, definition)
 			if !compiled.mappings[direction].hasCoreOutputPlan {
@@ -22,7 +22,7 @@ func TestPlannedCoreDecodingMatchesJSONBoundary(t *testing.T) {
 			}
 			for _, raw := range []string{
 				`{"m":"model","request":"r","h":[{"kind":"message","speaker":"user","parts":[{"kind":"text","payload":"hello <world>"}]}],"r":[],"t":[]}`,
-				`{"content":[{"kind":"text","payload":{"number":9007199254740993}}],"source":{},"schemaVersion":1}`,
+				`{"content":[{"kind":"text","payload":{"number":9007199254740993}}],"source":{},"schemaVersion":2}`,
 				`{"schemaVersion":"wrong"}`, `{"content":{}}`, `{"unknown":true}`, `null`,
 			} {
 				input, err := ParseValue([]byte(raw))
@@ -55,7 +55,7 @@ func comparePlannedCoreDecode[T any](t *testing.T, ctx context.Context, compiled
 	if wantErr == nil {
 		wantErr = decodeContract(output.Bytes(), &want)
 	}
-	got, gotErr := decodeTyped[T](ctx, compiled, direction, input, options, nil)
+	got, gotErr := decodeCore[T](ctx, compiled, direction, input, options)
 	var beforeLimit, afterLimit *ResourceLimitError
 	var beforeConversion, afterConversion *ConversionError
 	if fmt.Sprint(gotErr) != fmt.Sprint(wantErr) || reflect.TypeOf(gotErr) != reflect.TypeOf(wantErr) ||
@@ -111,11 +111,11 @@ func TestPlannedOutputResourceBoundaries(t *testing.T) {
 	}
 
 	definition := testDefinition("planned-output-budget", "m", "h", "t", "r")
-	definition.Directions[DecodeRequest] = Mapping{Transform: expressionPointer(Expression{Op: "literal", Value: Value{raw: `{"unknown":[1,2,3,4,5,6,7,8,9,10,11,12,13]}`}})}
+	definition.Mapping.Directions[DecodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeRequest), Document: testDocument(DecodeRequest), Program: Expression{Op: "literal", Value: Value{raw: `{"schemaVersion":2,"unknown":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99]}`}}}
 	compiled := compileTestDefinition(t, definition)
-	compiled.limits.Nodes = 1
-	comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, Value{raw: "null"}, EvaluationContext{})
-	_, err := decodeTyped[Request](t.Context(), compiled, DecodeRequest, Value{raw: "null"}, EvaluationContext{}, nil)
+	compiled.limits.Nodes = 4
+	comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, Value{raw: "{}"}, EvaluationContext{})
+	_, err := decodeCore[Request](t.Context(), compiled, DecodeRequest, Value{raw: "{}"}, EvaluationContext{})
 	var limit *ResourceLimitError
 	if !errors.As(err, &limit) || limit.Domain != "mapping_output" {
 		t.Fatal("unknown fields were decoded before output budget validation", err)
@@ -124,23 +124,15 @@ func TestPlannedOutputResourceBoundaries(t *testing.T) {
 
 func TestPlannedCoreDecodingSchemaAndPackageBoundaries(t *testing.T) {
 	definition := testDefinition("planned-schema", "m", "h", "t", "r")
-	definition.Directions[DecodeRequest] = Mapping{
-		Input:     &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"model": {Type: StringType}}, Required: []string{"model"}, AllowUnknown: true},
-		Transform: expressionPointer(readExpression("input", "")),
+	definition.Spec.Documents["decode-input"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"model": {Type: StringType}}, Required: []string{"model"}, AllowUnknown: true}}
+	definition.Mapping.Directions[DecodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeRequest), Document: "decode-input",
+		Program: readExpression("input", ""),
 	}
 	compiled := compileTestDefinition(t, definition)
 	if !compiled.mappings[DecodeRequest].hasCoreOutputPlan {
 		t.Fatal("wire input schema unnecessarily disabled the core writer")
 	}
 	comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, Value{raw: `{}`}, EvaluationContext{})
-
-	mapping := definition.Directions[DecodeRequest]
-	mapping.Output = &ValueSchema{Type: ObjectType, AllowUnknown: true}
-	definition.Directions[DecodeRequest] = mapping
-	withOutput := compileTestDefinition(t, definition)
-	if withOutput.mappings[DecodeRequest].hasCoreOutputPlan {
-		t.Fatal("semantic output schema bypassed its JSON boundary")
-	}
 
 	document := textProtocolPackage(t)
 	direction := document.Mapping.Directions[DecodeRequest]
@@ -152,9 +144,9 @@ func TestPlannedCoreDecodingSchemaAndPackageBoundaries(t *testing.T) {
 
 func TestPlannedCoreDecodingOwnsMutableContainers(t *testing.T) {
 	definition := testDefinition("planned-ownership", "m", "h", "t", "r")
-	definition.Directions[DecodeRequest] = Mapping{Transform: expressionPointer(readExpression("input", ""))}
+	definition.Mapping.Directions[DecodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeRequest), Document: testDocument(DecodeRequest), Program: readExpression("input", "")}
 	compiled := compileTestDefinition(t, definition)
-	input := Value{raw: `{"content":[{"kind":"text","payload":"text"}],"parameters":{"small":"value"}}`}
+	input := Value{raw: `{"schemaVersion":2,"content":[{"kind":"text","payload":"text"}],"parameters":{"small":"value"}}`}
 	first := comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, input, EvaluationContext{})
 	second := comparePlannedCoreDecode[Request](t, t.Context(), compiled, DecodeRequest, input, EvaluationContext{})
 	first.Content[0].Payload = StringValue("changed")
@@ -167,7 +159,7 @@ func TestPlannedCoreDecodingOwnsMutableContainers(t *testing.T) {
 
 func BenchmarkPlannedCoreDecoding(b *testing.B) {
 	definition := testDefinition("planned-decode-bench", "m", "h", "t", "r")
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	value, _ := EncodeValue(definition)
 	compiled, issues := compiler.Compile(value.Bytes())
 	if err := IssuesError(issues); err != nil {

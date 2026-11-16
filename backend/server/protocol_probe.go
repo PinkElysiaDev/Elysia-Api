@@ -61,7 +61,11 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 	} else {
 		binding := protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Capabilities(protocol.EncodeRequest), Transports: []protocol.Transport{operation.Transport}, Operation: input.Operation}
 		candidate := gatewayCandidate{model: ref, compiled: compiled, binding: binding, operation: operation, operationName: input.Operation, scope: scope}
-		result.Response, runErr = s.collectProtocolGeneration(ctx, candidate, &input.Request, nil, nil)
+		request, err := candidate.prepareProbeRequest(ctx, &input.Request)
+		runErr = err
+		if runErr == nil {
+			result.Response, runErr = s.collectProtocolGeneration(ctx, candidate, request, nil, nil)
+		}
 	}
 	report := protocol.VerificationReport{DefinitionHash: compiled.Hash(), CompilerVersion: protocol.CompilerVersion, SamplesHash: compiled.SamplesHash(), Kind: protocol.UpstreamVerification, VerifiedAt: time.Now().UTC(), Passed: runErr == nil, Target: &scope, Checks: []protocol.VerificationCheck{{SampleID: input.Operation, Direction: protocol.DecodeResponse, Passed: runErr == nil, Reason: "Observed " + operation.Kind + " contract for this target only; does not prove other operations, all capabilities or cache hits."}}}
 	if runErr != nil {
@@ -95,6 +99,15 @@ func (s *Server) probeProtocol(ctx context.Context, input protocolProbeInput) (*
 	}
 	result.Report = report
 	return result, nil
+}
+
+func (candidate *gatewayCandidate) prepareProbeRequest(ctx context.Context, request *protocol.Request) (*protocol.Request, error) {
+	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(candidate.compiled, candidate.compiled))
+	if err != nil {
+		return nil, err
+	}
+	candidate.conversion = conversion
+	return conversion.Request(ctx, request, candidate.conversionContext(candidate.compiled, false), nil)
 }
 
 func (s *Server) activeRevisionHash(ctx context.Context, id string) (string, error) {

@@ -69,27 +69,32 @@ func EquivalentProtocolDefinition(a, b protocol.Value) bool {
 // row. Raw bytes and original identity are retained before the update.
 func repairPresetRevision(ctx context.Context, tx *sql.Tx, entry ProtocolUpgradeRevision) error {
 	revision := entry.Revision
-	definitions, err := builtin.Definitions()
+	packages, err := builtin.Packages()
 	if err != nil {
 		return err
 	}
-	allowed := false
-	for _, definition := range definitions {
-		var meta protocol.Definition
-		if err := definition.Decode(&meta); err != nil {
+	isAllowed := false
+	for _, value := range packages {
+		var document protocol.ProtocolPackage
+		if err := value.Decode(&document); err != nil {
 			return err
 		}
-		if meta.ID == revision.ProtocolID && protocol.IsPresetProtocolID(meta.ID) && EquivalentProtocolDefinition(definition, revision.Definition) {
-			canonical, err := protocol.EncodeValue(meta)
-			if err != nil {
-				return err
-			}
-			digest := sha256.Sum256(canonical.Bytes())
-			allowed = revision.Hash == hex.EncodeToString(digest[:])
+		if document.Spec.ID != revision.ProtocolID || !protocol.IsPresetProtocolID(document.Spec.ID) || !EquivalentProtocolDefinition(value, revision.Definition) {
+			continue
 		}
+		compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
+		if err != nil {
+			return err
+		}
+		compiled, issues := compiler.Compile(value.Bytes())
+		if err := protocol.IssuesError(issues); err != nil {
+			return err
+		}
+		isAllowed = revision.Hash == compiled.Hash()
+		break
 	}
-	if !allowed {
-		return fmt.Errorf("preset repair requires the exact embedded definition: %s", revision.ProtocolID)
+	if !isAllowed {
+		return fmt.Errorf("preset repair requires the exact embedded package and compiler identity: %s", revision.ProtocolID)
 	}
 	var raw, created string
 	err = tx.QueryRowContext(ctx, `SELECT definition,created_at FROM protocol_revisions WHERE protocol_id=? AND content_hash=?`, revision.ProtocolID, revision.Hash).Scan(&raw, &created)

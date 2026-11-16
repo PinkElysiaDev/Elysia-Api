@@ -18,7 +18,7 @@ type EventFrame struct {
 	decoderHash string
 }
 
-// DecodeFrame uses request-owned module state and preserves an unchanged native
+// DecodeFrame uses request-owned DSL state and preserves an unchanged native
 // frame independently of how many semantic events it contains.
 func (compiled *Compiled) DecodeFrame(ctx context.Context, frame Value, options EvaluationContext) (*EventFrame, error) {
 	return compiled.decodeFrame(ctx, DecodeEvent, frame, options)
@@ -63,7 +63,13 @@ func (compiled *Compiled) EncodeFrames(ctx context.Context, event Event, options
 }
 
 func (compiled *Compiled) encodeFrames(ctx context.Context, direction Direction, event Event, options EvaluationContext) (frames []Value, err error) {
-	if compiled.packagePlan != nil && compiled.mappings[direction].frameBatch {
+	if event.omittedAuxiliary != nil || event.omittedControl != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, compiled.runtimeError(direction, err)
+		}
+		return nil, compiled.runtimeError(direction, IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)))
+	}
+	if compiled.mappings[direction].frameBatch {
 		options, transaction, err := compiled.beginPackageTransaction(direction, options)
 		if err != nil {
 			return nil, compiled.runtimeError(direction, err)
@@ -75,27 +81,11 @@ func (compiled *Compiled) encodeFrames(ctx context.Context, direction Direction,
 		frames, err = encodePlannedEventFrames(ctx, compiled, direction, &event, options)
 		return frames, compiled.runtimeError(direction, err)
 	}
-	if event.Native == nil && compiled.mappings[direction].frameBatch && compiled.hasTypedMapping(direction) {
-		if err := IssuesError(CheckEvent(event, compiled.target(direction, options), compiled.limits)); err != nil {
-			return nil, compiled.runtimeError(direction, err)
-		}
-		output, err := compiled.encodeEventOutput(ctx, direction, event, options, true)
-		if err != nil {
-			return nil, compiled.runtimeError(direction, err)
-		}
-		if output.frames != nil {
-			return output.frames, nil
-		}
-		return readArray(output.value)
-	}
 	value, err := compiled.encodeEvent(ctx, direction, event, options)
 	if err != nil {
 		return nil, err
 	}
-	if !compiled.mappings[direction].frameBatch {
-		return []Value{value}, nil
-	}
-	return readArray(value)
+	return []Value{value}, nil
 }
 
 // EncodeFrame applies the target codec once per semantic event. Same-wire
@@ -164,7 +154,7 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 			}
 			if frame.digest != digest {
 				mapping := compiled.mappings[direction]
-				if len(frame.Events) == 1 && mapping.module == nil && !mapping.frameBatch {
+				if len(frame.Events) == 1 && !mapping.frameBatch {
 					event := frame.Events[0]
 					event.Native = frame.native
 					return compiled.encodeFrames(ctx, direction, event, options)
@@ -176,7 +166,7 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 			view := newInputView(frame.native.Value)
 			state := evaluation{ctx: ctx, input: view.value, root: view.value, valueReader: &view.borrowed, objectReader: view.objectReader(), inputView: view,
 				streamTransaction: options.packageTransaction,
-				runtime:           evaluationRuntime{isBound: true, clientOutput: options.ClientOutput},
+				runtime:           bindEvaluationRuntime(compiled, direction, options),
 				budget:            &evaluationBudget{limits: compiled.limits, stepLimit: compiled.limits.Nodes}}
 			value, err := predicate.evaluate(state)
 			if err != nil {
@@ -188,7 +178,7 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 			}
 		}
 	}
-	if canReplay && compiled.packagePlan != nil && compiled.mappings[direction].outputPlan.hasOutputStreamRead && !compiled.mappings[direction].preservesDynamicNative {
+	if canReplay && compiled.mappings[direction].outputPlan.hasOutputStreamRead && !compiled.mappings[direction].preservesDynamicNative {
 		if len(frame.Events) != 1 {
 			return nil, streamIssue(UnsupportedNative, "/frame", "compound native frames require explicit dynamic field ownership before reading output stream metadata")
 		}
@@ -212,11 +202,11 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		// Pinned same-wire streams remain native throughout; source decoding and
 		// replay validate the lifecycle before any original frame is emitted.
 		if canReplay {
-			if compiled.packagePlan != nil {
-				if err := compiled.checkNativeEventEffects(ctx, direction, event, options); err != nil {
-					return nil, err
-				}
+
+			if err := compiled.checkNativeEventEffects(ctx, direction, event, options); err != nil {
+				return nil, err
 			}
+
 			continue
 		}
 		options.emissionOffset = len(frames)
@@ -227,9 +217,6 @@ func (compiled *Compiled) encodeCheckedFrame(ctx context.Context, direction Dire
 		frames = append(frames, value...)
 	}
 	if canReplay {
-		if err := options.State.observeNative(ctx, compiled, direction, frame.native.Value, options); err != nil {
-			return nil, compiled.runtimeError(direction, err)
-		}
 		return []Value{frame.native.Value}, nil
 	}
 	return frames, nil

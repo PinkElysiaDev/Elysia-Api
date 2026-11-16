@@ -92,11 +92,11 @@ func replaySessionCombination(ctx context.Context, target *Compiled, operation O
 		return err
 	}
 	defer replay.Release()
-	if target.packagePlan != nil {
-		if err := NewStreamBudget(target.limits).Bind(options.State, replay); err != nil {
-			return err
-		}
+
+	if err := NewStreamBudget(target.limits).Bind(options.State, replay); err != nil {
+		return err
 	}
+
 	for _, entry := range evidence.trace {
 		direction := eventEncoder(entry.direction)
 		decoded := entry.frame.Events

@@ -45,7 +45,7 @@ func newUnboundTestServer(t *testing.T, groups []config.ModelGroupConfig) *Serve
 // newTestServerWithStore 在 newTestServer 基础上挂临时 SQLite store：
 // usage 记录走异步落库路径，测试用 QueryUsageLogs 读回（内存态快照已随
 // 遗留面板下线移除）。
-func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, definitions ...protocol.Definition) *Server {
+func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, definitions ...protocol.ProtocolPackage) *Server {
 	t.Helper()
 	for index := range groups {
 		if groups[index].ToolsCapable == nil {
@@ -74,7 +74,7 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 	// initializeProtocolRuntime still checks and publishes this store's state.
 	activateDiscoveryPresets(t, s)
 	for _, definition := range definitions {
-		activateGatewayDefinition(t, s, definition)
+		activateGatewayFixture(t, s, definition)
 	}
 	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 		t.Fatal("protocol runtime", err)
@@ -85,7 +85,7 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 	return s
 }
 
-func newTestServer(t *testing.T, groups []config.ModelGroupConfig, definitions ...protocol.Definition) *Server {
+func newTestServer(t *testing.T, groups []config.ModelGroupConfig, definitions ...protocol.ProtocolPackage) *Server {
 	t.Helper()
 	return newTestServerWithStore(t, groups, definitions...)
 }

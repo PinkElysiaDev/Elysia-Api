@@ -140,12 +140,12 @@ func (proof *aggregateOutputProof) output(program *compiledExpression, scope *hi
 	}
 	proof.steps--
 	if program.op == "let" {
-		binding := historyOwnerBinding{slot: program.bindingSlot, source: program.source, sourceScope: scope, parent: scope}
+		binding := historyOwnerBinding{slot: program.storageSlot, source: program.source, sourceScope: scope, parent: scope}
 		return proof.output(program.body, &binding, output, input, direction, layout, hasGuard)
 	}
 	if program.op == "read" && program.from == "binding" {
 		for binding := scope; binding != nil; binding = binding.parent {
-			if binding.slot == program.bindingSlot {
+			if binding.slot == program.storageSlot {
 				return proof.output(binding.source, binding.sourceScope, append(slices.Clone(program.pointer), output...), input, direction, layout, hasGuard)
 			}
 		}
@@ -233,12 +233,12 @@ func (proof *aggregateOutputProof) omitsKey(program *compiledExpression, scope *
 	case "if":
 		return proof.omitsKey(program.then, scope, key) && proof.omitsKey(program.otherwise, scope, key)
 	case "let":
-		binding := historyOwnerBinding{slot: program.bindingSlot, source: program.source, sourceScope: scope, parent: scope}
+		binding := historyOwnerBinding{slot: program.storageSlot, source: program.source, sourceScope: scope, parent: scope}
 		return proof.omitsKey(program.body, &binding, key)
 	case "read":
 		if program.from == "binding" {
 			for binding := scope; binding != nil; binding = binding.parent {
-				if binding.slot == program.bindingSlot && len(program.pointer) == 0 {
+				if binding.slot == program.storageSlot && len(program.pointer) == 0 {
 					return proof.omitsKey(binding.source, binding.sourceScope, key)
 				}
 			}

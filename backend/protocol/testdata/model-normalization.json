@@ -1,0 +1,847 @@
+{
+  "anthropic/canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/anthropic_thinking/type",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_thinking/type rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_thinking": {
+          "type": "enabled",
+          "budget_tokens": 2048,
+          "display": "summarized",
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning"
+      }
+    }
+  },
+  "anthropic/empty": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null
+    }
+  },
+  "anthropic/empty-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_output_config": {},
+        "anthropic_thinking": {}
+      }
+    }
+  },
+  "anthropic/empty-canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/anthropic_thinking/type",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_thinking/type rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_thinking": {
+          "type": "enabled",
+          "budget_tokens": 2048,
+          "display": "summarized",
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {}
+    }
+  },
+  "anthropic/history-and-legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_output_config": {
+          "future": null
+        },
+        "anthropic_thinking": {
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "generation",
+        "budget": 2048,
+        "summary": "summarized",
+        "historyRetention": "all"
+      }
+    }
+  },
+  "anthropic/invalid-bucket": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/anthropic_thinking",
+          "reason": "thinking controls must be an object or null",
+          "suggestion": "correct the request controls or declared /parameters/anthropic_thinking rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_output_config": false,
+        "anthropic_thinking": false
+      }
+    }
+  },
+  "anthropic/legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_output_config": {
+          "future": null
+        },
+        "anthropic_thinking": {
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "generation",
+        "budget": 2048,
+        "summary": "summarized"
+      }
+    }
+  },
+  "anthropic/null-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_output_config": null,
+        "anthropic_thinking": null
+      }
+    }
+  },
+  "anthropic/thinking-before-output-config": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/thinking/type",
+          "reason": "unknown thinking type",
+          "suggestion": "correct the request controls or declared /thinking/type rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "anthropic_output_config": false,
+        "anthropic_thinking": {
+          "type": "unknown"
+        }
+      }
+    }
+  },
+  "google-generate-content/canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/gemini_thinking/thinkingBudget",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/gemini_thinking/thinkingBudget rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": {
+          "thinkingBudget": 4096,
+          "includeThoughts": true,
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning"
+      }
+    }
+  },
+  "google-generate-content/empty": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null
+    }
+  },
+  "google-generate-content/empty-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": {}
+      }
+    }
+  },
+  "google-generate-content/empty-canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/gemini_thinking/thinkingBudget",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/gemini_thinking/thinkingBudget rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": {
+          "thinkingBudget": 4096,
+          "includeThoughts": true,
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {}
+    }
+  },
+  "google-generate-content/history-and-legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": {
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "budget": 4096,
+        "summary": "auto",
+        "historyRetention": "all"
+      }
+    }
+  },
+  "google-generate-content/invalid-bucket": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/gemini_thinking",
+          "reason": "thinking controls must be an object or null",
+          "suggestion": "correct the request controls or declared /parameters/gemini_thinking rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": false
+      }
+    }
+  },
+  "google-generate-content/legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": {
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "budget": 4096,
+        "summary": "auto"
+      }
+    }
+  },
+  "google-generate-content/null-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "gemini_thinking": null
+      }
+    }
+  },
+  "openai-chat/canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/reasoning_effort",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/reasoning_effort rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "reasoning_effort": "high"
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning"
+      }
+    }
+  },
+  "openai-chat/empty": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null
+    }
+  },
+  "openai-chat/empty-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null
+    }
+  },
+  "openai-chat/empty-canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/reasoning_effort",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/reasoning_effort rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "reasoning_effort": "high"
+      },
+      "reasoning": {}
+    }
+  },
+  "openai-chat/history-and-legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning",
+        "historyRetention": "all"
+      }
+    }
+  },
+  "openai-chat/invalid-bucket": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/reasoning/effort",
+          "reason": "unknown or non-string effort",
+          "suggestion": "correct the request controls or declared /reasoning/effort rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "reasoning_effort": false
+      }
+    }
+  },
+  "openai-chat/legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning"
+      }
+    }
+  },
+  "openai-chat/null-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "reasoning": {
+        "effort": null
+      }
+    }
+  },
+  "openai-responses/canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/responses_reasoning/effort",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning/effort rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": {
+          "effort": "high",
+          "summary": "auto",
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning"
+      }
+    }
+  },
+  "openai-responses/empty": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null
+    }
+  },
+  "openai-responses/empty-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": {}
+      }
+    }
+  },
+  "openai-responses/empty-canonical-conflict": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/responses_reasoning/effort",
+          "reason": "conflicting canonical and legacy reasoning controls",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning/effort rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": {
+          "effort": "high",
+          "summary": "auto",
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {}
+    }
+  },
+  "openai-responses/history-and-legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": {
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning",
+        "summary": "auto",
+        "historyRetention": "all"
+      }
+    }
+  },
+  "openai-responses/invalid-bucket": {
+    "failure": {
+      "issues": [
+        {
+          "code": "invalid_input",
+          "severity": "error",
+          "protocol": {
+            "family": "",
+            "wireVersion": "",
+            "definitionId": "",
+            "revision": ""
+          },
+          "direction": "",
+          "stage": "request.validation",
+          "path": "/parameters/responses_reasoning",
+          "reason": "thinking controls must be an object or null",
+          "suggestion": "correct the request controls or declared /parameters/responses_reasoning rule"
+        }
+      ]
+    },
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": false
+      }
+    }
+  },
+  "openai-responses/legacy": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": {
+          "future": 9007199254740993
+        }
+      },
+      "reasoning": {
+        "mode": "enabled",
+        "effort": "high",
+        "effortScope": "reasoning",
+        "summary": "auto"
+      }
+    }
+  },
+  "openai-responses/null-buckets": {
+    "request": {
+      "schemaVersion": 2,
+      "source": {
+        "family": "",
+        "wireVersion": "",
+        "definitionId": "",
+        "revision": ""
+      },
+      "content": null,
+      "parameters": {
+        "responses_reasoning": null
+      }
+    }
+  }
+}

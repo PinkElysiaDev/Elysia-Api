@@ -28,11 +28,11 @@ func (service *Service) previewWireEvents(ctx context.Context, conversion *Compi
 		if err := validation.ConsumeTransformed(ctx, before, after, options); err != nil {
 			return Value{}, err
 		}
-		if target.packagePlan != nil {
-			if err := validation.CommitDelivery(); err != nil {
-				return Value{}, err
-			}
+
+		if err := validation.CommitDelivery(); err != nil {
+			return Value{}, err
 		}
+
 		frames[index] = after
 	}
 	if err := validation.Finish(); err != nil {

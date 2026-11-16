@@ -179,8 +179,12 @@ func TestPackageAggregateRejectsUnprovedLayouts(t *testing.T) {
 		{"extra-label", func(p *ProtocolPackage) {
 			p.Mapping.Directions[DecodeRequest].Effects[2].Layout.Labels["role"] = StringValue("assistant")
 		}},
-		{"foreign-owner", func(p *ProtocolPackage) { p.Mapping.Directions[DecodeRequest].Effects[2].Path = "/tools/0/cache/0" }},
-		{"protected-owner", func(p *ProtocolPackage) { p.Mapping.Directions[DecodeRequest].Effects[2].Path = "/native/source/scope" }},
+		{"foreign-owner", func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Effects[2].Path = "/tools/0/cache/0"
+		}},
+		{"protected-owner", func(p *ProtocolPackage) {
+			p.Mapping.Directions[DecodeRequest].Effects[2].Path = "/native/source/scope"
+		}},
 		{"protected-resource", func(p *ProtocolPackage) {
 			effect := &p.Mapping.Directions[DecodeRequest].Effects[2]
 			effect.Path = "/cache/0/resource"
@@ -232,7 +236,7 @@ func TestPackageAggregateRejectsUnprovedLayouts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			document := cacheOwnerPackage(t)
 			test.change(&document)
-			compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, _ := NewCompiler(DefaultLimits(), nil)
 			value := fixtureValue(t, document)
 			if compiled, issues := compiler.CompilePackage(value.Bytes()); compiled != nil || IssuesError(issues) == nil {
 				t.Fatal("unproved aggregate compiled", issues)

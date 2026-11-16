@@ -36,7 +36,7 @@ func TestPackageStreamRetainsCapturedSource(t *testing.T) {
 	if err != nil || len(events) != 1 || events[0].Item.Source == nil || *events[0].Item.Source != origin {
 		t.Fatal("later frame lost the captured source", events, err)
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}].indexes[0]["i"]
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}].indexes[0]["i"]
 	if strings.Contains(retained.raw, strings.Repeat("x", 64)) {
 		t.Fatal("provenance retained the captured frame payload")
 	}

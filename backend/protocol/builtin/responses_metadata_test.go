@@ -12,6 +12,53 @@ import (
 
 const syntheticResponsesMetadata = `{"openai_chatgpt_moderation_metadata":{"generation":{},"prompt":{"omnimod":{"outputs":[{"protection_type":"fixture","number":9007199254740993}]}}},"escaped":"\u0061"}`
 
+func TestResponsesMetadataAfterCannotEmitInvalidEnvelope(t *testing.T) {
+	document, _ := testCompiled(t, Responses).Package()
+	document.Spec.ID = "metadata-invalid-output"
+	invalid := testValue(t, `{"type":"response.metadata","metadata":null,"response_id":"r","sequence_number":2}`)
+	batch, err := p.EncodeValue([]p.Value{invalid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping := document.Mapping.Directions[p.EncodeEvent]
+	condition := *mapping.Program.When
+	mapping.Program.When = &p.Expression{Op: "any", Items: []p.Expression{condition, {Op: "equal", Items: []p.Expression{{Op: "read", Path: "/type"}, {Op: "literal", Value: p.StringValue(string(p.MetadataUpdated))}}}}}
+	mapping.Program.Then = &p.Expression{Op: "literal", Value: batch}
+	document.Mapping.Directions[p.EncodeEvent] = mapping
+	compiled, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	defer options.State.Release()
+	frames, err := compiled.EncodeFrames(t.Context(), p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.MetadataUpdated}, options)
+	var failure *p.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Path != "/metadata" || failure.Issues[0].Direction != p.EncodeEvent || len(frames) != 0 {
+		t.Fatal("authored invalid output did not fail at its wire field", frames, err)
+	}
+	validator, err := compiled.NewWireStreamValidation(p.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer validator.Release()
+	start := testValue(t, `{"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","created_at":1,"model":"m","status":"in_progress","output":[]}}`)
+	if err := validator.Consume(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+	err = validator.Consume(t.Context(), invalid)
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Path != "/metadata" || failure.Issues[0].Direction != p.EncodeEvent || failure.Issues[0].Protocol != compiled.Identity() {
+		t.Fatal("authored invalid output bypassed final validation", err)
+	}
+	decode := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	defer decode.State.Release()
+	if _, err := compiled.DecodeFrame(t.Context(), start, decode); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiled.DecodeFrame(t.Context(), invalid, decode); err == nil {
+		t.Fatal("source metadata accepted the same invalid envelope")
+	}
+}
+
 func responsesMetadataFrames(t *testing.T, sample p.Sample) []p.Value {
 	t.Helper()
 	var frames []p.Value
@@ -35,9 +82,9 @@ func responsesMetadataFrames(t *testing.T, sample p.Sample) []p.Value {
 
 func decodeResponsesMetadataFixture(t *testing.T, compiled *p.Compiled, scope p.Scope) *p.EventFrame {
 	t.Helper()
-	options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: scope}
-	for _, sample := range compiled.Definition().Samples {
-		if sample.ID != "stream-text-decode" {
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: scope})
+	for _, sample := range packageMapping(compiled).Samples {
+		if sample.ID != "declared-stream-text-decode" {
 			continue
 		}
 		frames := responsesMetadataFrames(t, sample)
@@ -98,7 +145,7 @@ func TestResponsesMetadataPolicies(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				out, err := to.EncodeConvertedFrame(t.Context(), frame, []p.Event{event}, p.EvaluationContext{State: p.NewEvaluationState()})
+				out, err := to.EncodeConvertedFrame(t.Context(), frame, []p.Event{event}, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 				if codec != Responses && mode == "disabled" {
 					if err == nil {
 						t.Fatal("disabled omission accepted")
@@ -153,7 +200,7 @@ func TestResponsesMetadataInvalidEnvelopesAndLifecycle(t *testing.T) {
 		strings.Replace(valid, `"metadata":{}`, `"metadata":{},"headers":{"x-codex-turn-state":"synthetic"}`, 1),
 		strings.Replace(valid, `"metadata":{}`, `"metadata":{},"delta":"content"`, 1),
 	} {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		if _, err := compiled.DecodeFrame(t.Context(), testValue(t, responsesPaddedTextFrames()[0]), options); err != nil {
 			t.Fatal(err)
 		}
@@ -164,15 +211,19 @@ func TestResponsesMetadataInvalidEnvelopesAndLifecycle(t *testing.T) {
 			t.Fatal("invalid after output accepted", raw)
 		}
 	}
-	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, valid), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, valid), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil {
 		t.Fatal("metadata established a response")
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	start, err := compiled.DecodeFrame(t.Context(), testValue(t, responsesPaddedTextFrames()[0]), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, strings.Replace(valid, `"response_id":"r"`, `"response_id":"other"`, 1)), options); err == nil {
+	rejected := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, responsesPaddedTextFrames()[0]), rejected); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, strings.Replace(valid, `"response_id":"r"`, `"response_id":"other"`, 1)), rejected); err == nil {
 		t.Fatal("metadata switched response identity")
 	}
 	frame, err := compiled.DecodeFrame(t.Context(), testValue(t, valid), options)
@@ -182,7 +233,7 @@ func TestResponsesMetadataInvalidEnvelopesAndLifecycle(t *testing.T) {
 	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, valid), options); err == nil {
 		t.Fatal("repeated metadata sequence accepted")
 	}
-	collector, _ := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+	collector, _ := p.NewResponseCollector(compiled.Target(p.EncodeEvent, p.Scope{}), compiled.ResourceLimits())
 	for _, event := range append(start.Events, frame.Events...) {
 		if _, _, err := collector.Consume(event); err != nil {
 			t.Fatal(err)
@@ -208,11 +259,11 @@ func TestResponsesMetadataRejectsSemanticContamination(t *testing.T) {
 	for name, mutate := range map[string]func(*p.Event){
 		"delta":         func(e *p.Event) { e.Delta = p.StringValue("content") },
 		"usage":         func(e *p.Event) { e.Usage = &p.Usage{} },
-		"response":      func(e *p.Event) { e.Response = &p.Response{SchemaVersion: 1} },
+		"response":      func(e *p.Event) { e.Response = &p.Response{SchemaVersion: p.ProtocolCoreVersion} },
 		"item":          func(e *p.Event) { e.Item = &p.Node{Kind: p.TextNode} },
 		"error":         func(e *p.Event) { e.Error = p.StringValue("failure") },
 		"media":         func(e *p.Event) { e.Media = &p.Media{} },
-		"request":       func(e *p.Event) { e.Request = &p.Request{SchemaVersion: 1} },
+		"request":       func(e *p.Event) { e.Request = &p.Request{SchemaVersion: p.ProtocolCoreVersion} },
 		"metadata":      func(e *p.Event) { e.Metadata = []p.ResponseMetadata{{Name: "unmapped"}} },
 		"session":       func(e *p.Event) { e.SessionID = p.StringValue("session") },
 		"sequence":      func(e *p.Event) { e.Sequence = testValue(t, `999`) },
@@ -242,14 +293,10 @@ func TestResponsesMetadataRejectsSemanticContamination(t *testing.T) {
 	}
 	event := original
 	native := *event.Native
-	native.Source.Path = ""
+	native.Source.Path = "/unrelated"
 	event.Native = &native
-	projected, err := conversion.Event(t.Context(), event, route, nil)
-	if err != nil || projected.Type != p.NativeEvent || projected.Native == nil {
-		t.Fatal("unrecognized native event was silently omitted", err)
-	}
-	if _, err := to.EncodeFrames(t.Context(), projected, p.EvaluationContext{State: p.NewEvaluationState(), Scope: scope}); err == nil {
-		t.Fatal("unrecognized native event crossed protocols")
+	if _, err := conversion.Event(t.Context(), event, route, nil); err == nil {
+		t.Fatal("modified native provenance was accepted")
 	}
 }
 
@@ -266,9 +313,9 @@ func TestResponsesMetadataCollectorRequiresStartedIdentity(t *testing.T) {
 		{"matching-response", event.ResponseID, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			collector, _ := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+			collector, _ := p.NewResponseCollector(compiled.Target(p.EncodeEvent, p.Scope{}), compiled.ResourceLimits())
 			if !test.startID.IsZero() {
-				start := p.Event{SchemaVersion: 1, Type: p.ResponseStarted, ResponseID: test.startID}
+				start := p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseStarted, ResponseID: test.startID}
 				if _, _, err := collector.Consume(start); err != nil {
 					t.Fatal(err)
 				}
@@ -282,8 +329,15 @@ func TestResponsesMetadataCollectorRequiresStartedIdentity(t *testing.T) {
 
 func TestResponsesMetadataCollectorFrameLimits(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
-	event := decodeResponsesMetadataFixture(t, compiled, p.Scope{}).Events[0]
-	event.Native.Value = testValue(t, fmt.Sprintf(`{"type":"response.metadata","metadata":{},"response_id":%s,"sequence_number":%s}`, event.ResponseID.JSONString(), event.Sequence.JSONString()))
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	if _, err := compiled.DecodeFrame(t.Context(), testValue(t, responsesPaddedTextFrames()[0]), options); err != nil {
+		t.Fatal(err)
+	}
+	frame, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"type":"response.metadata","metadata":{},"response_id":"r","sequence_number":2}`), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := frame.Events[0]
 	frameBytes := len(event.Native.Value.JSONString())
 	for _, test := range []struct {
 		name                string
@@ -298,11 +352,11 @@ func TestResponsesMetadataCollectorFrameLimits(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			limits := compiled.ResourceLimits()
 			limits.BufferBytes, limits.Nodes, limits.Depth = test.bytes, test.nodes, test.depth
-			collector, err := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, limits)
+			collector, err := p.NewResponseCollector(compiled.Target(p.EncodeEvent, p.Scope{}), limits)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := collector.Consume(p.Event{SchemaVersion: 1, Type: p.ResponseStarted, ResponseID: event.ResponseID}); err != nil {
+			if _, _, err := collector.Consume(p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseStarted, ResponseID: event.ResponseID}); err != nil {
 				t.Fatal(err)
 			}
 			_, _, err = collector.Consume(event)
@@ -322,13 +376,13 @@ func TestResponsesMetadataCollectorFrameLimits(t *testing.T) {
 
 func TestResponsesMetadataNativeReplayAndCollection(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
-	for _, sample := range compiled.Definition().Samples {
-		if sample.ID != "stream-text-decode" && sample.ID != "stream-tool-decode" && sample.ID != "encrypted-stream-reasoning-decode" {
+	for _, sample := range packageMapping(compiled).Samples {
+		if sample.ID != "declared-stream-text-decode" && sample.ID != "stream-tool-decode" && sample.ID != "encrypted-stream-reasoning-decode" {
 			continue
 		}
 		t.Run(sample.ID, func(t *testing.T) {
-			options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "fixture", Account: "fixture"}}
-			collector, _ := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Scope: options.Scope, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+			options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "fixture", Account: "fixture"}})
+			collector, _ := p.NewResponseCollector(compiled.Target(p.EncodeEvent, options.Scope), compiled.ResourceLimits())
 			validator, _ := compiled.NewWireStreamValidation(options.Scope)
 			for _, input := range responsesMetadataFrames(t, sample) {
 				decoded, err := compiled.DecodeFrame(t.Context(), input, options)
@@ -363,125 +417,13 @@ func TestResponsesMetadataNativeReplayAndCollection(t *testing.T) {
 	}
 }
 
-func TestResponsesMetadataCustomMappingsAndLimits(t *testing.T) {
-	from := shippedProjectionProtocol(t, Responses)
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	compile := func(definition p.Definition) *p.Compiled {
-		t.Helper()
-		raw, _ := p.EncodeValue(definition)
-		compiled, issues := compiler.Compile(raw.Bytes())
-		if compiled == nil {
-			t.Fatal(issues)
-		}
-		return compiled
-	}
-	frame := decodeResponsesMetadataFixture(t, from, p.Scope{})
-	definition := from.Definition()
-	definition.ID = "metadata-responses-copy"
-	copy := compile(definition)
-	out, err := copy.EncodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()})
-	if err != nil || len(out) != 1 || out[0] != frame.Events[0].Native.Value {
-		t.Fatal("definition ID prevented equivalent native replay", err)
-	}
-	mapping := definition.Directions[p.EncodeEvent]
-	mapping.After = &p.Expression{Op: "read", From: "input"}
-	definition.Directions[p.EncodeEvent] = mapping
-	withAfter := compile(definition)
-	if _, err := withAfter.EncodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
-		t.Fatal("native replay bypassed a different after mapping")
-	}
-	definition = from.Definition()
-	definition.ID = "handwritten-metadata"
-	event, _ := p.EncodeValue(p.Event{SchemaVersion: 1, Type: p.NativeEvent, ResponseID: frame.Events[0].ResponseID, Sequence: frame.Events[0].Sequence})
-	definition.Directions[p.DecodeEvent] = p.Mapping{Transform: &p.Expression{Op: "array", Items: []p.Expression{{Op: "literal", Value: event}}}}
-	handwritten := compile(definition)
-	decoded, err := handwritten.DecodeFrame(t.Context(), frame.Events[0].Native.Value, p.EvaluationContext{State: p.NewEvaluationState()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if decoded.Events[0].Native.Source.Path == "/metadata" {
-		t.Fatal("handwritten mapping minted the auxiliary provenance marker")
-	}
-	to := shippedProjectionProtocol(t, Chat)
-	conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, handwritten))
-	projected, err := conversion.Event(t.Context(), decoded.Events[0], conversion.VerificationRoute(handwritten.Identity(), to.Identity(), p.SSE), nil)
-	if err != nil || projected.Type != p.NativeEvent || projected.Native == nil {
-		t.Fatal("handwritten native metadata silently dropped", err)
-	}
-	definition = from.Definition()
-	definition.ID = "bounded-metadata"
-	limits := p.DefaultLimits()
-	limits.BufferBytes = 4096
-	definition.Limits = &limits
-	bounded := compile(definition)
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
-	if _, err := bounded.DecodeFrame(t.Context(), testValue(t, responsesPaddedTextFrames()[0]), options); err != nil {
-		t.Fatal(err)
-	}
-	large := testValue(t, `{"type":"response.metadata","response_id":"r","sequence_number":1,"metadata":{"payload":"`+strings.Repeat("x", limits.BufferBytes)+`"}}`)
-	if _, err := bounded.DecodeFrame(t.Context(), large, options); err == nil {
-		t.Fatal("metadata bypassed the frame budget")
-	}
-}
-
-func TestResponsesMetadataAfterCannotEmitInvalidEnvelope(t *testing.T) {
-	definition := shippedProjectionProtocol(t, Responses).Definition()
-	definition.ID = "metadata-invalid-after"
-	invalid := testValue(t, `{"type":"response.metadata","metadata":null,"response_id":"r","sequence_number":2}`)
-	batch, _ := p.EncodeValue([]p.Value{invalid})
-	mapping := definition.Directions[p.EncodeEvent]
-	mapping.After = &p.Expression{Op: "literal", Value: batch}
-	definition.Directions[p.EncodeEvent] = mapping
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	raw, _ := p.EncodeValue(definition)
-	compiled, issues := compiler.Compile(raw.Bytes())
-	if compiled == nil {
-		t.Fatal(issues)
-	}
-	// A metadata no-op normally emits no frames. The authored after must really
-	// run here; a native replay hash rejection would not exercise final validation.
-	frames, err := compiled.EncodeFrames(t.Context(), p.Event{SchemaVersion: 1, Type: p.MetadataUpdated}, p.EvaluationContext{State: p.NewEvaluationState()})
-	if err != nil || len(frames) != 1 || frames[0] != invalid {
-		t.Fatal("destructive after did not execute", frames, err)
-	}
-	validator, err := compiled.NewWireStreamValidation(p.Scope{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	startFrame := testValue(t, `{"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","created_at":1,"model":"m","status":"in_progress","output":[]}}`)
-	if err := validator.Consume(t.Context(), startFrame); err != nil {
-		t.Fatal(err)
-	}
-	err = validator.Consume(t.Context(), frames[0])
-	var failure *p.ConversionError
-	if !errors.As(err, &failure) || len(failure.Issues) != 1 {
-		t.Fatal("invalid after output passed final validation", err)
-	}
-	issue := failure.Issues[0]
-	if issue.Code != p.InvalidInput || issue.Path != "/metadata" || issue.Direction != p.EncodeEvent || issue.Stage != "wire.output" || issue.Protocol != compiled.Identity() {
-		t.Fatal("after failure lost its target field attribution", issue)
-	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
-	if _, err := compiled.DecodeFrame(t.Context(), startFrame, options); err != nil {
-		t.Fatal(err)
-	}
-	_, err = compiled.DecodeFrame(t.Context(), invalid, options)
-	if !errors.As(err, &failure) || len(failure.Issues) != 1 {
-		t.Fatal("source accepted invalid metadata", err)
-	}
-	issue = failure.Issues[0]
-	if issue.Code != p.InvalidInput || issue.Path != "/metadata" || issue.Direction != p.DecodeEvent || issue.Stage != "stream" || issue.Protocol != compiled.Identity() {
-		t.Fatal("source failure lost its decode attribution", issue)
-	}
-}
-
 func TestResponsesMetadataRejectsPostTerminalFrames(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
-	for _, sample := range compiled.Definition().Samples {
-		if sample.ID != "stream-text-decode" {
+	for _, sample := range packageMapping(compiled).Samples {
+		if sample.ID != "declared-stream-text-decode" {
 			continue
 		}
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		validator, _ := compiled.NewWireStreamValidation(p.Scope{})
 		frames := responsesMetadataFrames(t, sample)
 		for _, input := range frames {

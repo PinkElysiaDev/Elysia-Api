@@ -1,50 +1,40 @@
 package protocol
 
-// verificationSamples reads the authored fixture set without converting a
-// package into a legacy definition. The returned documents are independent.
-func (compiled *Compiled) verificationSamples() []Sample {
-	if compiled.packagePlan != nil {
-		document, _ := compiled.Package()
-		return document.Mapping.Samples
+// Compilation already validates the immutable definition. Borrow its selected
+// fixture bytes only during decoding; returned maps, slices and Values are owned.
+func readVerificationSamples[T any](compiled *Compiled, path ...string) []T {
+	value, _ := readValuePointerWithin(compiled.definition, path, &valueReader{isBorrowed: true})
+	var samples []T
+	if !value.IsZero() {
+		_ = value.Decode(&samples)
 	}
-	return compiled.Definition().Samples
+	return samples
+}
+
+func (compiled *Compiled) verificationSamples() []Sample {
+	return readVerificationSamples[Sample](compiled, "mapping", "samples")
 }
 
 func (compiled *Compiled) verificationModelSamples() []ModelSample {
-	if compiled.packagePlan != nil {
-		document, _ := compiled.Package()
-		return document.Mapping.ModelSamples
-	}
-	return compiled.Definition().ModelSamples
+	return readVerificationSamples[ModelSample](compiled, "mapping", "modelSamples")
 }
 
 func (compiled *Compiled) verificationTaskSamples() []TaskSample {
-	if compiled.packagePlan != nil {
-		document, _ := compiled.Package()
-		return document.Mapping.TaskSamples
-	}
-	return compiled.Definition().TaskSamples
+	return readVerificationSamples[TaskSample](compiled, "mapping", "taskSamples")
 }
 
 func (compiled *Compiled) verificationAgentSamples() []AgentSample {
-	if compiled.packagePlan != nil {
-		document, _ := compiled.Package()
-		return document.Mapping.Agent.Samples
-	}
-	return compiled.Definition().Agent.Samples
+	return readVerificationSamples[AgentSample](compiled, "mapping", "agent", "samples")
 }
 
 func (compiled *Compiled) verificationSessionSamples() []SessionSample {
-	if compiled.packagePlan != nil {
-		document, _ := compiled.Package()
-		return document.Mapping.SessionSamples
-	}
-	return compiled.Definition().SessionSamples
+	return readVerificationSamples[SessionSample](compiled, "mapping", "sessionSamples")
+}
+
+func (compiled *Compiled) verificationTokenCountSamples() []Sample {
+	return readVerificationSamples[Sample](compiled, "mapping", "tokenCountSamples")
 }
 
 func (compiled *Compiled) sessionSamplesPath() string {
-	if compiled.packagePlan != nil {
-		return "/mapping/sessionSamples"
-	}
-	return "/sessionSamples"
+	return "/mapping/sessionSamples"
 }

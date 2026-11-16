@@ -65,7 +65,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 				policy.Mode = mode
 			}
 			for index := range policy.Rules {
-				if mode == "disabled" && policy.Rules[index].Action == "chat_response_model" {
+				if mode == "disabled" && policy.Rules[index].ID == "chat-response-model" {
 					policy.Rules[index].Enabled = false
 				}
 			}
@@ -73,7 +73,7 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "configured-model", Name: "configured-model", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.DeclaredCapabilities(), Transports: []protocol.Transport{protocol.HTTPJSON}}}
 			record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now(), bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 			before := calls
 			result, collectErr := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
@@ -99,9 +99,18 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			route, err := candidate.conversionContext(upstream, true).WithResponseModelOrigin(upstream, upstream, outbound, raw)
+			route, err := candidate.conversionContext(upstream, true).WithResponseObservations(upstream, upstream, outbound, raw)
 			if err != nil {
 				t.Fatal(err)
+			}
+			sink := &protocol.DiagnosticSink{}
+			projected, projectionErr := conversion.Response(t.Context(), response, route, sink)
+			if mode == "strict" {
+				if projectionErr == nil || !strings.Contains(projectionErr.Error(), "/model") {
+					t.Fatal("strict projection accepted model substitution", projectionErr)
+				}
+			} else if projectionErr != nil || projected.Model != result.Model || len(sink.Issues()) != len(record.ConversionIssues) {
+				t.Fatal("host observations changed between collection and projection", projected, projectionErr, sink.Issues())
 			}
 			previewBody, err := sonic.ConfigStd.Marshal(map[string]any{"policy": policy, "phase": "response", "context": route, "input": response})
 			if err != nil {
@@ -110,9 +119,9 @@ func TestCollectedChatModelRepairAndPreview(t *testing.T) {
 			ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
 			s.adminConversionPreview(contextForTest(ctx), ctx)
 			flushTestResponse(ctx)
-			if mode == "strict" {
-				if preview.Code != 400 {
-					t.Fatal(preview.Code, preview.Body.String())
+			if mode != "disabled" {
+				if preview.Code != http.StatusBadRequest || !strings.Contains(preview.Body.String(), "/context/observations/response-model") {
+					t.Fatal("JSON preview fabricated host dispatch observations", preview.Code, preview.Body.String())
 				}
 				return
 			}
@@ -163,7 +172,7 @@ func TestGatewayChatMissingResponseModel(t *testing.T) {
 	}))
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
-	req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
+	req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/v1/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	rec := httptest.NewRecorder()
 	serveTestHTTP(s.engine, rec, req)
@@ -234,7 +243,7 @@ func TestGatewayChatInvalidResponseModelIsNotAliased(t *testing.T) {
 				t.Fatal(err)
 			}
 			raw = fixture.Bytes()
-			req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
+			req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/v1/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"hello"}]}`))
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			rec := httptest.NewRecorder()
 			serveTestHTTP(s.engine, rec, req)

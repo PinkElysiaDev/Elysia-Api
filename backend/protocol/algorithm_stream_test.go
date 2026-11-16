@@ -38,7 +38,7 @@ func TestCollectorObservationBoundaries(t *testing.T) {
 	if err != nil || !ok || ordinal != 0 || node.Payload != StringValue(text) {
 		t.Fatal("completed node lost text", err)
 	}
-	consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue(text)}}}})
+	consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: &Response{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: TextNode, Payload: StringValue(text)}}}})
 	response, err := collector.Finish()
 	if err != nil || response.Content[0].Payload != StringValue(text) {
 		t.Fatal("terminal lost text", err)
@@ -53,12 +53,12 @@ func TestCollectorDeferredTerminalMismatch(t *testing.T) {
 		{Kind: TextNode, Payload: StringValue("real"), Resources: []Resource{{Kind: "signature", ID: StringValue("terminal-only"), Scope: target.Scope}}},
 	} {
 		c, _ := NewResponseCollector(target, DefaultLimits())
-		for _, e := range []Event{messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode}), {SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue("real")}, messageEvent(ItemFinished, "t", "", nil)} {
+		for _, e := range []Event{messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode}), {SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue("real")}, messageEvent(ItemFinished, "t", "", nil)} {
 			if _, _, err := c.Consume(e); err != nil {
 				t.Fatal(err)
 			}
 		}
-		_, _, err := c.Consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{terminal}}})
+		_, _, err := c.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: &Response{SchemaVersion: SemanticSchemaVersion, Content: []Node{terminal}}})
 		if err == nil || !strings.Contains(err.Error(), "terminal content") {
 			t.Fatal("terminal comparison missed changed text or resource", err)
 		}
@@ -71,7 +71,7 @@ func BenchmarkAlgorithmCollector(b *testing.B) {
 	for _, frames := range []int{128, 512, 2048} {
 		b.Run(fmt.Sprint(frames), func(b *testing.B) {
 			start := messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode})
-			delta := Event{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue(strings.Repeat("a", 256))}
+			delta := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("t"), Delta: StringValue(strings.Repeat("a", 256))}
 			end := messageEvent(ItemFinished, "t", "", nil)
 			b.ReportAllocs()
 			b.SetBytes(int64(frames * 256))
@@ -85,7 +85,7 @@ func BenchmarkAlgorithmCollector(b *testing.B) {
 						b.Fatal(err)
 					}
 				}
-				for _, e := range []Event{end, {SchemaVersion: 1, Type: ResponseFinished}} {
+				for _, e := range []Event{end, {SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished}} {
 					if _, _, err := c.Consume(e); err != nil {
 						b.Fatal(err)
 					}

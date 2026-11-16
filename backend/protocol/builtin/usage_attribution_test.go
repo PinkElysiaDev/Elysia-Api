@@ -8,6 +8,8 @@ import (
 
 const attributionFixture = `{"items":{"msg":{"input_tokens":2,"output_tokens":1,"cached_tokens":0,"cache_write_tokens":0,"content":[{"input_tokens":2,"output_tokens":1,"cached_tokens":0,"cache_write_tokens":0}]}},"request_fields":{"instructions":{"input_tokens":1,"output_tokens":0,"cached_tokens":1,"cache_write_tokens":0}}}`
 
+const canonicalAttributionFixture = `{"items":{"msg":{"input":2,"output":1,"cacheRead":0,"cacheCreation":0,"content":[{"input":2,"output":1,"cacheRead":0,"cacheCreation":0}]}},"requestFields":{"instructions":{"input":1,"output":0,"cacheRead":1,"cacheCreation":0}}}`
+
 func TestResponsesUsageAttributionProjectionAndSnapshots(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
@@ -17,7 +19,7 @@ func TestResponsesUsageAttributionProjectionAndSnapshots(t *testing.T) {
 				policy := p.DefaultConversionPolicy(to, from)
 				policy.Mode = mode
 				for i := range policy.Rules {
-					if policy.Rules[i].Action == "usage_projection" {
+					if policy.Rules[i].ID == "response-usage-projection" || policy.Rules[i].ID == "event-usage-projection" {
 						policy.Rules[i].Enabled = enabled
 					}
 				}
@@ -25,19 +27,19 @@ func TestResponsesUsageAttributionProjectionAndSnapshots(t *testing.T) {
 				body := strings.Replace(hostedUsageResponse(`{}`), `"input_tokens":3`, `"attribution":`+attributionFixture+`,"input_tokens":3`, 1)
 				// Keep this case focused on accounting loss rather than item identities.
 				body = strings.Replace(body, `"id":"msg","status":"completed",`, "", 1)
-				r, err := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+				r, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !equivalentJSON(r.Usage.Attribution, testValue(t, attributionFixture)) {
+				if !equivalentJSON(r.Usage.Attribution, testValue(t, canonicalAttributionFixture)) {
 					t.Fatal(r.Usage)
 				}
 				sink := &p.DiagnosticSink{}
-				projected, err := c.Response(t.Context(), r, p.ConversionContext{}, sink)
+				projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), sink)
 				var wire []byte
 				if err == nil {
 					projected.Native = nil
-					wire, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+					wire, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				}
 				wantOK := target == Responses || mode == "compatible" && enabled
 				if (err == nil) != wantOK {
@@ -92,38 +94,40 @@ func TestResponsesUsageAttributionProjectionAndSnapshots(t *testing.T) {
 }
 
 func TestUsageAttributionValidationEmptyAndUnknown(t *testing.T) {
+	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
 	for _, raw := range []string{`null`, `{}`, `{"items":{},"request_fields":{}}`, attributionFixture, `{"items":{"large":{"input_tokens":9007199254740993}}}`} {
-		known, err := p.ParseUsageAttribution(testValue(t, raw))
+		response, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","output":[],"usage":{"attribution":`+raw+`}}`), fixtureOptions(p.EvaluationContext{}))
+		if err != nil {
+			t.Fatal(raw, err)
+		}
+		known, err := p.ParseUsageAttribution(response.Usage.Attribution)
 		if err != nil || !known {
 			t.Fatal(raw, err)
 		}
 	}
 	for _, raw := range []string{`42`, `{"items":null}`, `{"items":[]}`, `{"items":{"m":42}}`, `{"items":{"m":{"input_tokens":null}}}`, `{"items":{"m":{"input_tokens":-1}}}`, `{"items":{"m":{"input_tokens":0,"cached_tokens":1}}}`, `{"items":{"m":{"input_tokens":2,"cached_tokens":2,"cache_write_tokens":1}}}`, `{"items":{"m":{"output_tokens":1,"content":[{"output_tokens":2}]}}}`, `{"items":{"m":{"input_tokens":9223372036854775808}}}`} {
-		if _, err := p.ParseUsageAttribution(testValue(t, raw)); err == nil {
-			t.Fatal("invalid attribution accepted", raw)
-		}
+		assertInvalidResponsesLedger(t, from, "attribution", raw)
 	}
-	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	for _, raw := range []string{`{"vendor":true}`, `{"items":{"m":{"input_tokens":1,"vendor":false}}}`} {
 		body := `{"id":"r","output":[],"usage":{"attribution":` + raw + `}}`
-		r, err := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.Native = nil
-		wire, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+		wire, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil || !strings.Contains(string(wire), `"vendor"`) {
 			t.Fatal(string(wire), err)
 		}
-		projected, err := c.Response(t.Context(), r, p.ConversionContext{}, nil)
+		projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 		if err == nil {
-			_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 		}
 		if err == nil {
 			t.Fatal("unknown attribution discarded")
 		}
-		frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.in_progress","response":`+body+`}`), p.EvaluationContext{State: p.NewEvaluationState()})
+		frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.in_progress","response":`+body+`}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,10 +145,10 @@ func TestEmptyAttributionIsNormalizedInStrictMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range []string{`null`, `{}`, `{"items":{},"request_fields":{}}`} {
-		source := &p.Response{SchemaVersion: p.SemanticSchemaVersion, Usage: &p.Usage{Attribution: testValue(t, raw)}}
+	for _, raw := range []string{`null`, `{}`, `{"items":{},"requestFields":{}}`} {
+		source := &p.Response{SchemaVersion: p.ProtocolCoreVersion, Usage: &p.Usage{Attribution: testValue(t, raw)}}
 		sink := &p.DiagnosticSink{}
-		r, err := c.Response(t.Context(), source, p.ConversionContext{}, sink)
+		r, err := c.Response(t.Context(), source, fixtureConversionContext(t, c, p.ConversionResponse, source.Source), sink)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -162,6 +166,18 @@ func TestEmptyAttributionIsNormalizedInStrictMode(t *testing.T) {
 		}
 		if !found {
 			t.Fatal("empty attribution vanished without diagnostic")
+		}
+	}
+}
+
+func assertInvalidResponsesLedger(t *testing.T, compiled *p.Compiled, field, raw string) {
+	t.Helper()
+	body := `{"id":"r","model":"m","object":"response","status":"completed","created_at":1,"output":[],"usage":{"` + field + `":` + raw + `}}`
+	_, decodeErr := compiled.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
+	specErr := compiled.ValidateWireOutput(p.EncodeResponse, testValue(t, body))
+	for _, err := range []error{decodeErr, specErr} {
+		if err == nil || !strings.Contains(err.Error(), "/usage/"+field) {
+			t.Fatal("source decoding and independent Spec must reject invalid accounting", field, raw, err)
 		}
 	}
 }

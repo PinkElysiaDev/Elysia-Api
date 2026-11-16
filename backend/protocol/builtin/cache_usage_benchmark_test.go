@@ -14,12 +14,12 @@ func BenchmarkCacheUsageMutation(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		response, err := compiled.DecodeResponse(b.Context(), body, p.EvaluationContext{})
+		response, err := compiled.DecodeResponse(b.Context(), body, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			b.Fatal(err)
 		}
 		response.Usage.CacheCreation.Count = 19
-		if _, err := compiled.EncodeResponse(b.Context(), response, p.EvaluationContext{}); err != nil {
+		if _, err := compiled.EncodeResponse(b.Context(), response, fixtureOptions(p.EvaluationContext{})); err != nil {
 			b.Fatal(err)
 		}
 	}

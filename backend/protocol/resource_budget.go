@@ -121,7 +121,7 @@ func (c *CompiledConversion) phaseLimits(ctx context.Context, phase ConversionPh
 	if phase == ConversionIngress || phase == ConversionRequest {
 		wire = requestLimits(ctx, wire, c.Policy.Limits != nil)
 	}
-	if phase == ConversionWire || phase == ConversionSourceEvent {
+	if phase == ConversionWire {
 		return wire
 	}
 	return semanticLimits(wire)
@@ -129,6 +129,9 @@ func (c *CompiledConversion) phaseLimits(ctx context.Context, phase ConversionPh
 
 func checkResourceValue(value Value, limits Limits, domain string) error {
 	err := checkValueLimits(value, limits)
+	if err == nil {
+		return nil
+	}
 	var failure *ResourceLimitError
 	if errors.As(err, &failure) {
 		copy := *failure

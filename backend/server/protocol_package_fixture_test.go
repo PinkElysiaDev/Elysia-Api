@@ -39,22 +39,28 @@ func activateGatewayPackage(t *testing.T, server *Server, document protocol.Prot
 	return compiled
 }
 
-func seedGatewayPackages(t *testing.T, server *Server) map[string]*protocol.Compiled {
+func defaultGatewayPackages(t *testing.T, server *Server) map[string]*protocol.Compiled {
 	t.Helper()
+	if err := server.initializeProtocolRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	service, err := server.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
 	compiled := make(map[string]*protocol.Compiled, len(gatewayPackageNames))
 	for _, name := range gatewayPackageNames {
 		document := loadGatewayPackage(t, filepath.Join("builtin", "packages", name))
-		raw := mustEncodedProtocolValue(t, document)
-		compiled[name] = seedGatewayProtocol(t, server, document.Spec.ID, raw.Bytes(), false)
+		var exists bool
+		compiled[name], exists = service.Pin(document.Spec.ID)
+		if !exists || compiled[name].CoreVersion() != protocol.ProtocolCoreVersion {
+			t.Fatal("default startup did not activate the core2 package", name)
+		}
 		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse, protocol.DecodeEvent, protocol.EncodeEvent} {
-			if compiled[name].Codec(direction) != "" {
-				t.Fatal("package used a legacy codec", name, direction)
+			if !compiled[name].Supports(direction) {
+				t.Fatal("default package is missing a wire/core direction", name, direction)
 			}
 		}
-	}
-	service, _ := server.protocolService()
-	if err := service.Reload(t.Context()); err != nil {
-		t.Fatal(err)
 	}
 	return compiled
 }

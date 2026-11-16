@@ -1,0 +1,196 @@
+{
+  "schema": {
+    "type": "object",
+    "allowUnknown": true
+  },
+  "assertions": [
+    {
+      "path": "",
+      "code": "upstream_contract_violation",
+      "reason": "frame must carry content, terminal, usage or an explicitly ignored control event",
+      "check": {
+        "op": "any",
+        "items": [
+          {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "context",
+                "path": "/eventName"
+              },
+              {
+                "op": "literal",
+                "value": "ignored"
+              }
+            ]
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/event"
+            }
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "ref",
+              "ref": "cumulative-text"
+            }
+          },
+          {
+            "op": "ref",
+            "ref": "cumulative-finished"
+          },
+          {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/usage"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "stream": {
+    "discriminator": "/kind",
+    "discriminatorValue": {
+      "op": "literal",
+      "value": "frame"
+    },
+    "responseId": "/responseId",
+    "optionalResponseId": true,
+    "lifecycle": {
+      "eof": "require_terminal",
+      "openEntities": "reject"
+    },
+    "events": {
+      "frame": [
+        {
+          "action": "control",
+          "frameClass": "control",
+          "allowBeforeStart": true,
+          "afterTerminal": true,
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "context",
+                "path": "/eventName"
+              },
+              {
+                "op": "literal",
+                "value": "ignored"
+              }
+            ]
+          }
+        },
+        {
+          "action": "stream_start",
+          "implicit": true,
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "path": "/event"
+                    }
+                  },
+                  {
+                    "op": "not",
+                    "source": {
+                      "op": "equal",
+                      "items": [
+                        {
+                          "op": "read",
+                          "path": "/event/type"
+                        },
+                        {
+                          "op": "literal",
+                          "value": "usage.updated"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "exists",
+                "source": {
+                  "op": "ref",
+                  "ref": "cumulative-text"
+                }
+              },
+              {
+                "op": "ref",
+                "ref": "cumulative-finished"
+              }
+            ]
+          }
+        },
+        {
+          "action": "observe",
+          "afterTerminal": true,
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "exists",
+                "source": {
+                  "op": "read",
+                  "path": "/usage"
+                }
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "path": "/event/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "usage.updated"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "action": "stream_finish",
+          "when": {
+            "op": "any",
+            "items": [
+              {
+                "op": "ref",
+                "ref": "cumulative-finished"
+              },
+              {
+                "op": "equal",
+                "items": [
+                  {
+                    "op": "read",
+                    "path": "/event/type"
+                  },
+                  {
+                    "op": "literal",
+                    "value": "response.finished"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

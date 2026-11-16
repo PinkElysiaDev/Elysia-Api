@@ -20,11 +20,11 @@ func (plan *compiledOutputPlan) buildIndexScope(state evaluation) (plannedOutput
 	if state.indexes == nil {
 		state.indexes = &indexEvaluationState{frames: make([]*outputIndex, plan.indexSlots)}
 	}
-	slot := plan.expression.indexSlot
+	slot := plan.expression.storageSlot
 	previous := state.indexes.frames[slot]
 	index := &outputIndex{values: make(map[string]plannedOutput), policy: plan.expression.policy}
 	state.indexes.frames[slot] = index
-	output, err := plan.body.buildNode(state)
+	output, err := plan.body.buildNode(&state)
 	state.indexes.frames[slot] = previous
 	state.indexes.entries -= len(index.values)
 	state.indexes.bytes -= index.bytes
@@ -32,16 +32,16 @@ func (plan *compiledOutputPlan) buildIndexScope(state evaluation) (plannedOutput
 }
 
 func (plan *compiledOutputPlan) rememberValue(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.buildNode(state)
+	keyOutput, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	value, err := plan.body.buildNode(state)
+	value, err := plan.body.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
 	if plan.expression.isStreamIndex {
-		if err := state.streamTransaction.rememberIndex(state, plan.expression.indexSlot, keyOutput.output, value.output); err != nil {
+		if err := state.streamTransaction.rememberIndex(state, plan.expression.storageSlot, keyOutput.output, value.output); err != nil {
 			return plannedOutput{}, err
 		}
 		return value, nil
@@ -50,7 +50,7 @@ func (plan *compiledOutputPlan) rememberValue(state evaluation) (plannedOutput, 
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	index := state.indexes.frames[plan.expression.indexSlot]
+	index := state.indexes.frames[plan.expression.storageSlot]
 	previous, exists := index.values[key]
 	if exists {
 		switch index.policy {
@@ -79,12 +79,12 @@ func (plan *compiledOutputPlan) rememberValue(state evaluation) (plannedOutput, 
 }
 
 func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.buildNode(state)
+	keyOutput, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
 	if plan.expression.isStreamIndex {
-		value, exists, err := state.streamTransaction.recallIndex(plan.expression.indexSlot, keyOutput.output)
+		value, exists, err := state.streamTransaction.recallIndex(plan.expression.storageSlot, keyOutput.output)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -97,7 +97,7 @@ func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, er
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	value, exists := state.indexes.frames[plan.expression.indexSlot].values[key]
+	value, exists := state.indexes.frames[plan.expression.storageSlot].values[key]
 	if !exists && plan.expression.policy == "reject" {
 		return plannedOutput{}, fmt.Errorf("index lookup has no recorded key")
 	}
@@ -105,7 +105,7 @@ func (plan *compiledOutputPlan) recallValue(state evaluation) (plannedOutput, er
 }
 
 func (plan *compiledOutputPlan) forgetValue(state evaluation) (plannedOutput, error) {
-	keyOutput, err := plan.source.buildNode(state)
+	keyOutput, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -113,7 +113,7 @@ func (plan *compiledOutputPlan) forgetValue(state evaluation) (plannedOutput, er
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	index := state.indexes.frames[plan.expression.indexSlot]
+	index := state.indexes.frames[plan.expression.storageSlot]
 	value, exists := index.values[key]
 	if exists {
 		delete(index.values, key)

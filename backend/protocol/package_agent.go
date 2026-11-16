@@ -82,10 +82,6 @@ func compileAgentOutputSetter(name string) (func(*ClientOutput, JSONOutput, *val
 		return func(output *ClientOutput, value JSONOutput, reader *valueReader) error {
 			return assignCoreValue(value, &output.RawStreamOptions, reader)
 		}, AnyType, nil
-	case "rawResponsesInclude":
-		return func(output *ClientOutput, value JSONOutput, reader *valueReader) error {
-			return assignCoreValue(value, &output.RawResponsesInclude, reader)
-		}, AnyType, nil
 	case "responsesStorage":
 		return func(output *ClientOutput, value JSONOutput, reader *valueReader) error {
 			var storage *ResponsesStorageIntent

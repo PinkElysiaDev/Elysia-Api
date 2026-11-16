@@ -1,6 +1,8 @@
 package builtin
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -44,7 +46,7 @@ func TestResponsesPaddingRetainsEventOwnershipAndProjects(t *testing.T) {
 
 func TestResponsesPaddingStrictDisabledAndInvalid(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Chat)
-	opts := p.EvaluationContext{State: p.NewEvaluationState()}
+	opts := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	var delta p.Event
 	for _, body := range responsesPaddedTextFrames()[:4] {
 		frame, err := from.DecodeFrame(t.Context(), testValue(t, body), opts)
@@ -65,7 +67,7 @@ func TestResponsesPaddingStrictDisabledAndInvalid(t *testing.T) {
 			policy := p.DefaultConversionPolicy(to, from)
 			policy.Mode = mode
 			for i := range policy.Rules {
-				if policy.Rules[i].Action == "response_metadata" {
+				if policy.Rules[i].ID == "response-metadata" || policy.Rules[i].ID == "event-metadata" || policy.Rules[i].ID == "history-response-metadata" {
 					policy.Rules[i].Enabled = enabled
 				} else {
 					policy.Rules[i].Enabled = false
@@ -76,7 +78,7 @@ func TestResponsesPaddingStrictDisabledAndInvalid(t *testing.T) {
 				t.Fatal(err)
 			}
 			sink := &p.DiagnosticSink{}
-			projected, err := c.Event(t.Context(), delta, p.ConversionContext{}, sink)
+			projected, err := c.Event(t.Context(), delta, fixtureConversionContext(t, c, p.ConversionEvent, delta.Source), sink)
 			if enabled && mode == "strict" {
 				if err == nil || !strings.Contains(err.Error(), "/obfuscation") {
 					t.Fatal(err)
@@ -90,8 +92,8 @@ func TestResponsesPaddingStrictDisabledAndInvalid(t *testing.T) {
 				if len(projected.Metadata) != 1 {
 					t.Fatal("disabled rule omitted padding")
 				}
-				probe := p.Event{SchemaVersion: p.SemanticSchemaVersion, Type: p.MetadataUpdated, Metadata: projected.Metadata}
-				if _, err := to.EncodeFrames(t.Context(), probe, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil || !strings.Contains(err.Error(), "/obfuscation") {
+				probe := p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.MetadataUpdated, Metadata: projected.Metadata}
+				if _, err := to.EncodeFrames(t.Context(), probe, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil || !strings.Contains(err.Error(), "/obfuscation") {
 					t.Fatal("disabled projection still encoded", err)
 				}
 				continue
@@ -113,12 +115,76 @@ func TestResponsesPaddingStrictDisabledAndInvalid(t *testing.T) {
 			}
 		}
 	}
-	for _, value := range []string{`null`, `42`, `{}`, `[]`} {
-		if err := p.ValidateMetadataValue(Responses, "event:response.output_text.delta", "obfuscation", testValue(t, value), "/obfuscation"); err == nil {
-			t.Fatal(value)
+}
+
+func TestResponsesPaddingContractRejectsInvalidTypes(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Responses)
+	for _, kind := range []string{
+		"response.output_text.delta", "response.refusal.delta", "response.function_call_arguments.delta",
+		"response.custom_tool_call_input.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta",
+	} {
+		for _, value := range []string{`null`, `42`, `{}`, `[]`} {
+			t.Run(kind+"/"+value, func(t *testing.T) {
+				frame := testValue(t, fmt.Sprintf(`{"type":%q,"obfuscation":%s}`, kind, value))
+				validation, err := compiled.NewWireInputStreamValidation(p.Scope{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer validation.Release()
+				for direction, err := range map[p.Direction]error{
+					p.DecodeEvent: validation.Consume(t.Context(), frame),
+					p.EncodeEvent: compiled.ValidateWireOutput(p.EncodeEvent, frame),
+				} {
+					var failure *p.ConversionError
+					if !errors.As(err, &failure) || len(failure.Issues) == 0 || failure.Issues[0].Path != "/obfuscation" || failure.Issues[0].Direction != direction || failure.Issues[0].Protocol != compiled.Identity() {
+						t.Fatal("padding contract lost its boundary or field location", direction, err)
+					}
+				}
+			})
 		}
 	}
-	if p.MetadataFieldType(Responses, "event:response.completed", "obfuscation") != "" || p.MetadataFieldType(Responses, "response", "obfuscation") != "" {
-		t.Fatal("padding recognized outside declared delta locations")
+}
+
+func TestResponsesPaddingOutsideDeltaRetainsExtension(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Responses)
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	defer options.State.Release()
+	frames := responsesPaddedTextFrames()
+	for index, raw := range frames {
+		if index == len(frames)-1 {
+			raw = strings.Replace(raw, `{`, `{"obfuscation":"unknown-location",`, 1)
+		}
+		frame, err := compiled.DecodeFrame(t.Context(), testValue(t, raw), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == len(frames)-1 {
+			hasUnmapped := false
+			for _, event := range frame.Events {
+				for _, metadata := range event.Metadata {
+					if metadata.Name == "obfuscation" {
+						t.Fatal("terminal extension was classified as padding")
+					}
+				}
+				hasUnmapped = hasUnmapped || event.Unmapped != nil
+			}
+			if !hasUnmapped {
+				t.Fatal("unknown terminal extension disappeared")
+			}
+		}
+	}
+	raw := strings.Replace(auditResponses[Responses], `{`, `{"obfuscation":"unknown-location",`, 1)
+	response, err := compiled.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, metadata := range response.Metadata {
+		if metadata.Name == "obfuscation" {
+			t.Fatal("response extension was classified as event padding")
+		}
+	}
+	wire, err := compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
+	if err != nil || !strings.Contains(string(wire), `"obfuscation":"unknown-location"`) {
+		t.Fatal("same-wire response extension was lost", string(wire), err)
 	}
 }

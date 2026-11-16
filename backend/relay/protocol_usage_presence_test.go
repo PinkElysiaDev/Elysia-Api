@@ -15,12 +15,16 @@ func TestCompiledWireAdaptersNeverInventMissingUsage(t *testing.T) {
 	for source, body := range fixtures {
 		for target := range fixtures {
 			t.Run(source+"/"+target, func(t *testing.T) {
-				response, err := compileBuiltinModule(t, source).DecodeResponse(t.Context(), []byte(body), protocol.EvaluationContext{})
+				response, err := compileBuiltinPackage(t, source).DecodeResponse(t.Context(), []byte(body), protocol.EvaluationContext{})
 				if err != nil || response.Usage != nil {
 					t.Fatalf("decode fabricated usage: %v %+v", err, response)
 				}
-				encoder := compileBuiltinModule(t, target)
-				wire, err := encoder.EncodeResponse(t.Context(), response, protocol.EvaluationContext{})
+				encoder := compileBuiltinPackage(t, target)
+				options, err := (protocol.EvaluationContext{}).WithOperation("usage-presence", 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wire, err := encoder.EncodeResponse(t.Context(), response, options)
 				if err != nil {
 					t.Fatal(err)
 				}

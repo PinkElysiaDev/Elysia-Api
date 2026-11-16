@@ -6,7 +6,7 @@ import (
 )
 
 func encodePlannedEventFrames(ctx context.Context, compiled *Compiled, direction Direction, event *Event, options EvaluationContext) ([]Value, error) {
-	state, limits, err := preparePlannedCoreEncoding(ctx, compiled, direction, event, options)
+	state, limits, _, err := preparePlannedCoreEncoding(ctx, compiled, direction, event, options)
 	if err != nil {
 		return nil, err
 	}

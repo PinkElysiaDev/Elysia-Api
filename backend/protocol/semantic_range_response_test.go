@@ -37,7 +37,7 @@ func TestResponseRangeProjectionRejectsAuthority(t *testing.T) {
 		entry.SemanticRanges = entry.DeliveryRanges
 		entry.SemanticRanges[0].Texts = readExpression("input", path)
 		document.Mapping.Directions[EncodeResponse] = entry
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
 		if _, issues := compiler.Compile(fixtureValue(t, document).Bytes()); IssuesError(issues) == nil {
 			t.Fatal("response selector acquired authority", path)
 		}

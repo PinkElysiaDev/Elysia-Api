@@ -9,42 +9,42 @@ import (
 )
 
 func TestVisibleReasoningBindingEvidence(t *testing.T) {
-	t.Parallel()
-	ingress, upstream := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
-	d := upstream.Definition()
-	d.Samples = append(d.Samples, p.Sample{ID: "visible-reasoning-response", Direction: p.DecodeResponse,
+	ingress, upstream := testCompiled(t, Responses), testCompiled(t, Anthropic)
+	document, _ := upstream.Package()
+	document.Mapping.Samples = append(document.Mapping.Samples, p.Sample{ID: "visible-reasoning-response", Direction: p.DecodeResponse,
+		Scope: p.Scope{Model: "m"}, Context: p.Object{"model": p.StringValue("m")},
 		Input:    testValue(t, `{"content":[{"type":"thinking","thinking":"full thought"},{"type":"text","text":"OK"}],"stop_reason":"end_turn"}`),
-		Expected: testValue(t, `{"schemaVersion":1,"source":{},"status":"completed","content":[{"kind":"message","role":"assistant","children":[{"kind":"reasoning","payload":"full thought"},{"kind":"text","payload":"OK"}]}],"attributes":{"finishReason":"stop"}}`),
+		Expected: testValue(t, `{"schemaVersion":2,"status":"completed","content":[{"kind":"message","role":"assistant","children":[{"kind":"reasoning","payload":"full thought"},{"kind":"text","payload":"OK"}]}],"attributes":{"finishReason":"stop"}}`),
 	})
-	raw, _ := p.EncodeValue(d)
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	upstream, issues := compiler.Compile(raw.Bytes())
+	withSample, issues := compilePackageDocument(t, document)
 	if err := p.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	if report := p.Verify(t.Context(), upstream); !report.Passed {
-		t.Fatal(report.Issues)
+	if report := p.Verify(t.Context(), withSample); !report.Passed {
+		t.Fatal("independent visible reasoning sample failed", report.Issues)
 	}
-	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(ingress, upstream))
-	report := p.VerifyBindingCombination(t.Context(), ingress, upstream, p.CapabilitySet{p.TextCapability: true, p.ReasoningCapability: true}, c)
-	// This witness proves visible output only. The complete reasoning binding
-	// still rejects native Responses summary history for an Anthropic target.
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(ingress, withSample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversion = conversion.WithVerificationContext(p.ConversionContext{Model: "m"})
+	report := p.VerifyBindingCombination(t.Context(), ingress, withSample, p.CapabilitySet{p.TextCapability: true, p.ReasoningCapability: true}, conversion)
 	for _, check := range report.Checks {
 		if check.SampleID == "visible-reasoning-response" {
-			if !check.Passed || check.Rejected {
-				t.Fatal(check)
+			if !check.Passed || check.Rejected || check.Skipped {
+				t.Fatal("visible output witness failed", check, report.Issues)
 			}
 			return
 		}
 	}
-	t.Fatal("reasoning regression was not verified")
+	t.Fatal("visible output witness was omitted")
 }
 
 func TestVisibleReasoningContinuationDigestSurvivesResponses(t *testing.T) {
 	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Responses)
 	scope := p.Scope{Provider: "provider", Account: "account", Model: "m"}
-	r, err := from.DecodeResponse(t.Context(), []byte(`{"content":[{"type":"thinking","thinking":"signed thought","signature":"synthetic-signature"}]}`), p.EvaluationContext{Scope: scope})
+	r, err := from.DecodeResponse(t.Context(), []byte(`{"content":[{"type":"thinking","thinking":"signed thought","signature":"synthetic-signature"}]}`), fixtureOptions(p.EvaluationContext{Scope: scope}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +57,12 @@ func TestVisibleReasoningContinuationDigestSurvivesResponses(t *testing.T) {
 	}
 	// The carrier contains the signature; the visible projection contains text.
 	node.Resources = nil
-	request := &p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: []p.Node{node}}
-	wire, err := to.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: []p.Node{node}}
+	wire, err := to.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	back, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{})
+	back, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,22 +96,28 @@ func TestVisibleThinkingToResponsesJSON(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				r, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+				r, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				r, err = conversion.Response(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, nil)
+				route := fixtureConversionContext(t, conversion, p.ConversionResponse, from.Identity())
+				route.Transport = p.HTTPJSON
+				r, err = conversion.Response(t.Context(), r, route, nil)
+				if mode == "strict" {
+					requireContextIssue(t, err, p.ConversionRejected, "/content/0")
+					return
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := to.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+				wire, err := to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
 				if err := to.ValidateWireOutput(p.EncodeResponse, testValue(t, string(wire))); err != nil {
 					t.Fatal(err)
 				}
-				decoded, err := to.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+				decoded, err := to.DecodeResponse(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -130,20 +136,23 @@ func TestVisibleThinkingResponsesStreamAndHistory(t *testing.T) {
 	t.Parallel()
 	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Responses)
 	conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-	route := p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Delivery: &p.DeliveryState{ID: p.StringValue("r"), Created: testValue(t, "1")}, Model: "m"}
+	route := fixtureConversionContext(t, conversion, p.ConversionEvent, from.Identity())
+	route.Transport = p.SSE
 	index := 0
 	events := []p.Event{
-		{Type: p.ResponseStarted, Response: &p.Response{SchemaVersion: 1, ID: p.StringValue("r"), Model: p.StringValue("m")}},
-		{Type: p.ItemStarted, Index: &index, ItemID: p.StringValue("thought"), Item: &p.Node{Kind: p.ReasoningNode}},
-		{Type: p.ItemDelta, Index: &index, ItemID: p.StringValue("thought"), Delta: p.StringValue("first ")},
-		{Type: p.ItemDelta, Index: &index, ItemID: p.StringValue("thought"), Delta: p.StringValue("second")},
-		{Type: p.ItemFinished, Index: &index, ItemID: p.StringValue("thought"), Item: &p.Node{Kind: p.ReasoningNode, Payload: p.StringValue("first second")}},
-		{Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: 1, ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed")}},
+		{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseStarted, Response: &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Model: p.StringValue("m")}},
+		{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemStarted, Index: &index, ItemID: p.StringValue("thought"), Item: &p.Node{Kind: p.ReasoningNode}},
+		{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemDelta, Index: &index, ItemID: p.StringValue("thought"), Delta: p.StringValue("first ")},
+		{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemDelta, Index: &index, ItemID: p.StringValue("thought"), Delta: p.StringValue("second")},
+		{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemFinished, Index: &index, ItemID: p.StringValue("thought"), Item: &p.Node{Kind: p.ReasoningNode, Payload: p.StringValue("first second")}},
+		{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseFinished, Response: &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed")}},
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	defer options.State.Release()
+	options, consume := bindFixtureOutput(t, to, options)
 	var frames []p.Value
 	for _, event := range events {
-		event.SchemaVersion, event.Source = 1, from.Identity()
+		event.Source = from.Identity()
 		out, err := conversion.Event(t.Context(), event, route, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -152,18 +161,20 @@ func TestVisibleThinkingResponsesStreamAndHistory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		consume(batch)
 		frames = append(frames, batch...)
 	}
 	tail, err := to.FinishEvents(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
+	consume(tail)
 	frames = append(frames, tail...)
-	collector, err := p.NewResponseCollector(p.Target{Protocol: to.Identity(), Direction: p.EncodeEvent, Capabilities: to.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	collector, err := p.NewResponseCollector(to.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	decodeOptions := p.EvaluationContext{State: p.NewEvaluationState()}
+	decodeOptions := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	var kinds []string
 	for _, frame := range frames {
 		if err := to.ValidateWireOutput(p.EncodeEvent, frame); err != nil {
@@ -194,12 +205,12 @@ func TestVisibleThinkingResponsesStreamAndHistory(t *testing.T) {
 		t.Fatal(r, err)
 	}
 	// A returned reasoning item is valid input history and stays visible.
-	request := &p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: r.Content}
-	wire, err := to.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: r.Content}
+	wire, err := to.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{})
+	decoded, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 	if err != nil || len(decoded.Content) != 1 || decoded.Content[0].Payload != p.StringValue("first second") {
 		t.Fatal(decoded, err)
 	}
@@ -212,14 +223,15 @@ func TestVisibleReasoningComplexNativeStructureNotDiscarded(t *testing.T) {
 		`{"type":"reasoning","id":"rs","summary":[],"content":[{"type":"reasoning_text","text":"first"},{"type":"reasoning_text","text":"second"}]}`,
 		`{"type":"reasoning","id":"rs","summary":[{"type":"summary_text","text":"brief"}],"content":[{"type":"reasoning_text","text":"full"}]}`,
 		`{"type":"reasoning","id":"rs","summary":[],"content":[{"type":"reasoning_text","text":"full","vendor":9007199254740993}]}`,
+		`{"type":"reasoning","id":"rs","summary":[{"type":"summary_text","text":"brief","vendor":9007199254740993}],"content":[{"type":"reasoning_text","text":"full"}]}`,
 	} {
 		raw := `{"model":"m","input":[` + item + `]}`
-		r, err := to.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+		r, err := to.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.Native = nil // Force reconstruction instead of accepting native bytes.
-		wire, err := to.EncodeRequest(t.Context(), r, p.EvaluationContext{})
+		wire, err := to.EncodeRequest(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +239,7 @@ func TestVisibleReasoningComplexNativeStructureNotDiscarded(t *testing.T) {
 		input, _ := readArray(fields["input"])
 		sameJSON(t, input[0].Bytes(), item)
 		foreign := shippedProjectionProtocol(t, Anthropic)
-		if _, err := foreign.EncodeRequest(t.Context(), r, p.EvaluationContext{}); err == nil {
+		if _, err := foreign.EncodeRequest(t.Context(), r, fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatal("complex reasoning lost its structure")
 		}
 	}
@@ -240,7 +252,7 @@ func TestVisibleReasoningRejectsMalformedStream(t *testing.T) {
 		`{"type":"response.reasoning_text.done","output_index":0,"content_index":0,"text":"orphan"}`,
 	} {
 		c := shippedProjectionProtocol(t, Responses)
-		if _, err := c.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+		if _, err := c.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil {
 			t.Fatal("orphan reasoning must not masquerade as an opaque native event")
 		}
 	}
@@ -251,8 +263,9 @@ func TestVisibleReasoningRejectsMalformedStream(t *testing.T) {
 		`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs","summary":[],"content":[{"type":"reasoning_text","text":"prefix"}]}}`,
 	} {
 		c := shippedProjectionProtocol(t, Responses)
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		for _, raw := range []string{
+			`{"type":"response.created","response":{"id":"r","model":"m","status":"in_progress","output":[]}}`,
 			`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs","summary":[],"content":[]}}`,
 			`{"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"reasoning_text","text":""}}`,
 			`{"type":"response.reasoning_text.delta","output_index":0,"content_index":0,"delta":"prefix"}`,

@@ -34,8 +34,8 @@ func (*preparationBody) Close() error { return nil }
 
 func preparationProtocol(t *testing.T) *protocol.Compiled {
 	t.Helper()
-	compiler, _ := protocol.NewCompiler(protocol.DefaultLimits(), builtin.Modules(), nil)
-	definitions, _ := builtin.Definitions()
+	compiler, _ := protocol.NewCompiler(protocol.DefaultLimits(), nil)
+	definitions, _ := builtin.Packages()
 	for _, raw := range definitions {
 		entry, issues := compiler.Compile(raw.Bytes())
 		if entry == nil {

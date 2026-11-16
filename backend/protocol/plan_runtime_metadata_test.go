@@ -165,17 +165,12 @@ func TestPackageRuntimeMetadataEffectConditions(t *testing.T) {
 
 func TestRuntimeMetadataRejectsInvalidScopesAndFields(t *testing.T) {
 	read := readExpression("runtime", "/interleavedThinking")
-	for _, scope := range []string{"v2", "spec", "projection"} {
+	for _, scope := range []string{"spec", "projection"} {
 		t.Run(scope, func(t *testing.T) {
-			compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, _ := NewCompiler(DefaultLimits(), nil)
 			var compiled *Compiled
 			var issues []ConversionIssue
-			if scope == "v2" {
-				definition := textVerificationDefinition(t, "runtime-unavailable")
-				definition.Directions[DecodeRequest] = Mapping{Transform: &read}
-				value := fixtureValue(t, definition)
-				compiled, issues = compiler.Compile(value.Bytes())
-			} else {
+			{
 				document := textProtocolPackage(t)
 				if scope == "spec" {
 					contract := document.Spec.Documents[document.Mapping.Directions[DecodeRequest].Document]

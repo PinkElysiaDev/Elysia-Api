@@ -12,8 +12,10 @@ func compileNodeControlSetter(path string) (func(any, JSONOutput, *valueReader) 
 		selectField = func(node *Node) *Value { return &node.ID }
 	case "/status":
 		selectField = func(node *Node) *Value { return &node.Status }
+	case "/payload":
+		selectField = func(node *Node) *Value { return &node.Payload }
 	default:
-		return nil, "", fmt.Errorf("node controls can update only id or status")
+		return nil, "", fmt.Errorf("node controls can update only id, status or payload")
 	}
 	return func(document any, output JSONOutput, reader *valueReader) error {
 		return replaceControlValue(output, selectField(document.(*Node)), reader)

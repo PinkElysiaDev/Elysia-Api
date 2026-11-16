@@ -1,91 +1,61 @@
 package protocol
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/bytedance/sonic"
-)
-
-func discoveryDefinition(t *testing.T) Definition {
+func discoveryModelSamples(t *testing.T) []ModelSample {
 	t.Helper()
-	definition := textVerificationDefinition(t, "catalog")
-	transform := readExpression("input", "")
-	definition.Operations["models"] = Operation{Kind: "models", Method: "GET", Path: "/catalog", Transport: HTTPJSON, Auth: Credential{Location: "none"}, Models: &ModelDiscovery{Decode: Mapping{Transform: &transform}, CursorParameter: "cursor"}}
+	var samples []ModelSample
 	for index, page := range []ModelPage{{Models: []DiscoveredModel{}}, {Models: []DiscoveredModel{{ID: "m", MaxTokens: 1000000}}, Next: "next"}} {
 		value := fixtureValue(t, page)
-		definition.ModelSamples = append(definition.ModelSamples, ModelSample{ID: []string{"empty", "continued"}[index], Operation: "models", Input: value, Expected: value})
+		samples = append(samples, ModelSample{ID: []string{"empty", "continued"}[index], Operation: "models", Input: value, Expected: value})
 	}
-	return definition
+	return samples
 }
 
 func TestDiscoveryVerificationRequiresPaginationEvidence(t *testing.T) {
-	definition := discoveryDefinition(t)
-	compiled := compileTestDefinition(t, definition)
-	if report := Verify(t.Context(), compiled); !report.Passed {
-		t.Fatal(report.Issues)
-	}
-	definition.ModelSamples = definition.ModelSamples[:1]
-	missing := compileTestDefinition(t, definition)
-	if report := Verify(t.Context(), missing); report.Passed {
-		t.Fatal("pagination enabled without continuation evidence")
-	}
-	if compiled.SamplesHash() == missing.SamplesHash() {
-		t.Fatal("discovery evidence excluded from samples hash")
-	}
-	operations := compiled.Operations()
-	operations["models"].Models.Decode.Transform.Path = "/changed"
+	document := discoveryPackage(t)
+	compiled := compilePackageForTest(t, document)
+	if report := Verify(t.Context(), compiled); !report.Passed { t.Fatal(report.Issues) }
+	document.Mapping.ModelSamples = document.Mapping.ModelSamples[:1]
+	missing := compilePackageForTest(t, document)
+	if report := Verify(t.Context(), missing); report.Passed { t.Fatal("pagination enabled without continuation evidence") }
+	if compiled.SamplesHash() == missing.SamplesHash() { t.Fatal("discovery evidence excluded from samples hash") }
+	copy, _ := compiled.Package()
+	copy.Mapping.Expressions["catalog-page"] = readExpression("input", "/changed")
 	page, err := compiled.DecodeModelPage(t.Context(), "models", fixtureValue(t, ModelPage{Models: []DiscoveredModel{{ID: "m"}}}))
-	if err != nil || len(page.Models) != 1 {
-		t.Fatal("operation copy mutated compiled mapping", page, err)
-	}
+	if err != nil || len(page.Models) != 1 { t.Fatal("package copy mutated compiled mapping", page, err) }
 }
 
 func TestDiscoveryRejectsMalformedCatalogValues(t *testing.T) {
-	legacy := compileTestDefinition(t, discoveryDefinition(t))
-	declarative := compilePackageForTest(t, discoveryPackage(t))
+	compiled := compilePackageForTest(t, discoveryPackage(t))
 	for _, raw := range []string{`{}`, `{"models":null}`, `{"models":[{"id":null}]}`, `{"models":[{"id":""}]}`, `{"models":[{"id":"a"},{"id":"a"}]}`, `{"models":[{"id":"a","maxTokens":1.5}]}`, `{"models":[{"id":"a","maxTokens":-1}]}`, `{"models":[],"next":42}`, `{"models":[],"next":true}`, `{"models":[],"next":[]}`, `{"models":[],"next":{}}`, `{"models":[],"hasMore":true}`, `{"models":[],"hasMore":true,"next":""}`, `{"models":[],"hasMore":true,"next":null}`, `{"models":[],"url":"https://other.invalid"}`} {
 		t.Run(raw, func(t *testing.T) {
-			value, _ := ParseValue([]byte(raw))
-			for _, compiled := range []*Compiled{legacy, declarative} {
-				if _, err := compiled.DecodeModelPage(t.Context(), "models", value); err == nil {
-					t.Fatal("malformed catalog accepted")
-				}
-			}
+			if _, err := compiled.DecodeModelPage(t.Context(), "models", parseTestValue(t, raw)); err == nil { t.Fatal("malformed catalog accepted") }
 		})
 	}
 }
 
 func TestDiscoveryCompilerRejectsCredentialAndMappingConflicts(t *testing.T) {
-	for _, change := range []func(*Operation){
-		func(operation *Operation) { operation.Method = "POST" },
-		func(operation *Operation) { operation.Models = nil },
-		func(operation *Operation) { operation.Models.CursorParameter = "api_key" },
-		func(operation *Operation) { operation.Query = map[string]string{"cursor": "static"} },
-		func(operation *Operation) { operation.Auth = Credential{Location: "query", Name: "cursor"} },
-		func(operation *Operation) { operation.Models.Decode.Capabilities = CapabilitySet{TextCapability: true} },
+	for _, change := range []func(*ProtocolOperationSpec){
+		func(operation *ProtocolOperationSpec) { operation.Method = "POST" },
+		func(operation *ProtocolOperationSpec) { operation.Models = nil },
+		func(operation *ProtocolOperationSpec) { operation.Models.CursorParameter = "api_key" },
+		func(operation *ProtocolOperationSpec) { operation.Query = map[string]string{"cursor": "static"} },
+		func(operation *ProtocolOperationSpec) { operation.Auth = Credential{Location: "query", Name: "cursor"} },
 	} {
-		definition := discoveryDefinition(t)
-		operation := definition.Operations["models"]
+		document := discoveryPackage(t)
+		operation := document.Spec.Operations["models"]
 		change(&operation)
-		definition.Operations["models"] = operation
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
-		raw, _ := sonic.ConfigStd.Marshal(definition)
-		if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
-			t.Fatal("invalid discovery operation compiled")
-		}
+		document.Spec.Operations["models"] = operation
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
+		if _, issues := compiler.Compile(fixtureValue(t, document).Bytes()); IssuesError(issues) == nil { t.Fatal("invalid discovery operation compiled") }
 	}
 }
 
 func TestDiscoveryNormalizesTerminalCursors(t *testing.T) {
-	legacy := compileTestDefinition(t, discoveryDefinition(t))
-	declarative := compilePackageForTest(t, discoveryPackage(t))
+	compiled := compilePackageForTest(t, discoveryPackage(t))
 	for _, raw := range []string{`{"models":[]}`, `{"models":[],"next":null}`, `{"models":[],"next":""}`} {
-		value, _ := ParseValue([]byte(raw))
-		for _, compiled := range []*Compiled{legacy, declarative} {
-			page, err := compiled.DecodeModelPage(t.Context(), "models", value)
-			if err != nil || page.Next != "" {
-				t.Fatalf("terminal cursor: %s -> %+v (%v)", raw, page, err)
-			}
-		}
+		page, err := compiled.DecodeModelPage(t.Context(), "models", parseTestValue(t, raw))
+		if err != nil || page.Next != "" { t.Fatalf("terminal cursor: %s -> %+v (%v)", raw, page, err) }
 	}
 }

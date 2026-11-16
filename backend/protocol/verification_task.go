@@ -46,9 +46,9 @@ func verifyTaskSamples(ctx context.Context, compiled *Compiled, report *Verifica
 	defer options.State.Release()
 	coverage := map[string]map[string]bool{}
 	samplePath, operationPath := "/taskSamples/", "/operations/"
-	if compiled.packagePlan != nil {
-		samplePath, operationPath = "/mapping/taskSamples/", "/mapping/operations/"
-	}
+
+	samplePath, operationPath = "/mapping/taskSamples/", "/mapping/operations/"
+
 	for name := range compiled.taskMappings {
 		coverage[name] = map[string]bool{}
 	}

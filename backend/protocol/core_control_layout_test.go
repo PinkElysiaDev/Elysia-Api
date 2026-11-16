@@ -59,6 +59,9 @@ func TestContentLayoutCompileBoundary(t *testing.T) {
 		{"unfold-child-selection", ConversionRequest, func(layout *ProtocolContentLayout) {
 			layout.Operation = "unfold_children"
 		}},
+		{"detach-child-selection", ConversionResponse, func(layout *ProtocolContentLayout) {
+			layout.Operation = "detach_children"
+		}},
 		{"text-boundary", ConversionResponse, func(layout *ProtocolContentLayout) {
 			layout.Operation, layout.Path = "merge_text", "/content/*/children"
 			layout.Text = &ProtocolTextLayout{Measure: literalExpression(0)}
@@ -75,11 +78,57 @@ func TestContentLayoutCompileBoundary(t *testing.T) {
 			layout := &ProtocolContentLayout{Operation: "stable_partition", Path: "/content", When: literalExpression(true)}
 			fixture.change(layout)
 			document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "layout", Order: 140, Enabled: true, Phase: fixture.phase, Steps: []ProtocolControlStep{{Layout: layout}}}}
-			compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, _ := NewCompiler(DefaultLimits(), nil)
 			if compiled, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes()); compiled != nil || IssuesError(issues) == nil {
 				t.Fatal("invalid layout compiled", issues)
 			}
 		})
+	}
+}
+
+func TestDeclaredDetachedChildrenKeepContainerAndPayloads(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "stream-layout", Order: 230, Enabled: true, Phase: ConversionResponse, Steps: []ProtocolControlStep{{Layout: &ProtocolContentLayout{
+		Operation: "detach_children", Path: "/content", When: literalExpression(true),
+		ChildWhen: expressionPointer(Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression("reasoning")}}),
+		Steps:     []ProtocolControlStep{{Diagnostic: &ProtocolControlDiagnostic{Kind: "degrade", Path: "/content", Reason: literalExpression("detach selected children")}}},
+	}}}}}
+	compiled := compilePackageForTest(t, document)
+	for _, isEmpty := range []bool{false, true} {
+		response := &Response{SchemaVersion: ProtocolCoreVersion, Content: []Node{{Kind: MessageNode, ID: StringValue("observed"), Status: StringValue("completed"), Role: StringValue("assistant"), Attributes: Object{"tag": StringValue("keep")}, Children: []Node{
+			{Kind: ReasoningNode, Payload: StringValue("thought"), Resources: []Resource{{Kind: "signature", ID: StringValue("signed")}}},
+		}}}}
+		if !isEmpty {
+			response.Content[0].Children = append(response.Content[0].Children, Node{Kind: TextNode, Payload: StringValue("text")})
+		}
+		before := fixtureValue(t, response)
+		for _, mode := range []string{"compatible", "strict"} {
+			policy := DefaultConversionPolicy(compiled, compiled)
+			policy.Mode = mode
+			conversion, err := ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := conversion.Response(t.Context(), response, ConversionContext{Source: compiled.identity, Target: compiled.identity}, nil)
+			if mode == "strict" {
+				if err == nil {
+					t.Fatal("strict conversion detached a child")
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Content) != 2 || !result.Content[0].ID.IsString("observed") || !result.Content[0].Status.IsString("completed") || !result.Content[0].Attributes["tag"].IsString("keep") || !result.Content[1].Payload.IsString("thought") || len(result.Content[1].Resources) != 1 {
+				t.Fatal("detachment lost an existing container or child owner", result.Content)
+			}
+			if isEmpty && len(result.Content[0].Children) != 0 || !isEmpty && (len(result.Content[0].Children) != 1 || !result.Content[0].Children[0].Payload.IsString("text")) {
+				t.Fatal("detachment changed unselected content", result.Content)
+			}
+		}
+		if fixtureValue(t, response) != before {
+			t.Fatal("detachment mutated caller-owned input")
+		}
 	}
 }
 

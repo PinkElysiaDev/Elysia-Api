@@ -4,7 +4,7 @@ import "fmt"
 
 func (plan *compiledOutputPlan) compareText(state evaluation) (plannedOutput, error) {
 	var operands [2]plannedOutput
-	if err := plan.buildOperandValuesInto(state, operands[:]); err != nil {
+	if err := plan.buildOperandValuesInto(&state, operands[:]); err != nil {
 		return plannedOutput{}, err
 	}
 	left, err := readTextParts(state, operands[0].output)

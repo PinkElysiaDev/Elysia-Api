@@ -30,9 +30,7 @@ func TestGatewayChatStartupParallelToolRoundTrips(t *testing.T) {
 	auditGatewayToolRoundTrips(t, true, true)
 }
 
-// A cross-family cycle covers every client and provider. Single-tool
-// cases additionally cover native forwarding; parallel tool behavior
-// does not need to repeat the full codec Cartesian product.
+// Both tool producers exercise every ingress/upstream pair and both rounds.
 // SDKs assemble streamed blocks into one assistant
 // history message. The generic event collector exposes
 // blocks, not an already reconstructed client request.
@@ -137,12 +135,12 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 					wanted = "text-decode-response"
 				}
 				if streaming {
-					wanted = "stream-tool-decode"
+					wanted = "declared-stream-tool-decode"
 					if second {
-						wanted = "stream-text-decode"
+						wanted = "declared-stream-text-decode"
 					}
 				}
-				for _, sample := range upstream.Definition().Samples {
+				for _, sample := range compiledPackage(upstream).Mapping.Samples {
 					if sample.ID != wanted {
 						continue
 					}
@@ -181,16 +179,15 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 			}
 			s.invalidateRouteCache()
 			for _, id := range ids {
-				next := ids[(upstreamIndex+1)%len(ids)]
-				isThinkingRetention := !parallel && upstreamID == protocol.PresetGeminiID && id == protocol.PresetAnthropicID
-				if id != next && (parallel || id != upstreamID) && !isThinkingRetention {
+				if hasStartupPrelude && id != ids[(upstreamIndex+1)%len(ids)] {
 					continue
 				}
+				isThinkingRetention := !parallel && upstreamID == protocol.PresetGeminiID && id == protocol.PresetAnthropicID
 				for _, stream := range []bool{false, true} {
 					t.Run(fmt.Sprintf("%s/stream=%v", id, stream), func(t *testing.T) {
 						streaming, second = stream, false
 						ingress, _ := service.Pin(id)
-						request := &protocol.Request{SchemaVersion: 1, Model: protocol.StringValue("group"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("lookup")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("lookup"), InputSchema: mustProtocolValue(t, `{"type":"object","properties":{"n":{"type":"integer"}}}`)}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "32"), "stream": mustProtocolValue(t, fmt.Sprint(stream))}}
+						request := &protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Model: protocol.StringValue("group"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("lookup")}}}}, Tools: []protocol.Tool{{Kind: protocol.FunctionTool, Name: protocol.StringValue("lookup"), InputSchema: mustProtocolValue(t, `{"type":"object","properties":{"n":{"type":"integer"}}}`)}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "32"), "stream": mustProtocolValue(t, fmt.Sprint(stream))}}
 						if isThinkingRetention {
 							request.Parameters["wire:claude"] = mustProtocolValue(t, `{"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`)
 						}
@@ -200,14 +197,11 @@ func auditGatewayToolRoundTrips(t *testing.T, parallel, hasStartupPrelude bool) 
 							request.Tools[0].Cache = []protocol.CacheIntent{{Kind: "breakpoint", Location: "tool", Value: mustProtocolValue(t, `{"type":"ephemeral"}`)}}
 						}
 						if id == protocol.PresetResponsesID {
-							request.Parameters["store"] = mustProtocolValue(t, "false")
+							request.ClientOutput = &protocol.ClientOutput{ResponsesStorage: &protocol.ResponsesStorageIntent{}}
 						}
 						if id == protocol.PresetChatCompletionsID && stream {
-							output, err := protocol.ParseClientOutput(mustProtocolValue(t, `{"include_usage":true}`))
-							if err != nil {
-								t.Fatal(err)
-							}
-							request.ClientOutput = output
+							includeUsage := true
+							request.ClientOutput = &protocol.ClientOutput{IncludeUsage: &includeUsage, CollectUsage: true}
 						}
 						perform := func() *protocol.Response {
 							body, e := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})

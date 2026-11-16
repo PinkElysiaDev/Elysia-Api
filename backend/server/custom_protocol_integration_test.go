@@ -8,45 +8,31 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
 )
 
-func dashscopeStreamDefinition(t *testing.T) protocol.Definition {
+func dashscopeStreamDefinition(t *testing.T) protocol.ProtocolPackage {
 	t.Helper()
 	definition := cumulativeWireDefinition(t)
-	definition.ID, definition.Family = "dashscope-native", "dashscope-native"
-	operation := definition.Operations["generate"]
+	definition.Spec.ID, definition.Spec.Family = "dashscope-native", "dashscope-native"
+	operation := definition.Spec.Operations["generate"]
 	operation.Path = "/api/v1/services/aigc/text-generation/generation"
 	operation.Headers["X-DashScope-SSE"] = "enable"
 	operation.Framing.Done = []string{"[DONE]"}
-	definition.Operations["generate"] = operation
-	mapping := definition.Directions[protocol.DecodeEvent]
-	raw, err := sonic.ConfigStd.Marshal(mapping)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw = []byte(strings.ReplaceAll(string(raw), `"path":"/payload/text"`, `"path":"/output/choices/0/message/content"`))
-	raw = []byte(strings.ReplaceAll(string(raw), `{"op":"read","path":"/finished"}`, `{"op":"equal","items":[{"op":"read","path":"/output/choices/0/finish_reason"},{"op":"literal","value":"stop"}]}`))
-	if err := sonic.ConfigStd.Unmarshal(raw, &mapping); err != nil {
-		t.Fatal(err)
-	}
-	snapshot := mapping.Rules[2].Emit.Items[0].Then.Items[0]
-	item := snapshot.Fields["item"]
-	item.Fields["payload"] = protocol.Expression{Op: "join", Source: &protocol.Expression{Op: "map",
-		Source: &protocol.Expression{Op: "read", Path: "/output/choices/0/message/content", Required: true},
-		Body:   &protocol.Expression{Op: "read", From: "item", Path: "/text", Required: true}}}
-	snapshot.Fields["item"] = item
-	mapping.Rules[2].Emit.Items[0].Then.Items[0] = snapshot
-	definition.Directions[protocol.DecodeEvent] = mapping
-	for index, sample := range definition.Samples {
+	definition.Spec.Operations["generate"] = operation
+	content := protocol.Expression{Op: "read", Path: "/output/choices/0/message/content"}
+	text := protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &content}, Then: &protocol.Expression{Op: "join", Source: &protocol.Expression{Op: "map", Source: &content, Body: &protocol.Expression{Op: "read", From: "item", Path: "/text", Required: true}}}}
+	finished := protocol.Expression{Op: "equal", Items: []protocol.Expression{{Op: "read", Path: "/output/choices/0/finish_reason"}, {Op: "literal", Value: protocol.StringValue("stop")}}}
+	definition.Mapping.Expressions["cumulative-text"], definition.Spec.Expressions["cumulative-text"] = text, text
+	definition.Mapping.Expressions["cumulative-finished"], definition.Spec.Expressions["cumulative-finished"] = finished, finished
+	for index, sample := range definition.Mapping.Samples {
 		if sample.Direction == protocol.DecodeEvent {
 			sample.Input = mustProtocolValue(t, `[
 			 {"output":{"choices":[{"message":{"content":[{"text":"hel"}]}}]}},
 			 {"output":{"choices":[{"message":{"content":[{"text":"hel"},{"text":"lo"}]}}]}},
 			 {"output":{"choices":[{"message":{"content":[{"text":"hello!"}]},"finish_reason":"stop"}]},"usage":{"input_tokens":2,"output_tokens":3}}
 			]`)
-			definition.Samples[index] = sample
+			definition.Mapping.Samples[index] = sample
 		}
 	}
 	return definition
@@ -71,7 +57,7 @@ func TestChatCompletionsDashscopeNativeStreamingEndToEnd(t *testing.T) {
 	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"你好"}]}`)
 	s.chatCompletions(contextForTest(c), c)
 	flushTestResponse(c)
-	if gotHeader != "enable" || gotPath != definition.Operations["generate"].Path || !strings.Contains(gotBody, `"qwen-plus"`) {
+	if gotHeader != "enable" || gotPath != definition.Spec.Operations["generate"].Path || !strings.Contains(gotBody, `"qwen-plus"`) {
 		t.Fatal(gotHeader, gotPath, gotBody)
 	}
 	for _, want := range []string{`"content":"你好"`, `"content":"，世界"`, `"prompt_tokens":10`, `"completion_tokens":8`, `"finish_reason":"stop"`, "data: [DONE]"} {

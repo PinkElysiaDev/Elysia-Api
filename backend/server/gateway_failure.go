@@ -37,14 +37,13 @@ func decodeUpstreamHTTPFailure(ctx context.Context, status int, body []byte, com
 		return response, nil
 	}
 	response = fallbackHTTPFailure(status)
-	response.SchemaVersion = compiled.CoreVersion()
 	return response, err
 }
 
 func fallbackHTTPFailure(status int) *protocol.Response {
 	message := fmt.Sprintf("上游请求失败（HTTP %d）", status)
 	payload, _ := protocol.EncodeValue(protocol.Object{"category": protocol.StringValue(string(builtin.ClassFromStatus(status))), "message": protocol.StringValue(message)})
-	return &protocol.Response{SchemaVersion: 1, Error: payload}
+	return &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, Error: payload}
 }
 
 func generationFailureClass(err error) builtin.ErrorClass {
@@ -87,7 +86,13 @@ func mapGatewayHTTPFailure(ctx context.Context, record *usageRecord, status int,
 
 func projectGatewayFailure(ctx context.Context, status int, response *protocol.Response, ingress *protocol.Compiled, candidate gatewayCandidate, options protocol.EvaluationContext) *gatewayFailure {
 	original := protocol.CheckGenerationOutcome(response)
-	projected, err := candidate.conversion.Response(ctx, response, candidate.conversionContext(ingress, true).WithOperation(options), options.Diagnostics)
+	route := candidate.conversionContext(ingress, true).WithOperation(options)
+	if candidate.continuation != nil && candidate.continuation.phase != protocol.ConversionResponse {
+		// An HTTP failure has no event delivery receipt; response recovery must
+		// not authenticate it with the stream's different output mapping.
+		route = route.WithContinuation(nil, candidate.continuation.requireCarrier)
+	}
+	projected, err := candidate.conversion.Response(ctx, response, route, options.Diagnostics)
 	if err != nil {
 		return &gatewayFailure{status, errors.Join(original, err)}
 	}

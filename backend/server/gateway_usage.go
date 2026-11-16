@@ -5,7 +5,6 @@ import (
 
 	"github.com/elysia-api/backend/internal/routing"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 const estimatedFileBlockBytes = 1024
@@ -126,30 +125,6 @@ func updateRecordProtocolUsage(record *usageRecord, usage *protocol.Usage) {
 	}
 	// A total derived from observed input/output remains available to the UI;
 	// ProtocolUsage retains its inferred origin independently of token estimates.
-}
-
-func observeLegacyHostedTools(record *usageRecord, compiled *protocol.Compiled, body []byte) error {
-	if record.hostedTools == nil {
-		record.hostedTools = builtin.NewToolAccounting(compiled.ResourceLimits().StateItems)
-	}
-	if err := record.hostedTools.Observe(compiled.Identity(), body); err != nil {
-		return err
-	}
-	for kind, target := range map[string]*int{
-		"web_search": &record.BuiltinToolUsage.WebSearchCalls, "file_search": &record.BuiltinToolUsage.FileSearchCalls,
-		"image_generation": &record.BuiltinToolUsage.ImageGenerationCalls, "code_interpreter": &record.BuiltinToolUsage.CodeInterpreterCalls,
-		"computer_use": &record.BuiltinToolUsage.ComputerUseCalls,
-	} {
-		*target = record.hostedTools.Count(kind)
-		// A usage snapshot is authoritative, including zero. Later frames with
-		// no usage events must not reset reported counts to item observations.
-		if record.ProtocolUsage != nil {
-			if counter, ok := record.ProtocolUsage.Details["tools."+kind+"_calls"]; ok {
-				*target = int(counter.Count)
-			}
-		}
-	}
-	return nil
 }
 
 func (s *Server) estimateGatewayReservation(plan *gatewayPlan) int {

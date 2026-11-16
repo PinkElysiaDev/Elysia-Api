@@ -34,19 +34,16 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 	if input.IsZero() {
 		return nil, fmt.Errorf("invalid JSON value")
 	}
-	if compiled.packagePlan != nil {
-		var err error
-		options, _, err = compiled.ExtractContinuations(ctx, input, options)
-		if err != nil {
-			return nil, err
-		}
+
+	options, _, err = compiled.ExtractContinuations(ctx, input, options)
+	if err != nil {
+		return nil, err
 	}
+
 	if compiled.native.Preserve || compiled.mappings[DecodeRequest].hasCoreOutputPlan {
 		options.valueReader = requestValueReader(input)
 	}
-	request, err := decodeTyped(ctx, compiled, DecodeRequest, input, options, func(module TypedModule, options EvaluationContext) (*Request, error) {
-		return module.DecodeRequest(ctx, input, options)
-	})
+	request, err := decodeCore[Request](ctx, compiled, DecodeRequest, input, options)
 	if err != nil {
 		return nil, err
 	}
@@ -65,30 +62,11 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 
 func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value, request *Request, options EvaluationContext, boundScope *Scope) (*Request, error) {
 	sourceContext := &NativeRequestContext{Scope: options.Scope, Values: maps.Clone(options.Values), InterleavedThinking: options.InterleavedThinking}
-	if compiled.packagePlan == nil {
-		request.SchemaVersion = SemanticSchemaVersion
-	}
 	if options.valueReader != nil {
 		detachRequestResources(request)
 	}
 	request.Source = compiled.identity
-	if codec := compiled.Codec(DecodeRequest); knownConversionCodec(codec) {
-		// Normalization replaces only Parameters/Reasoning and clones parameters
-		// before editing them; history and tool containers are read-only here.
-		validation := *request
-		if err := NormalizeReasoningParameters(&validation, codec, options.InterleavedThinking); err != nil {
-			return nil, err
-		}
-		if err := validateSourceReasoning(codec, validation.Reasoning); err != nil {
-			return nil, err
-		}
-		if codec == "openai-chat" {
-			if _, err := ParseResponsesStore(request.Parameters["store"]); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if err := compiled.checkDecodedResponsesContext(request); err != nil {
+	if err := validateRequestContext(request); err != nil {
 		return nil, err
 	}
 	if boundScope != nil {
@@ -160,12 +138,10 @@ func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Reque
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return Value{}, err
 	}
-	if compiled.packagePlan != nil && (compiled.packagePlan.hasFieldProjection || compiled.packagePlan.hasCacheProjection) && compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
+	if (compiled.packagePlan.hasFieldProjection || compiled.packagePlan.hasCacheProjection) && compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
 		options.requestReplay = newRequestReplay(compiled, options)
 	}
-	output, err := encodeTyped(ctx, compiled, EncodeRequest, request, options, func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
-		return module.EncodeRequest(ctx, input, options)
-	})
+	output, err := encodeCore(ctx, compiled, EncodeRequest, request, options)
 	if err != nil {
 		return Value{}, err
 	}
@@ -188,14 +164,9 @@ func (compiled *Compiled) DecodeResponse(ctx context.Context, body []byte, optio
 // DecodeResponseValue consumes immutable wire without a second transport copy.
 func (compiled *Compiled) DecodeResponseValue(ctx context.Context, input Value, options EvaluationContext) (result *Response, err error) {
 	defer func() { err = compiled.runtimeError(DecodeResponse, err) }()
-	response, err := decodeTyped(ctx, compiled, DecodeResponse, input, options, func(module TypedModule, options EvaluationContext) (*Response, error) {
-		return module.DecodeResponse(ctx, input, options)
-	})
+	response, err := decodeCore[Response](ctx, compiled, DecodeResponse, input, options)
 	if err != nil {
 		return nil, err
-	}
-	if compiled.packagePlan == nil {
-		response.SchemaVersion = SemanticSchemaVersion
 	}
 	response.Source = compiled.identity
 	if compiled.mappings[DecodeResponse].hasCoreOutputPlan {
@@ -236,9 +207,7 @@ func (compiled *Compiled) EncodeResponseValue(ctx context.Context, response *Res
 	if err := compiled.ValidateResponseReferences(ctx, response); err != nil {
 		return Value{}, err
 	}
-	output, err := encodeTyped(ctx, compiled, EncodeResponse, response, options, func(module TypedModule, input *Response, options EvaluationContext) (Value, error) {
-		return module.EncodeResponse(ctx, input, options)
-	})
+	output, err := encodeCore(ctx, compiled, EncodeResponse, response, options)
 	if err != nil {
 		return Value{}, err
 	}
@@ -283,9 +252,6 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 	}
 	for index := range events {
 		event := &events[index]
-		if compiled.packagePlan == nil {
-			event.SchemaVersion = SemanticSchemaVersion
-		}
 		event.Source = compiled.identity
 		if compiled.mappings[direction].hasCoreOutputPlan {
 			detachEventResources(event)
@@ -297,14 +263,7 @@ func (compiled *Compiled) decodeEvents(ctx context.Context, direction Direction,
 		isAuxiliary := options.inputView != nil && options.inputView.sourceReceipt != nil && options.inputView.sourceReceipt.class == wireFrameAuxiliary
 		if isAuxiliary || compiled.native.Preserve && !*options.transportControl && (!options.compoundFrame || event.Type == NativeEvent) {
 			event.Native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
-			// Only an installed Responses decoder can designate this native
-			// envelope as auxiliary metadata. Authored labels are insufficient.
-			if compiled.packagePlan == nil && event.Type == NativeEvent && direction == DecodeEvent && compiled.Codec(direction) == "responses" {
-				kind, _ := readValuePointer(frame, []string{"type"})
-				if kind.IsString("response.metadata") && ValidateResponsesMetadataFrame(frame) == nil {
-					event.Native.Source.Path = responsesMetadataPath
-				}
-			}
+
 		}
 		if isAuxiliary {
 			if len(events) != 1 {
@@ -365,14 +324,9 @@ func (compiled *Compiled) stampNative(native *Native, direction Direction, scope
 }
 
 func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction, scope Scope) error {
-	if state := event.ResponsesTurnState; state != nil {
-		state.Source = Provenance{Protocol: compiled.identity, Direction: direction, Scope: scope, Path: ResponsesTurnStatePath}
-	}
 	compiled.stampNative(event.Unmapped, direction, scope)
 	if event.Request != nil {
-		if compiled.packagePlan == nil {
-			event.Request.SchemaVersion = SemanticSchemaVersion
-		}
+
 		event.Request.Source = compiled.identity
 		compiled.stampNative(event.Request.Native, direction, scope)
 		if err := stampResourceScopes(event.Request, scope); err != nil {
@@ -392,9 +346,7 @@ func (compiled *Compiled) stampEventProvenance(event *Event, direction Direction
 		compiled.stampNodeProvenance(event.Item.ReasoningContent, direction, scope)
 	}
 	if event.Response != nil {
-		if compiled.packagePlan == nil {
-			event.Response.SchemaVersion = SemanticSchemaVersion
-		}
+
 		event.Response.Source = compiled.identity
 		compiled.stampNative(event.Response.Native, direction, scope)
 		if err := stampNodeScopes(event.Response.Content, scope); err != nil {
@@ -535,7 +487,7 @@ func stampResourceScope(resource *Resource, scope Scope) error {
 }
 
 func (compiled *Compiled) target(direction Direction, options EvaluationContext) Target {
-	target := Target{Codec: compiled.Codec(direction), Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities, coreVersion: compiled.CoreVersion()}
+	target := Target{Protocol: compiled.identity, Direction: direction, Scope: options.Scope, Capabilities: compiled.mappings[direction].capabilities}
 	if isEventDirection(direction) {
 		target.eventEncoderHash = compiled.mappings[eventEncoder(direction)].definitionHash
 		target.eventDecoderHash = compiled.mappings[eventDecoder(direction)].definitionHash
@@ -593,11 +545,11 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		replay = &view
 		switch direction {
 		case EncodeResponse:
-			if replay.packagePlan != nil {
-				// The baseline describes the original wire. Caller preferences
-				// belong only to the already-rendered current response.
-				options.ClientOutput = nil
-			}
+
+			// The baseline describes the original wire. Caller preferences
+			// belong only to the already-rendered current response.
+			options.ClientOutput = nil
+
 			response, err := compiled.DecodeResponse(ctx, original.Bytes(), options)
 			if err != nil {
 				return Value{}, err
@@ -611,30 +563,13 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 			if len(events) != 1 {
 				return Value{}, fmt.Errorf("native frame must map to exactly one event")
 			}
-			if replay.packagePlan != nil {
-				baseline = &events[0]
-			} else {
-				baseline = events[0]
-			}
+			baseline = &events[0]
 		default:
 			return Value{}, fmt.Errorf("native reconciliation requires a request or response direction")
 		}
 	}
 
-	var before Value
-	if replay.packagePlan != nil {
-		before, err = encodePlannedCore(ctx, replay, direction, baseline, options)
-	} else if direction == EncodeRequest && replay.hasTypedRequestMapping(EncodeRequest) {
-		before, err = encodeRequestMapping(ctx, replay, baseline.(*Request), options, replay.mappings[direction].module.(TypedModule), func(module TypedModule, input *Request, options EvaluationContext) (Value, error) {
-			return module.EncodeRequest(ctx, input, options)
-		})
-	} else {
-		var value Value
-		value, err = EncodeSemantic(ctx, direction, baseline)
-		if err == nil {
-			before, err = replay.executeMapping(ctx, direction, value, options)
-		}
-	}
+	before, err := encodePlannedCore(ctx, replay, direction, baseline, options)
 	if err != nil {
 		return Value{}, err
 	}
@@ -647,10 +582,10 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		}
 		return Value{}, IssuesError([]ConversionIssue{{Code: InvalidMutation, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "preserve", Path: native.Source.Path, Reason: err.Error(), Suggestion: "Declare stable array identities or apply an explicit native replacement."}})
 	}
-	if compiled.packagePlan != nil {
-		if err := compiled.validateWireContract(ctx, direction, result, nil, compiled.wireLimits(ctx, direction)); err != nil {
-			return Value{}, err
-		}
+
+	if err := compiled.validateWireContract(ctx, direction, result, nil, compiled.wireLimits(ctx, direction)); err != nil {
+		return Value{}, err
 	}
+
 	return result, nil
 }

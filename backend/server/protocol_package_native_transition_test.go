@@ -21,7 +21,7 @@ func TestPackageGatewayNativeReconstructedNative(t *testing.T) {
 	for _, name := range gatewayPackageNames {
 		t.Run(name, func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			compiled := seedGatewayPackages(t, server)[name]
+			compiled := defaultGatewayPackages(t, server)[name]
 			frames, prefix, suffix := packageNativeTransitionFrames(t, compiled, name)
 			var upstream bytes.Buffer
 			for _, frame := range frames {
@@ -73,7 +73,7 @@ func TestPackageGatewayNativeReconstructedNative(t *testing.T) {
 
 func TestPackageGatewayNativeToolContinuation(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	compiled := seedGatewayPackages(t, server)["openai-responses"]
+	compiled := defaultGatewayPackages(t, server)["openai-responses"]
 	raw, err := os.ReadFile("../protocol/builtin/testdata/responses-stream-layout.json")
 	if err != nil {
 		t.Fatal(err)

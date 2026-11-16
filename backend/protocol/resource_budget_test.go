@@ -32,6 +32,20 @@ func TestResourceBudgetBoundaries(t *testing.T) {
 	}
 }
 
+func BenchmarkResourceValueCheck(b *testing.B) {
+	value, err := ParseValue([]byte(`{"a":[1]}`))
+	if err != nil {
+		b.Fatal(err)
+	}
+	limits := DefaultLimits()
+	b.ReportAllocs()
+	for b.Loop() {
+		if err := checkResourceValue(value, limits, "request_wire"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestResourceBudgetSnapshotAndOverflow(t *testing.T) {
 	ctx, err := WithRequestBodyLimit(t.Context(), 48<<20)
 	if err != nil {
@@ -57,7 +71,7 @@ func TestResourceBudgetSnapshotAndOverflow(t *testing.T) {
 func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	limits := DefaultLimits()
 	limits.BufferBytes = 100
-	request := &Request{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("x", 101))}}}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("x", 101))}}}
 	var failure *ResourceLimitError
 	if err := checkSemanticValue(request, limits); !errors.As(err, &failure) || failure.Domain != "semantic" {
 		t.Fatal(err)
@@ -67,7 +81,7 @@ func TestSemanticBudgetPreflightAndExpansion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.Request(t.Context(), &Request{SchemaVersion: 1, Content: []Node{}}, ConversionContext{}, nil)
+	_, err = c.Request(t.Context(), &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{}}, ConversionContext{}, nil)
 	if !errors.As(err, &failure) {
 		t.Fatalf("unbounded expansion: %v", err)
 	}
@@ -139,7 +153,7 @@ func TestRequestBudgetDoesNotExpandResponsesOrExecution(t *testing.T) {
 	if _, err := expression.evaluate(state); !errors.As(err, &resource) || resource.Metric != "steps" {
 		t.Fatal(err)
 	}
-	cyclic := &Request{SchemaVersion: 1, Content: make([]Node, 1)}
+	cyclic := &Request{SchemaVersion: SemanticSchemaVersion, Content: make([]Node, 1)}
 	cyclic.Content[0].Children = cyclic.Content
 	if err := checkSemanticValue(cyclic, semanticLimits(DefaultLimits())); !errors.As(err, &resource) {
 		t.Fatal("cycle was not bounded", err)
@@ -158,7 +172,7 @@ func TestConversionRequestHonorsCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err = conversion.Request(ctx, &Request{SchemaVersion: 1, Content: []Node{}}, ConversionContext{}, nil)
+	_, err = conversion.Request(ctx, &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{}}, ConversionContext{}, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}

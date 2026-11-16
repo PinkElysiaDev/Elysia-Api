@@ -1,174 +1,118 @@
 package builtin
 
 import (
+	"fmt"
+	p "github.com/elysia-api/backend/protocol"
 	"testing"
-
-	"github.com/bytedance/sonic"
 )
 
-// 四线制错误渲染矩阵:分类 → HTTP 状态 + 各协议标准体的关键字段。
-// 规范依据见 error_protocol.go 头注(2026-09 官方文档与一手实测核验)。
 func TestProtocolErrorBodyMatrix(t *testing.T) {
-	cases := []struct {
-		class         ErrorClass
-		status        int // 期望状态(err.Status 为 0 时按分类推导)
-		openAIType    string
-		openAICode    string
-		openAIParam   any
-		anthropicType string
-		anthropicStat int
-		geminiStatus  string
+	for _, fixture := range []struct {
+		class                                                            ErrorClass
+		status                                                           int
+		openAIType, openAICode, openAIParam, anthropicType, geminiStatus string
 	}{
-		{ErrorClassInvalidRequest, 400, "invalid_request_error", "", nil, "invalid_request_error", 400, "INVALID_ARGUMENT"},
-		{ErrorClassAuthentication, 401, "invalid_request_error", "invalid_api_key", nil, "authentication_error", 401, "UNAUTHENTICATED"},
-		{ErrorClassPermission, 403, "invalid_request_error", "", nil, "permission_error", 403, "PERMISSION_DENIED"},
-		{ErrorClassModelNotFound, 404, "invalid_request_error", "model_not_found", "model", "not_found_error", 404, "NOT_FOUND"},
-		{ErrorClassRateLimit, 429, "rate_limit_error", "", nil, "rate_limit_error", 429, "RESOURCE_EXHAUSTED"},
-		{ErrorClassOverloaded, 503, "service_unavailable_error", "server_is_overloaded", nil, "overloaded_error", 529, "UNAVAILABLE"},
-		{ErrorClassUpstream, 502, "api_error", "", nil, "api_error", 502, "UNAVAILABLE"},
-		{ErrorClassServer, 500, "api_error", "server_error", nil, "api_error", 500, "INTERNAL"},
-	}
-	for _, tc := range cases {
-		for format, check := range map[FormatType]func(t *testing.T, status int, body []byte){
-			FormatOpenAI: func(t *testing.T, status int, body []byte) {
-				if status != tc.status {
-					t.Fatalf("%s openai status = %d, want %d", tc.class, status, tc.status)
+		{ErrorClassInvalidRequest, 400, "invalid_request_error", "", "", "invalid_request_error", "INVALID_ARGUMENT"},
+		{ErrorClassAuthentication, 401, "invalid_request_error", "invalid_api_key", "", "authentication_error", "UNAUTHENTICATED"},
+		{ErrorClassPermission, 403, "invalid_request_error", "", "", "permission_error", "PERMISSION_DENIED"},
+		{ErrorClassModelNotFound, 404, "invalid_request_error", "model_not_found", "model", "not_found_error", "NOT_FOUND"},
+		{ErrorClassRateLimit, 429, "rate_limit_error", "", "", "rate_limit_error", "RESOURCE_EXHAUSTED"},
+		{ErrorClassOverloaded, 503, "service_unavailable_error", "server_is_overloaded", "", "overloaded_error", "UNAVAILABLE"},
+		{ErrorClassUpstream, 502, "api_error", "", "", "api_error", "UNAVAILABLE"},
+		{ErrorClassServer, 500, "api_error", "server_error", "", "api_error", "INTERNAL"},
+	} {
+		for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
+			t.Run(string(fixture.class)+"/"+target, func(t *testing.T) {
+				if (&GatewayError{Class: fixture.class}).EffectiveStatus() != fixture.status {
+					t.Fatal("host failure status changed")
 				}
-				var parsed struct {
-					Error struct {
-						Message string  `json:"message"`
-						Type    string  `json:"type"`
-						Param   *string `json:"param"`
-						Code    *string `json:"code"`
-					} `json:"error"`
+				response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, Error: testValue(t, fmt.Sprintf(`{"category":%q,"message":"boom"}`, fixture.class))}
+				options := fixtureOptions(p.EvaluationContext{Values: p.Object{"httpStatus": testValue(t, fmt.Sprint(fixture.status))}})
+				wire, err := testCompiled(t, target).EncodeResponse(t.Context(), response, options)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if err := sonic.ConfigStd.Unmarshal(body, &parsed); err != nil {
-					t.Fatalf("%s openai body: %v", tc.class, err)
+				errorBody := p.Object{"message": p.StringValue("boom")}
+				expected := p.Object{}
+				switch target {
+				case Chat, Responses:
+					errorBody["type"] = p.StringValue(fixture.openAIType)
+					for key, value := range map[string]string{"code": fixture.openAICode, "param": fixture.openAIParam} {
+						errorBody[key] = testValue(t, "null")
+						if value != "" {
+							errorBody[key] = p.StringValue(value)
+						}
+					}
+				case Anthropic:
+					expected["type"] = p.StringValue("error")
+					errorBody["type"] = p.StringValue(fixture.anthropicType)
+				case Gemini:
+					errorBody["code"] = testValue(t, fmt.Sprint(fixture.status))
+					errorBody["status"] = p.StringValue(fixture.geminiStatus)
 				}
-				// 四字段 required:param/code 为 null 而非缺席。
-				if parsed.Error.Type != tc.openAIType || parsed.Error.Message != "boom" {
-					t.Fatalf("%s openai = %+v", tc.class, parsed.Error)
+				expected["error"], err = p.EncodeValue(errorBody)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if codePtr(parsed.Error.Code) != stringOrNil(tc.openAICode) {
-					t.Fatalf("%s openai code = %v, want %v", tc.class, parsed.Error.Code, tc.openAICode)
+				value, err := p.EncodeValue(expected)
+				if err != nil {
+					t.Fatal(err)
 				}
-				paramWant := ""
-				if tc.openAIParam != nil {
-					paramWant = tc.openAIParam.(string)
-				}
-				if paramPtr(parsed.Error.Param) != paramWant {
-					t.Fatalf("%s openai param = %v, want %v", tc.class, parsed.Error.Param, tc.openAIParam)
-				}
-			},
-			FormatResponses: nil, // 与 Chat 共用信封,由 FormatOpenAI 用例覆盖
-			FormatClaude: func(t *testing.T, status int, body []byte) {
-				if status != tc.anthropicStat {
-					t.Fatalf("%s anthropic status = %d, want %d", tc.class, status, tc.anthropicStat)
-				}
-				var parsed struct {
-					Type  string `json:"type"`
-					Error struct {
-						Type    string `json:"type"`
-						Message string `json:"message"`
-					} `json:"error"`
-				}
-				if err := sonic.ConfigStd.Unmarshal(body, &parsed); err != nil {
-					t.Fatalf("%s anthropic body: %v", tc.class, err)
-				}
-				if parsed.Type != "error" || parsed.Error.Type != tc.anthropicType || parsed.Error.Message != "boom" {
-					t.Fatalf("%s anthropic = %+v", tc.class, parsed)
-				}
-			},
-			FormatGemini: func(t *testing.T, status int, body []byte) {
-				var parsed struct {
-					Error struct {
-						Code    int    `json:"code"`
-						Message string `json:"message"`
-						Status  string `json:"status"`
-					} `json:"error"`
-				}
-				if err := sonic.ConfigStd.Unmarshal(body, &parsed); err != nil {
-					t.Fatalf("%s gemini body: %v", tc.class, err)
-				}
-				if parsed.Error.Status != tc.geminiStatus || parsed.Error.Message != "boom" {
-					t.Fatalf("%s gemini = %+v", tc.class, parsed)
-				}
-				if parsed.Error.Code == 0 {
-					t.Fatalf("%s gemini code missing", tc.class)
-				}
-			},
-		} {
-			if check == nil {
-				continue
-			}
-			gotStatus, gotBody := ProtocolErrorBody(format, &GatewayError{Class: tc.class, Message: "boom"})
-			check(t, gotStatus, gotBody)
+				sameJSON(t, wire, value.JSONString())
+			})
 		}
 	}
 }
 
-// 流式错误事件的分类推导:Anthropic overloaded_error 不得兜底成 Server/500
-// (那会重新触发 SDK 对 5xx 的自动重试)。
-func TestStreamErrorClassDerivation(t *testing.T) {
-	if got := classFromAnthropicType("overloaded_error"); got != ErrorClassOverloaded {
-		t.Fatalf("overloaded_error -> %q, want overloaded", got)
-	}
-	if got := classFromOpenAIType("rate_limit_error"); got != ErrorClassRateLimit {
-		t.Fatalf("rate_limit_error -> %q, want rate_limit", got)
-	}
-	if got := classFromOpenAIType(""); got != "" {
-		t.Fatalf("empty type must stay unclassified for OrDefault, got %q", got)
-	}
-	if classFromOpenAIType("service_unavailable_error") != ErrorClassOverloaded {
-		t.Fatal("service_unavailable_error must map to overloaded")
-	}
-}
-
-// 上游真实状态码优先于分类建议值(跨协议翻译保真);细分 code 透传。
 func TestProtocolErrorBodyUpstreamOverride(t *testing.T) {
-	err := &GatewayError{Class: ErrorClassRateLimit, Code: "slow_down", Status: 429, Message: "quota"}
-	status, body := ProtocolErrorBody(FormatOpenAI, err)
-	if status != 429 {
-		t.Fatalf("status = %d, want 429", status)
-	}
-	var parsed struct {
-		Error struct {
-			Code any `json:"code"`
-		} `json:"error"`
-	}
-	if sonic.ConfigStd.Unmarshal(body, &parsed) != nil || parsed.Error.Code != "slow_down" {
-		t.Fatalf("code passthrough failed: %s", body)
+	for _, status := range []int{429, 524} {
+		failure := GatewayError{Class: ErrorClassRateLimit, Code: "slow_down", Status: status, Message: "quota"}
+		if failure.EffectiveStatus() != status {
+			t.Fatal("observed status was replaced")
+		}
+		response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, Error: testValue(t, `{"category":"rate_limit","code":"slow_down","message":"quota"}`)}
+		wire, err := testCompiled(t, Chat).EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sameJSON(t, wire, `{"error":{"message":"quota","type":"rate_limit_error","param":null,"code":"slow_down"}}`)
 	}
 }
 
-// 未分类错误的兜底是 server/500,不允许空分类外泄。
 func TestErrorClassOrDefault(t *testing.T) {
-	if got := ErrorClass("").OrDefault(); got != ErrorClassServer {
-		t.Fatalf("default class = %q", got)
-	}
-	status, _ := ProtocolErrorBody(FormatOpenAI, &GatewayError{Message: "x"})
-	if status != 500 {
-		t.Fatalf("unclassified status = %d, want 500", status)
+	if ErrorClass("").OrDefault() != ErrorClassServer || (&GatewayError{Message: "x"}).EffectiveStatus() != 500 {
+		t.Fatal("unclassified host error did not retain server/500")
 	}
 }
 
-func stringOrNil(s string) string {
-	if s == "" {
-		return "<nil>"
+func TestDeclaredFailureCategories(t *testing.T) {
+	for _, fixture := range []struct {
+		name, wire, category string
+		status               int
+	}{
+		{"anthropic", `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`, "overloaded", 529},
+		{"openai-chat", `{"error":{"type":"rate_limit_error","message":"busy"}}`, "rate_limit", 429},
+		{"openai-responses", `{"error":{"type":"service_unavailable_error","message":"busy"}}`, "overloaded", 503},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			compiled := compileBuiltinPackage(t, fixture.name)
+			response, err := compiled.DecodeHTTPFailure(t.Context(), fixture.status, []byte(fixture.wire), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields, err := response.Error.ReadObject()
+			if err != nil || !fields["category"].IsString(fixture.category) {
+				t.Fatal("declared failure lost category", response.Error, err)
+			}
+		})
 	}
-	return s
 }
-
-func codePtr(p *string) string {
-	if p == nil {
-		return "<nil>"
+func TestGatewayFailureStatus(t *testing.T) {
+	failure := GatewayError{Class: ErrorClassRateLimit, Status: 524}
+	if failure.EffectiveStatus() != 524 {
+		t.Fatal("observed status replaced")
 	}
-	return *p
-}
-
-func paramPtr(p *string) string {
-	if p == nil {
-		return ""
+	if (GatewayError{}).Class.OrDefault() != ErrorClassServer {
+		t.Fatal("unknown host error lost server category")
 	}
-	return *p
 }

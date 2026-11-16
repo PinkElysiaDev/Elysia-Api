@@ -14,26 +14,44 @@ import (
 	"github.com/elysia-api/backend/protocol/builtin"
 )
 
-func declareResponseFailures(t *testing.T, definition protocol.Definition, field string) protocol.Definition {
+func declareResponseFailures(t *testing.T, definition protocol.ProtocolPackage, field string) protocol.ProtocolPackage {
 	t.Helper()
 	for _, direction := range []protocol.Direction{protocol.DecodeResponse, protocol.EncodeResponse} {
-		mapping := definition.Directions[direction]
+		mapping := definition.Mapping.Directions[direction]
 		path, output := "/"+field, "error"
 		if direction == protocol.EncodeResponse {
 			path, output = "/error", field
 		}
 		fields := map[string]protocol.Expression{output: {Op: "read", Path: path, Required: true}}
 		if direction == protocol.DecodeResponse {
-			fields["schemaVersion"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `1`)}
+			fields["schemaVersion"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `2`)}
 			fields["content"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `[]`)}
 		}
-		mapping.Transform = &protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: path}}, Then: &protocol.Expression{Op: "object", Fields: fields}, Otherwise: mapping.Transform}
-		definition.Directions[direction] = mapping
+		previous := mapping.Program
+		mapping.Program = protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: path}}, Then: &protocol.Expression{Op: "object", Fields: fields}, Otherwise: &previous}
+		for index := range mapping.Effects {
+			effect := &mapping.Effects[index]
+			if effect.Kind != "emit" {
+				continue
+			}
+			outputPath := effect.Path
+			if direction == protocol.EncodeResponse {
+				outputPath = effect.Target
+			}
+			name := strings.TrimPrefix(outputPath, "/")
+			fields[name] = previous.Fields[name]
+			inputPath := effect.Target
+			if direction == protocol.EncodeResponse {
+				inputPath = effect.Path
+			}
+			effect.When = &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: inputPath}}
+		}
+		definition.Mapping.Directions[direction] = mapping
 	}
 	payload := mustProtocolValue(t, `{"message":"quota exhausted","code":"exhausted"}`)
 	wire := mustEncodedProtocolValue(t, protocol.Object{field: payload})
-	semantic := mustEncodedProtocolValue(t, protocol.Object{"schemaVersion": mustProtocolValue(t, `1`), "content": mustProtocolValue(t, `[]`), "error": payload})
-	definition.Samples = append(definition.Samples,
+	semantic := mustEncodedProtocolValue(t, protocol.Object{"schemaVersion": mustProtocolValue(t, `2`), "content": mustProtocolValue(t, `[]`), "error": payload})
+	definition.Mapping.Samples = append(definition.Mapping.Samples,
 		protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: wire, Expected: semantic},
 		protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: semantic, Expected: wire})
 	return definition
@@ -82,7 +100,7 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 	t.Parallel()
 	upstreamDefinition := declareResponseFailures(t, standaloneWireDefinition(t, protocol.HTTPJSON), "problem")
 	ingress := declareResponseFailures(t, standaloneWireDefinition(t, protocol.HTTPJSON), "failure")
-	ingress.ID, ingress.Family = "failure-client", "failure-client"
+	ingress.Spec.ID, ingress.Spec.Family = "failure-client", "failure-client"
 	for _, status := range []int{http.StatusForbidden, http.StatusOK} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			var calls atomic.Int32
@@ -102,7 +120,7 @@ func TestCustomHTTPFailuresUseDeclaredResponseDirections(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			request := newTestContext(recorder)
 			setTestRequest(request, httptest.NewRequest(http.MethodPost, "/gateway/failure-client/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hello"}]}]}`)))
-			request.Params = param.Params{{Key: "protocolId", Value: ingress.ID}, {Key: "path", Value: "/v2/generate/grp"}}
+			request.Params = param.Params{{Key: "protocolId", Value: ingress.Spec.ID}, {Key: "path", Value: "/v2/generate/grp"}}
 			server.gatewayProtocol(contextForTest(request), request)
 			flushTestResponse(request)
 			if calls.Load() != 1 {
@@ -169,7 +187,7 @@ func TestGatewayUnmappedFailureKeepsProviderMessageAndConversionIssue(t *testing
 			t.Fatal("HTTP retry classification changed")
 		}
 	}
-	response := &protocol.Response{SchemaVersion: 1, Error: mustProtocolValue(t, `{"message":"readable provider cause","code":"unsupported-code","details":{"private":"must-not-leak"}}`)}
+	response := &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, Error: mustProtocolValue(t, `{"message":"readable provider cause","code":"unsupported-code","details":{"private":"must-not-leak"}}`)}
 	failure := encodeGatewayFailure(t.Context(), http.StatusBadGateway, response, ingress, protocol.EvaluationContext{})
 	if !strings.Contains(failure.Error(), "readable provider cause") || strings.Contains(failure.Error(), "must-not-leak") || canRetryGeneration(failure) {
 		t.Fatalf("unsafe/misclassified conversion context: %v", failure)
@@ -202,7 +220,7 @@ func TestDefaultPackageFailureDetailsDelivery(t *testing.T) {
 	for _, name := range []string{"anthropic", "google-generate-content"} {
 		t.Run(name, func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			packages := seedGatewayPackages(t, server)
+			packages := defaultGatewayPackages(t, server)
 			upstream, ingress := packages["openai-chat"], packages[name]
 			var calls atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

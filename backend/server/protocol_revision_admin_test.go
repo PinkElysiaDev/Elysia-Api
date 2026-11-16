@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -29,10 +27,7 @@ func revisionAdminRequest(t *testing.T, engine *route.Engine, method, path strin
 func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	server.setupProtocolRevisionRoutes(server.engine.Group("/api/admin"))
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "text-alpha.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := mustEncodedProtocolValue(t, loadGatewayFixture(t, "text-alpha")).Bytes()
 	created := revisionAdminRequest(t, server.engine, http.MethodPut, "/api/admin/protocols/text-alpha/draft", raw, "")
 	if created.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", created.Code, created.Body)
@@ -76,7 +71,7 @@ func TestProtocolRevisionAdminDraftVerifyActivateAndPreview(t *testing.T) {
 	}
 	previewData := decodeAdminData(t, preview)
 	semantic := previewData["semantic"].(map[string]any)
-	if semantic["schemaVersion"].(float64) != 1 || semantic["native"] == nil {
+	if semantic["schemaVersion"].(float64) != protocol.ProtocolCoreVersion || semantic["native"] == nil {
 		t.Fatalf("preview lost semantic provenance: %s", preview.Body)
 	}
 	for _, path := range []string{"/api/admin/protocols", "/api/admin/protocols/schema", "/api/admin/protocols/text-alpha/draft", "/api/admin/protocols/text-alpha/revisions", "/api/admin/protocols/text-alpha/revisions/" + revisionHash} {
@@ -98,10 +93,7 @@ func TestProtocolAdminRejectsForgedReportAndActivationWithoutEvidence(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "text-alpha.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := mustEncodedProtocolValue(t, loadGatewayFixture(t, "text-alpha")).Bytes()
 	compiled, issues := service.Validate(raw)
 	if err := protocol.IssuesError(issues); err != nil {
 		t.Fatal(err)

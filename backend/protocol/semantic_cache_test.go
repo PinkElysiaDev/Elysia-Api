@@ -241,25 +241,3 @@ func TestSemanticObjectNormalizationMatchesJSON(t *testing.T) {
 		t.Fatalf("missing value error differs: %v / %v", wantErr, gotErr)
 	}
 }
-
-func TestCanonicalToolTextMatchesLegacy(t *testing.T) {
-	for _, raw := range []string{`"plain"`, ` " a b " `, `"<>&"`, `"\u0061"`, `"line\n"`, `"\ud800"`, "\"\xff\"", `null`, `{}`, `17`} {
-		value, err := ParseValue([]byte(raw))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var text string
-		isValid := !value.IsNull() && value.Decode(&text) == nil
-		got, ok := canonicalToolText(value)
-		if ok != isValid {
-			t.Fatalf("validity differs: %q", raw)
-		}
-		if ok {
-			want, _ := EncodeValue(Object{"result": StringValue(text)})
-			out, _ := EncodeValue(Object{"result": got})
-			if out != want {
-				t.Fatalf("string wrapping differs: %q", raw)
-			}
-		}
-	}
-}

@@ -388,20 +388,21 @@ func (c *sessionToolContext) SetPlanSummary(summary string) error {
 // SetTestTarget 直接复用引擎语义写库）。
 func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	t.Parallel()
+	const sampleRequest = `{"schemaVersion":2,"model":"test-model","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}]}`
 	s := newOpsTestServer(t)
 	service, serviceErr := s.protocolService()
 	if serviceErr != nil {
 		t.Fatal(serviceErr)
 	}
 	compiled, _ := service.Pin("openai-chat-completions")
-	draft, err := sonic.ConfigStd.Marshal(compiled.Definition())
+	draft, err := sonic.ConfigStd.Marshal(compiledPackage(compiled))
 	if err != nil {
 		t.Fatal(err)
 	}
 	created, _ := s.store.CreateAgentSession(context.Background(), storage.AgentSessionUpsert{Mode: "create"})
 	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"r","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"id":"r","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
 	}))
 	defer vendor.Close()
 	if err := s.store.UpdateSessionState(context.Background(), created.ID, stateUpdateWithDraft(draft)); err != nil {
@@ -411,14 +412,15 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	tctx := &sessionToolContext{ctx: context.Background(), store: s.store, session: session}
 
 	// 无参数且会话无 baseUrl → 明确报缺少目标
-	result := (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx, json.RawMessage(`{"operation":"generate","sampleRequest":{"schemaVersion":1,"model":"test-model","content":[{"kind":"text","role":"user","payload":"hi"}]}}`))
+	arguments := json.RawMessage(`{"operation":"generate","sampleRequest":` + sampleRequest + `}`)
+	result := (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx, arguments)
 	if result.OK || !strings.Contains(result.Summary, "baseUrl") {
 		t.Fatalf("missing target must fail with baseUrl hint: %s", result.Summary)
 	}
 
 	// 参数凭证（真实工具执行，含 SetTestTarget 自动记住）
 	result = (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx,
-		json.RawMessage(fmt.Sprintf(`{"baseUrl":%q,"apiKey":"sk-param-key","operation":"generate","sampleRequest":{"schemaVersion":1,"model":"test-model","content":[{"kind":"text","role":"user","payload":"hi"}]}}`, vendor.URL)))
+		json.RawMessage(fmt.Sprintf(`{"baseUrl":%q,"apiKey":"sk-param-key","operation":"generate","sampleRequest":%s}`, vendor.URL, sampleRequest)))
 	if !result.OK {
 		t.Fatalf("test_upstream: %s", result.Summary)
 	}
@@ -430,7 +432,7 @@ func TestOpsTestUpstreamCredentialParams(t *testing.T) {
 	// 无参数重试：回退到已记住的凭证，仍然成功
 	session2, _ := s.store.GetSession(context.Background(), created.ID)
 	tctx2 := &sessionToolContext{ctx: context.Background(), store: s.store, session: session2}
-	if result := (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx2, json.RawMessage(`{"operation":"generate","sampleRequest":{"schemaVersion":1,"model":"test-model","content":[{"kind":"text","role":"user","payload":"hi"}]}}`)); !result.OK {
+	if result := (&protocolV2Tool{server: s, action: "test"}).Execute(context.Background(), tctx2, arguments); !result.OK {
 		t.Fatalf("fallback to remembered credentials failed: %s", result.Summary)
 	}
 }

@@ -9,11 +9,18 @@ import (
 const requestFieldScope = "request_field"
 
 func validateRequestFieldDisposition(direction Direction, effect ProtocolSemanticEffect) error {
-	if direction != EncodeRequest || (effect.Kind != "default" && effect.Kind != "reject") || effect.Target != "" || effect.Layout != nil || effect.ValueMapping != nil || effect.When == nil || effect.Severity != "" || strings.TrimSpace(effect.Reason) == "" {
-		return fmt.Errorf("request_field requires an explicit default or reject disposition")
+	if direction != EncodeRequest || (effect.Kind != "default" && effect.Kind != "reject" && effect.Kind != "drop") || effect.Target != "" || effect.Layout != nil || effect.ValueMapping != nil || effect.When == nil || strings.TrimSpace(effect.Reason) == "" {
+		return fmt.Errorf("request_field requires an explicit default, drop or reject disposition")
 	}
-	if (effect.Kind == "default" && effect.Default.IsZero()) || (effect.Kind == "reject" && !effect.Default.IsZero()) {
-		return fmt.Errorf("default requires a declared value; reject has no default")
+	if (effect.Kind == "default") == effect.Default.IsZero() {
+		return fmt.Errorf("only default requires a declared value")
+	}
+	if effect.Kind == "drop" {
+		if effect.Severity != SeverityInfo && effect.Severity != SeverityWarning {
+			return fmt.Errorf("field drop requires severity info or warning")
+		}
+	} else if effect.Severity != "" {
+		return fmt.Errorf("only field drop supports an authored severity")
 	}
 	_, err := compileRequestFieldClear(effect.Path)
 	return err
@@ -86,8 +93,14 @@ func (c *CompiledConversion) projectRequestFields(ctx context.Context, request *
 		if plan.spec.Native && request.Native != nil && CanPreserveNative(request.Native.Source, Target{Protocol: plan.spec.Target, Direction: EncodeRequest}) {
 			return c.requestProjectionError(rule, route, effect.path, UnsupportedNative, "field default has no proven deletion contract for same-wire native replay")
 		}
+		if effect.kind == "drop" {
+			if err := c.issueSeverity(rule, ConversionRequest, route, effect.path, effect.reason, sink, true, effect.severity); err != nil {
+				return err
+			}
+		} else {
+			c.normalized(rule, route, effect.path, effect.reason, sink)
+		}
 		effect.clearField(request)
-		c.normalized(rule, route, effect.path, effect.reason, sink)
 	}
 	return nil
 }

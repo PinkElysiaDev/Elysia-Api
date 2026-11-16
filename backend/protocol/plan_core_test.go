@@ -13,7 +13,7 @@ import (
 )
 
 func TestCoreOutputPublishedContracts(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("builtin", "definitions", "*.json"))
+	paths, err := filepath.Glob(filepath.Join("builtin", "packages", "*", "mapping.json"))
 	if err != nil || len(paths) != 4 {
 		t.Fatal("missing builtin contract corpus", err)
 	}
@@ -23,7 +23,7 @@ func TestCoreOutputPublishedContracts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var document Definition
+		var document ProtocolMapping
 		if err := sonic.ConfigStd.Unmarshal(raw, &document); err != nil {
 			t.Fatal(err)
 		}
@@ -37,7 +37,7 @@ func TestCoreOutputPublishedContracts(t *testing.T) {
 				continue
 			}
 			checked++
-			t.Run(document.ID+"/"+sample.ID, func(t *testing.T) {
+			t.Run(filepath.Base(filepath.Dir(path))+"/"+sample.ID, func(t *testing.T) {
 				for _, output := range []JSONOutput{JSONLeaf(sample.Expected), expandCoreOutput(t, sample.Expected)} {
 					switch sample.Direction {
 					case DecodeRequest:
@@ -74,7 +74,7 @@ func TestCoreOutputRawContracts(t *testing.T) {
 	for _, raw := range []string{
 		`null`, `{}`, `[]`, `true`,
 		`{"source":{"family":"first"},"source":{"revision":"second"},"source":null}`,
-		`{"schemaVersion":1,"SchemaVersion":2,"SCHEMAVERSION":null,"SOURCE":{"FAMILY":"test"}}`,
+		`{"schemaVersion":2,"SchemaVersion":2,"SCHEMAVERSION":null,"SOURCE":{"FAMILY":"test"}}`,
 		`{"ſource":{"family":"unicode-fold"}}`,
 		`{"source":{"family":"a","Family":"b","family":null}}`,
 		`{"parameters":{"a":1},"parameters":{"b":2,"a":null}}`,
@@ -224,7 +224,7 @@ func TestCoreOutputRawSubtreeOwnership(t *testing.T) {
 }
 
 func TestCoreReaderMapKeysAndPresence(t *testing.T) {
-	request := &Request{SchemaVersion: 1, Content: []Node{{Kind: ReasoningNode, ReasoningContent: []Node{}}}, Parameters: Object{"bad\xff": StringValue("invalid"), "bad�": StringValue("valid"), "null": Value{raw: "null"}}, ClientOutput: &ClientOutput{IncludeUsage: new(bool)}}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: ReasoningNode, ReasoningContent: []Node{}}}, Parameters: Object{"bad\xff": StringValue("invalid"), "bad�": StringValue("valid"), "null": Value{raw: "null"}}, ClientOutput: &ClientOutput{IncludeUsage: new(bool)}}
 	assertCoreReaderParity(t, request, func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(request, pointer, nil) })
 	for _, pointer := range [][]string{{"content", "00"}, {"content", "-1"}, {"schemaVersion", "child"}} {
 		encoded, _ := EncodeValue(request)
@@ -239,7 +239,7 @@ func TestCoreReaderMapKeysAndPresence(t *testing.T) {
 func TestLargeCoreRequestEncodingParityAndOwnership(t *testing.T) {
 	payload := parseTestValue(t, ` { "body":"`+strings.Repeat("A", 2*plannedRequestEncodeMinBytes)+`<>&", "n":1e+03, "n":1.0 } `)
 	request := &Request{
-		SchemaVersion: 1,
+		SchemaVersion: SemanticSchemaVersion,
 		Content: []Node{{Kind: MessageNode, Children: []Node{
 			{Kind: ImageNode, Payload: payload, Native: &Native{Value: payload}},
 			{Kind: ReasoningNode, ReasoningContent: []Node{}},

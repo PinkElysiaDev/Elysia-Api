@@ -27,7 +27,7 @@ func TestGatewayResponsesNativeFailureSequence(t *testing.T) {
 	}{{"truncated", "", 51}, {"invalid-terminal", `data: {"type":"response.completed","sequence_number":80,"response":{"id":"r","object":"response","created_at":1,"model":"m","status":"completed","output":[]}}` + "\n\n", 51}, {"provider-nested", `data: {"type":"error","sequence_number":80,"error":{"type":"api_error","message":"synthetic provider failed","code":null,"param":null}}` + "\n\n", 80}, {"provider-flat", `data: {"type":"error","sequence_number":80,"message":"synthetic provider failed","code":null,"param":null}` + "\n\n", 80}} {
 		t.Run(scenario.name, func(t *testing.T) {
 			prefix := []string{
-				`{"type":"response.created","sequence_number":41,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","output":[]}}`,
+				`{"type":"response.created","sequence_number":41,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","store":false,"output":[]}}`,
 				`{"type":"response.output_item.added","sequence_number":42,"output_index":0,"item":{"type":"message","id":"msg","status":"in_progress","role":"assistant","content":[]}}`,
 				`{"type":"response.content_part.added","sequence_number":47,"output_index":0,"content_index":0,"item_id":"msg","part":{"type":"output_text","text":"","annotations":[]}}`,
 				`{"type":"response.output_text.delta","sequence_number":50,"output_index":0,"content_index":0,"item_id":"msg","delta":"hi"}`,
@@ -118,13 +118,21 @@ func TestGatewayFailureEncodingRetainsOriginalCause(t *testing.T) {
 	if !ok {
 		t.Fatal("Responses preset not loaded")
 	}
-	options := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
-	value, _ := protocol.ParseValue([]byte(`{"type":"response.created","sequence_number":9223372036854775807,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","output":[]}}`))
-	frame, err := compiled.DecodeFrame(t.Context(), value, options)
+	validation, err := compiled.NewWireStreamValidation(protocol.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compiled.EncodeFrame(t.Context(), frame, options); err != nil {
+	defer validation.Release()
+	options, err := (protocol.EvaluationContext{State: protocol.NewEvaluationState()}).WithOutputStream(validation).WithOperation("failure-sequence", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer options.State.Release()
+	value := mustProtocolValue(t, `{"type":"response.created","sequence_number":9223372036854775807,"response":{"id":"r","object":"response","model":"m","created_at":1,"status":"in_progress","store":false,"output":[]}}`)
+	if err := validation.Consume(t.Context(), value); err != nil {
+		t.Fatal(err)
+	}
+	if err := validation.CommitDelivery(); err != nil {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
@@ -144,7 +152,7 @@ func TestGatewayFailureEncodingRetainsOriginalCause(t *testing.T) {
 		return nil
 	}, cause)
 	flushTestResponse(c)
-	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "downstream error frame") || !strings.Contains(err.Error(), "/sequence_number") {
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "downstream error frame") || !strings.Contains(err.Error(), "int64 addition overflow") {
 		t.Fatal("encoding error was swallowed or replaced the original cause", err)
 	}
 	if recorder.Header().Get(gatewayStreamErrorTrailer) == "" {

@@ -14,7 +14,7 @@ import (
 )
 
 func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
-	definition := cacheAliasExampleDefinition(t)
+	definition := cacheAliasExamplePackage(t)
 	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -35,12 +35,12 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 	if compiled == nil {
 		t.Fatal(issues)
 	}
-	activation, _ := sonic.ConfigStd.Marshal(map[string]string{"id": definition.ID, "hash": compiled.Hash()})
+	activation, _ := sonic.ConfigStd.Marshal(map[string]string{"id": definition.Spec.ID, "hash": compiled.Hash()})
 	result := (&protocolV2Tool{server: s, action: "activate"}).Execute(t.Context(), author, activation)
 	if !result.OK {
 		t.Fatal(result.Summary, mustCLIData(t, result))
 	}
-	if active, exists := service.Pin(definition.ID); !exists || active.Hash() != compiled.Hash() {
+	if active, exists := service.Pin(definition.Spec.ID); !exists || active.Hash() != compiled.Hash() {
 		t.Fatal("Agent activation lost the verified cache mapping")
 	}
 	fixture := cacheWireFixtures()[0]
@@ -92,8 +92,8 @@ func TestCacheAliasEditorAgentAndForwardingShareContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ctx, downstream := adminProtocolContext("POST", "/chat/completions", string(request))
-		gateway.server.serveProtocolRequest(contextForTest(ctx), ctx, gatewayService.View(), compiled, "/chat/completions", request)
+		ctx, downstream := adminProtocolContext("POST", "/v1/chat/completions", string(request))
+		gateway.server.serveProtocolRequest(contextForTest(ctx), ctx, gatewayService.View(), compiled, "/v1/chat/completions", request)
 		flushTestResponse(ctx)
 		if downstream.Code != http.StatusOK || downstream.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" {
 			t.Fatal(downstream.Body)

@@ -70,19 +70,10 @@ func (options EvaluationContext) forDefinition(compiled *Compiled) EvaluationCon
 	return options
 }
 
-// Module is a registered, thread-safe adapter implementation. Definitions can
-// reference modules but cannot register executable code.
-type Module interface {
-	Name() string
-	Directions() []Direction
-	Convert(context.Context, Direction, Value, EvaluationContext) (Value, error)
-}
-
-// Compiler owns the installed engine modules and feature catalog. Compiled
+// Compiler owns the declarative language and feature catalog. Compiled
 // revisions copy configuration and can be shared by concurrent requests.
 type Compiler struct {
 	limits   Limits
-	modules  map[string]Module
 	features map[string]bool
 }
 
@@ -101,28 +92,18 @@ var defaultFeatures = map[string]bool{
 	"conversion.policies.v1":      true,
 	"conversion.continuation.v1":  true,
 	"mapping.v2":                  true,
-	"mapping.event_initial":       true,
 	"transport.http_json":         true,
 	"transport.sse":               true,
 	"transport.ndjson":            true,
 }
 
-// NewCompiler validates engine limits and installed module identities. Feature
-// flags describe implemented engine support, never user-requested promises.
-func NewCompiler(limits Limits, modules []Module, features []string) (*Compiler, error) {
+// NewCompiler validates engine limits and the installed transport features.
+// Features describe host support, never protocol-specific conversion behavior.
+func NewCompiler(limits Limits, features []string) (*Compiler, error) {
 	if err := limits.Validate(); err != nil {
 		return nil, err
 	}
-	compiler := &Compiler{limits: limits, modules: make(map[string]Module), features: maps.Clone(defaultFeatures)}
-	for _, module := range modules {
-		if module == nil || !definitionIdentifier.MatchString(module.Name()) {
-			return nil, fmt.Errorf("invalid module identity")
-		}
-		if _, exists := compiler.modules[module.Name()]; exists {
-			return nil, fmt.Errorf("duplicate module %q", module.Name())
-		}
-		compiler.modules[module.Name()] = module
-	}
+	compiler := &Compiler{limits: limits, features: maps.Clone(defaultFeatures)}
 	for _, feature := range features {
 		compiler.features[feature] = true
 	}
@@ -136,24 +117,19 @@ type compiledMapping struct {
 	deliveryRanges         []compiledDeliveryRange
 	semanticRanges         []compiledDeliveryRange
 	streamObserver         *compiledOutputPlan
+	failureObservation     *compiledOutputPlan
 	capabilities           CapabilitySet
-	module                 Module
 	outputPlan             *compiledOutputPlan
 	streamState            *compiledPackageState
 	streamFinalizer        *compiledOutputPlan
 	hasCoreInputPlan       bool
 	hasCoreOutputPlan      bool
-	after                  *compiledOutputPlan
-	initial                *compiledOutputPlan
 	input, output          *runtimeValueSchema
-	rules                  []compiledEventRule
 	frameBatch             bool
 	isEventBatch           bool
 	canDeferEvents         bool
 	definitionHash         string
 }
-
-type compiledEventRule struct{ when, emit *compiledOutputPlan }
 
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
@@ -188,339 +164,7 @@ type Compiled struct {
 // Successful compilation alone does not authorize activation; verification is
 // a separate service that binds evidence to Hash and CompilerVersion.
 func (compiler *Compiler) Compile(raw []byte) (*Compiled, []ConversionIssue) {
-	if len(raw) > compiler.limits.BufferBytes {
-		return nil, definitionIssues(Identity{}, "/", fmt.Errorf("definition exceeds buffer limit"))
-	}
-	value, err := ParseValue(raw)
-	if err != nil {
-		return nil, definitionIssues(Identity{}, "/", err)
-	}
-	if err := checkValueLimits(value, compiler.limits); err != nil {
-		return nil, definitionIssues(Identity{}, "/", err)
-	}
-	version, err := readValuePointer(value, []string{"schemaVersion"})
-	var schemaVersion int
-	if err == nil && version.Decode(&schemaVersion) == nil && schemaVersion == ProtocolPackageSchemaVersion {
-		var document ProtocolPackage
-		if err := decodeContract(raw, &document); err != nil {
-			return nil, definitionIssues(Identity{}, "/", err)
-		}
-		return compiler.compilePackage(document)
-	}
-	var definition Definition
-	if err := decodeContract(raw, &definition); err != nil {
-		return nil, definitionIssues(Identity{}, "/", err)
-	}
-	identity := definition.Identity()
-	fail := func(path string, err error) (*Compiled, []ConversionIssue) {
-		return nil, definitionIssues(identity, path, err)
-	}
-	if err := compiler.checkDefinition(definition); err != nil {
-		return fail("/", err)
-	}
-	limits := compiler.limits
-	if definition.Limits != nil {
-		limits = *definition.Limits
-	}
-	compiled := &Compiled{explicitLimits: definition.Limits != nil || compiler.limits.BufferBytes != DefaultLimits().BufferBytes, identity: identity, definition: value, limits: limits, native: definition.Native, capabilities: make(CapabilitySet), mappings: make(map[Direction]compiledMapping), wireContracts: make(map[Direction]compiledWireContract), operations: definition.Operations}
-	compiled.operationSchemas = make(map[string]*runtimeValueSchema)
-	for _, name := range sortedKeys(definition.Operations) {
-		input := definition.Operations[name].Input
-		if input == nil {
-			continue
-		}
-		validator, err := compileValueSchema(input, limits)
-		if err != nil {
-			return fail("/operations/"+name+"/input", err)
-		}
-		compiled.operationSchemas[name] = validator
-	}
-	for capability, supported := range definition.Capabilities {
-		compiled.capabilities[capability] = supported
-	}
-	expressions := newExpressionCompiler(limits, definition.Expressions)
-	for _, direction := range DirectionCatalog() {
-		mapping, exists := definition.Directions[direction]
-		if !exists {
-			continue
-		}
-		path := "/directions/" + string(direction)
-		entry, err := compiler.compileMapping(mapping, path, direction, expressions)
-		if err != nil {
-			return fail(path, err)
-		}
-		entry.capabilities = compiled.capabilities
-		if mapping.Capabilities != nil {
-			entry.capabilities = make(CapabilitySet)
-			for capability, supported := range mapping.Capabilities {
-				if !definition.Capabilities[capability] {
-					return fail(path+"/capabilities", fmt.Errorf("direction capability %q is not declared by this definition", capability))
-				}
-				entry.capabilities[capability] = supported
-			}
-		}
-		compiled.mappings[direction] = entry
-		compiled.wireContracts[direction] = bindModuleWireContract(entry.module)
-	}
-	if err := compiler.compileTaskMappings(compiled, definition, expressions); err != nil {
-		return fail("/operations", err)
-	}
-	if err := compiler.compileModelMappings(compiled, definition, expressions); err != nil {
-		return fail("/operations", err)
-	}
-	if err := compiler.compileAgentMapping(compiled, definition, expressions); err != nil {
-		return fail("/agent", err)
-	}
-	for _, reference := range sortedKeys(definition.Expressions) {
-		if !expressions.used[reference] {
-			return fail("/expressions/"+reference, fmt.Errorf("unreachable named expression"))
-		}
-	}
-	canonical, err := EncodeValue(definition)
-	if err != nil {
-		return fail("/", err)
-	}
-	compiled.hash = hashValue(canonical)
-	samples, err := EncodeValue(struct {
-		Samples  []Sample        `json:"samples"`
-		Sessions []SessionSample `json:"sessions"`
-		Tasks    []TaskSample    `json:"tasks"`
-		Models   []ModelSample   `json:"models"`
-		Agent    *AgentConfig    `json:"agent,omitempty"`
-	}{definition.Samples, definition.SessionSamples, definition.TaskSamples, definition.ModelSamples, definition.Agent})
-	if err != nil {
-		return fail("/samples", err)
-	}
-	compiled.samplesHash = hashValue(samples)
-	expressions.releaseGraph()
-	return compiled, nil
-}
-
-func (compiler *Compiler) compileMapping(mapping Mapping, path string, direction Direction, expressions *expressionCompiler) (compiledMapping, error) {
-	// A ref name is not a conversion identity: its referenced implementation
-	// must also match before native replay can bypass an adapter.
-	references := map[string]Expression{}
-	expressions.mappingReferences = references
-	defer func() { expressions.mappingReferences = nil }()
-	entry := compiledMapping{frameBatch: mapping.FrameBatch}
-	definition, err := EncodeValue(mapping)
-	if err != nil {
-		return entry, err
-	}
-	entry.definitionHash = hashValue(definition)
-	if mapping.FrameBatch && direction != EncodeEvent && direction != EncodeUpstreamEvent {
-		return entry, fmt.Errorf("frameBatch requires an event encoder")
-	}
-	entry.input, err = compileValueSchema(mapping.Input, expressions.limits)
-	if err != nil {
-		return entry, fmt.Errorf("%s/input: %w", path, err)
-	}
-	entry.output, err = compileValueSchema(mapping.Output, expressions.limits)
-	if err != nil {
-		return entry, fmt.Errorf("%s/output: %w", path, err)
-	}
-	choices := 0
-	if mapping.Module != "" {
-		choices++
-	}
-	if mapping.Transform != nil {
-		choices++
-	}
-	if len(mapping.Rules) > 0 {
-		choices++
-	}
-	if choices != 1 {
-		return entry, fmt.Errorf("exactly one of module, transform or rules is required")
-	}
-	if mapping.Module != "" {
-		module, exists := compiler.modules[mapping.Module]
-		if !exists || !slices.Contains(module.Directions(), direction) {
-			return entry, fmt.Errorf("module %q does not implement %s", mapping.Module, direction)
-		}
-		entry.module = module
-	}
-	if mapping.After != nil {
-		if mapping.Module == "" {
-			return entry, fmt.Errorf("after requires an installed module")
-		}
-		after, err := expressions.compilePlan(*mapping.After, path+"/after", expressionScope{}, 1)
-		if err != nil {
-			return entry, err
-		}
-		if err := checkExpressionOutput(after.expression, mapping.Output, expressions.limits); err != nil {
-			return entry, err
-		}
-		entry.after = after
-	}
-	scope := expressionScope{input: mapping.Input}
-	if mapping.Initial != nil {
-		if !isEventDecoder(direction) || mapping.Module != "" {
-			return entry, fmt.Errorf("initial requires a declarative event decoder")
-		}
-		initial, err := expressions.compilePlan(*mapping.Initial, path+"/initial", scope, 1)
-		if err != nil {
-			return entry, err
-		}
-		if !isAssignable(initial.expression.result, ObjectType) && !isAssignable(initial.expression.result, ArrayType) {
-			return entry, fmt.Errorf("initial must produce an event or ordered event array")
-		}
-		entry.initial = initial
-	}
-	if mapping.Transform != nil {
-		plan, err := expressions.compilePlan(*mapping.Transform, path+"/transform", scope, 1)
-		if err != nil {
-			return entry, err
-		}
-		if err := checkExpressionOutput(plan.expression, mapping.Output, expressions.limits); err != nil {
-			return entry, err
-		}
-		entry.outputPlan = plan
-	}
-	if len(mapping.Rules) > 0 {
-		if !isEventDirection(direction) {
-			return entry, fmt.Errorf("event rules require an event direction")
-		}
-		if mapping.UnknownEvent != "reject" {
-			return entry, fmt.Errorf("rules require unknownEvent: reject; declare ignorable frames with an explicit empty-array rule")
-		}
-		for index, rule := range mapping.Rules {
-			rulePath := fmt.Sprintf("%s/rules/%d", path, index)
-			when, err := expressions.compilePlan(rule.When, rulePath+"/when", scope, 1)
-			if err != nil {
-				return entry, err
-			}
-			if !isAssignable(when.expression.result, BooleanType) {
-				return entry, fmt.Errorf("%s condition must be boolean", rulePath)
-			}
-			emit, err := expressions.compilePlan(rule.Emit, rulePath+"/emit", scope, 1)
-			if err != nil {
-				return entry, err
-			}
-			entry.rules = append(entry.rules, compiledEventRule{when: when, emit: emit})
-		}
-	} else if mapping.UnknownEvent != "" {
-		return entry, fmt.Errorf("unknownEvent requires event rules")
-	}
-	if len(references) > 0 {
-		identity, err := EncodeValue(struct {
-			Mapping    Mapping               `json:"mapping"`
-			References map[string]Expression `json:"references"`
-		}{mapping, references})
-		if err != nil {
-			return entry, err
-		}
-		entry.definitionHash = hashValue(identity)
-	}
-	if entry.outputPlan != nil && entry.module == nil && entry.after == nil && entry.initial == nil {
-		entry.hasCoreOutputPlan = entry.output == nil && (direction == DecodeRequest || direction == DecodeResponse || isEventDecoder(direction))
-		entry.hasCoreInputPlan = entry.input == nil && (direction == EncodeRequest || direction == EncodeResponse || direction == EncodeEvent || direction == EncodeUpstreamEvent)
-	}
-	return entry, nil
-}
-
-func (compiler *Compiler) checkDefinition(definition Definition) error {
-	if definition.SchemaVersion != DefinitionSchemaVersion {
-		return fmt.Errorf("schemaVersion must be %d", DefinitionSchemaVersion)
-	}
-	if !definitionIdentifier.MatchString(definition.ID) || strings.TrimSpace(definition.Version) == "" || strings.TrimSpace(definition.Family) == "" || strings.TrimSpace(definition.WireVersion) == "" {
-		return fmt.Errorf("id, version, family and wireVersion are required")
-	}
-	if len(definition.Directions) == 0 || len(definition.Operations) == 0 {
-		return fmt.Errorf("directions and operations must not be empty")
-	}
-	for path, key := range definition.Native.ArrayKeys {
-		if !definition.Native.Preserve {
-			return fmt.Errorf("native arrayKeys requires preserve")
-		}
-		if _, err := parsePointer(path); err != nil {
-			return fmt.Errorf("native array path: %w", err)
-		}
-		if key == "" {
-			return fmt.Errorf("native array identity must select an item field")
-		}
-		if _, err := parsePointer(key); err != nil {
-			return fmt.Errorf("native array identity: %w", err)
-		}
-	}
-	if definition.Native.Preserve {
-		for _, pair := range [][2]Direction{{DecodeRequest, EncodeRequest}, {DecodeResponse, EncodeResponse}, {DecodeEvent, EncodeEvent}, {DecodeClientEvent, EncodeUpstreamEvent}} {
-			_, hasDecoder := definition.Directions[pair[0]]
-			_, hasEncoder := definition.Directions[pair[1]]
-			if hasEncoder && !hasDecoder {
-				return fmt.Errorf("native preservation for %s requires %s", pair[1], pair[0])
-			}
-		}
-	}
-	for _, required := range definition.Requires {
-		if !compiler.features[required] {
-			return fmt.Errorf("required engine feature %q is unavailable", required)
-		}
-	}
-	for capability := range definition.Capabilities {
-		if !slices.Contains(CapabilityCatalog(), capability) {
-			return fmt.Errorf("unknown capability %q", capability)
-		}
-	}
-	for direction := range definition.Directions {
-		if !slices.Contains(DirectionCatalog(), direction) {
-			return fmt.Errorf("unknown direction %q", direction)
-		}
-	}
-	if definition.Limits != nil {
-		limits := *definition.Limits
-		if err := limits.Validate(); err != nil {
-			return err
-		}
-		if limits.Depth > compiler.limits.Depth || limits.Nodes > compiler.limits.Nodes || limits.Mutations > compiler.limits.Mutations || limits.StateItems > compiler.limits.StateItems || limits.BufferBytes > compiler.limits.BufferBytes {
-			return fmt.Errorf("definition limits cannot exceed engine limits")
-		}
-	}
-	for _, name := range sortedKeys(definition.Operations) {
-		if err := compiler.checkOperation(name, definition.Operations[name], definition); err != nil {
-			return err
-		}
-	}
-	seen := make(map[string]bool)
-	fixtureCount := len(definition.Samples) + len(definition.SessionSamples) + len(definition.TaskSamples) + len(definition.ModelSamples)
-	if definition.Agent != nil {
-		fixtureCount += len(definition.Agent.Samples)
-	}
-	fixtureLimit := compiler.limits.StateItems
-	if definition.Limits != nil {
-		fixtureLimit = definition.Limits.StateItems
-	}
-	if fixtureCount > fixtureLimit {
-		return fmt.Errorf("sample count exceeds engine fixture limit")
-	}
-	for _, sample := range definition.Samples {
-		if sample.ID == "" || seen[sample.ID] {
-			return fmt.Errorf("samples require unique nonempty IDs")
-		}
-		seen[sample.ID] = true
-		if sample.Operation != "" {
-			operation, exists := definition.Operations[sample.Operation]
-			if !exists || operation.Kind != "generate" || (sample.Direction != DecodeRequest && sample.Direction != EncodeRequest) {
-				return fmt.Errorf("sample %q operation requires a declared generation operation and a request direction", sample.ID)
-			}
-		}
-		if _, exists := definition.Directions[sample.Direction]; !exists {
-			return fmt.Errorf("sample %q references an unimplemented direction", sample.ID)
-		}
-		if sample.Input.IsZero() || (sample.Expected.IsZero() == (sample.ExpectedIssue == "")) {
-			return fmt.Errorf("sample %q requires input and expected output or issue", sample.ID)
-		}
-		if sample.Sequence && !isEventDirection(sample.Direction) {
-			return fmt.Errorf("sample %q sequence requires an event direction", sample.ID)
-		}
-		for _, capability := range sample.Capabilities {
-			if !definition.Capabilities[capability] {
-				return fmt.Errorf("sample %q covers an undeclared capability", sample.ID)
-			}
-		}
-	}
-	return checkSessionSamples(definition.SessionSamples, definition.Operations, func(direction Direction) bool {
-		return hasDefinitionDirections(definition, direction)
-	}, compiler.limits.StateItems, seen)
+	return compiler.CompilePackage(raw)
 }
 
 func checkSessionSamples(samples []SessionSample, operations map[string]Operation, supports func(Direction) bool, stepLimit int, seen map[string]bool) error {
@@ -539,64 +183,6 @@ func checkSessionSamples(samples []SessionSample, operations map[string]Operatio
 		for _, step := range sample.Steps {
 			if !isEventDirection(step.Direction) || !supports(step.Direction) || step.Input.IsZero() || step.Expected.IsZero() {
 				return fmt.Errorf("session sample %q requires implemented event directions, inputs and expectations", sample.ID)
-			}
-		}
-	}
-	return nil
-}
-
-func (compiler *Compiler) checkOperation(name string, operation Operation, definition Definition) error {
-	limits := compiler.limits
-	if definition.Limits != nil {
-		limits = *definition.Limits
-	}
-	if err := checkOperationEndpoint(name, operation, limits); err != nil {
-		return err
-	}
-	if err := checkSessionOperation(operation, definition, limits); err != nil {
-		return fmt.Errorf("operation %q: %w", name, err)
-	}
-	if operation.Transport == WebSocket && !compiler.features[featureWebSocketTransport] {
-		return fmt.Errorf("WebSocket transport is not installed")
-	}
-	if operation.Kind == "submit" && !compiler.features[featureAsyncTasks] {
-		return fmt.Errorf("asynchronous task transport is not installed")
-	}
-	for _, direction := range []Direction{operation.Request, operation.Response} {
-		if direction != "" {
-			if _, exists := definition.Directions[direction]; !exists {
-				return fmt.Errorf("operation %q references missing direction %q", name, direction)
-			}
-		}
-	}
-	if operation.Transport == SSE || operation.Transport == NDJSON || operation.Transport == WebSocket {
-		_, canDecode := definition.Directions[DecodeEvent]
-		_, canEncode := definition.Directions[EncodeEvent]
-		if !canDecode && !canEncode {
-			return fmt.Errorf("operation %q requires an event direction", name)
-		}
-	}
-	if err := checkOperationFraming(name, operation); err != nil {
-		return err
-	}
-	if operation.Request != "" && operation.Request != DecodeRequest && operation.Request != EncodeRequest {
-		return fmt.Errorf("operation %q request must select a request direction", name)
-	}
-	if operation.Response != "" && operation.Response != DecodeResponse && operation.Response != EncodeResponse && operation.Response != DecodeEvent && operation.Response != EncodeEvent {
-		return fmt.Errorf("operation %q response must select a response/event direction", name)
-	}
-	if err := checkOperationHeaders(name, operation); err != nil {
-		return err
-	}
-	if operation.Task != nil {
-		if operation.Kind != "submit" {
-			return fmt.Errorf("operation %q has a task flow without submit kind", name)
-		}
-		for _, reference := range []string{operation.Task.Status, operation.Task.Result, operation.Task.Cancel} {
-			if reference != "" {
-				if _, exists := definition.Operations[reference]; !exists {
-					return fmt.Errorf("operation %q has an unknown task reference", name)
-				}
 			}
 		}
 	}
@@ -764,13 +350,6 @@ func (compiled *Compiled) Operation(name string) (Operation, bool) {
 	return operation, true
 }
 
-// Definition returns an independent copy suitable for editing or persistence.
-func (compiled *Compiled) Definition() Definition {
-	var definition Definition
-	_ = compiled.definition.Decode(&definition)
-	return definition
-}
-
 // Supports reports whether this revision implements an independent direction.
 func (compiled *Compiled) Supports(direction Direction) bool {
 	_, exists := compiled.mappings[direction]
@@ -838,15 +417,15 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	}
 	defer func() { transaction.finish(err) }()
 	fail := func(err error) (Value, error) { return Value{}, compiled.mappingError(direction, err) }
+	mapping, exists := compiled.mappings[direction]
+	if !exists {
+		return Value{}, compiled.rejectMissingMapping(ctx, direction)
+	}
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
 	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
-	mapping, exists := compiled.mappings[direction]
-	if !exists {
-		return fail(fmt.Errorf("direction is not implemented"))
-	}
-	if compiled.packagePlan != nil && isPackageDecodeDirection(direction) {
+	if isPackageDecodeDirection(direction) {
 		options = options.withInputView(input)
 	}
 	if err := options.inputView.checkResources(ctx, input, inputLimits, "mapping_input"); err != nil {
@@ -861,59 +440,31 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	}
 	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, inputView: options.inputView, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
 	var packageState *packageExecution
-	if compiled.packagePlan != nil {
-		if isPackageDecodeDirection(direction) {
-			state.objectReader = state.inputView.objectReader()
-		}
-		packageState, err = compiled.preparePackageExecution(direction, state, inputLimits, options)
-		if err != nil {
-			return fail(err)
-		}
-		state.valueReader = packageState.reader
-		state.capture = compiled.newNativeCapture(direction, options)
-		state.native = compiled.newNativeEvaluation(ctx, direction, options)
+
+	if isPackageDecodeDirection(direction) {
+		state.objectReader = state.inputView.objectReader()
 	}
-	var output Value
-	switch {
-	case mapping.module != nil:
-		options = options.forDefinition(compiled)
-		options.wireLimits = compiled.nativeLimits(ctx, direction)
-		instance, resolveErr := options.State.resolve(compiled, direction, mapping.module)
-		if resolveErr != nil {
-			return fail(resolveErr)
-		}
-		output, err = instance.Convert(ctx, direction, input, options)
-	case mapping.outputPlan != nil:
-		var planned plannedOutput
-		planned, err = mapping.outputPlan.build(state)
-		if err == nil {
-			err = options.packageTransaction.resolveDispositions()
-		}
-		if err == nil {
-			output, err = planned.materialize(ctx)
-		}
-	default:
-		output, err = evaluateEventRules(mapping, state)
-	}
+	packageState, err = compiled.preparePackageExecution(direction, state, inputLimits, options)
 	if err != nil {
 		return fail(err)
 	}
-	if mapping.after != nil {
-		state.input = output
-		output, err = mapping.after.evaluate(state)
-		if err != nil {
-			return fail(err)
-		}
+	state.valueReader = packageState.reader
+	state.capture = compiled.newNativeCapture(direction, options)
+	state.native = compiled.newNativeEvaluation(ctx, direction, options)
+
+	planned, err := mapping.outputPlan.build(state)
+	if err != nil {
+		return fail(err)
+	}
+	if err := options.packageTransaction.resolveDispositions(); err != nil {
+		return fail(err)
+	}
+	output, err := planned.materialize(ctx)
+	if err != nil {
+		return fail(err)
 	}
 	if output.IsZero() {
 		return fail(fmt.Errorf("mapping omitted its entire output"))
-	}
-	isInitial := false
-	if mapping.initial != nil {
-		output, isInitial, err = options.State.prependInitial(compiled, direction, mapping.initial, state, output)
-		if err != nil {
-			return fail(err)
-		}
 	}
 	if err := checkResourceValue(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
@@ -929,27 +480,7 @@ func (compiled *Compiled) executeMapping(ctx context.Context, direction Directio
 	if err := options.packageTransaction.stage(state, true); err != nil {
 		return fail(err)
 	}
-	if isInitial {
-		options.State.initialized[moduleStateKey{compiled: compiled, direction: direction}] = true
-	}
 	return output, nil
-}
-
-func evaluateEventRules(mapping compiledMapping, state evaluation) (Value, error) {
-	for _, rule := range mapping.rules {
-		value, err := rule.when.evaluate(state)
-		if err != nil {
-			return Value{}, err
-		}
-		isMatch, err := readBoolean(value)
-		if err != nil {
-			return Value{}, err
-		}
-		if isMatch {
-			return rule.emit.evaluate(state)
-		}
-	}
-	return Value{}, fmt.Errorf("wire event has no declared mapping rule")
 }
 
 func definitionIssues(identity Identity, path string, err error) []ConversionIssue {

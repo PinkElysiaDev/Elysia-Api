@@ -14,16 +14,16 @@ func TestResponsesAssistantHistoryUsesOutputText(t *testing.T) {
 		if source == Gemini {
 			wire = `{"contents":[{"role":"user","parts":[{"text":"hello"}]},{"role":"model","parts":[{"text":"OK"}]},{"role":"user","parts":[{"text":"continue"}]}]}`
 		}
-		request, err := from.DecodeRequest(t.Context(), []byte(wire), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+		request, err := from.DecodeRequest(t.Context(), []byte(wire), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
-		request, err = c.Request(t.Context(), request, p.ConversionContext{}, nil)
+		request, err = c.Request(t.Context(), request, fixtureConversionContext(t, c, p.ConversionRequest, request.Source), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		encoded, err := to.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+		encoded, err := to.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 		if err != nil {
 			t.Fatal(err)
 		}

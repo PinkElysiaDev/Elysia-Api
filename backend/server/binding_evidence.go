@@ -16,6 +16,7 @@ type bindingConversionKey struct {
 type bindingConversionCheck struct {
 	key        bindingConversionKey
 	ingress    *protocol.Compiled
+	upstream   *protocol.Compiled
 	conversion *protocol.CompiledConversion
 }
 
@@ -47,11 +48,11 @@ func (s *Server) resolveBindingConversions(ctx context.Context, view conversionR
 					return nil, err
 				}
 				if conversion.ContextDependent() {
-					conversion = conversion.WithVerificationContext(protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: name, Transport: operation.Transport, Reasoning: binding.Binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(operation)})
+					conversion = conversion.WithVerificationContext(protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: model.Identifier(), Operation: name, Transport: operation.Transport, Reasoning: binding.Binding.Reasoning, InterleavedThinking: operation.IsInterleavedThinking})
 				}
 				key := bindingConversionKey{ingress.Hash(), upstream.Hash(), conversion.Hash, conversion.ContextHash()}
 				if !seen[key] {
-					checks = append(checks, bindingConversionCheck{key, ingress, conversion})
+					checks = append(checks, bindingConversionCheck{key: key, ingress: ingress, upstream: upstream, conversion: conversion})
 					seen[key] = true
 				}
 			}
@@ -61,14 +62,15 @@ func (s *Server) resolveBindingConversions(ctx context.Context, view conversionR
 }
 
 func hasBindingConversionEvidence(binding storage.ProtocolBinding, checks []bindingConversionCheck) bool {
-	reports := map[bindingConversionKey]bool{}
+	reports := map[bindingConversionKey][]protocol.CombinationReport{}
 	for _, report := range binding.Combinations {
 		if report.CompilerVersion == protocol.CompilerVersion {
-			reports[bindingConversionKey{report.SourceHash, report.TargetHash, report.PolicyHash, report.ContextHash}] = true
+			key := bindingConversionKey{report.SourceHash, report.TargetHash, report.PolicyHash, report.ContextHash}
+			reports[key] = append(reports[key], report)
 		}
 	}
 	for _, check := range checks {
-		if !reports[check.key] {
+		if len(reports[check.key]) == 0 || !check.upstream.HasRequestScopeEvidence(check.ingress, binding.Binding.Capabilities, reports[check.key]) {
 			return false
 		}
 	}

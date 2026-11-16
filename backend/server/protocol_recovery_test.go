@@ -59,7 +59,7 @@ func assertRecoveredPresets(t *testing.T, s *Server) {
 		if !ok {
 			t.Fatalf("missing runtime preset %s", id)
 		}
-		expected := compileFixtureDefinition(t, presetDefinition(t, id))
+		expected := compileFixturePackage(t, presetPackage(t, id))
 		if compiled.Hash() != expected.Hash() || compiled.Identity().DefinitionID != id {
 			t.Fatalf("invalid preset identity: %s", id)
 		}
@@ -72,7 +72,7 @@ func assertRecoveredPresets(t *testing.T, s *Server) {
 
 func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 	t.Parallel()
-	for _, defect := range []string{"all-inactive", "one-inactive", "report-missing", "report-malformed", "report-stale", "report-rejected", "revision-missing", "revision-malformed", "revision-wrong-id", "draft-malformed", "activation-invalid"} {
+	for _, defect := range []string{"all-inactive", "one-inactive", "report-missing", "report-malformed", "report-stale", "report-rejected", "revision-missing", "revision-malformed", "revision-wrong-id", "revision-unknown-member", "draft-malformed", "activation-invalid"} {
 		t.Run(defect, func(t *testing.T) {
 			s, path := newProtocolAdminTestServer(t)
 			if err := s.reloadProtocolRuntime(t.Context()); err != nil {
@@ -102,10 +102,19 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 				recoveryExec(t, db, `DELETE FROM protocol_revisions WHERE protocol_id=?`, id)
 			case "revision-malformed":
 				recoveryExec(t, db, `UPDATE protocol_revisions SET definition=? WHERE protocol_id=?`, raw, id)
-			case "revision-wrong-id":
-				recoveryExec(t, db, `UPDATE protocol_revisions SET definition=json_set(definition,'$.id','other') WHERE protocol_id=?`, id)
-				if err := db.QueryRow(`SELECT definition FROM protocol_revisions WHERE protocol_id=?`, id).Scan(&raw); err != nil {
+			case "revision-wrong-id", "revision-unknown-member":
+				identityPath := "$.spec.id"
+				if defect == "revision-unknown-member" {
+					identityPath = "$.id"
+				}
+				const damagedID = "other"
+				recoveryExec(t, db, `UPDATE protocol_revisions SET definition=json_set(definition,?,?) WHERE protocol_id=?`, identityPath, damagedID, id)
+				var observedID string
+				if err := db.QueryRow(`SELECT definition,json_extract(definition,?) FROM protocol_revisions WHERE protocol_id=?`, identityPath, id).Scan(&raw, &observedID); err != nil {
 					t.Fatal(err)
+				}
+				if observedID != damagedID {
+					t.Fatal("revision corruption did not change the selected identity field", identityPath, observedID)
 				}
 			case "draft-malformed":
 				recoveryExec(t, db, `UPDATE protocol_drafts SET definition=? WHERE protocol_id=?`, raw, id)
@@ -130,7 +139,7 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 			if strings.HasSuffix(defect, "inactive") && recoveryCounts(t, db)["protocol_verification_reports"] != beforeCounts["protocol_verification_reports"] {
 				t.Fatal("activation repair duplicated valid reports")
 			}
-			if defect == "revision-malformed" || defect == "revision-wrong-id" || defect == "draft-malformed" {
+			if defect == "revision-malformed" || defect == "revision-wrong-id" || defect == "revision-unknown-member" || defect == "draft-malformed" {
 				history, err := s.store.ListProtocolHistory(t.Context())
 				if err != nil || len(history) != 1 || history[0].RawDefinition != raw || history[0].Hash != previous.Hash() {
 					t.Fatal("raw corruption not retained", history, err)
@@ -163,7 +172,9 @@ func TestPresetRecoveryFailureIsAtomic(t *testing.T) {
 			s, path := newProtocolAdminTestServer(t)
 			db := recoveryDB(t, path)
 			service, _ := s.protocolService()
-			plan, _, _, err := s.prepareProtocolRefresh(t.Context(), service, true)
+			compilation := service.NewCompilationSession()
+			defer compilation.Close()
+			plan, _, _, err := s.prepareProtocolRefresh(t.Context(), compilation, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -219,12 +230,9 @@ func TestRecoveredPresetsDiscoverModelsWithoutBindingUnboundSources(t *testing.T
 	for _, id := range requiredPresetIDs {
 		t.Run(id, func(t *testing.T) {
 			var calls atomic.Int32
-			expectedPath, basePath := "/v1/models", "/v1"
-			if id == protocol.PresetAnthropicID {
-				basePath = ""
-			}
+			expectedPath := "/v1/models"
 			if id == protocol.PresetGeminiID {
-				basePath, expectedPath = "", "/v1beta/models"
+				expectedPath = "/v1beta/models"
 			}
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
@@ -239,7 +247,7 @@ func TestRecoveredPresetsDiscoverModelsWithoutBindingUnboundSources(t *testing.T
 				}
 			}))
 			defer upstream.Close()
-			source := storage.ModelSource{ID: id, Name: id, Platform: "custom:" + id, BaseURL: upstream.URL + basePath, Enabled: true}
+			source := storage.ModelSource{ID: id, Name: id, Platform: "custom:" + id, BaseURL: upstream.URL, Enabled: true}
 			if err := s.store.UpsertSource(t.Context(), source); err != nil {
 				t.Fatal(err)
 			}
@@ -273,9 +281,9 @@ func TestRecoveredPresetsDiscoverModelsWithoutBindingUnboundSources(t *testing.T
 func TestPresetRecoveryRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 	t.Parallel()
 	s, path := newProtocolAdminTestServer(t)
-	d := presetDefinition(t, protocol.PresetResponsesID)
-	d.ID = "my-copy"
-	d.Name = "Anthropic Messages"
+	d := presetPackage(t, protocol.PresetResponsesID)
+	d.Spec.ID = "my-copy"
+	d.Spec.Name = "Anthropic Messages"
 	persistPreviousRevision(t, s, mustEncodedProtocolValue(t, d))
 	if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -310,11 +318,11 @@ func TestPresetRecoveryRestartsPreserveEvidenceAndCustomData(t *testing.T) {
 		}
 	}
 	service, _ := s.protocolService()
-	custom, ok := service.Pin(d.ID)
+	custom, ok := service.Pin(d.Spec.ID)
 	if !ok {
 		t.Fatal("custom disappeared")
 	}
-	actual, _ := sonic.ConfigStd.Marshal(custom.Definition())
+	actual, _ := sonic.ConfigStd.Marshal(compiledPackage(custom))
 	expected, _ := sonic.ConfigStd.Marshal(d)
 	if string(actual) != string(expected) {
 		t.Fatal("same-name custom was overwritten")
@@ -372,13 +380,9 @@ func TestPresetRecoveryPublicationAndRollbackProtectExistingRuntime(t *testing.T
 func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T) {
 	t.Parallel()
 	s, _ := newProtocolAdminTestServer(t)
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "previous", protocol.PresetAnthropicID+".json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := persistPreviousRevision(t, s, mustProtocolValue(t, string(raw)))
+	previousHash := persistLegacyPreset(t, s, protocol.PresetAnthropicID)
 	b := storage.ProtocolBinding{Kind: "source", SourceID: "manual", Binding: protocol.Binding{
-		ProtocolID: protocol.PresetAnthropicID, RevisionHash: old.Hash(), Operation: "operator-submit", Transports: []protocol.Transport{protocol.HTTPJSON},
+		ProtocolID: protocol.PresetAnthropicID, RevisionHash: previousHash, Operation: "operator-submit", Transports: []protocol.Transport{protocol.HTTPJSON},
 		Capabilities: protocol.CapabilitySet{protocol.TextCapability: true, protocol.FunctionToolsCapability: false}, Wait: &protocol.JobWait{TimeoutMillis: 2345, OnTimeout: "continue"},
 	}}
 	if err := s.store.SaveProtocolBinding(t.Context(), b); err != nil {
@@ -388,7 +392,7 @@ func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T
 	if err := s.store.SaveProtocolBinding(t.Context(), unbound); err != nil {
 		t.Fatal(err)
 	}
-	before, err := s.store.ReadProtocolRevision(t.Context(), protocol.PresetAnthropicID, old.Hash())
+	before, err := s.store.ReadProtocolRevision(t.Context(), protocol.PresetAnthropicID, previousHash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +434,7 @@ func TestPresetRecoveryPreservesManualBindingsAndHistoricalRevision(t *testing.T
 			}
 		}
 	}
-	after, err := s.store.ReadProtocolRevision(t.Context(), protocol.PresetAnthropicID, old.Hash())
+	after, err := s.store.ReadProtocolRevision(t.Context(), protocol.PresetAnthropicID, previousHash)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("historical task revision changed", err)
 	}

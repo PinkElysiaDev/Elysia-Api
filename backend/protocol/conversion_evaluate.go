@@ -12,6 +12,9 @@ import (
 // minted through expressions; the separately authenticated continuation module
 // is the only restoration authority.
 func (c *CompiledConversion) ApplyValue(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink) (Value, error) {
+	if phase == ConversionSourceEvent {
+		return Value{}, operationMetadataError("/phase", "source_event requires a source normalizer bound to its decoder")
+	}
 	return c.applyConversionState(ctx, phase, input, route, sink, nil, true)
 }
 
@@ -43,9 +46,6 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 			}
 		}
 	}()
-	if phase == ConversionSourceEvent {
-		return Value{}, streamIssue(InvalidInput, "/sequence", "source_event requires a frame sequence")
-	}
 	if !slices.Contains(conversionPhases(), phase) {
 		return Value{}, streamIssue(InvalidInput, "/phase", "unknown conversion phase")
 	}
@@ -89,7 +89,6 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		}
 	}
 	value := input
-	var reasoningTarget string
 	var modelControls *modelControlExecution
 	for _, rule := range c.phases[phase] {
 		activeRule = rule
@@ -98,18 +97,12 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		}
 		var err error
 		if state.accepts(phase, rule) {
-			var target string
-			target, err = state.apply(ctx, c, phase, rule, route, sink)
+			err = state.apply(ctx, c, phase, rule, route, sink)
 			if err != nil {
 				return Value{}, err
 			}
-			if target != "" {
-				reasoningTarget = target
-				modelControls = nil
-			}
 			if state.resolvedModelControls != nil {
 				modelControls, state.resolvedModelControls = state.resolvedModelControls, nil
-				reasoningTarget = ""
 			}
 			continue
 		}
@@ -117,22 +110,9 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		if err != nil {
 			return Value{}, err
 		}
+		associations := captureRangeAssociations(state.document)
 		switch {
-		case rule.Action == "system_instruction_hoist" || rule.Action == "chat_history" || rule.Action == "assistant_history" || rule.Action == "stream_options" || rule.Action == "request_projection" || rule.Action == "responses_include" || rule.Action == "responses_context" || rule.Action == "responses_storage" || rule.Action == "gemini_safety_settings" || rule.Action == "reasoning_controls":
-			if !rule.Match.matches(route, value) {
-				continue
-			}
-			var resolvedTarget string
-			value, resolvedTarget, err = c.applyRequestAction(ctx, value, route, rule, sink)
-			if resolvedTarget != "" {
-				reasoningTarget = resolvedTarget
-				modelControls = nil
-			}
-		case rule.Action == "chat_response_model" || rule.Action == "anthropic_usage_envelope" || rule.Action == "response_shape" || rule.Action == "response_envelope" || rule.Action == "response_metadata" || rule.Action == "error_metadata" || rule.Action == "usage_projection" || rule.Action == "responses_turn_state":
-			if rule.Match.matches(route, value) {
-				value, err = c.applyResponseAction(ctx, phase, value, route, rule, sink)
-			}
-		case rule.Action == "signatures" || rule.Match.NodeKind != "":
+		case rule.Match.NodeKind != "":
 			value, err = c.applyNodeRule(ctx, phase, value, route, sink, rule)
 		default:
 			if rule.Match.matches(route, value) {
@@ -145,7 +125,12 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 		if err = checkResourceValue(value, limits, "semantic"); err != nil {
 			return Value{}, err
 		}
-		*state = conversionState{wire: value, limits: limits, auxiliary: state.auxiliary, omittedAuxiliary: state.omittedAuxiliary, control: state.control, omittedControl: state.omittedControl}
+		*state = conversionState{wire: value, limits: limits, auxiliary: state.auxiliary, omittedAuxiliary: state.omittedAuxiliary, control: state.control, omittedControl: state.omittedControl, rangeAssociations: associations}
+		if len(associations) != 0 {
+			if err := state.load(phase, true); err != nil {
+				return Value{}, err
+			}
+		}
 		if phase == ConversionEvent && (state.auxiliary != nil || state.omittedAuxiliary != nil || state.control != nil || state.omittedControl != nil) {
 			if err := state.load(phase, true); err != nil {
 				return Value{}, err
@@ -179,106 +164,11 @@ func (c *CompiledConversion) applyConversionState(ctx context.Context, phase Con
 			}
 		}
 	}
-	if reasoningTarget != "" {
-		if err := state.load(ConversionRequest, false); err != nil {
-			return Value{}, err
-		}
-		req := state.document.(*Request)
-		cap := ResolveReasoningCapabilities(reasoningTarget, route.Model)
-		if route.Reasoning != nil {
-			cap = *route.Reasoning
-		}
-		if req.Reasoning != nil && req.Reasoning.Interleaved && !route.InterleavedThinking {
-			return Value{}, candidateFailure(streamIssue(InvalidInput, "/reasoning/interleaved", "target operation lacks the interleaved thinking beta"))
-		}
-		if err := validateReasoningOutputLimit(req, cap, reasoningTarget); err != nil {
-			return Value{}, candidateFailure(err)
-		}
-		if err := validateReasoningModel(req, reasoningTarget, req.Reasoning, cap); err != nil {
-			return Value{}, candidateFailure(err)
-		}
-		if _, err := ReasoningParameters(req, reasoningTarget); err != nil {
-			return Value{}, candidateFailure(err)
-		}
-	}
 	return value, ctx.Err()
 }
 
 // JSON-dependent matches and authored operations retain the original boundary.
 // Contiguous built-in actions use applyRequestObject on an owned document.
-func (c *CompiledConversion) applyRequestAction(ctx context.Context, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, string, error) {
-	var request Request
-	if err := decodeContract(value.Bytes(), &request); err != nil {
-		return Value{}, "", err
-	}
-	target, err := c.applyRequestObject(ctx, &request, route, rule, sink)
-	if err != nil {
-		return Value{}, "", err
-	}
-	value, err = encodeSemanticWithin(&request, c.phaseLimits(ctx, ConversionRequest))
-	return value, target, err
-}
-
-func (c *CompiledConversion) applyRequestObject(ctx context.Context, request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (string, error) {
-	var err error
-	var reasoningTarget string
-	switch rule.Action {
-	case "system_instruction_hoist":
-		err = c.hoistSystem(request, route, rule, sink)
-	case "chat_history", "assistant_history":
-		err = c.assistantHistory(request, route, rule, sink)
-	case "reasoning_controls":
-		err = c.reasoningControls(request, route, rule, sink)
-		if err == nil {
-			var options reasoningOptions
-			options, err = readConversionOption[reasoningOptions](c, rule)
-			reasoningTarget = options.TargetCodec
-		}
-	case "responses_storage":
-		err = c.responsesStorage(request, route, rule, sink)
-	case "responses_include":
-		err = c.responsesInclude(request, route, rule, sink)
-	case "gemini_safety_settings":
-		err = c.geminiSafetySettings(request, route, rule, sink)
-	case "request_projection":
-		err = c.requestProjection(ctx, request, route, rule, sink)
-	case "responses_context":
-		err = c.responsesContext(request, route, rule, sink)
-	case "stream_options":
-		err = c.streamOptions(request, route, rule, sink)
-	}
-	if err != nil {
-		return "", err
-	}
-	return reasoningTarget, nil
-}
-
-func (c *CompiledConversion) applyResponseAction(ctx context.Context, phase ConversionPhase, value Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (Value, error) {
-	switch rule.Action {
-	case "chat_response_model":
-		var response Response
-		if err := value.Decode(&response); err != nil {
-			return Value{}, err
-		}
-		if err := c.repairChatResponseModel(&response, route, rule, sink); err != nil {
-			return Value{}, err
-		}
-		return encodeSemanticWithin(&response, c.phaseLimits(ctx, phase))
-	case "responses_turn_state":
-		return c.projectResponsesTurnState(value, rule, sink, c.phaseLimits(ctx, phase))
-	case "anthropic_usage_envelope":
-		return c.envelopeUsageValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
-	case "response_shape", "response_envelope":
-		return c.responseValue(rule.Action, phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
-	case "response_metadata":
-		return c.metadataValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
-	case "error_metadata":
-		return c.errorMetadataValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
-	case "usage_projection":
-		return c.projectUsageValue(phase, value, route, rule, sink, c.phaseLimits(ctx, phase))
-	}
-	return Value{}, fmt.Errorf("unsupported response conversion action %q", rule.Action)
-}
 
 func (c *CompiledConversion) applyRule(ctx context.Context, phase ConversionPhase, input Value, route ConversionContext, sink *DiagnosticSink, rule ConversionRule) (Value, error) {
 	value := input
@@ -355,7 +245,7 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 				return err
 			}
 			var v Value
-			isBuiltin := rule.Action == "signatures" || rule.Action == "provider_signature" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
+			isBuiltin := rule.Action == "provider_signature"
 			isMatch := false
 			if rule.Match.NodeKind == "" || rule.Match.NodeKind == n.Kind {
 				if isBuiltin {
@@ -370,39 +260,7 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 				}
 			}
 			if isMatch {
-				if rule.Action == "signatures" {
-					foreign := route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion
-					restored := n.Source != nil && n.Source.Protocol.Family == route.Target.Family && n.Source.Protocol.WireVersion == route.Target.WireVersion
-					if foreign && !restored {
-						kept := make([]Resource, 0, len(n.Resources))
-						var digest string
-						hasDigest := false
-						for j, res := range n.Resources {
-							if !IsContinuationResource(res) {
-								kept = append(kept, res)
-								continue
-							}
-							recoverable := false
-							if len(route.Recoverable) > 0 {
-								recoverable = route.Recoverable[ContinuationResourceKey(res)]
-								if !recoverable {
-									if !hasDigest {
-										digest, hasDigest = ContinuationNodeDigest(*n), true
-									}
-									recoverable = route.Recoverable[digest]
-								}
-							}
-							reason := "foreign " + res.Kind + " has no target representation; recovery unavailable"
-							if recoverable {
-								reason = "foreign " + res.Kind + " preserved in authenticated continuation state"
-							}
-							if err := c.issue(rule, phase, route, fmt.Sprintf("%s/resources/%d", at, j), reason, sink, !recoverable); err != nil {
-								return err
-							}
-						}
-						n.Resources = kept
-					}
-				} else if rule.Action == "provider_signature" && !HasSignature(*n) {
+				if rule.Action == "provider_signature" && !HasSignature(*n) {
 					if !c.VerifiedProviderRules[rule.ID] {
 						return streamIssue(VerificationRequired, at+"/resources", "provider signature compatibility value requires verification for this policy, protocol revision, account and model")
 					}
@@ -416,11 +274,7 @@ func (c *CompiledConversion) applyNodeObject(ctx context.Context, phase Conversi
 					n.Resources = append(n.Resources, Resource{Kind: "signature", ID: signature, Scope: route.Scope})
 					n.Source = &Provenance{Protocol: route.Target, Direction: DecodeResponse, Scope: route.Scope}
 					n.Native = nil
-				} else if rule.Action == "tool_result_text" || rule.Action == "tool_result_object" {
-					if err := c.toolResult(n, route, rule, at, sink); err != nil {
-						return err
-					}
-				} else {
+				} else if !isBuiltin {
 					out, err := c.applyRule(ctx, phase, v, route, sink, rule)
 					if err != nil {
 						return err
@@ -478,7 +332,7 @@ func protectConversionProvenance(before, after Value) error {
 				return err
 			}
 			for key, child := range fields {
-				if key == "source" || key == "native" || key == "scope" || key == "resources" || key == "thoughtSignature" || key == "signature" || key == "encrypted_content" || key == "elysia_continuation" || key == "responsesTurnState" {
+				if key == "source" || key == "native" || key == "scope" || key == "resources" || key == "thoughtSignature" || key == "signature" || key == "encrypted_content" || key == "elysia_continuation" {
 					id := key + ":" + hashValue(child)
 					if key == "resources" {
 						owner := Object{}

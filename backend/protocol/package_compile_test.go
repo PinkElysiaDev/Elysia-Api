@@ -7,7 +7,7 @@ import (
 
 func compilePackageForTest(t *testing.T, document ProtocolPackage) *Compiled {
 	t.Helper()
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestPackageEmitProofThroughLocalBinding(t *testing.T) {
 	document.Mapping.Directions[DecodeRequest] = entry
 	compilePackageForTest(t, document)
 	body.Fields["model"] = Expression{Op: "read", From: "binding", Name: "other"}
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestCompilePackageExecutesIndependentContracts(t *testing.T) {
 	}
 	compiled := compilePackageForTest(t, document)
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {
-		if compiled.Codec(direction) != "" || compiled.mappings[direction].outputPlan == nil {
+		if compiled.mappings[direction].outputPlan == nil {
 			t.Fatal("package did not compile a declarative output plan", direction)
 		}
 	}
@@ -135,7 +135,7 @@ func TestCompilePackageRejectsUnprovedEffects(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			document := textProtocolPackage(t)
 			tc.change(&document)
-			compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, _ := NewCompiler(DefaultLimits(), nil)
 			value, _ := EncodeValue(document)
 			compiled, issues := compiler.CompilePackage(value.Bytes())
 			if err := IssuesError(issues); compiled != nil || err == nil || !strings.Contains(err.Error(), tc.reason) {

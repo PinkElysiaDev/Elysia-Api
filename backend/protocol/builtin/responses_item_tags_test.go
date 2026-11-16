@@ -18,14 +18,14 @@ func TestResponsesToolAndThinkingTagsRetainTheirItems(t *testing.T) {
 		for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
 			to := shippedProjectionProtocol(t, target)
 			c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-			r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+item+`],"usage":{"input_tokens":1,"output_tokens":1}}`), p.EvaluationContext{})
+			r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+item+`],"usage":{"input_tokens":1,"output_tokens":1}}`), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(r.Content[0].Metadata) != 2 {
 				t.Fatal("item annotations remained opaque", r.Content)
 			}
-			projected, err := c.Response(t.Context(), r, p.ConversionContext{}, nil)
+			projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -33,7 +33,7 @@ func TestResponsesToolAndThinkingTagsRetainTheirItems(t *testing.T) {
 			for i := range projected.Content {
 				projected.Content[i].Native = nil
 			}
-			wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatalf("%s: %v", target, err)
 			}
@@ -54,11 +54,11 @@ func TestResponsesToolTagsStreamAndCollector(t *testing.T) {
 		`{"type":"response.output_item.done","output_index":0,"item":` + done + `}`,
 		`{"type":"response.completed","response":{"id":"r","model":"m","created_at":1,"status":"completed","output":[` + done + `],"usage":{"input_tokens":3,"output_tokens":1}}}`}
 	from := shippedProjectionProtocol(t, Responses)
-	collector, err := p.NewResponseCollector(p.Target{Protocol: from.Identity(), Direction: p.EncodeEvent, Capabilities: from.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	collector, err := p.NewResponseCollector(from.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := p.EvaluationContext{State: p.NewEvaluationState()}
+	opts := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	for _, body := range raw {
 		frame, err := from.DecodeFrame(t.Context(), testValue(t, body), opts)
 		if err != nil {
@@ -87,7 +87,8 @@ func TestResponsesToolTagsStreamAndCollector(t *testing.T) {
 		}
 	}
 	for _, raw := range []string{`{"create_time":null}`, `{"create_time":"now"}`, `{"create_time":-1}`} {
-		if err := p.ValidateMetadataValue(Responses, "item", "internal_chat_message_metadata_passthrough", testValue(t, raw), "/item/internal_chat_message_metadata_passthrough"); err == nil {
+		body := `{"id":"r","model":"m","output":[{"type":"function_call","id":"fc","call_id":"call","name":"lookup","arguments":"{}","internal_chat_message_metadata_passthrough":` + raw + `}]}`
+		if _, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{})); err == nil || !strings.Contains(err.Error(), "/internal_chat_message_metadata_passthrough") {
 			t.Fatal("invalid time accepted", raw)
 		}
 	}

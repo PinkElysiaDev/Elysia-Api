@@ -74,7 +74,7 @@ func TestCollectorContinuationDigestSharesBudget(t *testing.T) {
 			if _, _, err := collector.Consume(finish); err != nil {
 				t.Fatal(err)
 			}
-			end := Event{SchemaVersion: 1, Type: ResponseFinished}
+			end := Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished}
 			if terminal {
 				if _, _, err := collector.Consume(end); err != nil {
 					t.Fatal(err)
@@ -130,7 +130,7 @@ func TestCollectorFinalUsageSharesBudget(t *testing.T) {
 		}
 		t.Cleanup(collector.Release)
 		usage := &Usage{Input: &Counter{Count: 7, Origin: ObservedCount}, Details: map[string]Counter{"media": {Count: 2, Origin: ObservedCount}}}
-		if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Usage: usage}}); err != nil {
+		if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: &Response{SchemaVersion: SemanticSchemaVersion, Usage: usage}}); err != nil {
 			t.Fatal(err)
 		}
 		if collector.response.Usage != nil {

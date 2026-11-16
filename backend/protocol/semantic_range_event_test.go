@@ -32,7 +32,7 @@ func TestSemanticRangesRejectAuthorityAndStateAccess(t *testing.T) {
 		entry := document.Mapping.Directions[EncodeEvent]
 		entry.SemanticRanges[0].Texts = expression
 		document.Mapping.Directions[EncodeEvent] = entry
-		compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, err := NewCompiler(DefaultLimits(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,7 +68,7 @@ func TestSemanticEventRangesPreserveOnlyUnchangedText(t *testing.T) {
 			if _, err := compiled.EncodeConvertedFrame(t.Context(), &EventFrame{Events: []Event{original}}, []Event{changed}, options); err != nil {
 				t.Fatal("unreferenced text rewrite must remain allowed", err)
 			}
-			key := moduleStateKey{compiled: compiled, direction: EncodeEvent}
+			key := executionStateKey{compiled: compiled, direction: EncodeEvent}
 			positions := options.State.packageStates[key].semanticRanges
 			if positions.stagedBytes != 0 || len(positions.pending) != 0 {
 				t.Fatal("encoding retained the current text payload")

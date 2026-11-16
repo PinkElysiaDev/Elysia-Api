@@ -63,6 +63,11 @@ func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
 	if err := IssuesError(CheckEvent(event, replay.target, replay.limits)); err != nil {
 		return false, err
 	}
+	if receipt := event.auxiliary; receipt != nil {
+		if err := receipt.checkLimits(replay.limits); err != nil {
+			return false, resourceIssue(err, event.Source, DecodeEvent, "replay.event")
+		}
+	}
 	if accepted, err := acceptEventSequence(replay.sequence, event); err != nil || !accepted {
 		return accepted, err
 	}

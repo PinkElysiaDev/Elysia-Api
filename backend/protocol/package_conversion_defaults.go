@@ -5,12 +5,14 @@ import (
 	"reflect"
 )
 
-// ProtocolConversionDefault declares one complete overridable target rule.
+// ProtocolConversionDefault declares one complete overridable mapping rule.
 type ProtocolConversionDefault struct {
 	// Use binds a declared request program instead of local control steps.
 	Use               string                        `json:"use,omitempty" jsonschema:"enum=request_projection,enum=model_policy"`
 	Recovery          *ProtocolRecoveryDisposition  `json:"recovery,omitempty"`
 	StreamDisposition *ProtocolStreamDisposition    `json:"streamDisposition,omitempty"`
+	Prelude           *ProtocolEventPrelude         `json:"prelude,omitempty"`
+	SourcePrelude     *ProtocolSourcePrelude        `json:"sourcePrelude,omitempty"`
 	ID                string                        `json:"id"`
 	Order             int                           `json:"order"`
 	Enabled           bool                          `json:"enabled"`
@@ -64,12 +66,23 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 			return fmt.Errorf("%s/order: ambiguous rule order", path)
 		}
 		orders[order] = declaration.Enabled || orders[order]
-		if declaration.StreamDisposition != nil {
-			rule, err := compiled.compileStreamDisposition(declaration)
+		if declaration.SourcePrelude != nil {
+			rule, err := compiled.compileSourcePrelude(declaration, compiler)
 			if err != nil {
 				return locateMappingError(path, err)
 			}
 			compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
+			continue
+		}
+		if declaration.Prelude != nil {
+			rule, err := compiled.compileEventPrelude(declaration, compiler)
+			if err != nil {
+				return locateMappingError(path, err)
+			}
+			compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
+			continue
+		}
+		if declaration.StreamDisposition != nil {
 			continue
 		}
 		if declaration.Use != "" {
@@ -148,6 +161,17 @@ func (compiled *Compiled) compileConversionDefaults(mapping ProtocolMapping, com
 		}
 		options.Steps, options.Expressions = nil, nil
 		rule.preparedOption = &preparedConversionOption{declarationHash: fingerprint, phase: rule.Phase, limits: compiler.limits, option: conversionOption{raw: value, value: options}}
+		compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
+	}
+	// Resolve companion response rules after all local declarations are compiled.
+	for index, declaration := range mapping.ConversionDefaults {
+		if declaration.StreamDisposition == nil {
+			continue
+		}
+		rule, err := compiled.compileStreamDisposition(declaration)
+		if err != nil {
+			return locateMappingError(fmt.Sprintf("/mapping/conversionDefaults/%d", index), err)
+		}
 		compiled.packagePlan.conversionDefaults = append(compiled.packagePlan.conversionDefaults, rule)
 	}
 	return compiled.compileFieldObservations(mapping.FieldObservations)
@@ -275,12 +299,13 @@ func controlsReadContext(steps []compiledControlStep) bool {
 				return true
 			}
 		}
-		for _, field := range plan.fields {
+		fields, cases := plan.readCollections()
+		for _, field := range fields {
 			if reads(field.expression) {
 				return true
 			}
 		}
-		for _, child := range plan.cases {
+		for _, child := range cases {
 			if reads(child) {
 				return true
 			}
@@ -291,13 +316,16 @@ func controlsReadContext(steps []compiledControlStep) bool {
 		if step.layout != nil && (reads(step.layout.when) || reads(step.layout.childWhen) || controlsReadContext(step.layout.steps)) {
 			return true
 		}
+		if step.layout != nil && step.layout.wrapper != nil && (reads(step.layout.wrapper.id) || reads(step.layout.wrapper.status)) {
+			return true
+		}
 		if step.layout != nil && step.layout.text != nil {
 			text := step.layout.text
 			if reads(text.messageWhen) || reads(text.measure) {
 				return true
 			}
 			for _, program := range text.metadata {
-				if reads(program) {
+				if reads(program.value) || reads(program.references) {
 					return true
 				}
 			}
@@ -326,7 +354,7 @@ func conversionRuleFingerprint(rule ConversionRule) (string, error) {
 }
 
 func (compiled *Compiled) defaultConversionRules(phase ConversionPhase) []ConversionRule {
-	if compiled == nil || compiled.packagePlan == nil {
+	if compiled == nil {
 		return nil
 	}
 	var rules []ConversionRule
@@ -340,7 +368,7 @@ func (compiled *Compiled) defaultConversionRules(phase ConversionPhase) []Conver
 
 func (compiled *Compiled) defaultRequestConversionRules(source *Compiled) []ConversionRule {
 	rules := compiled.defaultConversionRules(ConversionRequest)
-	if source == nil || source.packagePlan == nil || source.packagePlan.modelPolicy == nil || source.packagePlan.modelPolicy.normalization == nil {
+	if source == nil || source.packagePlan.modelPolicy == nil || source.packagePlan.modelPolicy.normalization == nil {
 		return rules
 	}
 	for index := range rules {

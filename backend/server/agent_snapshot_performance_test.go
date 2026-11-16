@@ -37,7 +37,7 @@ func TestAgentSnapshotPinsInFlightConfiguration(t *testing.T) {
 func testAgentSnapshotUpdate(t *testing.T, change string) {
 	const rejectionReason = "policy changed during Agent call"
 	s := newAgentIntegrationServer(t)
-	seedGatewayPackages(t, s)
+	defaultGatewayPackages(t, s)
 	started, release := make(chan struct{}), make(chan struct{})
 	upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, call int) {
 		if call == 1 {
@@ -109,7 +109,7 @@ func TestAgentSnapshotPerformance(t *testing.T) {
 	s := newAgentIntegrationServer(t)
 	execution := "legacy"
 	if os.Getenv("ELYSIA_AGENT_SNAPSHOT_DEFAULT") != "1" {
-		seedGatewayPackages(t, s)
+		defaultGatewayPackages(t, s)
 		execution = "packages"
 	}
 	bodyKB := 0

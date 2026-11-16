@@ -38,7 +38,7 @@ func scalarArrayOracle(plan *compiledOutputPlan, state evaluation) (Value, error
 	if err := state.advance(); err != nil {
 		return Value{}, locateMappingError(plan.expression.path, err)
 	}
-	source, err := plan.source.buildNode(state)
+	source, err := plan.source.buildNode(&state)
 	if err != nil {
 		return Value{}, locateMappingError(plan.expression.path, err)
 	}

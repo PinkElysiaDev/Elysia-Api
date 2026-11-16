@@ -17,7 +17,7 @@ import (
 )
 
 const sqliteBusyTimeout = 5 * time.Second
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 func Open(path string) (*Store, error) {
 	return OpenWithKey(path, nil)

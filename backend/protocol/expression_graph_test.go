@@ -37,6 +37,49 @@ func TestReleasedExpressionGraphPreservesExecution(t *testing.T) {
 	}
 }
 
+func TestReleasedObjectPlanRetainsProjectKeys(t *testing.T) {
+	for _, fixture := range []struct {
+		policy string
+		keys   []string
+	}{
+		{"include", []string{"z", "missing", "a"}},
+		{"exclude", []string{"required", "drop"}},
+	} {
+		t.Run(fixture.policy, func(t *testing.T) {
+			compiler := newExpressionCompiler(DefaultLimits(), nil)
+			plan, err := compiler.compilePlan(objectExpression(map[string]Expression{
+				"tail": {Op: "read", Path: "/required", Required: true},
+				"selected": {Op: "project", Source: expressionPointer(readExpression("input", "")),
+					Keys: fixture.keys, Policy: fixture.policy},
+			}), "/program", expressionScope{}, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := parseTestValue(t, `{"z":9007199254740993,"drop":false,"a":null,"required":"ok"}`)
+			run := func(value Value) (Value, error) {
+				return plan.evaluate(evaluation{ctx: t.Context(), input: value, budget: &evaluationBudget{limits: DefaultLimits()}})
+			}
+			want, err := run(input)
+			_, missing := run(parseTestValue(t, `{"a":null,"z":9007199254740993}`))
+			if err != nil || want.JSONString() != `{"selected":{"a":null,"z":9007199254740993},"tail":"ok"}` || missing == nil {
+				t.Fatal("invalid object/project release fixture", want, err, missing)
+			}
+			compiledExpressions := compiler.compiledExpressions
+			compiler.releaseGraph()
+			for _, expression := range compiledExpressions {
+				if expression.expressionCompileFacts != nil {
+					t.Fatal("object/project plan retained compilation facts")
+				}
+			}
+			got, err := run(input)
+			_, gotMissing := run(parseTestValue(t, `{"a":null,"z":9007199254740993}`))
+			if got != want || err != nil || fmt.Sprint(gotMissing) != fmt.Sprint(missing) || mappingErrorPath("", gotMissing) != "/program/fields/tail" {
+				t.Fatal("release changed object order, project keys or error location", got, err, gotMissing)
+			}
+		})
+	}
+}
+
 func TestPackageReleasesExpressionGraphsAfterProofs(t *testing.T) {
 	compiled := compilePackageForTest(t, textProtocolPackage(t))
 	if compiled.compileExpressions != nil {
@@ -58,10 +101,11 @@ func TestPackageReleasesExpressionGraphsAfterProofs(t *testing.T) {
 		for _, child := range plan.items {
 			visit(child)
 		}
-		for _, child := range plan.cases {
+		fields, cases := plan.readCollections()
+		for _, child := range cases {
 			visit(child)
 		}
-		for _, field := range plan.fields {
+		for _, field := range fields {
 			visit(field.expression)
 		}
 	}

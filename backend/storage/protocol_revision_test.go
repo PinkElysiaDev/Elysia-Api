@@ -13,7 +13,7 @@ import (
 
 func newRevisionService(t *testing.T, store *Store) *protocol.Service {
 	t.Helper()
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,19 +26,29 @@ func newRevisionService(t *testing.T, store *Store) *protocol.Service {
 
 func revisionFixture(t *testing.T, version string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "text-alpha.json"))
+	document := protocol.ProtocolPackage{SchemaVersion: protocol.ProtocolPackageSchemaVersion}
+	for _, source := range []struct {
+		name   string
+		target any
+	}{{"spec", &document.Spec}, {"mapping", &document.Mapping}} {
+		raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", "packages", "text-alpha", source.name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		value, err := protocol.ParseValue(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := value.Decode(source.target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	document.Spec.Version = version
+	value, err := protocol.EncodeValue(document)
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := protocol.ParseValue(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	edited, err := protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/version", Value: protocol.StringValue(version)}}, protocol.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return edited.Bytes()
+	return value.Bytes()
 }
 
 func verifySavedDraft(t *testing.T, service *protocol.Service, raw []byte, previous string) (protocol.Draft, protocol.Revision) {
@@ -94,7 +104,7 @@ func TestProtocolRevisionActivationPinningAndRestart(t *testing.T) {
 		t.Fatal("future requests did not observe new revision")
 	}
 	changes, err := service.Diff(t.Context(), "text-alpha", first.Hash, second.Hash)
-	if err != nil || len(changes) != 1 || changes[0].Path != "/version" {
+	if err != nil || len(changes) != 1 || changes[0].Path != "/spec/version" {
 		t.Fatalf("revision diff: %+v %v", changes, err)
 	}
 	if err := store.Close(); err != nil {
@@ -180,7 +190,7 @@ func TestProtocolFailedActivationAndReloadPreserveSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invalid, err := protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/capabilities/tools.function", Value: flag}}, protocol.DefaultLimits())
+	invalid, err := protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/mapping/capabilities/tools.function", Value: flag}}, protocol.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,8 +282,8 @@ func TestProtocolConcurrentReadersKeepPinnedRevisions(t *testing.T) {
 					failures <- fmt.Errorf("unverified revision published")
 					return
 				}
-				definition := pinned.Definition()
-				request, err := pinned.DecodeRequest(t.Context(), definition.Samples[0].Input.Bytes(), protocol.EvaluationContext{})
+				document, _ := pinned.Package()
+				request, err := pinned.DecodeRequest(t.Context(), document.Mapping.Samples[0].Input.Bytes(), protocol.EvaluationContext{})
 				if err != nil {
 					failures <- err
 					return

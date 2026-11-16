@@ -114,8 +114,8 @@ func TestSessionAuthorizationAndAssociationFailures(t *testing.T) {
 		{"unknown-cancel", ClientEvent, sessionEvent(ResponseCancel, "missing"), InvalidAssociation},
 		{"unknown-response", UpstreamEvent, sessionEvent(ResponseFinished, "missing"), InvalidAssociation},
 		{"missing-response", UpstreamEvent, sessionEvent(ResponseFinished, ""), InvalidAssociation},
-		{"model-change", ClientEvent, Event{SchemaVersion: 1, Type: SessionConfigure, Request: &Request{SchemaVersion: 1, Model: StringValue("other")}}, InvalidAssociation},
-		{"unknown-tool", ClientEvent, Event{SchemaVersion: 1, Type: ToolResultSubmitted, Item: &Node{Kind: ToolResultNode, CallID: StringValue("unknown"), Payload: StringValue("x")}}, InvalidAssociation},
+		{"model-change", ClientEvent, Event{SchemaVersion: SemanticSchemaVersion, Type: SessionConfigure, Request: &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("other")}}, InvalidAssociation},
+		{"unknown-tool", ClientEvent, Event{SchemaVersion: SemanticSchemaVersion, Type: ToolResultSubmitted, Item: &Node{Kind: ToolResultNode, CallID: StringValue("unknown"), Payload: StringValue("x")}}, InvalidAssociation},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

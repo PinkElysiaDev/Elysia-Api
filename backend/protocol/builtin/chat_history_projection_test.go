@@ -15,7 +15,7 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 			last += `,{"type":"function_call_output","call_id":"call1","output":"one"},{"type":"function_call_output","call_id":"call2","output":"two"}`
 		}
 		raw := `{"model":"m","store":false,"input":[{"role":"user","content":"hi"},{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"visible"}]},` + last + `]}`
-		r, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+		r, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -30,6 +30,12 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 			}
 			sink := &p.DiagnosticSink{}
 			projected, err := c.Request(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, sink)
+			if strict {
+				if err == nil {
+					t.Fatal("strict mode accepted message boundary loss")
+				}
+				continue
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +46,7 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 			if len(r.Content) < 3 || len(projected.Content) != want || projected.Content[1].Kind != p.MessageNode {
 				t.Fatal("source changed or assistant turn not grouped")
 			}
-			wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+			wire, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,15 +69,15 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 			}
 			found := false
 			for _, i := range sink.Issues() {
-				found = found || (i.RuleID == "chat-assistant-history" && i.Code == p.ConversionNormalized && i.PolicyHash == c.Hash)
+				found = found || (i.RuleID == "assistant-history" && i.Code == p.ConversionDegraded && i.PolicyHash == c.Hash)
 			}
 			if !found {
-				t.Fatal("normalization not diagnosed")
+				t.Fatal("message boundary loss not diagnosed")
 			}
 		}
 		policy := p.DefaultConversionPolicy(from, to)
 		for i := range policy.Rules {
-			if policy.Rules[i].Action == "chat_history" {
+			if policy.Rules[i].ID == "assistant-history" || policy.Rules[i].ID == "history-text" || policy.Rules[i].ID == "tool-result-history" {
 				policy.Rules[i].Enabled = false
 			}
 		}
@@ -80,7 +86,7 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+		wire, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 		if err == nil {
 			err = to.ValidateWireOutput(p.EncodeRequest, testValue(t, string(wire)))
 		}
@@ -92,7 +98,7 @@ func TestChatHistoryGroupsThinkingWithAssociatedReply(t *testing.T) {
 
 func TestChatHistoryDoesNotCrossTurnsOrDropProtectedState(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Chat)
-	base := &p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("visible")}, {Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("reply")}}}}}
+	base := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("visible")}, {Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("reply")}}}}}
 	for _, mutate := range []func(*p.Request){
 		func(r *p.Request) { r.Content[1].Role = p.StringValue("user") },
 		func(r *p.Request) { r.Content = r.Content[:1] },

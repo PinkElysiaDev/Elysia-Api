@@ -43,11 +43,11 @@ func TestCoreRetentionCombinesIdentitiesAndToolInput(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	event := Event{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("a" + strings.Repeat("i", 170)), Delta: StringValue(strings.Repeat(" ", 180))}
+	event := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("a" + strings.Repeat("i", 170)), Delta: StringValue(strings.Repeat(" ", 180))}
 	if _, err := replay.Consume(event); !hasIssueCode(err, LimitExceeded) {
 		t.Fatal("identities and input buffers obtained independent byte budgets", err)
 	}
-	if _, err := replay.Consume(Event{SchemaVersion: 1, Type: OperationCancelled}); err != nil {
+	if _, err := replay.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: OperationCancelled}); err != nil {
 		t.Fatal(err)
 	}
 	if replay.state.buffered != 0 {
@@ -69,7 +69,7 @@ func TestCoreReleaseClosesReplay(t *testing.T) {
 	if replay.state != nil || replay.sequence != nil || replay.items != nil || replay.identities != nil {
 		t.Fatal("release retained replay state")
 	}
-	if isAccepted, err := replay.Consume(Event{SchemaVersion: 1, Type: OperationCancelled}); err == nil || isAccepted {
+	if isAccepted, err := replay.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: OperationCancelled}); err == nil || isAccepted {
 		t.Fatal("released replay resumed", err)
 	}
 	if err := replay.Finish(); err == nil {
@@ -138,7 +138,7 @@ func TestCoreUsageDetailsShareDynamicCapacity(t *testing.T) {
 	if _, err := replay.Consume(messageEvent(ItemStarted, "text", "", &Node{Kind: TextNode})); err != nil {
 		t.Fatal(err)
 	}
-	update := Event{SchemaVersion: 1, Type: UsageUpdated, Usage: &Usage{Details: map[string]Counter{"search": {Count: 1, Origin: ObservedCount}}}}
+	update := Event{SchemaVersion: SemanticSchemaVersion, Type: UsageUpdated, Usage: &Usage{Details: map[string]Counter{"search": {Count: 1, Origin: ObservedCount}}}}
 	for range 2 {
 		if _, err := replay.Consume(update); err != nil {
 			t.Fatal("repeated usage counter consumed a new item", err)

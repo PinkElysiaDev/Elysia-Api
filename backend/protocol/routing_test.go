@@ -8,7 +8,7 @@ import (
 func TestRouteChecksModelCapabilitiesWithoutEditingContent(t *testing.T) {
 	compiled := compileTestDefinition(t, testDefinition("model", "model", "history", "tools", "answer"))
 	binding := Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: CapabilitySet{TextCapability: true}, Transports: []Transport{HTTPJSON}}
-	request := &Request{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue("hello")}}, Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup")}}}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: TextNode, Payload: StringValue("hello")}}, Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup")}}}
 	issues := CheckRoute(request, compiled, binding, Scope{}, HTTPJSON)
 	if len(issues) == 0 || issues[0].Code != UnsupportedCapability || len(request.Tools) != 1 {
 		t.Fatalf("incapable model changed/accepted request: %+v %+v", issues, request)
@@ -57,10 +57,10 @@ func TestRuntimeStampsNestedEventScopesAndIdentity(t *testing.T) {
 
 func TestCompiledOperationsReturnIndependentMetadata(t *testing.T) {
 	definition := testDefinition("immutable", "model", "history", "tools", "answer")
-	operation := definition.Operations["generate"]
+	operation := definition.Spec.Operations["generate"]
 	operation.Headers = map[string]string{"X-Mode": "original"}
 	operation.Framing = &Framing{Done: []string{"[DONE]"}}
-	definition.Operations["generate"] = operation
+	definition.Spec.Operations["generate"] = operation
 	compiled := compileTestDefinition(t, definition)
 	copy := compiled.Operations()
 	copy["generate"].Headers["X-Mode"] = "changed"

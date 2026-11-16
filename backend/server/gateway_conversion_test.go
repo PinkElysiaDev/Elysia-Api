@@ -42,12 +42,12 @@ func TestGatewayGeminiClientStreamUsagePreferences(t *testing.T) {
 			defer provider.Close()
 			setupGatewayModel(t, s, upstream, provider.URL)
 			body := `{"model":"group","stream":true,"messages":[{"role":"user","content":"hi"}]` + test.option + "}"
-			req := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/chat/completions", strings.NewReader(body))
+			req := httptest.NewRequest(http.MethodPost, "/gateway/openai-chat-completions/v1/chat/completions", strings.NewReader(body))
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			rec := httptest.NewRecorder()
 			serveTestHTTP(s.engine, rec, req)
 			if test.reject {
-				if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "/stream_options/future_flag") {
+				if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "conversion_rejected at /parameters:") {
 					t.Fatal("unknown stream option reached upstream", rec.Code, calls, rec.Body)
 				}
 				return
@@ -142,7 +142,9 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 	service, _ := s.protocolService()
 	upstream, _ := service.Pin(protocol.PresetGeminiID)
 	wantSignature := false
+	calls := 0
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
 		raw, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(raw), `"thoughtSignature":"signed-text"`) != wantSignature {
 			t.Errorf("unexpected recovery; want signature %v, body %s", wantSignature, raw)
@@ -155,18 +157,18 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 	}))
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
-	call := func(session, body string) *httptest.ResponseRecorder {
+	call := func(session, body string, status int) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		r.Header.Set("x-elysia-session-id", session)
 		rec := httptest.NewRecorder()
 		serveTestHTTP(s.engine, rec, r)
-		if rec.Code != 200 {
+		if rec.Code != status {
 			t.Fatalf("HTTP %d %s", rec.Code, rec.Body)
 		}
 		return rec
 	}
-	first := call("stable", `{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`)
+	first := call("stable", `{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`, http.StatusOK)
 	stats, err := s.store.ContinuationStats(t.Context())
 	if err != nil || stats["records"] != 1 {
 		t.Fatal(stats, err)
@@ -180,10 +182,10 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 	}
 	body := `{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":[{"type":"text","text":"hello"}]},{"role":"user","content":"continue"}]}`
 	wantSignature = true
-	call("stable", body)
+	call("stable", body, http.StatusOK)
 	wantSignature = false
-	call("different-session", body)
-	call("stable", strings.Replace(body, `"text":"hello"`, `"text":"modified"`, 1))
+	call("different-session", body, http.StatusOK)
+	call("stable", strings.Replace(body, `"text":"hello"`, `"text":"modified"`, 1), http.StatusOK)
 	var response struct {
 		Content json.RawMessage `json:"content"`
 	}
@@ -191,7 +193,11 @@ func TestGatewayContinuationPersistenceAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	bodyWithCarrier := strings.Replace(body, `[{"type":"text","text":"hello"}]`, string(response.Content), 1)
-	call("another-session", bodyWithCarrier)
+	before := calls
+	rejected := call("another-session", bodyWithCarrier, http.StatusBadRequest)
+	if calls != before || !strings.Contains(rejected.Body.String(), "continuation session, owner or upstream scope differs") {
+		t.Fatal("foreign-session carrier reached upstream", calls-before, rejected.Body.String())
+	}
 }
 
 func TestGatewayParallelGeminiToolSignatures(t *testing.T) {
@@ -274,7 +280,7 @@ func testGatewayStrictLateGeminiSignature(t *testing.T, isPackage, editDelta boo
 	})
 	var upstream *protocol.Compiled
 	if isPackage {
-		upstream = seedGatewayPackages(t, s)["google-generate-content"]
+		upstream = defaultGatewayPackages(t, s)["google-generate-content"]
 	} else {
 		activateDiscoveryPresets(t, s)
 	}

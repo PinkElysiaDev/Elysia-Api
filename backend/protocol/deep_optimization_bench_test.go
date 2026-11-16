@@ -25,7 +25,7 @@ func readDeepPackage(tb testing.TB, name string) ([]byte, []byte) {
 
 func deepCompiler(tb testing.TB) *Compiler {
 	tb.Helper()
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		tb.Fatal(err)
 	}

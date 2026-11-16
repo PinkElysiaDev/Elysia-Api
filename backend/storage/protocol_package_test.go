@@ -15,7 +15,7 @@ func TestProtocolPackageRevisionLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, []string{"tasks.async"})
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), []string{"tasks.async"})
 	if err != nil {
 		t.Fatal(err)
 	}

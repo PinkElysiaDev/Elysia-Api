@@ -109,11 +109,28 @@ func TestQueryAuthSecretSanitizedInTransportError(t *testing.T) {
 
 // Interleaved tool arguments must retain distinct, stable downstream slots.
 func TestStreamToolStableSlotIndices(t *testing.T) {
-	decoder := compileFixtureDefinition(t, presetDefinition(t, "anthropic-messages"))
-	encoder := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
+	decoder := compileFixturePackage(t, presetPackage(t, "anthropic-messages"))
+	encoder := compileFixturePackage(t, presetPackage(t, "openai-chat-completions"))
 	decodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
-	encodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
+	defer decodeOptions.State.Release()
+	encodeOptions, err := (protocol.EvaluationContext{State: protocol.NewEvaluationState()}).WithOperation("stable-tool-slots", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer encodeOptions.State.Release()
+	validation, err := encoder.NewWireStreamValidation(encodeOptions.Scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer validation.Release()
+	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(encoder, decoder))
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := (protocol.ConversionContext{Source: decoder.Identity(), Target: encoder.Identity(), Transport: protocol.SSE}).WithOperation(encodeOptions)
+	encodeOptions = encodeOptions.WithOutputStream(validation).WithConversion(conversion, route)
 	frames := []string{
+		`{"type":"message_start","message":{"id":"r","model":"m","role":"assistant","content":[],"usage":{"input_tokens":0,"output_tokens":0}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_a","name":"first","input":{}}}`,
 		`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_b","name":"second","input":{}}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":"}}`,
@@ -131,11 +148,28 @@ func TestStreamToolStableSlotIndices(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		chunks, err := encoder.EncodeFrame(t.Context(), frame, encodeOptions)
+		frameRoute, err := conversion.WithFrameUsage(route, frame.Events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		projected := make([]protocol.Event, len(frame.Events))
+		for index, event := range frame.Events {
+			projected[index], err = conversion.Event(t.Context(), event, frameRoute, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		chunks, err := encoder.EncodeConvertedFrame(t.Context(), frame, projected, encodeOptions)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, chunk := range chunks {
+			if err := validation.Consume(t.Context(), chunk); err != nil {
+				t.Fatal(err)
+			}
+			if err := validation.CommitDelivery(); err != nil {
+				t.Fatal(err)
+			}
 			var wire struct {
 				Choices []struct {
 					Delta struct {
@@ -220,18 +254,28 @@ func TestPresetCombinedFramesEndToEnd(t *testing.T) {
 func TestCustomProtocolMappedErrorIsFailure(t *testing.T) {
 	definition := standaloneWireDefinition(t, protocol.HTTPJSON)
 	for _, direction := range []protocol.Direction{protocol.DecodeResponse, protocol.EncodeResponse} {
-		mapping := definition.Directions[direction]
+		mapping := definition.Mapping.Directions[direction]
 		errorFields := map[string]protocol.Expression{"error": {Op: "read", Path: "/error", Required: true}}
 		if direction == protocol.DecodeResponse {
-			errorFields["schemaVersion"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `1`)}
+			errorFields["schemaVersion"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `2`)}
 			errorFields["content"] = protocol.Expression{Op: "literal", Value: mustProtocolValue(t, `[]`)}
 		}
-		mapping.Transform = &protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: "/error"}}, Then: &protocol.Expression{Op: "object", Fields: errorFields}, Otherwise: mapping.Transform}
-		definition.Directions[direction] = mapping
+		for index := range mapping.Effects {
+			effect := &mapping.Effects[index]
+			inputPath, outputPath := effect.Path, effect.Target
+			if direction == protocol.DecodeResponse {
+				inputPath, outputPath = outputPath, inputPath
+			}
+			effect.When = &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: inputPath}}
+			errorFields[strings.TrimPrefix(outputPath, "/")] = protocol.Expression{Op: "read", Path: inputPath}
+		}
+		previous := mapping.Program
+		mapping.Program = protocol.Expression{Op: "if", When: &protocol.Expression{Op: "exists", Source: &protocol.Expression{Op: "read", Path: "/error"}}, Then: &protocol.Expression{Op: "object", Fields: errorFields}, Otherwise: &previous}
+		definition.Mapping.Directions[direction] = mapping
 	}
 	errorWire := mustProtocolValue(t, `{"error":{"message":"quota exhausted","category":"upstream"}}`)
-	errorSemantic := mustProtocolValue(t, `{"schemaVersion":1,"content":[],"error":{"message":"quota exhausted","category":"upstream"}}`)
-	definition.Samples = append(definition.Samples, protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: errorWire, Expected: errorSemantic}, protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: errorSemantic, Expected: errorWire})
+	errorSemantic := mustProtocolValue(t, `{"schemaVersion":2,"content":[],"error":{"message":"quota exhausted","category":"upstream"}}`)
+	definition.Mapping.Samples = append(definition.Mapping.Samples, protocol.Sample{ID: "failure.decode", Direction: protocol.DecodeResponse, Input: errorWire, Expected: errorSemantic}, protocol.Sample{ID: "failure.encode", Direction: protocol.EncodeResponse, Input: errorSemantic, Expected: errorWire})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"error":{"message":"quota exhausted","category":"upstream"}}`))
@@ -278,8 +322,10 @@ func TestPresetChatMultipleToolsInOneFrame(t *testing.T) {
 func TestPresetErrorFramesEndToEnd(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"r\",\"model\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\n")
 		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
 		_, _ = io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
 		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n")
 		_, _ = io.WriteString(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\n\n")
 	}))
@@ -295,11 +341,19 @@ func TestPresetErrorFramesEndToEnd(t *testing.T) {
 
 // Arbitrary protocol IDs use the same target tool-choice semantics.
 func TestShapeAnthropicToolChoice(t *testing.T) {
-	decoder := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
-	definition := presetDefinition(t, "anthropic-messages")
-	definition.ID = "user-tool-choice"
-	encoder := compileFixtureDefinition(t, definition)
+	decoder := compileFixturePackage(t, presetPackage(t, "openai-chat-completions"))
+	definition := presetPackage(t, "anthropic-messages")
+	definition.Spec.ID = "user-tool-choice"
+	encoder := compileFixturePackage(t, definition)
 	request, err := decoder.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}}],"tool_choice":"required"}`), protocol.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(decoder, encoder))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err = conversion.Request(t.Context(), request, protocol.ConversionContext{Source: decoder.Identity(), Target: encoder.Identity()}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

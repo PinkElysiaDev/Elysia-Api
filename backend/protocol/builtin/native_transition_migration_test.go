@@ -10,13 +10,12 @@ import (
 )
 
 func TestLegacyNativeStreamTransitionFailure(t *testing.T) {
-	before := checkNativeStreamTransitionFailure(t, shippedProjectionProtocol(t, Anthropic))
-	after := checkNativeStreamTransitionFailure(t, compileBuiltinPackage(t, "anthropic"))
-	checkPackageFailureRejection(t, before, after)
+	if err := checkNativeStreamTransitionFailure(t, testCompiled(t, Anthropic)); err == nil {
+		t.Fatal("unbound encoder resumed a modified native item")
+	}
 }
 
-// An independent encoder keeps the legacy rejection above. Only a target bound
-// to its delivered wire history can resume a modified text delta.
+// Only a target bound to its delivered wire history can resume a modified delta.
 func TestAnthropicPackageNativeTextTransition(t *testing.T) {
 	const stateItemLimit = 64
 	limits := p.DefaultLimits()
@@ -47,7 +46,7 @@ func TestAnthropicPackageNativeTextTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 	mapping = value.Bytes()
-	compiler, err := p.NewCompiler(limits, nil, nil)
+	compiler, err := p.NewCompiler(limits, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +65,7 @@ func TestAnthropicPackageNativeTextTransition(t *testing.T) {
 		{"mixed-text", true, 8, 1},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			source := p.EvaluationContext{State: p.NewEvaluationState()}
+			source := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 			target := source
 			defer source.State.Release()
 			wire, err := compiled.NewWireStreamValidation(target.Scope)
@@ -183,12 +182,12 @@ func checkAnthropicTextFrame(t *testing.T, batch []p.Value, kind string, index i
 
 func checkNativeStreamTransitionFailure(t *testing.T, compiled *p.Compiled) error {
 	t.Helper()
-	source := p.EvaluationContext{State: p.NewEvaluationState()}
-	target := p.EvaluationContext{State: p.NewEvaluationState()}
+	source := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	target := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	defer source.State.Release()
 	defer target.State.Release()
 	frames := []string{
-		`{"type":"message_start","message":{"id":"r","model":"m","usage":{"input_tokens":0,"output_tokens":0}}}`,
+		`{"type":"message_start","message":{"id":"r","model":"m","type":"message","role":"assistant","content":[],"usage":{"input_tokens":0,"output_tokens":0}}}`,
 		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"original"}}`,
 	}

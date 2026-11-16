@@ -11,8 +11,8 @@ import (
 
 func TestGatewayConversionPlanGenerationAndIsolation(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	source := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
-	target := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-beta"))
+	source := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
+	target := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-beta"))
 	model := config.ModelRef{SourceID: "source", ID: "model", Name: "model"}
 	before, err := s.pinGatewayConversions(t.Context())
 	if err != nil {
@@ -68,9 +68,9 @@ func TestGatewayConversionPlanGenerationAndIsolation(t *testing.T) {
 	if err != nil || pinned.Hash != first.Hash {
 		t.Fatal("in-flight generation changed", err)
 	}
-	definition := loadGatewayDefinition(t, "text-beta")
-	definition.Name += " updated"
-	revised := activateGatewayDefinition(t, s, definition)
+	definition := loadGatewayFixture(t, "text-beta")
+	definition.Spec.Name += " updated"
+	revised := activateGatewayFixture(t, s, definition)
 	if _, err := after.resolve(source, revised, model, "generate", protocol.HTTPJSON); err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,6 @@ import (
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -65,7 +64,11 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		return nil, err
 	}
 	options := operationOptions
-	options.InterleavedThinking = protocol.OperationInterleavedThinking(protocol.Operation{Headers: map[string]string{"anthropic-beta": string(c.GetHeader("anthropic-beta"))}})
+	headerControls, err := ingress.ResolveHeaderControls(ctx, func(name string) string { return string(c.GetHeader(name)) })
+	if err != nil {
+		return nil, err
+	}
+	options.InterleavedThinking = headerControls.IsInterleavedThinking
 	options.Values = protocol.Object{"path": protocol.StringValue(path)}
 	for _, operation := range ingress.OperationRoutes() {
 		if parameters, matches := protocol.MatchOperationPath(operation.Path, path); matches {
@@ -77,11 +80,7 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 	options.ResolveRequestScope = func(request *protocol.Request) (protocol.Scope, error) {
 		return s.bindGatewayRequest(ctx, c, view, bindings, plan, path, request, record)
 	}
-	if ingress.CoreVersion() == protocol.ProtocolCoreVersion {
-		options, plan.carriers, err = ingress.ExtractContinuations(ctx, input, options)
-	} else {
-		input, plan.carriers, err = builtin.ExtractContinuationCarriersValue(input, ingress.Identity().Family, ingress.RequestLimits(ctx).BufferBytes)
-	}
+	options, plan.carriers, err = ingress.ExtractContinuations(ctx, input, options)
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +141,6 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 		}
 		candidate.prepared, err = candidate.conversion.Request(ctx, restored, candidate.conversionContext(ingress, false), sink)
 		if err == nil && candidate.continuation != nil {
-			if !candidate.continuation.isPackage {
-				candidate.continuation.requireCarrier = candidate.prepared.ClientOutput.RequestsEncryptedReasoning()
-			}
 			candidate.continuation.conversion = candidate.conversion
 			candidate.continuation.route = candidate.conversionContext(ingress, true)
 		}
@@ -158,16 +154,20 @@ func (s *Server) prepareGatewayPlan(ctx context.Context, c *app.RequestContext, 
 			}
 			return nil, err
 		}
-		matched, candidateIssues := matchGatewayCombination(ingress, candidate, candidate.prepared, constrained)
-		if len(candidateIssues) > 0 {
-			issues = append(issues, candidateIssues...)
-			record.appendConversionIssues(candidateIssues)
+		matched, matchErr := matchGatewayCombination(ctx, ingress, candidate, candidate.prepared, constrained)
+		if matchErr != nil {
+			var failure *protocol.ConversionError
+			if !errors.As(matchErr, &failure) {
+				return nil, matchErr
+			}
+			issues = append(issues, failure.Issues...)
+			record.appendConversionIssues(failure.Issues)
 			continue
 		}
 		probe := candidate.prepared.Clone()
 		probe.Model = protocol.StringValue(candidate.model.Identifier())
 		probeOptions := operationOptions
-		probeOptions.Scope, probeOptions.InterleavedThinking, probeOptions.ClientOutput = candidate.scope, protocol.OperationInterleavedThinking(candidate.operation), probe.ClientOutput
+		probeOptions.Scope, probeOptions.InterleavedThinking, probeOptions.ClientOutput = candidate.scope, candidate.operation.IsInterleavedThinking, probe.ClientOutput
 		canRetainEncoding := len(eligible) == 0 && !candidate.model.CacheSynthesis && candidate.operation.Kind == "generate" && candidate.compiled.CanReuseRequestEncoding()
 		if canRetainEncoding {
 			probeOptions.Diagnostics = &protocol.DiagnosticSink{}
@@ -303,11 +303,11 @@ func hasPassingGatewayCombination(reports []protocol.CombinationReport) bool {
 	return false
 }
 
-func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandidate, request *protocol.Request, constrained protocol.Binding) (protocol.Binding, []protocol.ConversionIssue) {
+func matchGatewayCombination(ctx context.Context, ingress *protocol.Compiled, candidate gatewayCandidate, request *protocol.Request, constrained protocol.Binding) (protocol.Binding, error) {
 	// The actual upstream contract is mandatory even when a compatibility
 	// profile omits metadata restored by the authenticated recovery channel.
 	if issues := protocol.CheckRoute(request, candidate.compiled, constrained, candidate.scope, candidate.operation.Transport); len(issues) > 0 {
-		return protocol.Binding{}, issues
+		return protocol.Binding{}, &protocol.ConversionError{Issues: issues}
 	}
 	profileRequest := request
 	if candidate.continuation != nil && len(candidate.continuation.restored) > 0 {
@@ -325,8 +325,12 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 		strip(profileRequest.Content)
 	}
 	var diagnostics []protocol.ConversionIssue
+	var requestDiagnostics []protocol.ConversionIssue
 	contractHash := protocol.CapabilityContractHash(candidate.binding.Capabilities)
 	for _, report := range candidate.combinations {
+		if report.Transport != "" && report.Transport != candidate.operation.Transport {
+			continue
+		}
 		if report.SourceHash != ingress.Hash() || report.TargetHash != candidate.compiled.Hash() || report.CompilerVersion != protocol.CompilerVersion || report.Kind != protocol.OfflineVerification || report.BindingHash != contractHash || report.SourceSamplesHash != ingress.SamplesHash() || report.TargetSamplesHash != candidate.compiled.SamplesHash() {
 			continue
 		}
@@ -344,6 +348,14 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 			diagnostics = append(diagnostics, report.Issues...)
 			continue
 		}
+		if err := candidate.compiled.CheckRequestScope(ctx, request, report.RequestScope, candidate.operation.Transport); err != nil {
+			var failure *protocol.ConversionError
+			if !errors.As(err, &failure) {
+				return protocol.Binding{}, err
+			}
+			requestDiagnostics = append(requestDiagnostics, failure.Issues...)
+			continue
+		}
 		if issues := protocol.CheckCombinationRequest(profileRequest, report, candidate.compiled.Identity()); len(issues) > 0 {
 			diagnostics = append(diagnostics, issues...)
 			continue
@@ -359,10 +371,11 @@ func matchGatewayCombination(ingress *protocol.Compiled, candidate gatewayCandid
 		}
 		return matched, nil
 	}
+	diagnostics = append(requestDiagnostics, diagnostics...)
 	if len(diagnostics) == 0 {
 		diagnostics = gatewayIssue(candidate.compiled.Identity(), protocol.VerificationRequired, "/binding/combinations", "ingress/upstream revisions require paired offline verification for the current binding; save the binding again").Issues
 	}
-	return protocol.Binding{}, diagnostics
+	return protocol.Binding{}, &protocol.ConversionError{Issues: diagnostics}
 }
 
 func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, response bool) protocol.ConversionContext {
@@ -370,26 +383,10 @@ func (candidate gatewayCandidate) conversionContext(ingress *protocol.Compiled, 
 	if response {
 		source, target = target, source
 	}
-	route := protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
-	if candidate.continuation != nil && candidate.continuation.isPackage {
-		if response {
-			return route.WithContinuation(candidate.continuation.binding, candidate.continuation.requireCarrier)
-		}
-		return route
+	route := protocol.ConversionContext{ResponseWire: response, Reasoning: candidate.binding.Reasoning, InterleavedThinking: candidate.operation.IsInterleavedThinking, Scope: candidate.scope, Source: source, Target: target, Model: candidate.model.Identifier(), Operation: candidate.operationName, Transport: candidate.operation.Transport}
+	if response && candidate.continuation != nil {
+		return route.WithContinuation(candidate.continuation.binding, candidate.continuation.requireCarrier)
 	}
-	recoverable := map[string]bool{}
-	if candidate.continuation != nil {
-		for key := range candidate.continuation.saved {
-			if strings.HasPrefix(key, "continuation-resource:") {
-				recoverable[key] = true
-				continue
-			}
-			if i := strings.IndexByte(key, ':'); i >= 0 {
-				recoverable[key[i+1:]] = true
-			}
-		}
-	}
-	route.Recoverable = recoverable
 	return route
 }
 

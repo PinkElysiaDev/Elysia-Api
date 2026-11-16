@@ -6,35 +6,28 @@ import (
 )
 
 func TestWireContractEscapedRoles(t *testing.T) {
-	cases := []struct {
+	for _, fixture := range []struct {
 		name, protocol, body string
-		direction            p.Direction
-		wantError            bool
+		shouldReject         bool
 	}{
-		{"anthropic_normal", Anthropic, "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}", p.EncodeRequest, false},
-		{"anthropic_equivalent", Anthropic, "{\"model\":\"m\",\"messages\":[{\"role\":\"\\u0075ser\",\"content\":\"hello\"}]}", p.EncodeRequest, false},
-		{"responses_invalid_role", Responses, "{\"model\":\"m\",\"input\":[{\"type\":\"message\",\"role\":\"invalid\",\"content\":\"hello\"}]}", p.EncodeRequest, true},
-		{"responses_escaped_type_bypass", Responses, "{\"model\":\"m\",\"input\":[{\"type\":\"\\u006dessage\",\"role\":\"invalid\",\"content\":\"hello\"}]}", p.EncodeRequest, true},
-	}
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			value, err := p.ParseValue([]byte(tt.body))
-			if err != nil {
-				t.Fatal(err)
+		{"anthropic-normal", Anthropic, `{"model":"m","max_tokens":8,"messages":[{"role":"user","content":"hello"}]}`, false},
+		{"anthropic-equivalent", Anthropic, `{"model":"m","max_tokens":8,"messages":[{"role":"\u0075ser","content":"hello"}]}`, false},
+		{"responses-invalid-role", Responses, `{"model":"m","input":[{"type":"message","role":"invalid","content":"hello"}]}`, true},
+		{"responses-escaped-type-bypass", Responses, `{"model":"m","input":[{"type":"\u006dessage","role":"invalid","content":"hello"}]}`, true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			err := testCompiled(t, fixture.protocol).ValidateWireOutput(p.EncodeRequest, testValue(t, fixture.body))
+			if (err != nil) != fixture.shouldReject {
+				t.Fatal("escaped role changed the independent final wire contract", err)
 			}
-			err = (module{name: tt.protocol}).ValidateWireOutput(tt.direction, value)
-			if (err != nil) != tt.wantError {
-				t.Fatalf("err=%v", err)
-			}
-			t.Logf("error: %v", err)
 		})
 	}
 }
 
 func TestEscapedResponsesRefusalStream(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
-	collector, err := p.NewResponseCollector(p.Target{Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	collector, err := p.NewResponseCollector(compiled.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,8 +59,16 @@ func TestEscapedResponsesRefusalStream(t *testing.T) {
 }
 
 func TestEscapedAccessProgram(t *testing.T) {
-	value := testValue(t, `{"cyber":"\u0073tandard"}`)
-	if err := p.ValidateMetadataValue(Responses, "response", "access_programs", value, "/access_programs"); err != nil {
+	compiled := shippedProjectionProtocol(t, Responses)
+	response, err := compiled.DecodeResponse(t.Context(), []byte(`{"id":"r","output":[],"access_programs":{"cyber":"\u0073tandard"}}`), fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(response.Metadata) != 1 || response.Metadata[0].Name != "access_programs" {
+		t.Fatal("escaped wire enum was not mapped to its owner", response.Metadata)
+	}
+	fields, err := response.Metadata[0].Value.ReadObject()
+	if err != nil || !fields["cyber"].IsString("standard") {
+		t.Fatal(fields, err)
 	}
 }

@@ -11,7 +11,7 @@ import (
 func TestChatNullRefusalHistoryProjectsWithoutInventingRefusal(t *testing.T) {
 	chat := shippedProjectionProtocol(t, Chat)
 	const raw = `{"model":"m","store":false,"max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"OK","refusal":null}]}`
-	request, err := chat.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+	request, err := chat.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestChatNullRefusalHistoryProjectsWithoutInventingRefusal(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+				wire, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				if err != nil || !strings.Contains(string(wire), "OK") {
 					t.Fatal(string(wire), err)
 				}
@@ -40,7 +40,7 @@ func TestChatNullRefusalHistoryProjectsWithoutInventingRefusal(t *testing.T) {
 		}
 	}
 	request.Content[1].Children[0].Payload = p.StringValue("updated")
-	wire, err := chat.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	wire, err := chat.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestChatNullRefusalHistoryProjectsWithoutInventingRefusal(t *testing.T) {
 func TestChatNullRefusalResponseKeepsNativePresence(t *testing.T) {
 	chat := shippedProjectionProtocol(t, Chat)
 	const raw = `{"id":"r","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"OK","refusal":null},"finish_reason":"stop"}]}`
-	response, err := chat.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+	response, err := chat.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestChatNullRefusalResponseKeepsNativePresence(t *testing.T) {
 			response.Content[0].Children[0].Payload = p.StringValue("updated")
 			want = strings.Replace(raw, `"OK"`, `"updated"`, 1)
 		}
-		wire, err := chat.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+		wire, err := chat.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,14 +74,14 @@ func TestChatNullRefusalResponseKeepsNativePresence(t *testing.T) {
 func TestChatRefusalTypeAndContentRemainProtected(t *testing.T) {
 	chat := shippedProjectionProtocol(t, Chat)
 	for _, value := range []string{`42`, `false`, `[]`, `{}`} {
-		_, err := chat.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"assistant","content":"OK","refusal":`+value+`}]}`), p.EvaluationContext{})
+		_, err := chat.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"assistant","content":"OK","refusal":`+value+`}]}`), fixtureOptions(p.EvaluationContext{}))
 		var issue *p.ConversionError
 		if !errors.As(err, &issue) || len(issue.Issues) == 0 || issue.Issues[0].Code != p.InvalidInput || issue.Issues[0].Path != "/messages/0/refusal" {
 			t.Fatal("invalid refusal accepted or misdiagnosed", value, err)
 		}
 	}
 	for _, value := range []string{`""`, `"Cannot comply"`} {
-		request, err := chat.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"assistant","refusal":`+value+`}]}`), p.EvaluationContext{})
+		request, err := chat.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"assistant","refusal":`+value+`}]}`), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestChatRefusalTypeAndContentRemainProtected(t *testing.T) {
 			t.Fatal("actual refusal discarded", request.Content)
 		}
 		for _, target := range []string{Anthropic, Gemini} {
-			if _, err := shippedProjectionProtocol(t, target).EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil {
+			if _, err := shippedProjectionProtocol(t, target).EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{})); err == nil {
 				t.Fatal("unsupported refusal was silently relabeled", target)
 			}
 		}

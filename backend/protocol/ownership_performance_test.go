@@ -38,7 +38,7 @@ func BenchmarkValueContainerEncoding(b *testing.B) {
 }
 
 func BenchmarkSemanticClone(b *testing.B) {
-	request := &Request{SchemaVersion: 1, Model: StringValue("m")}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("m")}
 	for range 128 {
 		request.Content = append(request.Content, Node{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("immutable history")}}})
 	}

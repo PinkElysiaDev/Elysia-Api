@@ -17,7 +17,7 @@ func TestResponsesAccessProgramsProjection(t *testing.T) {
 					policy := p.DefaultConversionPolicy(to, from)
 					policy.Mode = mode
 					for i := range policy.Rules {
-						if policy.Rules[i].Action == "response_metadata" {
+						if policy.Rules[i].ID == "response-metadata" || policy.Rules[i].ID == "event-metadata" || policy.Rules[i].ID == "history-response-metadata" {
 							policy.Rules[i].Enabled = enabled
 						}
 					}
@@ -30,30 +30,40 @@ func TestResponsesAccessProgramsProjection(t *testing.T) {
 						sink := &p.DiagnosticSink{}
 						var wire []byte
 						if !stream {
-							r, e := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+							r, e := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 							if e != nil {
 								t.Fatal(e)
 							}
 							r.Native = nil // Rebuilding must retain the native field too.
-							r, err = c.Response(t.Context(), r, p.ConversionContext{}, sink)
+							r, err = c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), sink)
 							if err == nil {
-								wire, err = to.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+								wire, err = to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 							}
 						} else {
-							frame, e := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":`+body+`}`), p.EvaluationContext{State: p.NewEvaluationState()})
+							frame, e := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":`+body+`}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 							if e != nil {
 								t.Fatal(e)
 							}
-							options := p.EvaluationContext{State: p.NewEvaluationState()}
+							options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+							options, consume := bindFixtureOutput(t, to, options)
+							route := fixtureConversionContext(t, c, p.ConversionEvent, from.Identity())
+							route, err = c.WithFrameUsage(route, frame.Events)
+							if err != nil {
+								t.Fatal(err)
+							}
+							options = options.WithConversion(c, route)
 							for _, event := range frame.Events {
 								event.Native = nil
 								var v p.Event
-								v, err = c.Event(t.Context(), event, p.ConversionContext{}, sink)
+								v, err = c.Event(t.Context(), event, route, sink)
 								if err != nil {
 									break
 								}
 								var frames []p.Value
 								frames, err = to.EncodeFrames(t.Context(), v, options)
+								if err == nil {
+									consume(frames)
+								}
 								for _, f := range frames {
 									wire = append(wire, f.Bytes()...)
 								}
@@ -110,12 +120,22 @@ func TestResponsesAccessProgramsRejectUnknownAndInvalid(t *testing.T) {
 		{`{"cyber":null}`, "/access_programs/cyber"}, {`{"cyber":"unknown"}`, "/access_programs/cyber"},
 		{`{"cyber":"standard","extra":true}`, "/access_programs/extra"},
 	} {
-		_, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","output":[],"access_programs":`+tc.value+`}`), p.EvaluationContext{})
+		_, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","output":[],"access_programs":`+tc.value+`}`), fixtureOptions(p.EvaluationContext{}))
 		if err == nil || !strings.Contains(err.Error(), tc.path) {
 			t.Fatalf("%s: %v", tc.value, err)
 		}
-		if err := p.ValidateMetadataValue(Responses, "response", "access_programs", testValue(t, tc.value), "/access_programs"); err == nil || !strings.Contains(err.Error(), tc.path) {
-			t.Fatal(err)
+		for _, eventType := range []string{"response.created", "response.in_progress", "response.completed"} {
+			status := "in_progress"
+			if eventType == "response.completed" {
+				status = "completed"
+			}
+			frame := testValue(t, `{"type":"`+eventType+`","response":{"id":"r","status":"`+status+`","output":[],"access_programs":`+tc.value+`}}`)
+			options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+			_, err := from.DecodeFrame(t.Context(), frame, options)
+			options.State.Release()
+			if err == nil || !strings.Contains(err.Error(), "/response"+tc.path) {
+				t.Fatalf("%s %s: %v", eventType, tc.value, err)
+			}
 		}
 	}
 }

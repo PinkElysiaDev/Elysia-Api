@@ -51,7 +51,7 @@ func TestGatewayVisibleReasoningHistoryAndSummaryRejection(t *testing.T) {
 		`{"type":"reasoning","summary":[{"type":"summary_text","text":"summary"}]}`,
 		`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"part1"},{"type":"reasoning_text","text":"part2"}]}`,
 	} {
-		r := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","store":false,"input":[{"role":"user","content":"hi"},`+item+`,{"role":"assistant","content":"OK"},{"role":"user","content":"continue"}]}`))
+		r := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(`{"model":"group","store":false,"input":[{"role":"user","content":"hi"},`+item+`,{"role":"assistant","content":"OK"},{"role":"user","content":"continue"}]}`))
 		r.Header.Set("Authorization", "Bearer gateway-test-token")
 		out := httptest.NewRecorder()
 		serveTestHTTP(s.engine, out, r)

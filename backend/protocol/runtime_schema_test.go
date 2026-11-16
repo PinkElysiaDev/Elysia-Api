@@ -122,9 +122,9 @@ func TestRuntimeSchemaErrorLocations(t *testing.T) {
 
 func TestRuntimeSchemaConcurrentOperationValidation(t *testing.T) {
 	definition := testDefinition("schema-library", "model", "history", "tools", "answer")
-	op := definition.Operations["generate"]
+	op := definition.Spec.Operations["generate"]
 	op.Input = &ValueSchema{Type: ObjectType, Required: []string{"id"}, Properties: map[string]ValueSchema{"id": {Type: IntegerType}}}
-	definition.Operations["generate"] = op
+	definition.Spec.Operations["generate"] = op
 	compiled := compileTestDefinition(t, definition)
 	for range 2 {
 		t.Run("reader", func(t *testing.T) {
@@ -141,20 +141,25 @@ func TestRuntimeSchemaConcurrentOperationValidation(t *testing.T) {
 
 func TestRuntimeSchemaMappingValidation(t *testing.T) {
 	definition := testDefinition("schema-mapping", "model", "history", "tools", "answer")
-	definition.Directions[EncodeRequest] = Mapping{
-		Input:     &ValueSchema{Type: ObjectType, Required: []string{"value"}, Properties: map[string]ValueSchema{"value": {Type: AnyType}}},
-		Output:    &ValueSchema{Type: IntegerType},
-		Transform: expressionPointer(readExpression("input", "/value")),
+	op := definition.Spec.Operations["generate"]
+	op.Request = "integer"
+	definition.Spec.Operations["generate"] = op
+	definition.Spec.Documents["integer"] = WireContractSpec{Schema: &ValueSchema{Type: IntegerType}}
+	definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: "integer",
+		Program: readExpression("input", "/value"),
 	}
 	compiled := compileTestDefinition(t, definition)
-	for _, tc := range []struct{ raw, want, errorPath string }{
-		{`{"value":9007199254740993123}`, `9007199254740993123`, ""},
-		{`{}`, "", "/input"},
-		{`{"value":false}`, "", "/output"},
+	for _, tc := range []struct {
+		raw, want, errorPath string
+		hasValidation        bool
+	}{
+		{`{"schemaVersion":2,"value":9007199254740993123}`, `9007199254740993123`, "", false},
+		{`{"schemaVersion":2}`, "", "/directions/encode_request", false},
+		{`{"schemaVersion":2,"value":false}`, "", "", true},
 	} {
 		value, _ := ParseValue([]byte(tc.raw))
 		output, err := compiled.executeMapping(t.Context(), EncodeRequest, value, EvaluationContext{})
-		if tc.errorPath == "" {
+		if tc.want != "" {
 			if err != nil || output.raw != tc.want {
 				t.Fatalf("output %q: %v", output.raw, err)
 			}
@@ -162,7 +167,7 @@ func TestRuntimeSchemaMappingValidation(t *testing.T) {
 		}
 		var conversion *ConversionError
 		var validation *jsonschema.ValidationError
-		if !errors.As(err, &conversion) || !errors.As(err, &validation) || conversion.Issues[0].Path != tc.errorPath {
+		if !errors.As(err, &conversion) || (tc.hasValidation && !errors.As(err, &validation)) || conversion.Issues[0].Path != tc.errorPath {
 			t.Fatalf("lost validation cause/location: %v", err)
 		}
 	}

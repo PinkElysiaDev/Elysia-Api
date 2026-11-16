@@ -14,7 +14,7 @@ func TestChatThinkingControlsReachGemini(t *testing.T) {
 	from, to := testCompiled(t, Chat), testCompiled(t, Gemini)
 	for _, model := range []string{"gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"} {
 		t.Run(model, func(t *testing.T) {
-			req, err := from.DecodeRequest(t.Context(), []byte(`{"model":"group","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"high","store":false,"stream":true,"stream_options":{"include_usage":true},"max_completion_tokens":8192}`), p.EvaluationContext{})
+			req, err := from.DecodeRequest(t.Context(), []byte(`{"model":"group","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"high","store":false,"stream":true,"stream_options":{"include_usage":true},"max_completion_tokens":8192}`), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -27,7 +27,7 @@ func TestChatThinkingControlsReachGemini(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wire, err := to.EncodeRequest(t.Context(), req, p.EvaluationContext{})
+			wire, err := to.EncodeRequest(t.Context(), req, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -54,7 +54,7 @@ func TestChatThinkingControlsReachGemini(t *testing.T) {
 func convertThinking(t *testing.T, source, target, raw, model, mode string, capabilities *p.ReasoningCapabilities) (*p.Request, []byte, []p.ConversionIssue, error) {
 	t.Helper()
 	from, to := shippedProjectionProtocol(t, source), shippedProjectionProtocol(t, target)
-	request, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{Values: p.Object{"model": p.StringValue("group")}})
+	request, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{Values: p.Object{"model": p.StringValue("group")}}))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -71,7 +71,7 @@ func convertThinking(t *testing.T, source, target, raw, model, mode string, capa
 		return request, nil, sink.Issues(), err
 	}
 	request.Model = p.StringValue(model)
-	wire, err := to.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	wire, err := to.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 	return request, wire, sink.Issues(), err
 }
 
@@ -139,16 +139,16 @@ func TestThinkingSentinelsAndNulls(t *testing.T) {
 	for _, value := range []string{"0", "-1", "null"} {
 		from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Gemini)
 		raw := `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingBudget":` + value + `}}}`
-		req, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{Values: p.Object{"model": p.StringValue("gemini-2.5-flash")}})
+		req, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{Values: p.Object{"model": p.StringValue("gemini-2.5-flash")}}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
-		req, err = c.Request(t.Context(), req, p.ConversionContext{Model: "gemini-2.5-flash"}, nil)
+		req, err = c.Request(t.Context(), req, p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Model: "gemini-2.5-flash"}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := to.EncodeRequest(t.Context(), req, p.EvaluationContext{})
+		wire, err := to.EncodeRequest(t.Context(), req, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -175,7 +175,7 @@ func TestThinkingInvalidSourcesRejectGlobally(t *testing.T) {
 		`{"thinkingBudget":-2}`, `{"thinkingBudget":9223372036854775808}`, `{"thinkingBudget":"1024"}`, `{"includeThoughts":null}`, `{"thinkingLevel":false}`,
 	} {
 		from := shippedProjectionProtocol(t, Gemini)
-		_, err := from.DecodeRequest(t.Context(), []byte(`{"contents":[],"generationConfig":{"thinkingConfig":`+raw+`}}`), p.EvaluationContext{})
+		_, err := from.DecodeRequest(t.Context(), []byte(`{"contents":[],"generationConfig":{"thinkingConfig":`+raw+`}}`), fixtureOptions(p.EvaluationContext{}))
 		var failure *p.ConversionError
 		if !errors.As(err, &failure) || failure.CandidateOnly {
 			t.Fatalf("expected global source validation failure: %s %v", raw, err)
@@ -246,7 +246,10 @@ func TestThinkingDynamicBudgetConversion(t *testing.T) {
 }
 
 func TestThinkingOutputLimitOriginAndBounds(t *testing.T) {
-	caps := p.ResolveReasoningCapabilities(Anthropic, "claude-opus-4-5")
+	caps, err := compileBuiltinPackage(t, "anthropic").ResolveModelReasoning(t.Context(), "claude-opus-4-5", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	caps.MaxOutputTokens = 16384
 	for _, tc := range []struct {
 		name       string
@@ -286,9 +289,21 @@ func TestThinkingOutputLimitOriginAndBounds(t *testing.T) {
 func TestThinkingInterleavedSourceAliasDefersModelConstraint(t *testing.T) {
 	from := shippedProjectionProtocol(t, Anthropic)
 	raw := []byte(`{"model":"group","max_tokens":2048,"thinking":{"type":"enabled","budget_tokens":4096},"messages":[{"role":"user","content":"hi"}],"tools":[{"name":"lookup","input_schema":{"type":"object"}}]}`)
-	for _, interleaved := range []bool{false, true} {
-		request, err := from.DecodeRequest(t.Context(), raw, p.EvaluationContext{InterleavedThinking: interleaved})
-		if err != nil || request.Reasoning == nil || request.Reasoning.Interleaved != interleaved {
+	for _, isInterleaved := range []bool{false, true} {
+		controls, err := from.ResolveHeaderControls(t.Context(), func(name string) string {
+			if name != "anthropic-beta" {
+				t.Fatal("read undeclared header", name)
+			}
+			if isInterleaved {
+				return "other, interleaved-thinking-2025-05-14"
+			}
+			return "interleaved-thinking-2025-05-14-suffix"
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request, err := from.DecodeRequest(t.Context(), raw, fixtureOptions(p.EvaluationContext{InterleavedThinking: controls.IsInterleavedThinking}))
+		if err != nil || request.Reasoning == nil || request.Reasoning.Interleaved != isInterleaved {
 			t.Fatal("output limit constraints belong to the target candidate", request, err)
 		}
 	}
@@ -300,7 +315,7 @@ func TestThinkingSourceProtocolEnumsRejectBeforeConversion(t *testing.T) {
 		{Responses, `{"model":"alias","reasoning":{"summary":"omitted"},"input":"hi"}`},
 		{Gemini, `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"xhigh"}}}`},
 	} {
-		_, err := shippedProjectionProtocol(t, tc.codec).DecodeRequest(t.Context(), []byte(tc.raw), p.EvaluationContext{})
+		_, err := shippedProjectionProtocol(t, tc.codec).DecodeRequest(t.Context(), []byte(tc.raw), fixtureOptions(p.EvaluationContext{}))
 		var failure *p.ConversionError
 		if !errors.As(err, &failure) || failure.CandidateOnly {
 			t.Fatal(tc.codec, err)
@@ -319,7 +334,7 @@ func TestThinkingNativeReplayUsesSourceContext(t *testing.T) {
 	} {
 		t.Run(tc.codec, func(t *testing.T) {
 			compiled := shippedProjectionProtocol(t, tc.codec)
-			options := p.EvaluationContext{Values: p.Object{"model": p.StringValue(tc.sourceModel)}, InterleavedThinking: tc.interleaved}
+			options := fixtureOptions(p.EvaluationContext{Values: p.Object{"model": p.StringValue(tc.sourceModel)}, InterleavedThinking: tc.interleaved})
 			scope := p.Scope{Provider: "provider", Account: "account", Model: tc.targetModel}
 			authorizations := 0
 			options.ResolveRequestScope = func(*p.Request) (p.Scope, error) {
@@ -340,12 +355,12 @@ func TestThinkingNativeReplayUsesSourceContext(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			converted, err := conversion.Request(t.Context(), request, p.ConversionContext{Model: tc.targetModel}, nil)
+			converted, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Model: tc.targetModel}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			converted.Model = p.StringValue(tc.targetModel)
-			wire, err := compiled.EncodeRequest(t.Context(), converted, p.EvaluationContext{Scope: scope, Values: p.Object{"model": p.StringValue(tc.targetModel)}})
+			wire, err := compiled.EncodeRequest(t.Context(), converted, fixtureOptions(p.EvaluationContext{Scope: scope, Values: p.Object{"model": p.StringValue(tc.targetModel)}}))
 			if err != nil {
 				t.Fatal("native replay rejected a converted request", err)
 			}

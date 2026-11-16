@@ -10,9 +10,9 @@ import (
 func TestConversionPresenceMatchesEncodedCore(t *testing.T) {
 	node := Node{Kind: ToolResultNode, Payload: Value{raw: ` {"a/b":null,"number":9007199254740993} `}, Children: []Node{}, ReasoningContent: []Node{}}
 	for _, document := range []any{
-		&Request{SchemaVersion: 1, Model: StringValue("model"), Content: []Node{node}, Parameters: Object{"a/b": Value{raw: "null"}}, Tools: []Tool{}},
-		&Response{SchemaVersion: 1, Content: []Node{node}},
-		&Event{SchemaVersion: 1, Type: ItemStarted, Item: &node}, &node,
+		&Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("model"), Content: []Node{node}, Parameters: Object{"a/b": Value{raw: "null"}}, Tools: []Tool{}},
+		&Response{SchemaVersion: SemanticSchemaVersion, Content: []Node{node}},
+		&Event{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, Item: &node}, &node,
 	} {
 		wire, err := EncodeValue(document)
 		if err != nil {
@@ -32,7 +32,7 @@ func TestConversionPresenceMatchesEncodedCore(t *testing.T) {
 }
 
 func TestConversionPresenceKeepsRawWireAndErrorOrder(t *testing.T) {
-	input := Value{raw: `{"schemaVersion":1,"content":[],"future":true}`}
+	input := Value{raw: `{"schemaVersion":2,"content":[],"future":true}`}
 	for _, present := range []bool{false, true} {
 		match := ConversionMatch{Path: "/future", Present: boolPtr(present)}
 		state := conversionState{wire: input}
@@ -45,7 +45,7 @@ func TestConversionPresenceKeepsRawWireAndErrorOrder(t *testing.T) {
 		if got := state.matches(match, ConversionContext{}); got != present {
 			t.Fatal("validation-only decoding hid an unknown field", got)
 		}
-		conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "wire-presence", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: match}}})
+		conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "wire-presence", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "core_controls", Value: ownedRuleFixture(t, nil).Value, Match: match}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,14 +82,21 @@ func TestConversionPresenceKeepsRawWireAndErrorOrder(t *testing.T) {
 }
 
 func TestOwnedPresenceConversionBoundaries(t *testing.T) {
-	request := &Request{SchemaVersion: 1, Model: StringValue("model"), Parameters: Object{"stream": Value{raw: "false"}}, Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup"), Options: Object{"eager_input_streaming": Value{raw: "true"}}}}, Content: []Node{{Kind: ToolResultNode, Payload: Value{raw: `{"result":"hello <world>"}`}}}}
-	for _, rule := range []ConversionRule{
-		{Action: "stream_options", Match: ConversionMatch{Path: "/tools/0/options/eager_input_streaming", Present: boolPtr(true)}},
-		{Action: "stream_options", Match: ConversionMatch{Path: "/model/child", Present: boolPtr(false)}},
-		{Action: "stream_options", Match: ConversionMatch{Path: "/ignored"}},
-		{Action: "tool_result_text", Match: ConversionMatch{NodeKind: ToolResultNode, Path: "/payload", Present: boolPtr(true)}},
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("model"), Parameters: Object{"stream": Value{raw: "false"}}, Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup"), Options: Object{"eager_input_streaming": Value{raw: "true"}}}}, Content: []Node{{Kind: ToolResultNode, Payload: Value{raw: `{"result":"hello <world>"}`}}}}
+	nodeRule := ownedRuleFixture(t, &ProtocolControlEach{Select: "tool_result", Steps: []ProtocolControlStep{{
+		When: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/payload"))}),
+		Set:  map[string]Expression{"/payload": {Op: "stringify_json", Source: expressionPointer(readExpression("input", "/payload"))}},
+	}}})
+	for index, match := range []ConversionMatch{
+		{Path: "/tools/0/options/eager_input_streaming", Present: boolPtr(true)},
+		{Path: "/model/child", Present: boolPtr(false)},
+		{Path: "/ignored"}, {},
 	} {
-		rule.ID, rule.Phase, rule.Enabled, rule.Value = "presence", ConversionRequest, true, StringValue("anthropic")
+		rule := ownedRuleFixture(t, nil)
+		if index == 3 {
+			rule = nodeRule
+		}
+		rule.Match = match
 		for _, mode := range []string{"compatible", "strict"} {
 			conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "presence-boundary", Mode: mode, Rules: []ConversionRule{rule}})
 			if err != nil || !conversion.canOwnRequest() {
@@ -100,8 +107,8 @@ func TestOwnedPresenceConversionBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			before, after := &DiagnosticSink{}, &DiagnosticSink{}
-			expected, expectedErr := conversion.ApplyValue(t.Context(), ConversionRequest, wire, ConversionContext{}, before)
-			actual, actualErr := conversion.Request(t.Context(), request, ConversionContext{}, after)
+			expected, expectedErr := conversion.ApplyValue(t.Context(), ConversionRequest, wire, ConversionContext{Target: Identity{DefinitionID: "owned-controls", Revision: "1"}}, before)
+			actual, actualErr := conversion.Request(t.Context(), request, ConversionContext{Target: Identity{DefinitionID: "owned-controls", Revision: "1"}}, after)
 			if fmt.Sprint(actualErr) != fmt.Sprint(expectedErr) || !reflect.DeepEqual(before.Issues(), after.Issues()) {
 				t.Fatal("presence changed diagnostics", rule, actualErr, expectedErr, after.Issues(), before.Issues())
 			}
@@ -110,7 +117,7 @@ func TestOwnedPresenceConversionBoundaries(t *testing.T) {
 				if output != expected {
 					t.Fatal("presence changed normalized output", output, expected)
 				}
-				if rule.Action == "tool_result_text" && !actual.Content[0].Payload.IsStringValue() {
+				if index == 3 && !actual.Content[0].Payload.IsStringValue() {
 					t.Fatal("node presence was evaluated against the request root")
 				}
 			}
@@ -194,7 +201,7 @@ func TestConversionRequestClientOutputSettings(t *testing.T) {
 }
 
 func BenchmarkConversionPresenceBoundary(b *testing.B) {
-	request := &Request{SchemaVersion: 1, Parameters: Object{"stream": Value{raw: "false"}}, Content: []Node{{Kind: ImageNode, Payload: StringValue(strings.Repeat("A", 2<<20))}}}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Parameters: Object{"stream": Value{raw: "false"}}, Content: []Node{{Kind: ImageNode, Payload: StringValue(strings.Repeat("A", 2<<20))}}}
 	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "presence-benchmark", Rules: []ConversionRule{{ID: "stream", Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic"), Match: ConversionMatch{Path: "/parameters/stream", Present: boolPtr(true)}}}})
 	if err != nil {
 		b.Fatal(err)

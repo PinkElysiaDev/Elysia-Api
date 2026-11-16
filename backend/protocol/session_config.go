@@ -42,18 +42,6 @@ func DefaultSessionConfig() SessionConfig {
 	return SessionConfig{FrameBytes: DefaultSessionFrameBytes, QueueItems: DefaultSessionQueueItems, QueueBytes: DefaultSessionQueueBytes, IdleMillis: DefaultSessionIdleMillis, PingMillis: DefaultSessionPingMillis, CloseMillis: DefaultSessionCloseMillis}
 }
 
-func checkSessionOperation(operation Operation, definition Definition, limits Limits) error {
-	if err := checkSessionTransport(operation, limits); err != nil {
-		return err
-	}
-	if operation.Transport != WebSocket {
-		return nil
-	}
-	return checkSessionAdapters(operation, definition.Capabilities,
-		hasDefinitionDirections(definition, DecodeRequest, DecodeClientEvent, EncodeEvent),
-		hasDefinitionDirections(definition, EncodeRequest, EncodeUpstreamEvent, DecodeEvent))
-}
-
 func checkSessionTransport(operation Operation, limits Limits) error {
 	if operation.Transport != WebSocket {
 		if operation.Session != nil || operation.Kind == "session" {
@@ -94,15 +82,6 @@ func checkSessionAdapters(operation Operation, capabilities CapabilitySet, canIn
 		return fmt.Errorf("WebSocket requires a complete ingress or upstream session adapter")
 	}
 	return nil
-}
-
-func hasDefinitionDirections(definition Definition, directions ...Direction) bool {
-	for _, direction := range directions {
-		if _, exists := definition.Directions[direction]; !exists {
-			return false
-		}
-	}
-	return true
 }
 
 // CheckSessionCompatibility rejects binary transcoding and automatic generation

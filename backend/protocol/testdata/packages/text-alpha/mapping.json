@@ -201,7 +201,9 @@
     {
       "id": "request.decode",
       "direction": "decode_request",
-      "capabilities": null,
+      "capabilities": [
+        "text"
+      ],
       "input": {
         "model": "m",
         "prompt": "hello"
@@ -232,7 +234,9 @@
     {
       "id": "request.encode",
       "direction": "encode_request",
-      "capabilities": null,
+      "capabilities": [
+        "text"
+      ],
       "input": {
         "schemaVersion": 2,
         "source": {
@@ -263,7 +267,9 @@
     {
       "id": "response.decode",
       "direction": "decode_response",
-      "capabilities": null,
+      "capabilities": [
+        "text"
+      ],
       "input": {
         "reply": "answer"
       },
@@ -293,7 +299,9 @@
     {
       "id": "response.encode",
       "direction": "encode_response",
-      "capabilities": null,
+      "capabilities": [
+        "text"
+      ],
       "input": {
         "schemaVersion": 2,
         "source": {

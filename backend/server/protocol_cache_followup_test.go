@@ -63,25 +63,25 @@ func (suite *liveSuite) runCacheFollowup(t *testing.T) {
 	run.save(t)
 	for _, target := range liveProtocolIDs {
 		suite.selectTarget(t, target)
-		compiled := compileFixtureDefinition(t, presetDefinition(t, target))
+		compiled := compileFixturePackage(t, presetPackage(t, target))
 		run.compiled[target] = compiled
 		if report := protocol.Verify(t.Context(), compiled); !report.Passed {
 			t.Fatal(report.Issues)
 		}
 		gateway := newLiveGateway(t, suite, compiled)
 		run.gateways[target] = gateway
-		definition := compiled.Definition()
-		definition.ID = "cache-followup-copy-" + target
-		activateGatewayDefinition(t, gateway.server, definition)
+		definition := compiledPackage(compiled)
+		definition.Spec.ID = "cache-followup-copy-" + target
+		activateGatewayFixture(t, gateway.server, definition)
 		service, err := gateway.server.protocolService()
 		if err != nil {
 			t.Fatal(err)
 		}
-		copy, ok := service.Pin(definition.ID)
+		copy, ok := service.Pin(definition.Spec.ID)
 		if !ok {
 			t.Fatal("custom ingress missing")
 		}
-		gateway.bind(t, compiled.Definition().Capabilities)
+		gateway.bind(t, compiled.DeclaredCapabilities())
 		levels := []int{1}
 		if target == "google-generate-content" {
 			levels = []int{2, 4}

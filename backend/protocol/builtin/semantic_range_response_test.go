@@ -87,7 +87,7 @@ func TestPackageSemanticResponseRanges(t *testing.T) {
 
 func TestPackageResponseReferenceIdentity(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "openai-responses")
-	metadata := p.ResponseMetadata{Name: "annotations", Codec: "responses", Location: "content", Path: "/reference", Value: testValue(t, `[{"type":"url_citation","url":"https://example.test","title":"reference","start_index":0,"end_index":2}]`)}
+	metadata := p.ResponseMetadata{Meaning: "url-references", References: testValue(t, `[{"url":"https://example.test","title":"reference","start":0,"end":2}]`), Name: "annotations", Codec: "responses", Location: "content", Path: "/reference", Value: testValue(t, `[{"type":"url_citation","url":"https://example.test","title":"reference","start_index":0,"end_index":2}]`)}
 	original := &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Content: []p.Node{
 		{ID: p.StringValue("first"), Kind: p.TextNode, Payload: p.StringValue("ab"), Metadata: []p.ResponseMetadata{metadata}},
 		{ID: p.StringValue("second"), Kind: p.TextNode, Payload: p.StringValue("xy"), Metadata: []p.ResponseMetadata{metadata}},

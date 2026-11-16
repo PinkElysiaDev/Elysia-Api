@@ -172,14 +172,14 @@ func TestGatewaySystemHoistFailureRetainsRequestEvidence(t *testing.T) {
 	}
 	input, _ := protocol.EncodeValue(semantic)
 	preview := service.PreviewWorkflow(t.Context(), protocol.PreviewInput{Mode: "conversion", ConversionPhase: protocol.ConversionRequest, Input: input, ConversionContext: protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: "upstream-model"}})
-	if len(preview.Issues) != 2 || preview.Issues[1].Path != "/messages/1/output_config" {
+	if len(preview.Issues) != 2 || preview.Issues[1].Path != "/content/2" {
 		t.Fatal("preview lost request diagnostic", preview.Issues)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/gateway/anthropic-messages/v1/messages", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	rec := httptest.NewRecorder()
 	serveTestHTTP(s.engine, rec, req)
-	if rec.Code != 400 || calls.Load() != 0 || !strings.Contains(rec.Body.String(), "/messages/1/output_config") {
+	if rec.Code != 400 || calls.Load() != 0 || !strings.Contains(rec.Body.String(), "/content/2") {
 		t.Fatalf("status=%d calls=%d body=%s", rec.Code, calls.Load(), rec.Body)
 	}
 	logs := latestUsageRecords(t, s)
@@ -239,7 +239,7 @@ func TestGatewayInvalidThinkingDisplayRequestEvidence(t *testing.T) {
 			t.Fatal(record.ConversionIssues)
 		}
 		issue := record.ConversionIssues[0]
-		if issue.Direction != protocol.DecodeRequest || issue.Stage != "request.validation" || issue.Protocol != upstream.Identity() || issue.Path != "/thinking/display" {
+		if issue.Direction != protocol.DecodeRequest || issue.Stage != "wire" || issue.Protocol != upstream.Identity() || issue.Path != "/thinking/display" {
 			t.Fatal("invalid display logged as an upstream stream failure", issue)
 		}
 	}

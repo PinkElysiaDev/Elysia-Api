@@ -129,7 +129,10 @@ func (proof *mergeEmissionProof) omitsKey(program *compiledExpression, key strin
 		_, hasKey := program.fields[key]
 		return !hasKey
 	case "project":
-		return program.policy == "exclude" && slices.Contains(program.keys, key)
+		if (program.policy == "exclude") == slices.Contains(program.keys, key) {
+			return true
+		}
+		return proof.omitsKey(program.source, key)
 	case "if":
 		return proof.omitsKey(program.then, key) && proof.omitsKey(program.otherwise, key)
 	case "read":

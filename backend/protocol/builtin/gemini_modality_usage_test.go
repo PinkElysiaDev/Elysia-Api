@@ -16,7 +16,7 @@ func TestGeminiUsageDisclosuresAreMapped(t *testing.T) {
 		`"promptTokensDetails":[{"modality":"TEXT","tokenCount":3}],"serviceTier":"standard"`,
 	} {
 		raw := `{"responseId":"r","modelVersion":"m","candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"OK"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1,"totalTokenCount":4,` + extra + `}}`
-		frame, err := from.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()})
+		frame, err := from.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -27,16 +27,16 @@ func TestGeminiUsageDisclosuresAreMapped(t *testing.T) {
 		}
 		for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
 			to := shippedProjectionProtocol(t, target)
-			response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+			response, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-			projected, err := c.Response(t.Context(), response, p.ConversionContext{}, nil)
+			projected, err := c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), nil)
 			if err != nil {
 				t.Fatal(target, err)
 			}
-			wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(target, err)
 			}
@@ -72,7 +72,7 @@ func TestGeminiModalityUsageProjectionModes(t *testing.T) {
 			}
 			value := `[{"modality":"` + modality + `","tokenCount":` + count + `}]`
 			raw := `{"usageMetadata":{"` + bucket.field + `":` + value + `}}`
-			response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+			response, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +84,7 @@ func TestGeminiModalityUsageProjectionModes(t *testing.T) {
 					policy.Mode = mode
 					c, _ := p.ResolveConversion(policy)
 					sink := &p.DiagnosticSink{}
-					projected, err := c.Response(t.Context(), response, p.ConversionContext{}, sink)
+					projected, err := c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), sink)
 					supported := target == Gemini || (target == Chat || target == Responses) &&
 						(bucket.prefix == "input" || bucket.prefix == "output") && (modality == "TEXT" || modality == "IMAGE" || modality == "AUDIO")
 					if mode == "strict" && !supported {
@@ -96,11 +96,11 @@ func TestGeminiModalityUsageProjectionModes(t *testing.T) {
 					if err != nil {
 						t.Fatal(target, mode, bucket.field, modality, err)
 					}
-					wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+					wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
-					back, err := to.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+					back, err := to.DecodeResponse(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -144,10 +144,10 @@ func TestGeminiModalityUsageValidationAndExtensions(t *testing.T) {
 	} {
 		for _, bucket := range geminiModalityBuckets {
 			raw := `{"usageMetadata":{"` + bucket.field + `":` + value + `}}`
-			if _, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{}); err == nil {
+			if _, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{})); err == nil {
 				t.Fatal("invalid JSON usage accepted", raw)
 			}
-			if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+			if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil {
 				t.Fatal("invalid stream usage accepted", raw)
 			}
 		}
@@ -158,33 +158,33 @@ func TestGeminiModalityUsageValidationAndExtensions(t *testing.T) {
 		`[{"modality":"TEXT","tokenCount":1},{"modality":"FUTURE","tokenCount":2}]`,
 	} {
 		raw := `{"usageMetadata":{"promptTokensDetails":` + value + `}}`
-		response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+		response, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		response.Native = nil
-		wire, err := from.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+		wire, err := from.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 		if err != nil || !strings.Contains(string(wire), `"promptTokensDetails":`+value) {
 			t.Fatal("native usage extension lost", string(wire), err)
 		}
-		projected, err := c.Response(t.Context(), response, p.ConversionContext{}, nil)
+		projected, err := c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), nil)
 		if err == nil {
-			_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 		}
 		if err == nil {
 			t.Fatal("unknown modality crossed protocols", raw)
 		}
-		frame, err := from.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()})
+		frame, err := from.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		if err != nil || len(frame.Events) == 0 || frame.Events[0].Unmapped == nil {
 			t.Fatal("unknown stream usage lost", err)
 		}
 	}
 	for _, value := range []string{`false`, `1`, `{}`, `[]`} {
 		raw := `{"usageMetadata":{"serviceTier":` + value + `}}`
-		if _, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{}); err == nil {
+		if _, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatal("invalid service tier accepted", raw)
 		}
-		if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+		if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil {
 			t.Fatal("invalid stream service tier accepted", raw)
 		}
 	}
@@ -194,22 +194,22 @@ func TestGeminiModalityNativeEditsAndUsageTails(t *testing.T) {
 	t.Parallel()
 	from := shippedProjectionProtocol(t, Gemini)
 	raw := `{"usageMetadata":{"promptTokenCount":3,"promptTokensDetails":[{"modality":"TEXT","tokenCount":3}],"serviceTier":"standard"}}`
-	response, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+	response, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := from.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	wire, err := from.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	sameJSON(t, wire, raw)
 	delete(response.Usage.Details, "input.text_tokens")
 	response.Metadata = nil
-	wire, err = from.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	wire, err = from.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil || strings.Contains(string(wire), "promptTokensDetails") || strings.Contains(string(wire), "serviceTier") {
 		t.Fatal("native snapshot restored deleted usage", string(wire), err)
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	var usage *p.Usage
 	for _, raw := range []string{
 		`{"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1,"totalTokenCount":4}}`,
@@ -243,15 +243,15 @@ func TestModalityUsageCannotHideInvalidCounts(t *testing.T) {
 		`{"toolUsePromptTokenCount":1,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":2}]}`,
 		`{"promptTokensDetails":[{"modality":"TEXT","tokenCount":9223372036854775807},{"modality":"IMAGE","tokenCount":1}]}`,
 	} {
-		response, err := from.DecodeResponse(t.Context(), []byte(`{"usageMetadata":`+raw+`}`), p.EvaluationContext{})
+		response, err := from.DecodeResponse(t.Context(), []byte(`{"usageMetadata":`+raw+`}`), fixtureOptions(p.EvaluationContext{}))
 		if err == nil {
-			_, err = c.Response(t.Context(), response, p.ConversionContext{}, nil)
+			_, err = c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), nil)
 		}
 		if err == nil {
 			t.Fatal("invalid counts hidden by projection", raw)
 		}
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	if _, err := from.DecodeFrame(t.Context(), testValue(t, `{"usageMetadata":{"promptTokenCount":3}}`), options); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestGeminiServiceTierProjectionModes(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Responses)
 	for _, raw := range []string{`null`, `"standard"`} {
 		for _, mode := range []string{"compatible", "strict"} {
-			response, err := from.DecodeResponse(t.Context(), []byte(`{"usageMetadata":{"serviceTier":`+raw+`}}`), p.EvaluationContext{})
+			response, err := from.DecodeResponse(t.Context(), []byte(`{"usageMetadata":{"serviceTier":`+raw+`}}`), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -273,7 +273,7 @@ func TestGeminiServiceTierProjectionModes(t *testing.T) {
 			policy.Mode = mode
 			c, _ := p.ResolveConversion(policy)
 			sink := &p.DiagnosticSink{}
-			_, err = c.Response(t.Context(), response, p.ConversionContext{}, sink)
+			_, err = c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), sink)
 			if mode == "strict" && raw != "null" {
 				if err == nil || !strings.Contains(err.Error(), "serviceTier") {
 					t.Fatal("strict service tier loss accepted", err)
@@ -290,3 +290,5 @@ func TestGeminiServiceTierProjectionModes(t *testing.T) {
 		}
 	}
 }
+
+var geminiModalityBuckets = []struct{ field, prefix string }{{"promptTokensDetails", "input"}, {"candidatesTokensDetails", "output"}, {"cacheTokensDetails", "cache"}, {"toolUsePromptTokensDetails", "tool_input"}}

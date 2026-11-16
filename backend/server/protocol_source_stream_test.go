@@ -11,152 +11,101 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	p "github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
-func TestCollectorAppliesStartupConversion(t *testing.T) {
+func TestCollectorUsesDeclaredSourceIdentity(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), builtin.Modules(), nil)
-	defs, _ := builtin.Definitions()
-	var upstream *p.Compiled
-	for _, raw := range defs {
-		c, issues := compiler.Compile(raw.Bytes())
-		if c == nil {
-			t.Fatal(issues)
-		}
-		if c.Identity().DefinitionID == p.PresetChatCompletionsID {
-			upstream = c
+	upstream := compileFixturePackage(t, presetPackage(t, p.PresetChatCompletionsID))
+	var frames []p.Value
+	for _, sample := range compiledPackage(upstream).Mapping.Samples {
+		if sample.ID == "declared-stream-text-decode" {
+			if err := sample.Input.Decode(&frames); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	var sample p.Sample
-	for _, v := range upstream.Definition().Samples {
-		if v.ID == "stream-text-decode" {
-			sample = v
-		}
+	if len(frames) < 2 {
+		t.Fatal("missing independent stream fixture")
 	}
-	frames := chatStartupFrames(t, sample, 1)
 	var active atomic.Value
 	active.Store(frames)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		for _, f := range active.Load().([]p.Value) {
-			raw, _ := sonic.ConfigStd.Marshal(f)
-			fmt.Fprintf(w, "data: %s\n\n", raw)
+		for _, frame := range active.Load().([]p.Value) {
+			fmt.Fprintf(w, "data: %s\n\n", frame.Bytes())
 		}
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer provider.Close()
-	conversion, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "review", Rules: []p.ConversionRule{{ID: "chat-stream-identity", Enabled: true, Phase: p.ConversionSourceEvent, Action: "chat_stream_identity"}}})
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(upstream, upstream))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var operation p.Operation
 	var operationName string
-	for name, op := range upstream.Operations() {
-		if op.Kind == "generate" && op.Transport == p.SSE {
-			operation, operationName = op, name
+	for name, candidate := range upstream.Operations() {
+		if candidate.Kind == "generate" && candidate.Transport == p.SSE {
+			operation, operationName = candidate, name
 		}
 	}
-	candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []p.Transport{p.SSE}}}
-	request, err := upstream.DecodeRequest(t.Context(), []byte("{\"model\":\"m\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"), p.EvaluationContext{})
+	candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName,
+		model:   config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL},
+		binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.DeclaredCapabilities(), Transports: []p.Transport{p.SSE}}}
+	request, err := upstream.DecodeRequest(t.Context(), []byte(`{"model":"m","stream":true,"messages":[{"role":"user","content":"hi"}]}`), p.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now(), bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 	result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)
 	if err != nil || result == nil {
-		t.Fatalf("enabled startup rule failed: %v", err)
+		t.Fatalf("declared source collection: %v", err)
 	}
-	if len(record.ConversionIssues) != 1 {
-		t.Fatalf("collector did not retain normalization diagnostics: %+v", record.ConversionIssues)
+	if len(record.pendingStreamEvents) == 0 || !strings.Contains(string(record.pendingStreamEvents[0]), `"id":"r"`) {
+		t.Fatal("original frame missing from evidence")
 	}
-	issue := record.ConversionIssues[0]
-	if issue.RuleID != "chat-stream-identity" || issue.PolicyHash == "" || issue.Path != "/id" || issue.Direction != p.DecodeEvent || !strings.Contains(issue.Reason, "frame 1") {
-		t.Fatalf("normalization provenance lost: %+v", issue)
-	}
-	if len(record.pendingStreamEvents) == 0 || !strings.Contains(string(record.pendingStreamEvents[0]), "synthetic-prelude") {
-		t.Fatal("original provider frame was replaced in call evidence")
-	}
-	candidate.conversion = nil
-	_, err = s.collectProtocolGeneration(t.Context(), candidate, request, nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "identity changed") {
-		t.Fatalf("bare codec probe must reject invalid identity: %v", err)
-	}
-	candidate.conversion = conversion
-	for _, policy := range []p.ConversionPolicy{
-		{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "strict", Mode: "strict", Rules: conversion.Policy.Rules},
-		{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "disabled", Rules: []p.ConversionRule{{ID: "chat-stream-identity", Enabled: false, Phase: p.ConversionSourceEvent, Action: "chat_stream_identity"}}},
-	} {
-		candidate.conversion, err = p.ResolveConversion(policy)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = s.collectProtocolGeneration(t.Context(), candidate, request, nil, nil); err == nil {
-			t.Fatalf("%s accepted identity correction", policy.ID)
-		}
-	}
-	candidate.conversion = conversion
-
-	route := p.ConversionContext{Source: upstream.Identity(), Target: upstream.Identity(), Transport: p.SSE}
-	state := p.NewSourceEventState(conversion, route, upstream, upstream, &p.DiagnosticSink{})
-	sequence, _ := p.EncodeValue(frames)
-	normalized, err := state.Sequence(t.Context(), sequence)
+	changed := append([]p.Value(nil), frames...)
+	changed[1], err = p.ApplyMutations(changed[1], []p.Mutation{{Op: p.SetValue, Path: "/id", Value: p.StringValue("different-response")}}, p.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var canonical []p.Value
-	if err := normalized.Decode(&canonical); err != nil {
-		t.Fatal(err)
+	active.Store(changed)
+	if _, err := s.collectProtocolGeneration(t.Context(), candidate, request, nil, nil); err == nil {
+		t.Fatal("source identity change was accepted")
 	}
-	active.Store(canonical)
-	result, err = s.collectProtocolGeneration(t.Context(), candidate, request, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil {
-		t.Fatal("missing result")
-	}
-	t.Log("same collector after existing source normalization succeeds")
-
 	for _, ending := range []error{nil, context.Canceled, context.DeadlineExceeded} {
 		t.Run(fmt.Sprint(ending), func(t *testing.T) {
-			consumed := 0
-			source, err := newProtocolSourceStream(t.Context(), candidate, upstream, route, p.EvaluationContext{State: p.NewEvaluationState()}, nil, func(frame *p.EventFrame, _ p.Object) error {
-				consumed += len(frame.Events)
-				return nil
-			})
+			state := p.NewEvaluationState()
+			defer state.Release()
+			source, err := newProtocolSourceStream(t.Context(), candidate, candidate.conversionContext(candidate.compiled, true), p.EvaluationContext{State: state}, nil, func(*p.EventFrame, p.Object) error { return nil })
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := source.Push(frames[0], nil); err != nil {
 				t.Fatal(err)
 			}
-			if consumed != 0 {
-				t.Fatal("buffered prelude was delivered early")
-			}
 			err = source.Finish(ending)
-			if ending == nil {
-				if err == nil || consumed == 0 {
-					t.Fatal("clean EOF must release the prelude and reject the incomplete lifecycle")
-				}
-			} else if !errors.Is(err, ending) || consumed != 0 {
-				t.Fatalf("interrupted prelude generated events or lost cause: %d %v", consumed, err)
+			if ending == nil && err == nil {
+				t.Fatal("incomplete source lifecycle accepted EOF")
+			}
+			if ending != nil && !errors.Is(err, ending) {
+				t.Fatal("source interruption was replaced", err)
 			}
 		})
 	}
 }
 
 func TestSourceEventTargetKeepsDirectionalContract(t *testing.T) {
-	definition := presetDefinition(t, p.PresetChatCompletionsID)
-	definition.Directions[p.EncodeEvent] = p.Mapping{Module: builtin.Anthropic}
-	compiled := compileFixtureDefinition(t, definition)
+	definition := presetPackage(t, p.PresetChatCompletionsID)
+	encoding := definition.Mapping.Directions[p.EncodeEvent]
+	encoding.Capabilities = p.CapabilitySet{p.UsageCapability: true}
+	definition.Mapping.Directions[p.EncodeEvent] = encoding
+	compiled := compileFixturePackage(t, definition)
 	capabilities := p.CapabilitySet{p.UsageCapability: true}
 	candidate := gatewayCandidate{compiled: compiled, binding: p.Binding{Capabilities: capabilities}, scope: p.Scope{Account: "fixture"}}
 	target := candidate.sourceEventTarget()
-	if target.Codec != builtin.Chat || target.Direction != p.EncodeEvent || target.Protocol != compiled.Identity() || target.Scope != candidate.scope || target.Capabilities[p.TextCapability] {
+	if target.Direction != p.EncodeEvent || target.Protocol != compiled.Identity() || target.Scope != candidate.scope || target.Capabilities[p.TextCapability] {
 		t.Fatal("source target used the encoder or widened the binding", target)
 	}
 	event := p.Event{SchemaVersion: p.SemanticSchemaVersion, Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}}
@@ -169,6 +118,63 @@ func TestSourceEventTargetKeepsDirectionalContract(t *testing.T) {
 	}
 }
 
+func TestSourcePreludePreservesProviderEvidence(t *testing.T) {
+	compiled := compileFixturePackage(t, presetPackage(t, p.PresetChatCompletionsID))
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(compiled, compiled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: p.Operation{Transport: p.SSE}, binding: p.Binding{Capabilities: compiled.DeclaredCapabilities()}}
+	sample := selectProtocolSamples(t, compiled, "declared-stream-text-decode")[0]
+	for _, timestamp := range []int{1, 81} {
+		t.Run(fmt.Sprint(timestamp), func(t *testing.T) {
+			frames := chatStartupFrames(t, sample, timestamp)
+			options, err := (p.EvaluationContext{State: p.NewEvaluationState(), Diagnostics: &p.DiagnosticSink{}}).WithOperation("source-prelude-fixture", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer options.State.Release()
+			record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
+			consumed := 0
+			source, err := newProtocolSourceStream(t.Context(), candidate, candidate.conversionContext(compiled, true).WithOperation(options), options, record, func(frame *p.EventFrame, metadata p.Object) error {
+				if consumed == 0 && !metadata["fixture"].IsString("original") {
+					t.Fatal("pending transport metadata changed", metadata)
+				}
+				for _, event := range frame.Events {
+					if !event.ResponseID.IsZero() && !event.ResponseID.IsString("r") {
+						t.Fatal("provisional source identity reached semantic replay", event.ResponseID)
+					}
+				}
+				consumed++
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer source.release()
+			metadata := p.Object{"fixture": p.StringValue("original")}
+			if err := source.Push(frames[0], metadata); err != nil || consumed != 0 {
+				t.Fatal("opening frame was not staged before source validation", consumed, err)
+			}
+			metadata["fixture"] = p.StringValue("reused")
+			for _, frame := range frames[1:] {
+				if err := source.Push(frame, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := source.Finish(nil); err != nil {
+				t.Fatal(err)
+			}
+			if consumed != len(frames) || len(record.pendingStreamEvents) != len(frames) || string(record.pendingStreamEvents[0]) != frames[0].JSONString() {
+				t.Fatal("normalization changed or duplicated original provider evidence", consumed, len(record.pendingStreamEvents))
+			}
+			if len(options.Diagnostics.Issues()) == 0 {
+				t.Fatal("source identity correction omitted its declared diagnostic")
+			}
+		})
+	}
+}
+
 func TestPackageSourceStreamCollectsUsage(t *testing.T) {
 	compiled := compileSourceStreamPackage(t, sourceStreamPackage(t))
 	candidate := gatewayCandidate{compiled: compiled, binding: p.Binding{Capabilities: compiled.Capabilities(p.DecodeEvent)}}
@@ -178,7 +184,7 @@ func TestPackageSourceStreamCollectsUsage(t *testing.T) {
 	}
 	record := &usageRecord{bodyOpts: usageBodyOptions{maxBytes: 1 << 20}}
 	consumed := 0
-	source, err := newProtocolSourceStream(t.Context(), candidate, compiled, p.ConversionContext{}, p.EvaluationContext{State: p.NewEvaluationState()}, record, func(frame *p.EventFrame, _ p.Object) error {
+	source, err := newProtocolSourceStream(t.Context(), candidate, candidate.conversionContext(candidate.compiled, true), p.EvaluationContext{State: p.NewEvaluationState()}, record, func(frame *p.EventFrame, _ p.Object) error {
 		for _, event := range frame.Events {
 			if !event.Sequence.IsZero() || event.SchemaVersion != p.ProtocolCoreVersion {
 				t.Fatal("fixture mapping or event version changed", event)
@@ -240,7 +246,7 @@ func TestPackageSourceStreamChecksOriginalLifecycle(t *testing.T) {
 			compiled := compileSourceStreamPackage(t, document)
 			candidate := gatewayCandidate{compiled: compiled, binding: p.Binding{Capabilities: document.Mapping.Capabilities}}
 			consumed := 0
-			source, err := newProtocolSourceStream(t.Context(), candidate, compiled, p.ConversionContext{}, p.EvaluationContext{}, nil, func(frame *p.EventFrame, _ p.Object) error {
+			source, err := newProtocolSourceStream(t.Context(), candidate, candidate.conversionContext(candidate.compiled, true), p.EvaluationContext{}, nil, func(frame *p.EventFrame, _ p.Object) error {
 				consumed += len(frame.Events)
 				return nil
 			})

@@ -32,7 +32,7 @@ func TestEventReplayMessageAssociations(t *testing.T) {
 		"nested snapshot":         {start, child, messageEvent(ItemSnapshot, "p", "m", &Node{Kind: TextNode, Children: []Node{*child.Item}})},
 		"parent is text":          {messageEvent(ItemStarted, "m", "", child.Item), child},
 		"closed parent":           {start, messageEvent(ItemFinished, "m", "", nil), child},
-		"unterminated parent":     {start, {SchemaVersion: 1, Type: ResponseFinished}},
+		"unterminated parent":     {start, {SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished}},
 		"embedded children":       {messageEvent(ItemStarted, "m", "", &Node{Kind: MessageNode, Role: StringValue("assistant"), Children: []Node{*child.Item}})},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -53,7 +53,6 @@ func TestEventReplayMessageAssociations(t *testing.T) {
 
 func TestMessageCollectorThinkingAndToolChildren(t *testing.T) {
 	target := replayTarget()
-	target.coreVersion = ProtocolCoreVersion
 	target.Scope = Scope{Provider: "fixture", Account: "account"}
 	collector, err := NewResponseCollector(target, DefaultLimits())
 	if err != nil {
@@ -127,7 +126,7 @@ func TestMessageCollectorBoundariesAndContinuationOrdinals(t *testing.T) {
 		messageEvent(ItemStarted, "b", "m", text), messageEvent(ItemFinished, "b", "m", text),
 		messageEvent(ItemFinished, "m", "", &Node{Kind: MessageNode, Role: StringValue("assistant"), ID: StringValue("wire_m"), Status: StringValue("completed")}),
 		messageEvent(ItemStarted, "r", "", &Node{Kind: ReasoningNode, Payload: StringValue("think")}), messageEvent(ItemFinished, "r", "", nil),
-		{SchemaVersion: 1, Type: ResponseFinished},
+		{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished},
 	}
 	var ordinals []int
 	for _, e := range sequence {
@@ -157,7 +156,7 @@ func TestMessageCollectorBoundariesAndContinuationOrdinals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, _, err := c.Consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{*text, *text, {Kind: ReasoningNode, Payload: StringValue("think")}}}}); err == nil || !strings.Contains(err.Error(), "terminal content") {
+	if _, _, err := c.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: &Response{SchemaVersion: SemanticSchemaVersion, Content: []Node{*text, *text, {Kind: ReasoningNode, Payload: StringValue("think")}}}}); err == nil || !strings.Contains(err.Error(), "terminal content") {
 		t.Fatal(err)
 	}
 }

@@ -6,16 +6,16 @@ func TestDeclaredUsageAliasesPreserveZeroMissingAndPriority(t *testing.T) {
 	for _, path := range []string{"/usage/prompt_cache_hit_tokens", "/timings/cache_n", "/choices/0/usage/prompt_cache_hit_tokens"} {
 		t.Run(path, func(t *testing.T) {
 			definition := textVerificationDefinition(t, "declared-usage")
-			definition.Capabilities[UsageCapability] = true
+			definition.Mapping.Capabilities[UsageCapability] = true
 			primary := readExpression("input", "/meter/cache")
 			alias := readExpression("input", path)
 			count := Expression{Op: "if", When: &Expression{Op: "exists", Source: &primary}, Then: &primary, Otherwise: &alias}
 			counter := Expression{Op: "if", When: &Expression{Op: "exists", Source: &count}, Then: expressionPointer(objectExpression(map[string]Expression{
 				"count": count, "origin": literalExpression("observed"),
 			}))}
-			mapping := definition.Directions[DecodeResponse]
-			mapping.Transform.Fields["usage"] = objectExpression(map[string]Expression{"cacheRead": counter})
-			definition.Directions[DecodeResponse] = mapping
+			mapping := definition.Mapping.Directions[DecodeResponse]
+			mapping.Program.Fields["usage"] = objectExpression(map[string]Expression{"cacheRead": counter})
+			definition.Mapping.Directions[DecodeResponse] = mapping
 			compiled := compileTestDefinition(t, definition)
 			for _, fixture := range []struct {
 				input string

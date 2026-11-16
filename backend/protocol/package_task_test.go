@@ -23,7 +23,7 @@ func loadTransportPackage(t testing.TB, kind, name string, features ...string) (
 		}
 		return raw
 	}
-	compiler, err := NewCompiler(DefaultLimits(), nil, features)
+	compiler, err := NewCompiler(DefaultLimits(), features)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,20 +40,15 @@ func TestTaskPackagesPreserveExistingFlows(t *testing.T) {
 	for _, name := range []string{"job-alpha", "job-beta"} {
 		t.Run(name, func(t *testing.T) {
 			_, document, compiled := loadTaskPackage(t, name)
-			_, _, legacy := loadJobDefinition(t, name)
 			for _, sample := range document.Mapping.TaskSamples {
-				want, wantErr := executeTaskSample(t.Context(), legacy, sample)
+				want := sample.Expected
 				got, gotErr := executeTaskSample(t.Context(), compiled, sample)
-				if wantErr != nil || gotErr != nil || !equalValues(want, got) {
-					t.Fatal("task mapping changed the existing fixture", sample.ID, wantErr, gotErr, want.JSONString(), got.JSONString())
+				if gotErr != nil || !equalValues(want, got) {
+					t.Fatal("task mapping changed the existing fixture", sample.ID, gotErr, want.JSONString(), got.JSONString())
 				}
 			}
 			if report := Verify(t.Context(), compiled); !report.Passed {
 				t.Fatal("task evidence was not verified", report.Issues)
-			}
-			operation, _ := compiled.Operation("submit")
-			if operation.Task.Decode.Transform != nil || operation.Task.Encode.Transform != nil || operation.Task.Control.Transform != nil {
-				t.Fatal("wire task flow contains executable legacy mappings")
 			}
 			packages = append(packages, compiled)
 		})

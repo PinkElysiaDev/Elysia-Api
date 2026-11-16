@@ -1,7 +1,7 @@
 package builtin
 
 import (
-	"bytes"
+	"os"
 	"reflect"
 	"testing"
 
@@ -9,133 +9,118 @@ import (
 )
 
 func TestPackageAgentAndModelDiscoveryMigration(t *testing.T) {
-	definitions, err := Definitions()
+	raw, err := os.ReadFile("testdata/agent-discovery-contract.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	if err != nil {
+	var fixtures []struct {
+		Name   string          `json:"name"`
+		Models []p.ModelSample `json:"models"`
+		Agent  []p.AgentSample `json:"agent"`
+	}
+	if err := testValue(t, string(raw)).Decode(&fixtures); err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range definitions {
-		var definition p.Definition
-		if err := raw.Decode(&definition); err != nil {
-			t.Fatal(err)
-		}
-		name := definition.ID
-		if name == "openai-chat-completions" {
-			name = "openai-chat"
-		} else if name == "anthropic-messages" {
-			name = "anthropic"
-		}
-		t.Run(name, func(t *testing.T) {
-			legacy, issues := compiler.Compile(raw.Bytes())
-			if err := p.IssuesError(issues); err != nil {
-				t.Fatal(err)
-			}
-			draft := compileBuiltinPackage(t, name)
-			projection, err := p.ResolveConversion(p.DefaultConversionPolicy(legacy, legacy))
-			if err != nil {
-				t.Fatal(err)
-			}
-			declaredProjection, err := p.ResolveConversion(p.DefaultConversionPolicy(draft, draft))
-			if err != nil {
-				t.Fatal(err)
-			}
-			document, _ := draft.Package()
-			if !draft.HasAgentPolicy() || len(document.Mapping.Agent.Samples) != len(definition.Agent.Samples) {
-				t.Fatal("declared Agent evidence changed")
-			}
-			for _, sample := range definition.ModelSamples {
+	for _, fixture := range fixtures {
+		t.Run(fixture.Name, func(t *testing.T) {
+			compiled := compileBuiltinPackage(t, fixture.Name)
+			for _, sample := range fixture.Models {
 				t.Run(sample.ID, func(t *testing.T) {
-					want, wantErr := legacy.DecodeModelPage(t.Context(), sample.Operation, sample.Input)
-					got, gotErr := draft.DecodeModelPage(t.Context(), sample.Operation, sample.Input)
-					if wantErr != nil || gotErr != nil || !equalAgentMigrationValues(t, want, got) {
-						t.Fatal(want, got, wantErr, gotErr)
+					page, err := compiled.DecodeModelPage(t.Context(), sample.Operation, sample.Input)
+					if err != nil || !equalAgentMigrationValues(t, page, sample.Expected) {
+						t.Fatal("model catalog changed its independent baseline expectation", page, sample.Expected, err)
 					}
 				})
 			}
-			for _, sample := range document.Mapping.Agent.Samples {
+			for _, sample := range fixture.Agent {
 				t.Run(sample.ID, func(t *testing.T) {
-					if sample.Preferences.Stream {
-						hasStream := false
-						for _, operation := range draft.Operations() {
-							hasStream = hasStream || operation.Kind == "generate" && (operation.Transport == p.SSE || operation.Transport == p.NDJSON)
-						}
-						if !hasStream {
-							if _, err := draft.BuildAgentParameters(t.Context(), sample.Preferences); err == nil {
-								t.Fatal("undeclared streaming transport was accepted")
-							}
-							return
-						}
-					}
-					want, wantErr := legacy.BuildAgentParameters(t.Context(), sample.Preferences)
-					got, gotErr := draft.BuildAgentParameters(t.Context(), sample.Preferences)
-					if stored := want["store"]; !stored.IsZero() && stored.JSONString() != "false" {
-						t.Fatal("historical Agent fixture must explicitly disable storage", stored)
-					}
-					delete(want, "store")
-					delete(want, "responses_include")
-					if wantErr != nil || gotErr != nil || !reflect.DeepEqual(want, got) {
-						t.Fatal(want, got, wantErr, gotErr)
-					}
-					request := p.Request{SchemaVersion: legacy.CoreVersion(), Source: p.AgentIdentity(), Model: p.StringValue(sample.Model), Content: []p.Node{
-						{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("call"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}},
-						{Kind: p.ToolResultNode, Name: p.StringValue("lookup"), CallID: p.StringValue("call"), Payload: testValue(t, `{"n":9007199254740993,"empty":null}`), Source: &p.Provenance{Protocol: p.AgentIdentity()}},
-					}}
-					before, _ := p.EncodeValue(request)
-					oldRequest, wantErr := legacy.BuildAgentRequest(t.Context(), request, sample.Preferences)
-					request.SchemaVersion = draft.CoreVersion()
-					newRequest, gotErr := draft.BuildAgentRequest(t.Context(), request, sample.Preferences)
-					request.SchemaVersion = legacy.CoreVersion()
-					after, _ := p.EncodeValue(request)
-					if wantErr != nil || gotErr != nil || !bytes.Equal(before.Bytes(), after.Bytes()) {
-						t.Fatal("Agent preparation failed or mutated history", wantErr, gotErr)
-					}
-					newRequest.SchemaVersion = oldRequest.SchemaVersion
-					expected := oldRequest.Clone()
-					delete(expected.Parameters, "store")
-					expected.ClientOutput.ResponsesStorage = &p.ResponsesStorageIntent{}
-					migrateFixtureInclude(t, expected)
-					declaredOutput, err := p.EncodeValue(newRequest.ClientOutput)
-					if err != nil || !equalAgentMigrationValues(t, declaredOutput, sample.ExpectedClientOutput) {
-						t.Fatal("Agent did not produce its complete declared client intent", newRequest.ClientOutput, err)
-					}
-					if !equalAgentMigrationValues(t, expected, newRequest) {
-						t.Fatalf("Agent preparation changed: old=%+v new=%+v", oldRequest, newRequest)
-					}
-					route := p.ConversionContext{Source: legacy.Identity(), Target: legacy.Identity(), Model: sample.Model}
-					oldRequest, wantErr = projection.Request(t.Context(), oldRequest, route, nil)
-					newRequest.SchemaVersion = draft.CoreVersion()
-					route.Source, route.Target = draft.Identity(), draft.Identity()
-					newRequest, gotErr = declaredProjection.Request(t.Context(), newRequest, route, nil)
-					if wantErr != nil || gotErr != nil {
-						t.Fatal("model projection fixture failed", wantErr, gotErr)
-					}
-					newRequest.SchemaVersion = draft.CoreVersion()
-					options := p.EvaluationContext{Scope: p.Scope{Model: sample.Model}, Values: p.Object{"model": p.StringValue(sample.Model)}}
-					oldWire, wantErr := legacy.EncodeRequest(t.Context(), oldRequest, options)
-					options.ClientOutput = newRequest.ClientOutput
-					newWire, gotErr := draft.EncodeRequest(t.Context(), newRequest, options)
-					if wantErr != nil || gotErr != nil || !bytes.Equal(oldWire, newWire) {
-						t.Fatalf("Agent request changed: old=%s new=%s errors=%v / %v", oldWire, newWire, wantErr, gotErr)
-					}
-					oldDecoded, wantErr := legacy.DecodeRequest(t.Context(), oldWire, options)
-					newDecoded, gotErr := draft.DecodeRequest(t.Context(), newWire, options)
-					if wantErr != nil || gotErr != nil {
-						t.Fatal("Agent wire cannot be decoded", wantErr, gotErr)
-					}
-					migrateFixtureStorage(t, oldDecoded, legacy.Codec(p.DecodeRequest))
-					migrateFixtureInclude(t, oldDecoded)
-					if !equalAgentMigrationValues(t, oldDecoded.ClientOutput, newDecoded.ClientOutput) {
-						t.Fatal("Agent wire changed client storage intent", oldDecoded.ClientOutput, newDecoded.ClientOutput)
-					}
-					if !equalAgentMigrationValues(t, oldDecoded.Reasoning, newDecoded.Reasoning) || !equalAgentMigrationValues(t, oldDecoded.Parameters, newDecoded.Parameters) {
-						t.Fatal("Agent controls changed through the declared wire", oldDecoded.Reasoning, newDecoded.Reasoning, oldDecoded.Parameters, newDecoded.Parameters)
-					}
+					checkAgentRequestContract(t, compiled, fixture.Name, sample)
 				})
 			}
 		})
+	}
+}
+
+func checkAgentRequestContract(t *testing.T, compiled *p.Compiled, name string, sample p.AgentSample) {
+	t.Helper()
+	preferences := sample.Preferences
+	wantParameters := p.Object{"max_output_tokens": testValue(t, "8192")}
+	reasoning := p.ReasoningIntent{Mode: "disabled"}
+	if preferences.ThinkingEnabled {
+		effort := preferences.ThinkingEffort
+		if effort == "" || effort == "adaptive" {
+			effort = "medium"
+		}
+		reasoning = p.ReasoningIntent{Mode: "enabled", Effort: p.StringValue(effort), EffortScope: "reasoning"}
+		switch name {
+		case "anthropic":
+			reasoning.Summary = p.StringValue("summarized")
+		case "openai-responses", "google-generate-content":
+			reasoning.Summary = p.StringValue("auto")
+		}
+	}
+	wantParameters["reasoning"], _ = p.EncodeValue(reasoning)
+	if name != "google-generate-content" {
+		wantParameters["stream"], _ = p.EncodeValue(preferences.Stream)
+	}
+	parameters, err := compiled.BuildAgentParameters(t.Context(), preferences)
+	if err != nil || !equalAgentMigrationValues(t, parameters, wantParameters) {
+		t.Fatal("Agent parameters differ from the preference contract", parameters, wantParameters, err)
+	}
+	request := p.Request{SchemaVersion: p.ProtocolCoreVersion, Source: p.AgentIdentity(), Model: p.StringValue(sample.Model), Content: []p.Node{
+		{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("call"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}},
+		{Kind: p.ToolResultNode, Name: p.StringValue("lookup"), CallID: p.StringValue("call"), Payload: testValue(t, `{"n":9007199254740993,"empty":null}`), Source: &p.Provenance{Protocol: p.AgentIdentity()}},
+	}}
+	before, err := p.EncodeValue(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := compiled.BuildAgentRequest(t.Context(), request, preferences)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := p.EncodeValue(request)
+	if err != nil || before != after {
+		t.Fatal("Agent preparation mutated its source history", err)
+	}
+	wantOutput := &p.ClientOutput{CollectUsage: preferences.Stream, ResponsesStorage: &p.ResponsesStorageIntent{}, RequireContinuationState: name == "openai-responses"}
+	if !equalAgentMigrationValues(t, prepared.ClientOutput, wantOutput) || !equalAgentMigrationValues(t, prepared.Reasoning, reasoning) {
+		t.Fatal("Agent preparation changed client intent or thinking controls", prepared)
+	}
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(compiled, compiled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := conversion.Request(t.Context(), prepared, p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Model: sample.Model}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: sample.Model}, Values: p.Object{"model": p.StringValue(sample.Model)}, ClientOutput: projected.ClientOutput})
+	wire, err := compiled.EncodeRequest(t.Context(), projected, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := compiled.DecodeRequest(t.Context(), wire, options)
+	if err != nil || decoded.Parameters["max_output_tokens"].JSONString() != "8192" {
+		t.Fatal("Agent wire lost the selected output limit", string(wire), err)
+	}
+	if !equalAgentMigrationValues(t, projected.Reasoning, decoded.Reasoning) {
+		t.Fatal("Agent wire changed projected thinking controls", projected.Reasoning, decoded.Reasoning)
+	}
+	calls, results := fixtureNodes(decoded.Content, p.ToolCallNode), fixtureNodes(decoded.Content, p.ToolResultNode)
+	if len(calls) != 1 || len(results) != 1 || !calls[0].CallID.IsString("call") || !results[0].CallID.IsString("call") || !calls[0].Name.IsString("lookup") || calls[0].Input == nil || !equivalentJSON(calls[0].Input.Value, testValue(t, `{"n":9007199254740993}`)) {
+		t.Fatal("Agent wire changed tool identity or arguments", string(wire))
+	}
+	payload := results[0].Payload
+	if payload.IsStringValue() {
+		var result string
+		if err := payload.Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		payload = testValue(t, result)
+	}
+	if !equivalentJSON(payload, testValue(t, `{"n":9007199254740993,"empty":null}`)) {
+		t.Fatal("Agent wire changed the exact tool result", payload)
 	}
 }
 

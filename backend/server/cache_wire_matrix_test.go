@@ -32,7 +32,7 @@ func TestCacheUsageMissingOutputRemainsUnknownUntilTail(t *testing.T) {
 }
 
 func TestCacheGeminiReferenceDoesNotInventSystem(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "google-generate-content"))
+	compiled := compileFixturePackage(t, presetPackage(t, "google-generate-content"))
 	options := protocol.EvaluationContext{Scope: protocol.Scope{Provider: "provider", Account: "account", Model: "m"}, Values: protocol.Object{"model": protocol.StringValue("m")}}
 	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"cachedContent":"cachedContents/existing","contents":[{"role":"user","parts":[{"text":"question"}]}]}`), options)
 	if err != nil {
@@ -54,34 +54,47 @@ func TestCacheGeminiReferenceDoesNotInventSystem(t *testing.T) {
 func TestCachePresetStablePrefix(t *testing.T) {
 	options := protocol.EvaluationContext{Scope: protocol.Scope{Provider: "provider", Account: "account", Model: "grp"}, Values: protocol.Object{"model": protocol.StringValue("grp")}}
 	for _, source := range cacheWireFixtures() {
-		ingress := compileFixtureDefinition(t, presetDefinition(t, source.id))
+		ingress := compileFixturePackage(t, presetPackage(t, source.id))
 		for _, target := range cacheWireFixtures() {
 			t.Run(source.platform+"_to_"+target.id, func(t *testing.T) {
-				upstream := compileFixtureDefinition(t, presetDefinition(t, target.id))
+				upstream := compileFixturePackage(t, presetPackage(t, target.id))
+				conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(ingress, upstream))
+				if err != nil {
+					t.Fatal(err)
+				}
+				route := protocol.ConversionContext{Source: ingress.Identity(), Target: upstream.Identity(), Model: "grp", Scope: options.Scope, Transport: protocol.HTTPJSON}
+				encode := func(request *protocol.Request) ([]byte, error) {
+					projected, err := conversion.Request(t.Context(), request, route, nil)
+					if err != nil {
+						return nil, err
+					}
+					return upstream.EncodeRequest(t.Context(), projected, options)
+				}
 				request, err := ingress.DecodeRequest(t.Context(), []byte(source.request), options)
 				if err != nil {
 					t.Fatal(err)
 				}
-				first, err := upstream.EncodeRequest(t.Context(), request, options)
 				isOpenAI := func(name string) bool { return name == "openai" || name == "responses" }
 				isCompatible := source.platform == target.platform || (isOpenAI(source.platform) && isOpenAI(target.platform))
 				if !isCompatible {
+					first, err := upstream.EncodeRequest(t.Context(), request, options)
 					if err == nil {
 						t.Fatal("foreign cache semantics silently accepted", string(first))
 					}
 					return
 				}
+				first, err := encode(request)
 				if err != nil {
 					t.Fatal(err)
 				}
 				for range 5 {
-					repeated, err := upstream.EncodeRequest(t.Context(), request, options)
+					repeated, err := encode(request)
 					if err != nil || string(first) != string(repeated) {
 						t.Fatal("identical request rendered differently", err)
 					}
 				}
 				request.Content = append(request.Content, protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("new last turn")}}})
-				next, err := upstream.EncodeRequest(t.Context(), request, options)
+				next, err := encode(request)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -90,10 +103,13 @@ func TestCachePresetStablePrefix(t *testing.T) {
 				if target.platform == "gemini" {
 					result = mustProtocolValue(t, `{"result":"second result"}`)
 				}
-				request.Content = append(request.Content,
-					protocol.Node{Kind: protocol.ToolCallNode, CallID: protocol.StringValue("t2"), Name: protocol.StringValue("lookup"), Input: &protocol.ToolInput{Kind: protocol.JSONInput, Value: mustProtocolValue(t, `{}`)}},
-					protocol.Node{Kind: protocol.ToolResultNode, CallID: protocol.StringValue("t2"), Name: protocol.StringValue("lookup"), Payload: result})
-				secondRound, err := upstream.EncodeRequest(t.Context(), request, options)
+				call := protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.ToolCallNode, CallID: protocol.StringValue("t2"), Name: protocol.StringValue("lookup"), Input: &protocol.ToolInput{Kind: protocol.JSONInput, Value: mustProtocolValue(t, `{}`)}}}}
+				toolResult := protocol.Node{Kind: protocol.ToolResultNode, CallID: protocol.StringValue("t2"), Name: protocol.StringValue("lookup"), Payload: result}
+				if target.platform != "openai" {
+					toolResult = protocol.Node{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{toolResult}}
+				}
+				request.Content = append(request.Content, call, toolResult)
+				secondRound, err := encode(request)
 				if err != nil || !strings.Contains(string(secondRound), "second result") {
 					t.Fatal(string(secondRound), err)
 				}

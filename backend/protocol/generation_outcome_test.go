@@ -8,9 +8,9 @@ import (
 
 func TestDeclaredFailureCannotBecomeSuccessfulGeneration(t *testing.T) {
 	for _, response := range []*Response{
-		{SchemaVersion: 1, Error: StringValue("quota exhausted")},
-		{SchemaVersion: 1, Status: StringValue("failed")},
-		{SchemaVersion: 1, Status: StringValue("cancelled")},
+		{SchemaVersion: SemanticSchemaVersion, Error: StringValue("quota exhausted")},
+		{SchemaVersion: SemanticSchemaVersion, Status: StringValue("failed")},
+		{SchemaVersion: SemanticSchemaVersion, Status: StringValue("cancelled")},
 	} {
 		var failure *GenerationFailure
 		if err := CheckGenerationOutcome(response); !errors.As(err, &failure) {
@@ -20,7 +20,7 @@ func TestDeclaredFailureCannotBecomeSuccessfulGeneration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _, err = collector.Consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: response})
+		_, _, err = collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: response})
 		if !errors.As(err, &failure) {
 			t.Fatal("collector accepted failed terminal", err)
 		}

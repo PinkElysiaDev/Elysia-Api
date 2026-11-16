@@ -94,7 +94,7 @@ func TestPackageNativePredicateClientOutput(t *testing.T) {
 			}
 		})
 	}
-	for _, path := range []string{"/scope/model", "/interleavedThinking", "/operation/id", "/frame/usage", "/nativeFrame", "/stream/sequence", "/emission/offset", "/delivered/maxItemIndex"} {
+	for _, path := range []string{"/scope/model", "/interleavedThinking", "/operation/id", "/frame/usage", "/nativeFrame"} {
 		entry.NativeWhen = &Expression{Op: "exists", Source: expressionPointer(readExpression("runtime", path))}
 		document.Mapping.Directions[EncodeEvent] = entry
 		if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "runtime metadata requires") {
@@ -105,6 +105,65 @@ func TestPackageNativePredicateClientOutput(t *testing.T) {
 	document.Mapping.Directions[EncodeEvent] = entry
 	if err := document.Validate(DefaultLimits()); err == nil || !strings.Contains(err.Error(), "state slot is not declared") {
 		t.Fatal("native predicate gained stream state access", err)
+	}
+}
+
+func TestPackageNativePredicateCommittedStream(t *testing.T) {
+	document := eventProtocolPackage(t)
+	entry := document.Mapping.Directions[EncodeEvent]
+	entry.IsFrameBatch, entry.NativeReplay = true, "original_frame"
+	entry.Observe = &Expression{Op: "omit"}
+	entry.Program = Expression{Op: "array", Items: []Expression{entry.Program}}
+	entry.Effects[0].Target = "/0/response_id"
+	entry.NativeWhen = expressionPointer(readExpression("runtime", "/stream/started"))
+	document.Mapping.Directions[EncodeEvent] = entry
+	compiled := compilePackageForTest(t, document)
+	source := EvaluationContext{State: NewEvaluationState()}
+	defer source.State.Release()
+	start := packageStreamFrame(ResponseStarted, 0, `,"extension":9007199254740993`)
+	frame, err := compiled.DecodeFrame(t.Context(), start, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validation, err := compiled.NewWireStreamValidation(Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer validation.Release()
+	for _, fixture := range []struct {
+		name        string
+		validation  *WireStreamValidation
+		hasDelivery bool
+	}{
+		{"unbound", nil, false},
+		{"unstarted", validation, false},
+		{"accepted", validation, false},
+		{"delivered", validation, true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			if fixture.name == "accepted" {
+				if err := validation.Consume(t.Context(), start); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if fixture.hasDelivery {
+				if err := validation.CommitDelivery(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			target := (EvaluationContext{State: NewEvaluationState()}).WithOutputStream(fixture.validation)
+			defer target.State.Release()
+			frames, err := compiled.EncodeFrame(t.Context(), frame, target)
+			if fixture.validation == nil {
+				if err == nil || !strings.Contains(err.Error(), "not bound") {
+					t.Fatal("unbound replay decision accepted", err)
+				}
+				return
+			}
+			if err != nil || len(frames) != 1 || (frames[0] == start) != fixture.hasDelivery {
+				t.Fatal("native decision did not use committed delivery", frames, err)
+			}
+		})
 	}
 }
 
@@ -166,7 +225,7 @@ func TestPackageNativeObserverRetainsActualWirePosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	if compiled, issues := compiler.CompilePackage(raw.Bytes()); compiled != nil || IssuesError(issues) == nil {
 		t.Fatal("stateful native renderer compiled without an observer", issues)
 	}

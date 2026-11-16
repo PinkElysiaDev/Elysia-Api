@@ -94,7 +94,7 @@ func TestGatewayResponsesNullReasoningHistory(t *testing.T) {
 				call := func(items []string, wantStatus int) []byte {
 					t.Helper()
 					body := fmt.Sprintf(`{"model":"group","store":false,"stream":%v,"input":[%s],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],"opaque_extension":{"counter":9007199254740993}}`, stream, strings.Join(items, ","))
-					req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, web.URL+"/gateway/openai-responses/responses", strings.NewReader(body))
+					req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, web.URL+"/gateway/openai-responses/v1/responses", strings.NewReader(body))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -166,7 +166,7 @@ func checkNullHistoryRecords(t *testing.T, s *Server) {
 			totalTokens += record.ProtocolUsage.Total.Count
 		} else {
 			failures++
-			if record.StatusCode != http.StatusBadRequest || record.UpstreamHTTPStatus != 0 || len(record.ConversionIssues) != 1 || record.ConversionIssues[0].Stage != "decode_request" || record.ConversionIssues[0].Direction != protocol.DecodeRequest || record.ConversionIssues[0].Path != "/input/40/content" {
+			if record.StatusCode != http.StatusBadRequest || record.UpstreamHTTPStatus != 0 || len(record.ConversionIssues) != 1 || record.ConversionIssues[0].Stage != "wire" || record.ConversionIssues[0].Direction != protocol.DecodeRequest || record.ConversionIssues[0].Path != "/input/40/content" {
 				t.Fatal("incorrect local decode attribution", record.StatusCode, record.ConversionIssues)
 			}
 		}
@@ -182,11 +182,11 @@ func checkNullHistoryRecords(t *testing.T, s *Server) {
 
 func writeNullHistoryResponse(t *testing.T, w http.ResponseWriter, compiled *protocol.Compiled, stream, tool bool) {
 	t.Helper()
-	sampleID := "stream-text-decode"
+	sampleID := "declared-stream-text-decode"
 	if tool {
-		sampleID = "stream-tool-decode"
+		sampleID = "declared-stream-tool-decode"
 	}
-	for _, sample := range compiled.Definition().Samples {
+	for _, sample := range compiledPackage(compiled).Mapping.Samples {
 		if sample.ID != sampleID {
 			continue
 		}

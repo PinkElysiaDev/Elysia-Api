@@ -75,7 +75,7 @@ func TestResponsesPackageStreamRebuildAndNativeDelivery(t *testing.T) {
 			}
 			frames, response := decodePackageStream(t, compiled, source, scope)
 			rebuildFrames := frames
-			if name == "mixed item layout" {
+			if name == "mixed item layout" || name == "hosted tool usage" {
 				rebuildFrames = make([]*p.EventFrame, len(frames))
 				for index, frame := range frames {
 					events := append([]p.Event(nil), frame.Events...)
@@ -120,6 +120,22 @@ func TestResponsesPackageStreamRebuildAndNativeDelivery(t *testing.T) {
 				t.Fatal("usage changed", beforeUsage.JSONString(), afterUsage.JSONString())
 			}
 			native := encodePackageStream(t, compiled, frames, scope, true)
+			if name == "hosted tool usage" {
+				// Partial provider snapshots rebuild from observed state but cannot
+				// be delivered unchanged under the complete client response contract.
+				for _, raw := range source[1:3] {
+					requireDraftRejection(t, compiled.ValidateWireOutput(p.EncodeEvent, testValue(t, raw)), "/response")
+				}
+				_, reconstructed := decodePackageStream(t, compiled, native, scope)
+				usage, _ := p.EncodeValue(reconstructed.Usage)
+				if usage != beforeUsage || len(reconstructed.Content) != len(response.Content) {
+					t.Fatal("partial native progress changed response semantics", reconstructed)
+				}
+				for index := range response.Content {
+					assertResponsesStreamNode(t, response.Content[index], reconstructed.Content[index])
+				}
+				return
+			}
 			if len(native) != len(source) {
 				t.Fatal("native frame duplicated or dropped", len(native), len(source))
 			}

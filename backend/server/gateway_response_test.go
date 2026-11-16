@@ -47,7 +47,7 @@ func TestGatewayResponseCarrierCompletion(t *testing.T) {
 				body = `{"payload":false}`
 			}
 			candidate := gatewayCandidate{compiled: compiled, binding: protocol.Binding{Capabilities: protocol.CapabilitySet{protocol.TextCapability: true}},
-				continuation: &gatewayContinuation{isPackage: true, binding: binding}}
+				continuation: &gatewayContinuation{binding: binding}}
 			server := &Server{}
 			err = server.forwardGatewayResponse(t.Context(), c, &usageRecord{StartedAt: time.Now()}, &gatewayResponsePlan{ingress: compiled}, candidate,
 				&http.Response{Body: io.NopCloser(strings.NewReader(body))}, protocol.ConversionContext{}, protocol.EvaluationContext{})

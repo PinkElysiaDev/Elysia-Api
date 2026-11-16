@@ -254,7 +254,7 @@ func TestPackageCacheProjectionRejectsUnboundedDeclarations(t *testing.T) {
 	} {
 		document := noCachePackage(t)
 		change(&document.Mapping.Directions[EncodeRequest].Effects[2])
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
 		value := fixtureValue(t, document)
 		if compiled, issues := compiler.CompilePackage(value.Bytes()); compiled != nil || IssuesError(issues) == nil {
 			t.Fatal("unbounded cache default compiled")

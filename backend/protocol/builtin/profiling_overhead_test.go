@@ -1,7 +1,6 @@
 package builtin
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -9,47 +8,63 @@ import (
 )
 
 func TestContinuationExtractionNoChangePreservesWire(t *testing.T) {
-	for _, family := range []string{"openai_chat", "openai_responses", "claude"} {
-		t.Run(family, func(t *testing.T) {
+	for _, name := range []string{Chat, Responses, Anthropic} {
+		t.Run(name, func(t *testing.T) {
+			compiled := testCompiled(t, name)
 			key := "messages"
-			if family == "openai_responses" {
+			if name == Responses {
 				key = "input"
 			}
-			// Carrier-like text inside user content is not a reserved history carrier.
-			body := []byte(`{ "` + key + `": [{ "role": "user", "content": "` + p.ContinuationPrefix + strings.Repeat("A", 64<<10) + `" }], "n": 9007199254740993 }`)
-			got, tokens, err := ExtractContinuationCarriers(body, family, len(body))
-			if err != nil || len(tokens) != 0 || !bytes.Equal(got, body) || &got[0] != &body[0] {
-				t.Fatalf("no-change extraction rebuilt or changed the wire: %d tokens, %v", len(tokens), err)
+			body := `{ "` + key + `": [{ "role": "user", "content": "` + p.ContinuationPrefix + strings.Repeat("A", 64<<10) + `" }], "n": 9007199254740993 }`
+			if name != Responses {
+				if _, _, err := compiled.ExtractContinuations(t.Context(), testValue(t, body), p.EvaluationContext{}); err == nil {
+					t.Fatal("carrier extraction bypassed the source request contract")
+				}
+				body = strings.Replace(body, `{ `, `{ "model":"m", `, 1)
+				if name == Chat {
+					body = strings.Replace(body, `"n":`, `"vendor_count":`, 1)
+				}
+			}
+			input := testValue(t, body)
+			options, tokens, err := compiled.ExtractContinuations(t.Context(), input, p.EvaluationContext{})
+			if err != nil || len(tokens) != 0 {
+				t.Fatal("carrier-like user text became reserved state", tokens, err)
+			}
+			request, err := compiled.DecodeRequestValue(t.Context(), input, options)
+			if err != nil || request.Native == nil || request.Native.Value != input || input.JSONString() != body {
+				t.Fatal("unchanged extraction rebuilt source evidence", err)
 			}
 		})
 	}
 }
 
 func TestContinuationExtractionRebuildsOnlyChangedHistory(t *testing.T) {
+	compiled := testCompiled(t, Chat)
 	token := p.ContinuationPrefix + "opaque"
-	untouched := `{ "role": "user", "content": "hello", "n": 9007199254740993 }`
-	body := []byte(`{"messages":[` + untouched + `,{"role":"assistant","content":"ok","elysia_continuation":["` + token + `"]}]}`)
-	input := testValue(t, string(body))
-	root, tokens, err := ExtractContinuationCarriersValue(input, "openai_chat", len(body))
+	body := `{"model":"m","messages":[{ "role": "user", "content": "hello", "n": 9007199254740993 },{"role":"assistant","content":"ok","elysia_continuation":["` + token + `"]}]}`
+	input := testValue(t, body)
+	options, tokens, err := compiled.ExtractContinuations(t.Context(), input, p.EvaluationContext{})
 	if err != nil || len(tokens) != 1 || tokens[0] != token {
-		t.Fatalf("carrier extraction: %q, %v", tokens, err)
+		t.Fatal("carrier extraction", tokens, err)
 	}
-	if input.JSONString() != string(body) {
-		t.Fatal("carrier extraction mutated immutable input")
+	request, err := compiled.DecodeRequestValue(t.Context(), input, options)
+	if err != nil {
+		t.Fatal(err)
 	}
-	fields, _ := root.ReadObject()
-	var messages []p.Value
-	if err := fields["messages"].Decode(&messages); err != nil || len(messages) != 2 {
-		t.Fatalf("history: %v", err)
+	if err := request.AcceptContinuations(tokens); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(string(messages[0].Bytes()), "9007199254740993") {
-		t.Fatal("unmodified history lost numeric precision")
+	wire, err := compiled.EncodeRequestValue(t.Context(), request, options)
+	if err != nil || input.JSONString() != body {
+		t.Fatal("carrier extraction changed immutable input", err)
 	}
-	assistant, _ := messages[1].ReadObject()
-	if !assistant["elysia_continuation"].IsZero() || !assistant["content"].IsString("ok") {
-		t.Fatal("carrier removal changed assistant content")
+	fields, _ := wire.ReadObject()
+	var messages []p.Object
+	if err := fields["messages"].Decode(&messages); err != nil || len(messages) != 2 || messages[0]["n"].JSONString() != "9007199254740993" || !messages[0]["content"].IsString("hello") || !messages[1]["elysia_continuation"].IsZero() || !messages[1]["content"].IsString("ok") {
+		t.Fatal("carrier removal changed unrelated history", wire, err)
 	}
-	if _, _, err := ExtractContinuationCarriers([]byte(`{"messages":[{"role":"assistant","elysia_continuation":["invalid"]}]}`), "openai_chat", 1024); err == nil {
+	invalid := testValue(t, `{"model":"m","messages":[{"role":"assistant","elysia_continuation":["invalid"]}]}`)
+	if _, _, err := compiled.ExtractContinuations(t.Context(), invalid, p.EvaluationContext{}); err == nil {
 		t.Fatal("invalid reserved carrier accepted")
 	}
 }

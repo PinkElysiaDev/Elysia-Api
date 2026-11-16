@@ -17,7 +17,7 @@ func TestBuiltinHTTPFailureMatrix(t *testing.T) {
 		Anthropic: `{"type":"error","error":{"type":"rate_limit_error","message":"quota"}}`,
 		Gemini:    `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota"}}`,
 	}
-	options := p.EvaluationContext{Values: p.Object{"httpStatus": testValue(t, `429`)}}
+	options := fixtureOptions(p.EvaluationContext{Values: p.Object{"httpStatus": testValue(t, `429`)}})
 	for source, fixture := range fixtures {
 		for target := range fixtures {
 			t.Run(source+"/"+target, func(t *testing.T) {
@@ -55,11 +55,11 @@ func TestBuiltinHTTPFailureMatrix(t *testing.T) {
 func TestBuiltinFailureNativeExtensionsStayScoped(t *testing.T) {
 	decoder := testCompiled(t, Responses)
 	raw := `{"error":{"message":"limited","type":"vendor_budget","code":"vendor_code","trace":{"n":9007199254740993,"enabled":false,"detail":null}},"vendor":[]}`
-	response, err := decoder.DecodeHTTPFailure(t.Context(), 403, []byte(raw), p.EvaluationContext{})
+	response, err := decoder.DecodeHTTPFailure(t.Context(), 403, []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := decoder.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	encoded, err := decoder.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,20 +69,20 @@ func TestBuiltinFailureNativeExtensionsStayScoped(t *testing.T) {
 	if !reflect.DeepEqual(before, after) || !strings.Contains(string(encoded), "9007199254740993") {
 		t.Fatalf("native error changed: %s", encoded)
 	}
-	_, err = testCompiled(t, Anthropic).EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	_, err = testCompiled(t, Anthropic).EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	var conversion *p.ConversionError
-	if !errors.As(err, &conversion) || conversion.Issues[0].Code != p.UnsupportedCapability {
+	if !errors.As(err, &conversion) || conversion.Issues[0].Code != p.ConversionRejected || conversion.Issues[0].Path != "/attributes" {
 		t.Fatalf("unknown error extensions crossed provider: %v", err)
 	}
 }
 
 func TestStreamFailureUsesSharedClassification(t *testing.T) {
 	decoder, encoder := testCompiled(t, Anthropic), testCompiled(t, Chat)
-	frame, err := decoder.DecodeFrame(t.Context(), testValue(t, `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`), p.EvaluationContext{State: p.NewEvaluationState()})
+	frame, err := decoder.DecodeFrame(t.Context(), testValue(t, `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	frames, err := encoder.EncodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()})
+	frames, err := encoder.EncodeFrame(t.Context(), frame, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 	if err != nil {
 		t.Fatal(err)
 	}

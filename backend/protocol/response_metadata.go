@@ -1,14 +1,19 @@
 package protocol
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // ResponseMetadata is a recognized wire field, attached to its owning response
 // or node. Path and SourceCodec are diagnostic provenance, not target routing.
 // Unknown fields remain in Native/Unmapped and retain their existing guards.
 type ResponseMetadata struct {
+	// Meaning identifies the core semantics declared by the owning source mapping.
+	// Value retains the source representation for its own encoder. Shared scalar
+	// meanings and token probabilities already use their canonical Value shape.
+	Meaning string `json:"meaning,omitempty"`
+	// References contains canonical URL references, independent of wire citation
+	// wrappers: [{"url":...,"title":...,"start":...,"end":...}]. Other meanings
+	// leave this absent; opaque resource citations never acquire URL semantics.
+	References  Value  `json:"references,omitzero"`
 	Name        string `json:"name"`
 	Location    string `json:"location"`
 	Codec       string `json:"codec"`
@@ -19,131 +24,64 @@ type ResponseMetadata struct {
 	Update string `json:"update,omitempty"`
 }
 
-// MetadataFieldType is shared by JSON and SSE decoders. Stateful references,
-// credentials, signatures and counters are deliberately absent from this list.
-func MetadataFieldType(codec, location, name string) string {
-	if codec == "responses" && name == "safety_buffering" {
-		switch location {
-		case "event:response.created", "event:response.in_progress", "event:response.output_text.delta", "event:response.completed":
-			return "safety-buffering"
+func validateCoreMetadataValue(field ResponseMetadata, path string) error {
+	if field.Meaning == "url-references" {
+		return validateMetadataReferences(field.References, path+"/references")
+	}
+	if !field.References.IsZero() {
+		return streamIssue(InvalidInput, path+"/references", "canonical URL references require their declared metadata meaning")
+	}
+	if field.Meaning == "token-probabilities" {
+		return validateCoreLogprobs(field)
+	}
+	switch field.Meaning {
+	case metadataImageCompression, metadataInputTransformations:
+		return validateResponseObservation(field)
+	case "service-tier":
+		if field.Value.IsNull() {
+			return nil
+		}
+		fallthrough
+	case "visible-text", "padding":
+		var value string
+		if field.Value.IsZero() || field.Value.IsNull() || field.Value.Decode(&value) != nil {
+			return streamIssue(InvalidInput, field.Path, "core metadata meaning requires a string value")
+		}
+	case "buffering":
+		var value bool
+		if field.Value.IsZero() || field.Value.IsNull() || field.Value.Decode(&value) != nil {
+			return streamIssue(InvalidInput, field.Path, "buffering metadata requires a boolean value")
 		}
 	}
-	if codec == "responses" && name == "obfuscation" {
-		switch location {
-		case "event:response.output_text.delta", "event:response.refusal.delta", "event:response.function_call_arguments.delta", "event:response.custom_tool_call_input.delta", "event:response.reasoning_text.delta", "event:response.reasoning_summary_text.delta":
-			return "padding-string"
-		}
-	}
-	if location == "response" {
-		switch codec {
-		case "openai-chat":
-			switch name {
-			case "service_tier", "system_fingerprint":
-				return "string"
-			}
-		case "responses":
-			switch name {
-			case "output_text":
-				return "derived-text"
-			case "service_tier", "user", "safety_identifier", "prompt_cache_key", "prompt_cache_retention", "truncation":
-				return "string"
-			case "store", "background", "parallel_tool_calls":
-				return "bool"
-			case "temperature", "top_p", "max_output_tokens", "max_tool_calls", "top_logprobs", "completed_at", "frequency_penalty", "presence_penalty":
-				return "number"
-			case "previous_response_id":
-				return "reference"
-			case "moderation":
-				return "empty-state"
-			case "access_programs":
-				return "access-programs"
-			case "tool_usage":
-				return "empty-tool-usage"
-			case "content_filters":
-				// Only the observed empty sentinel has a known meaning. A
-				// non-null vendor filtering payload remains an opaque extension.
-				return "null-only"
-			case "metadata", "reasoning", "text":
-				return "object"
-			case "tools":
-				return "array"
-			case "instructions", "tool_choice":
-				return "string-or-container"
-			}
-		case "anthropic":
-			if name == "container" || name == "context_management" || name == "stop_details" {
-				return "empty-state"
-			}
-		case "gemini":
-			if name == "createTime" {
-				return "string"
-			}
-		}
-	}
-	if location == "choice" && codec == "openai-chat" && name == "logprobs" {
-		return "object"
-	}
-	// OpenRouter-compatible channels expose the original provider stop spelling
-	// alongside finish_reason. It supplements, never replaces, the mapped reason.
-	if location == "choice" && codec == "openai-chat" && name == "native_finish_reason" {
-		return "string"
-	}
-	if location == "message" && codec == "openai-chat" && name == "annotations" {
-		return "array"
-	}
-	if location == "message" && codec == "responses" && name == "phase" {
-		return "message-phase"
-	}
-	if (location == "message" || location == "item") && codec == "responses" {
-		if name == "metadata" {
-			return "turn-tags"
-		}
-		if name == "internal_chat_message_metadata_passthrough" {
-			return "timed-turn-tags"
-		}
-	}
-	if location == "content" {
-		if codec == "responses" && (name == "annotations" || name == "logprobs") {
-			return "array"
-		}
-		if codec == "anthropic" && name == "citations" {
-			return "array"
-		}
-	}
-	if location == "candidate" && codec == "gemini" {
-		switch name {
-		case "finishMessage":
-			return "string"
-		case "avgLogprobs":
-			return "number"
-		case "logprobsResult", "citationMetadata", "groundingMetadata":
-			return "object"
-		case "safetyRatings":
-			return "array"
-		}
-	}
-	if location == "usage" && codec == "anthropic" {
-		switch name {
-		case "service_tier", "inference_geo":
-			return "string"
-		case "server_tool_use":
-			return "object"
-		}
-	}
-	if location == "usage" && codec == "gemini" && name == "serviceTier" {
-		return "string"
-	}
-	return ""
+	return nil
 }
 
-func validateCoreMetadataValue(version int, field ResponseMetadata) error {
-	if version == ProtocolCoreVersion {
-		if field.Name == "logprobs" {
-			return validateCoreLogprobs(field)
-		}
-		return nil // External field contracts belong to Spec and target dispositions.
+func validateMetadataReferences(value Value, path string) error {
+	var references []Value
+	if value.IsZero() || value.IsNull() || value.Decode(&references) != nil {
+		return streamIssue(InvalidInput, path, "canonical URL references require an array")
 	}
-	return ValidateMetadataValue(field.Codec, field.Location, field.Name, field.Value, field.Path)
+	for index, reference := range references {
+		location := fmt.Sprintf("%s/%d", path, index)
+		fields, err := reference.ReadObject()
+		if err != nil || len(fields) != 4 {
+			return streamIssue(InvalidInput, location, "URL reference requires url, title, start and end")
+		}
+		for _, name := range []string{"url", "title"} {
+			var text string
+			if fields[name].IsZero() || fields[name].IsNull() || fields[name].Decode(&text) != nil {
+				return streamIssue(InvalidInput, location+"/"+name, "URL reference field requires a string")
+			}
+		}
+		var start, end int64
+		if fields["start"].IsZero() || fields["start"].IsNull() || fields["start"].Decode(&start) != nil || start < 0 {
+			return streamIssue(InvalidInput, location+"/start", "URL reference start requires a nonnegative integer")
+		}
+		if fields["end"].IsZero() || fields["end"].IsNull() || fields["end"].Decode(&end) != nil || end < start {
+			return streamIssue(InvalidInput, location+"/end", "URL reference end requires an integer at or after its start")
+		}
+	}
+	return nil
 }
 
 func validateCoreLogprobs(field ResponseMetadata) error {
@@ -151,319 +89,6 @@ func validateCoreLogprobs(field ResponseMetadata) error {
 		return streamIssue(InvalidInput, field.Path, "token probabilities require a content owner")
 	}
 	return validateLogprobTokens(field.Value, field.Path)
-}
-
-func ValidateMetadataValue(codec, location, name string, v Value, at string) error {
-	kind := MetadataFieldType(codec, location, name)
-	if kind == "" {
-		return streamIssue(UnsupportedCapability, at, "unknown response metadata")
-	}
-	if v.IsNull() && kind != "padding-string" && kind != "safety-buffering" && kind != "derived-text" {
-		return nil
-	}
-	ok := false
-	switch kind {
-	case "derived-text":
-		var text string
-		if v.IsNull() || v.Decode(&text) != nil {
-			return streamIssue(InvalidInput, at, "output_text requires a string")
-		}
-		ok = true
-	case "safety-buffering":
-		var enabled bool
-		if v.IsNull() || v.Decode(&enabled) != nil {
-			return streamIssue(InvalidInput, at, "safety_buffering requires a boolean")
-		}
-		ok = true
-	case "turn-tags", "timed-turn-tags":
-		fields, err := v.ReadObject()
-		if err != nil {
-			break
-		}
-		for _, key := range sortedKeys(fields) {
-			if key == "create_time" && kind == "timed-turn-tags" {
-				var seconds float64
-				if fields[key].IsNull() || fields[key].Decode(&seconds) != nil || seconds < 0 {
-					return streamIssue(InvalidInput, at+"/"+key, "item creation time must be a nonnegative number")
-				}
-				continue
-			}
-			if key != "turn_id" {
-				return streamIssue(UnsupportedCapability, at+"/"+key, "unknown message metadata requires explicit mapping")
-			}
-			var id string
-			if fields[key].IsNull() || fields[key].Decode(&id) != nil || strings.TrimSpace(id) == "" {
-				return streamIssue(InvalidInput, at+"/"+key, "message turn tag must be a nonempty string")
-			}
-		}
-		ok = true
-	case "padding-string":
-		var value string
-		ok = !v.IsNull() && v.Decode(&value) == nil
-	case "empty-tool-usage":
-		ok = EmptyResponsesToolUsage(v)
-	case "access-programs":
-		fields, err := v.ReadObject()
-		if err != nil {
-			break
-		}
-		for _, key := range sortedKeys(fields) {
-			if key != "cyber" {
-				return streamIssue(UnsupportedCapability, at+"/"+key, "unknown response access program requires explicit mapping")
-			}
-		}
-		switch {
-		case fields["cyber"].IsString("standard") || fields["cyber"].IsString("daybreak_blue") || fields["cyber"].IsString("daybreak_red"):
-			ok = true
-		default:
-			return streamIssue(InvalidInput, at+"/cyber", "expected standard, daybreak_blue or daybreak_red access program")
-		}
-	case "message-phase":
-		ok = v.IsString("commentary") || v.IsString("final_answer")
-	case "string", "reference":
-		var s string
-		ok = v.Decode(&s) == nil
-		if kind == "reference" {
-			ok = ok && strings.TrimSpace(s) != ""
-		}
-	case "bool":
-		var b bool
-		ok = v.Decode(&b) == nil
-	case "number":
-		raw := strings.TrimSpace(string(v.Bytes()))
-		ok = len(raw) > 0 && (raw[0] == '-' || raw[0] >= '0' && raw[0] <= '9')
-	case "object", "empty-state":
-		ok = v.IsObject()
-	case "array":
-		var a []Value
-		ok = v.Decode(&a) == nil
-	case "string-or-container":
-		var s string
-		var a []Value
-		ok = v.IsObject() || v.Decode(&s) == nil || v.Decode(&a) == nil
-	}
-	if !ok {
-		return streamIssue(InvalidInput, at, "invalid response metadata type; expected "+kind+" or null")
-	}
-	if (name == "annotations" || name == "citations") && kind == "array" {
-		var entries []Value
-		_ = v.Decode(&entries)
-		for i, entry := range entries {
-			if !entry.IsObject() {
-				return streamIssue(InvalidInput, fmt.Sprintf("%s/%d", at, i), "citation must be an object")
-			}
-		}
-	}
-	return nil
-}
-
-func emptyMetadata(v Value) bool {
-	s := strings.TrimSpace(string(v.Bytes()))
-	return s == "null" || s == "[]" || s == "{}"
-}
-
-// Only the observed correlation tag is classified. Other channel annotations
-// retain their opaque boundary, including when they accompany a known tag.
-func KnownResponseTurnTags(v Value, withTime bool) bool {
-	fields, err := v.ReadObject()
-	if err != nil {
-		return true
-	} // Type/null validation remains the caller's job.
-	for key := range fields {
-		if key != "turn_id" && !(withTime && key == "create_time") {
-			return false
-		}
-	}
-	return true
-}
-
-func emptyMetadataField(item ResponseMetadata) bool {
-	if item.Codec == "responses" && item.Name == "tool_usage" {
-		return EmptyResponsesToolUsage(item.Value)
-	}
-	if emptyMetadata(item.Value) {
-		return true
-	}
-	// Anthropic explicitly reports no applied context edits this way. Other
-	// keys or any actual edit still require state-aware conversion.
-	if item.Codec == "anthropic" && item.Name == "context_management" {
-		fields, err := item.Value.ReadObject()
-		return err == nil && len(fields) == 1 && string(fields["applied_edits"].Bytes()) == "[]"
-	}
-	return false
-}
-
-func (c *CompiledConversion) projectMetadata(items []ResponseMetadata, codec string, phase ConversionPhase, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) ([]ResponseMetadata, error) {
-	var out []ResponseMetadata
-	for _, item := range items {
-		if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
-			return nil, err
-		}
-		if item.Codec == codec {
-			out = append(out, item)
-			continue
-		}
-		if MetadataFieldType(item.Codec, item.Location, item.Name) == "derived-text" {
-			c.normalized(rule, route, item.Path, "verified output_text duplicates the ordered visible output; emitted once in target content", sink)
-			continue
-		}
-		if MetadataFieldType(item.Codec, item.Location, item.Name) == "safety-buffering" {
-			if string(item.Value.Bytes()) != "false" {
-				return nil, streamIssue(UnsupportedCapability, item.Path, "active source safety buffering has no declared target mapping")
-			}
-			c.normalized(rule, route, item.Path, "inactive source safety buffering carries no buffered content; target output remains unchanged", sink)
-			continue
-		}
-		if MetadataFieldType(item.Codec, item.Location, item.Name) == "padding-string" {
-			if err := c.issue(rule, phase, route, item.Path, "source event padding cannot preserve payload-size obfuscation after protocol conversion", sink, true); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if (item.Name == "annotations" || item.Name == "citations" || item.Name == "logprobs") && emptyMetadata(item.Value) {
-			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: item.Path, RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty known response metadata normalized for target", Evidence: c.Origins[rule.ID]})
-			continue
-		}
-		if item.Name == "annotations" && !emptyMetadata(item.Value) {
-			if _, _, err := mapPublicMetadata(item, map[string]string{"openai-chat": "responses", "responses": "openai-chat"}[item.Codec]); err != nil {
-				return nil, err
-			}
-		}
-		kind := MetadataFieldType(item.Codec, item.Location, item.Name)
-		if (kind == "empty-state" || kind == "reference") && !emptyMetadataField(item) {
-			return nil, streamIssue(UnsupportedCapability, item.Path, "nonempty context/container state requires a scoped state mapping")
-		}
-		if (item.Name == "citations" || item.Name == "citationMetadata" || item.Name == "groundingMetadata") && !emptyMetadata(item.Value) {
-			return nil, streamIssue(UnsupportedCapability, item.Path, "non-URL citation or grounding resources require an explicit scoped mapping")
-		}
-		mapped, ok, err := mapPublicMetadata(item, codec)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, mapped)
-			continue
-		}
-		if emptyMetadataField(item) {
-			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: item.Path, RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty known response metadata normalized for target", Evidence: c.Origins[rule.ID]})
-		} else if err := c.issue(rule, phase, route, item.Path, "target cannot express this recognized response metadata field", sink, true); err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-
-func mapPublicMetadata(item ResponseMetadata, codec string) (ResponseMetadata, bool, error) {
-	openAI := func(s string) bool { return s == "openai-chat" || s == "responses" }
-	if !openAI(item.Codec) || !openAI(codec) {
-		return item, false, nil
-	}
-	if item.Name == "service_tier" {
-		item.Codec = codec
-		return item, true, nil
-	}
-	if item.Name == "annotations" {
-		var entries []Value
-		if item.Value.IsNull() {
-			return item, false, nil
-		}
-		if err := item.Value.Decode(&entries); err != nil {
-			return item, false, err
-		}
-		for i, entry := range entries {
-			fields, err := entry.ReadObject()
-			if err != nil {
-				return item, false, err
-			}
-			if !fields["type"].IsString("url_citation") {
-				return item, false, streamIssue(UnsupportedCapability, fmt.Sprintf("%s/%d", item.Path, i), "non-URL citation requires a resource mapping")
-			}
-			if item.Codec == "openai-chat" {
-				for k := range fields {
-					if k != "type" && k != "url_citation" {
-						return item, false, streamIssue(UnsupportedCapability, item.Path+"/"+k, "unknown citation extension requires explicit mapping")
-					}
-				}
-				fields, err = fields["url_citation"].ReadObject()
-				if err != nil {
-					return item, false, err
-				}
-				fields["type"] = StringValue("url_citation")
-			}
-			for k := range fields {
-				if k != "type" && k != "url" && k != "title" && k != "start_index" && k != "end_index" {
-					return item, false, streamIssue(UnsupportedCapability, item.Path+"/"+k, "unknown citation extension requires explicit mapping")
-				}
-			}
-			for _, key := range []string{"url", "title"} {
-				var s string
-				if fields[key].Decode(&s) != nil {
-					return item, false, streamIssue(InvalidInput, item.Path, "URL citation requires "+key)
-				}
-			}
-			for _, key := range []string{"start_index", "end_index"} {
-				var n int64
-				if fields[key].Decode(&n) != nil || n < 0 {
-					return item, false, streamIssue(InvalidInput, item.Path, "URL citation requires nonnegative text offsets")
-				}
-			}
-			var start, end int64
-			_ = fields["start_index"].Decode(&start)
-			_ = fields["end_index"].Decode(&end)
-			if end < start {
-				return item, false, streamIssue(InvalidInput, item.Path, "citation end precedes its start")
-			}
-			if codec == "openai-chat" {
-				delete(fields, "type")
-				v, _ := EncodeValue(fields)
-				fields = Object{"type": StringValue("url_citation"), "url_citation": v}
-			}
-			entries[i], _ = EncodeValue(fields)
-		}
-		item.Value, _ = EncodeValue(entries)
-		item.Codec = codec
-		item.Location = "content"
-		if codec == "openai-chat" {
-			item.Location = "message"
-		}
-		return item, true, nil
-	}
-	if item.Name == "logprobs" {
-		if item.Value.IsNull() {
-			return item, false, nil
-		}
-		if codec == "responses" {
-			fields, err := item.Value.ReadObject()
-			if err != nil {
-				return item, false, err
-			}
-			for k, v := range fields {
-				if k != "content" && k != "refusal" {
-					return item, false, streamIssue(UnsupportedCapability, item.Path+"/"+k, "unknown logprobs field requires explicit mapping")
-				}
-				if k != "content" && !emptyMetadata(v) {
-					return item, false, nil
-				}
-			}
-			if fields["content"].IsZero() || fields["content"].IsNull() {
-				return item, false, nil
-			}
-			item.Value = fields["content"]
-			if err := validateLogprobTokens(item.Value, item.Path+"/content"); err != nil {
-				return item, false, err
-			}
-			item.Location = "content"
-		} else {
-			if err := validateLogprobTokens(item.Value, item.Path); err != nil {
-				return item, false, err
-			}
-			item.Value, _ = EncodeValue(Object{"content": item.Value})
-			item.Location = "choice"
-		}
-		item.Codec = codec
-		return item, true, nil
-	}
-	return item, false, nil
 }
 
 func validateLogprobTokens(value Value, at string) error {
@@ -520,114 +145,4 @@ func validateLogprobTokens(value Value, at string) error {
 		}
 	}
 	return nil
-}
-
-func (c *CompiledConversion) metadataValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
-	var document any = &Event{}
-	if phase == ConversionRequest {
-		document = &Request{}
-	} else if phase == ConversionResponse {
-		document = &Response{}
-	}
-	if err := input.Decode(document); err != nil {
-		return Value{}, err
-	}
-	if err := c.metadataObject(phase, document, route, rule, sink); err != nil {
-		return Value{}, err
-	}
-	return encodeSemanticWithin(document, limits)
-}
-
-func (c *CompiledConversion) metadataObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	codec, _ := readConversionOption[string](c, rule)
-	var visit func(*Node) error
-	visit = func(n *Node) error {
-		var err error
-		n.Metadata, err = c.projectMetadata(n.Metadata, codec, phase, route, rule, sink)
-		if err != nil {
-			return err
-		}
-		for i := range n.Children {
-			if err = visit(&n.Children[i]); err != nil {
-				return err
-			}
-		}
-		for i := range n.ReasoningContent {
-			if err = visit(&n.ReasoningContent[i]); err != nil {
-				return err
-			}
-		}
-		if codec == "responses" && n.Kind == MessageNode {
-			var keep []ResponseMetadata
-			for _, m := range n.Metadata {
-				if m.Location != "content" {
-					keep = append(keep, m)
-					continue
-				}
-				textIndex := -1
-				for i := range n.Children {
-					if n.Children[i].Kind == TextNode {
-						if textIndex != -1 {
-							return streamIssue(UnsupportedCapability, m.Path, "message metadata requires unambiguous text ownership")
-						}
-						textIndex = i
-					}
-				}
-				if textIndex == -1 {
-					return streamIssue(UnsupportedCapability, m.Path, "content metadata has no text owner")
-				}
-				n.Children[textIndex].Metadata = append(n.Children[textIndex].Metadata, m)
-			}
-			n.Metadata = keep
-		}
-		return nil
-	}
-	response := func(r *Response) error {
-		if r == nil {
-			return nil
-		}
-		if err := ValidateResponseOutputText(r); err != nil {
-			return err
-		}
-		var err error
-		r.Metadata, err = c.projectMetadata(r.Metadata, codec, phase, route, rule, sink)
-		if err != nil {
-			return err
-		}
-		for i := range r.Content {
-			if err = visit(&r.Content[i]); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	switch subject := document.(type) {
-	case *Request:
-		for i := range subject.Content {
-			if err := visit(&subject.Content[i]); err != nil {
-				return err
-			}
-		}
-		return nil
-	case *Response:
-		return response(subject)
-	case *Event:
-		if handled, err := c.projectResponsesMetadataEvent(subject, codec, route, rule, sink); handled || err != nil {
-			return err
-		}
-		var err error
-		subject.Metadata, err = c.projectMetadata(subject.Metadata, codec, phase, route, rule, sink)
-		if err != nil {
-			return err
-		}
-		if err = response(subject.Response); err != nil {
-			return err
-		}
-		if subject.Item != nil {
-			return visit(subject.Item)
-		}
-		return nil
-	}
-	panic("metadata requires a semantic document")
 }

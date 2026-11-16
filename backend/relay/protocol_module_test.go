@@ -1,36 +1,45 @@
 package relay
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/protocol/builtin"
 )
 
-func compileBuiltinModule(t *testing.T, name string) *protocol.Compiled {
+func compileBuiltinPackage(t *testing.T, name string) *protocol.Compiled {
 	t.Helper()
-	definition := protocol.Definition{SchemaVersion: 2, ID: "arbitrary-" + name, Name: name, Version: "1", Family: map[string]string{"openai-chat": "openai_chat", "responses": "openai_responses", "anthropic": "claude", "gemini": "gemini"}[name], WireVersion: "v2", Native: protocol.NativePolicy{Preserve: true}, Directions: map[protocol.Direction]protocol.Mapping{}, Capabilities: protocol.CapabilitySet{}, Operations: map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}}}
-	for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse} {
-		definition.Directions[direction] = protocol.Mapping{Module: name}
-	}
-	for _, capability := range protocol.CapabilityCatalog() {
-		definition.Capabilities[capability] = true
+	id := map[string]string{"openai-chat": protocol.PresetChatCompletionsID, "responses": protocol.PresetResponsesID, "anthropic": protocol.PresetAnthropicID, "gemini": protocol.PresetGeminiID}[name]
+	packages, err := builtin.Packages()
+	if err != nil {
+		t.Fatal(err)
 	}
 	compiler, err := NewProtocolCompiler(protocol.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := sonic.ConfigStd.Marshal(definition)
-	if err != nil {
-		t.Fatal(err)
+	for _, value := range packages {
+		var document protocol.ProtocolPackage
+		if err := value.Decode(&document); err != nil {
+			t.Fatal(err)
+		}
+		if document.Spec.ID != id {
+			continue
+		}
+		document.Spec.ID = "arbitrary-" + name
+		raw, err := protocol.EncodeValue(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		compiled, issues := compiler.Compile(raw.Bytes())
+		if err := protocol.IssuesError(issues); err != nil {
+			t.Fatal(err)
+		}
+		return compiled
 	}
-	compiled, issues := compiler.Compile(body)
-	if err := protocol.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	return compiled
+	t.Fatal("missing package", name)
+	return nil
 }
 
 func TestCompiledBuiltinRequestMatrix(t *testing.T) {
@@ -44,28 +53,21 @@ func TestCompiledBuiltinRequestMatrix(t *testing.T) {
 	for source, fixture := range fixtures {
 		for target := range fixtures {
 			t.Run(source+"/"+target, func(t *testing.T) {
-				decoder, encoder := compileBuiltinModule(t, source), compileBuiltinModule(t, target)
+				decoder, encoder := compileBuiltinPackage(t, source), compileBuiltinPackage(t, target)
 				request, err := decoder.DecodeRequest(t.Context(), []byte(fixture), options)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if source == "gemini" && target != "gemini" {
-					c, _ := protocol.ResolveConversion(protocol.DefaultConversionPolicy(decoder, encoder))
-					request, err = c.Request(t.Context(), request, protocol.ConversionContext{}, nil)
-					if err != nil {
-						t.Fatal(err)
-					}
+				conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(decoder, encoder))
+				if err != nil {
+					t.Fatal(err)
+				}
+				route := protocol.ConversionContext{Source: decoder.Identity(), Target: encoder.Identity(), Scope: options.Scope}
+				request, err = conversion.Request(t.Context(), request, route, nil)
+				if err != nil {
+					t.Fatal(err)
 				}
 				body, err := encoder.EncodeRequest(t.Context(), request, options)
-				if source != "gemini" && target == "gemini" {
-					// 非 JSON 文本工具结果（"found"）在 Gemini 目标仍显式拒绝；
-					// Gemini 的对象结果到其它目标现按 JSON 字符串序列化转换。
-					var conversion *protocol.ConversionError
-					if !errors.As(err, &conversion) || conversion.Issues[0].Code != protocol.UnsupportedCapability {
-						t.Fatalf("non-JSON text tool result must stay diagnosed: %v", err)
-					}
-					return
-				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -80,7 +82,7 @@ func TestCompiledBuiltinRequestMatrix(t *testing.T) {
 }
 
 func TestCompiledResponsesCustomHistoryAndEdits(t *testing.T) {
-	compiled := compileBuiltinModule(t, "responses")
+	compiled := compileBuiltinPackage(t, "responses")
 	input := []byte(`{"model":"m","vendor":false,"tools":[{"type":"custom","name":"shell","format":{"type":"text"}}],"input":[{"role":"user","content":"hello"},{"type":"custom_tool_call","call_id":"c","name":"shell","input":"echo hello"},{"type":"custom_tool_call_output","call_id":"c","output":"hello"},{"role":"user","content":"again"}]}`)
 	request, err := compiled.DecodeRequest(t.Context(), input, protocol.EvaluationContext{})
 	if err != nil {
@@ -117,12 +119,25 @@ func TestCompiledBuiltinResponseMatrix(t *testing.T) {
 	for source, fixture := range fixtures {
 		for target := range fixtures {
 			t.Run(source+"/"+target, func(t *testing.T) {
-				decoder, encoder := compileBuiltinModule(t, source), compileBuiltinModule(t, target)
+				decoder, encoder := compileBuiltinPackage(t, source), compileBuiltinPackage(t, target)
 				response, err := decoder.DecodeResponse(t.Context(), []byte(fixture), protocol.EvaluationContext{})
 				if err != nil {
 					t.Fatal(err)
 				}
-				body, err := encoder.EncodeResponse(t.Context(), response, protocol.EvaluationContext{})
+				conversion, err := protocol.ResolveConversion(protocol.DefaultConversionPolicy(encoder, decoder))
+				if err != nil {
+					t.Fatal(err)
+				}
+				options, err := (protocol.EvaluationContext{}).WithOperation("relay-response", 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				route := (protocol.ConversionContext{Source: decoder.Identity(), Target: encoder.Identity()}).WithOperation(options)
+				response, err = conversion.Response(t.Context(), response, route, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, err := encoder.EncodeResponse(t.Context(), response, options)
 				if err != nil {
 					t.Fatal(err)
 				}

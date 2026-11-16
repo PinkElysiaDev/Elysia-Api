@@ -17,7 +17,7 @@ func TestConcurrentOwnedRequestIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"unchanged"}],"extra":9007199254740993}`), p.EvaluationContext{})
+	input, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"unchanged"}],"extra":9007199254740993}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}

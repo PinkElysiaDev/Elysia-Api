@@ -14,19 +14,20 @@ type requestProjectionGroup struct {
 }
 
 func requestProjectionSchema() map[string]any {
-	codec := map[string]any{"type": "string", "enum": []string{"openai-chat", "responses", "anthropic", "gemini"}}
-	return map[string]any{"default": map[string]any{"targetCodec": "responses"}, "oneOf": []any{
-		map[string]any{"type": "object", "required": []string{"targetCodec"}, "properties": map[string]any{"sourceCodec": codec, "targetCodec": codec}},
-		map[string]any{"type": "object", "required": []string{"core"}, "properties": map[string]any{"core": map[string]any{"type": "object", "required": []string{"coreVersion", "target", "mappingHash", "effects"}}}},
+	return map[string]any{"type": "object", "required": []string{"core"}, "properties": map[string]any{
+		"core": map[string]any{"type": "object", "required": []string{"coreVersion", "target", "mappingHash", "effects"}},
 	}}
 }
 
 func compileRequestProjectionOption(raw Value, limits Limits) (conversionOption, error) {
 	var options requestProjectionOptions
-	if err := raw.Decode(&options); err != nil {
+	if err := decodeContract(raw.Bytes(), &options); err != nil {
 		return conversionOption{}, err
 	}
-	if options.Core != nil {
+	if options.Core == nil {
+		return conversionOption{}, fmt.Errorf("request_projection requires core")
+	}
+	{
 		spec := options.Core
 		if spec.CoreVersion != ProtocolCoreVersion || spec.MappingHash == "" || spec.Target.DefinitionID == "" || len(spec.Effects) == 0 || len(spec.Effects) > limits.Mutations {
 			return conversionOption{}, fmt.Errorf("invalid core cache projection identity or effect count")
@@ -42,7 +43,7 @@ func compileRequestProjectionOption(raw Value, limits Limits) (conversionOption,
 			if !isRequestProjectionScope(effect.Scope) {
 				return conversionOption{}, fmt.Errorf("core projection requires a supported semantic scope")
 			}
-			if err := validateRequestProjectionEffect(EncodeRequest, effect); err != nil {
+			if err := validateSemanticEffectScope(EncodeRequest, effect); err != nil {
 				return conversionOption{}, err
 			}
 			condition, err := compiler.compilePlan(*effect.When, fmt.Sprintf("/value/core/effects/%d/when", index), expressionScope{}, 1)

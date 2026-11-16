@@ -41,6 +41,11 @@ func (scope controlCompileScope) compileSetter(root reflect.Type, path string) (
 }
 
 func validateControlStepForm(step ProtocolControlStep, scope controlCompileScope, path string) error {
+	if _, hasPayload := step.Set["/payload"]; hasPayload && scope.expression.coreInput == reflect.TypeFor[Node]() && !scope.isToolResult {
+		if step.Diagnostic == nil || step.Diagnostic.Kind != "normalize" && step.Diagnostic.Kind != "degrade" {
+			return fmt.Errorf("%s/set: node payload changes require an explicit normalization or loss diagnostic", path)
+		}
+	}
 	if step.Layout != nil && (!scope.canSelect || step.Each != nil || step.Auxiliary != nil || step.Omit || len(step.Set) != 0 || step.Diagnostic != nil) {
 		return fmt.Errorf("%s/layout: requires a standalone complete-document layout", path)
 	}
@@ -136,7 +141,7 @@ func (each *compiledControlEach) apply(state evaluation, conversion *CompiledCon
 				return err
 			}
 			metadata := &input[index]
-			if err := validateCoreMetadataValue(owner.CoreVersion, *metadata); err != nil {
+			if err := validateCoreMetadataValue(*metadata, path+"/"+strconv.Itoa(index)); err != nil {
 				return err
 			}
 			local := each.local(state, path+"/"+strconv.Itoa(index), func(pointer []string) (JSONOutput, error) { return readCoreResponseMetadata(*metadata, pointer, nil) })

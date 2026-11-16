@@ -7,6 +7,7 @@ import "context"
 // Only readers and successful root checks are shared, never stream state.
 type inputView struct {
 	value                Value
+	context              Value
 	owned                valueReader
 	borrowed             valueReader
 	objects              planObjectReader
@@ -45,6 +46,22 @@ func (options EvaluationContext) withInputView(value Value) EvaluationContext {
 		options.inputView = newInputView(value)
 	}
 	return options
+}
+
+func (options EvaluationContext) withSourceFrameView(frame Value) (EvaluationContext, error) {
+	metadata, err := EncodeValue(options.Values)
+	if err != nil {
+		return options, err
+	}
+	view := options.inputView
+	// Validation receipts belong to both the immutable body and its carrier
+	// metadata. Rebinding metadata must not reuse a previous frame's proof.
+	if !view.owns(frame) || view.context != metadata {
+		view = newInputView(frame)
+		view.context = metadata
+		options.inputView = view
+	}
+	return options, nil
 }
 
 func (view *inputView) checkResources(ctx context.Context, value Value, limits Limits, domain string) error {

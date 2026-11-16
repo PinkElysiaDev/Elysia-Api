@@ -131,7 +131,7 @@ func responsesFinalRequestCases() []finalWireCase {
 	return []finalWireCase{
 		{"text-input", `{"model":"m","input":"hello"}`, acceptedFinalWire},
 		{"empty-text", `{"model":"m","input":""}`, acceptedFinalWire},
-		{"previous-response", `{"model":"m","previous_response_id":"previous"}`, acceptedFinalWire},
+		{"previous-response", `{"model":"m","previous_response_id":"previous"}`, "/previous_response_id"},
 		{"empty-history", `{"model":"m","input":[]}`, acceptedFinalWire},
 		{"model-before-input", `{"model":null,"input":null}`, "/model"},
 		{"missing-input", `{"model":"m"}`, "/input"},
@@ -196,18 +196,6 @@ func TestPackageFinalRequestRejectsWireEdits(t *testing.T) {
 	}
 }
 
-func TestPackageFinalRequestKeepsOperationConstraints(t *testing.T) {
-	legacy, draft := shippedProjectionProtocol(t, Anthropic), compileBuiltinPackage(t, "anthropic")
-	fixture := finalWireCase{"missing-operation-limit", `{"model":"m","messages":[]}`, acceptedFinalWire}
-	checkFinalWireCase(t, draft, p.EncodeRequest, fixture)
-	for _, operation := range []string{"generate", "stream"} {
-		wire := testValue(t, fixture.wire)
-		if oldErr, newErr := legacy.CheckOperationValueInput(t.Context(), operation, wire), draft.CheckOperationValueInput(t.Context(), operation, wire); oldErr == nil || newErr == nil {
-			t.Fatal("final structure replaced the operation's required output limit", operation, oldErr, newErr)
-		}
-	}
-}
-
 func geminiFinalRequestCases() []finalWireCase {
 	return []finalWireCase{
 		{"empty-history", `{"contents":[]}`, acceptedFinalWire},
@@ -269,5 +257,16 @@ func TestPackageFinalRequestToolAssociations(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestPackageFinalRequestKeepsOperationConstraints(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "anthropic")
+	fixture := finalWireCase{"missing-operation-limit", `{"model":"m","messages":[]}`, acceptedFinalWire}
+	checkFinalWireCase(t, compiled, p.EncodeRequest, fixture)
+	for _, operation := range []string{"generate", "stream"} {
+		if err := compiled.CheckOperationValueInput(t.Context(), operation, testValue(t, fixture.wire)); err == nil {
+			t.Fatal("final structure replaced operation constraints", operation)
+		}
 	}
 }

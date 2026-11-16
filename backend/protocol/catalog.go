@@ -11,7 +11,7 @@ type OperationInfo struct {
 }
 
 var expressionOperations = []OperationInfo{
-	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer from input, item, root, context or a named binding; preserve missing and null. Native replay predicates can also read runtime /encoding/hasRendered, a prior encoding fact, not a delivery proof."},
+	{"read", []string{"from", "name", "path", "required"}, nil, AnyType, "Read an RFC 6901 pointer; preserve missing and null. Optional reads also accept $input/path, $root/path, $item/path, $context/path, $runtime/path, $state/slot/path or $binding/escaped-name/path as a JSON string. Existing scope permissions apply. Native replay predicates can read runtime /encoding/hasRendered, a prior encoding fact, not a delivery proof."},
 	{"let", []string{"name", "source", "body"}, []string{"name", "source", "body"}, AnyType, "Evaluate source once and bind its immutable value by name within body; nested bindings may shadow outer names."},
 	{"with_input", []string{"source", "body"}, []string{"source", "body"}, AnyType, "Evaluate body with the selected immutable input without encoding it; root remains the original document, and only original reads retain wire provenance."},
 	{"track_tool", []string{"name", "source", "body"}, []string{"name", "source", "body"}, StringType, "Stage bounded JSON/text tool arguments with explicit snapshot, done and emit flags; emit returns every previously withheld byte once."},
@@ -76,6 +76,7 @@ var expressionOperations = []OperationInfo{
 	{"present", []string{"source"}, []string{"source"}, BooleanType, "Test presence with a non-null value; explicit null counts as absent."},
 	{"type", []string{"source"}, []string{"source"}, StringType, "Read the JSON kind as missing, null, string, array, object, boolean or number without decoding its contents."},
 	{"is_integer", []string{"source"}, []string{"source"}, BooleanType, "Test whether a present non-null JSON number decodes as int64, without coercion or truncation."},
+	{"is_integral", []string{"source"}, []string{"source"}, BooleanType, "Test whether a JSON number is mathematically integral, including decimal and exponent forms beyond int64; non-numbers return false."},
 	{"integer", []string{"operation", "items"}, []string{"operation", "items"}, AnyType, "Checked int64 add (at least two operands), subtract, multiply, divide, remainder, lt, lte, gt or gte (two operands); evaluate all operands before numeric validation. Division truncates toward zero; zero divisors and overflow fail."},
 	{"equal", []string{"items"}, []string{"items"}, BooleanType, "Compare two JSON values semantically with exact numbers."},
 	{"equal_text", []string{"items"}, []string{"items"}, BooleanType, "Compare two text operands, each a string or an array of strings, without concatenating them. Evaluate both operands before validating their text; missing, null and non-string members fail."},
@@ -92,6 +93,7 @@ var expressionOperations = []OperationInfo{
 	{"quote_string", []string{"source"}, []string{"source"}, StringType, "Quote a string as a Go string literal for exact diagnostic text; do not apply JSON HTML escaping."},
 	{"has_prefix", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether a string begins with a declared literal string; matching is case sensitive."},
 	{"contains", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether a string contains a declared literal string; matching is case sensitive."},
+	{"matches_charset", []string{"source", "value"}, []string{"source", "value"}, BooleanType, "Test whether every decoded Unicode codepoint belongs to a literal string alphabet; matching is case sensitive without normalization. Empty input matches every alphabet; an empty alphabet matches only empty input."},
 	{"ref", []string{"ref"}, []string{"ref"}, AnyType, "Invoke a named program compiled once for its static scope; recursive references fail, and execution values remain local to each invocation."},
 }
 
@@ -108,7 +110,7 @@ func ExpressionCatalog() []OperationInfo {
 
 // CapabilityCatalog lists every semantic feature recognized by this engine.
 func CapabilityCatalog() []Capability {
-	return []Capability{TextCapability, FunctionToolsCapability, FreeTextToolsCapability, ServerToolsCapability, NativeExtensionsCapability, ControlStateCapability, ImagesCapability, AudioCapability, VideoCapability, DocumentsCapability, ReasoningCapability, ReasoningHistoryRetentionCapability, SignaturesCapability, EncryptedReasoningCapability, CacheBreakpointsCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheOptionsCapability, CachePrewarmCapability, SessionsCapability, RealtimeMediaCapability, AsyncJobsCapability, UsageCapability}
+	return []Capability{TextCapability, OutputConstraintsCapability, FunctionToolsCapability, FreeTextToolsCapability, ServerToolsCapability, NativeExtensionsCapability, ControlStateCapability, ImagesCapability, AudioCapability, VideoCapability, DocumentsCapability, ReasoningCapability, ReasoningHistoryRetentionCapability, SignaturesCapability, EncryptedReasoningCapability, CacheBreakpointsCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheOptionsCapability, CachePrewarmCapability, SessionsCapability, RealtimeMediaCapability, AsyncJobsCapability, UsageCapability}
 }
 
 // DirectionCatalog lists independently implementable adapter operations.

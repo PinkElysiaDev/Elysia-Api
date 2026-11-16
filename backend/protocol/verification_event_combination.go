@@ -19,6 +19,11 @@ func (projection *combinationEventProjection) capture(ctx context.Context, sourc
 	if collector == nil {
 		return event, nil
 	}
+	if source.Type == OperationFailed || source.Type == OperationCancelled {
+		collector.Release()
+		projection.collector = nil
+		return event, nil
+	}
 	if _, _, err := collector.Consume(source); err != nil {
 		return Event{}, err
 	}
@@ -50,11 +55,7 @@ func (projection *combinationEventProjection) push(ctx context.Context, frame *E
 	projection.route = route
 	original, _ := EncodeValue(frame.Events)
 	events := []Event{}
-	deliveryEvents := frame.Events
-	if conversion.HasAnthropicEnvelope(ConversionEvent, route) {
-		deliveryEvents = DeliveryFrameEvents(frame.Events)
-	}
-	for index, event := range deliveryEvents {
+	for index, event := range frame.Events {
 		event, err := projection.capture(ctx, frame.Events[index], event)
 		if err != nil {
 			return nil, err
@@ -65,15 +66,7 @@ func (projection *combinationEventProjection) push(ctx context.Context, frame *E
 		}
 		for _, next := range queued {
 			if conversion != nil {
-				value, err := EncodeValue(next)
-				if err != nil {
-					return nil, err
-				}
-				proofRoute, err := conversion.PreviewRecovery(ConversionEvent, value, route)
-				if err != nil {
-					return nil, err
-				}
-				next, err = conversion.Event(ctx, next, proofRoute, verificationDiagnostics(ctx))
+				next, err = conversion.Event(ctx, next, route, verificationDiagnostics(ctx))
 				if err != nil {
 					return nil, err
 				}
@@ -122,17 +115,9 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 		route = conversion.VerificationRoute(upstream.Identity(), ingress.Identity(), SSE)
 		route.Scope = sample.Scope
 	}
-	var result verificationResult
-	var err error
-	isPackageStream := ingress.packagePlan != nil && upstream.packagePlan != nil
-	if !isPackageStream {
-		result, err = executeEventFixture(ctx, upstream, sample)
-		if err != nil {
-			return err
-		}
-	}
 	options := newVerificationContext(sample.Scope, sample.Context)
 	defer options.State.Release()
+	options.Diagnostics = &DiagnosticSink{}
 	// This suite verifies transport usage independently of a particular client's
 	// presentation preference.
 	yes := true
@@ -155,20 +140,27 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	}
 	eventState := NewConversionEventState(conversion, route)
 	defer eventState.Release()
-	if isPackageStream {
-		budget := NewStreamBudget(ingress.limits)
-		budget.constrain(upstream.limits)
-		if err := budget.Bind(options.State, eventState); err != nil {
+	sourceState := NewSourceEventState(conversion, route, upstream, verificationDiagnostics(ctx))
+	defer sourceState.Release()
+	budget := NewStreamBudget(ingress.limits)
+	budget.constrain(upstream.limits)
+	if err := budget.Bind(options.State, eventState, sourceState); err != nil {
+		return err
+	}
+	if collector != nil {
+		if err := budget.Bind(collector, evidence.binding); err != nil {
 			return err
-		}
-		if collector != nil {
-			if err := budget.Bind(collector, evidence.binding); err != nil {
-				return err
-			}
 		}
 	}
 	projection := combinationEventProjection{conversion: conversion, route: route, state: eventState, collector: collector, evidence: evidence}
 	produce := func(emit func(*EventFrame) error) error {
+		if sample.Sequence {
+			var err error
+			sample.Input, err = sourceState.Sequence(ctx, sample.Input)
+			if err != nil {
+				return err
+			}
+		}
 		convert := func(frame *EventFrame) error {
 			frame, err := projection.push(ctx, frame)
 			if err != nil || frame == nil {
@@ -176,16 +168,8 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 			}
 			return emit(frame)
 		}
-		if isPackageStream {
-			if _, err := executeEventFixtureStream(ctx, upstream, sample, options, convert); err != nil {
-				return err
-			}
-		} else {
-			for _, frame := range result.frames {
-				if err := convert(frame); err != nil {
-					return err
-				}
-			}
+		if _, err := executeEventFixtureStream(ctx, upstream, sample, options, convert); err != nil {
+			return err
 		}
 		return projection.drain(ctx, emit)
 	}
@@ -200,7 +184,10 @@ func verifyEventCombination(ctx context.Context, ingress, upstream *Compiled, sa
 	if hasSameWire(ingress, upstream) && ingress.native.Preserve && upstream.native.Preserve && !eventState.Buffered {
 		comparison = compareRoundTrip(ingress, sample, projection.events, decoded)
 	} else {
-		comparison = compareEventSequence(ingress, sample, projection.events, decoded)
+		project := func(response *Response) error {
+			return projectStreamVerification(ctx, ingress, conversion, route, options.Diagnostics.Issues(), response)
+		}
+		comparison = compareProjectedEventSequence(ingress, sample, projection.events, decoded, project)
 	}
 	if comparison != nil {
 		return comparison
@@ -264,16 +251,7 @@ func verifyCombinationEventStream(ctx context.Context, compiled *Compiled, optio
 		}
 		return consume(tail)
 	}
-	var pending []Value
-	if compiled.packagePlan == nil {
-		// Legacy evidence preserves its encode-before-validation error order.
-		if err := encode(func(batch []Value) error {
-			pending = append(pending, batch...)
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-	}
+
 	validation, err := compiled.NewWireStreamValidation(options.Scope)
 	if err != nil {
 		return nil, err
@@ -310,15 +288,13 @@ func verifyCombinationEventStream(ctx context.Context, compiled *Compiled, optio
 			}
 			for index, delivered := range actual {
 				var err error
-				if compiled.packagePlan != nil {
-					original := before
-					if originals != nil {
-						original = originals[index]
-					}
-					err = validation.ConsumeTransformed(ctx, original, delivered, options)
-				} else {
-					err = validation.Consume(ctx, delivered)
+
+				original := before
+				if originals != nil {
+					original = originals[index]
 				}
+				err = validation.ConsumeTransformed(ctx, original, delivered, options)
+
 				if err != nil {
 					return err
 				}
@@ -330,23 +306,21 @@ func verifyCombinationEventStream(ctx context.Context, compiled *Compiled, optio
 				}
 				decoded = append(decoded, frame.Events...)
 			}
-			if compiled.packagePlan != nil {
-				if err := validation.CommitDelivery(); err != nil {
-					return err
-				}
-				if err := options.continuation.CommitDelivery(); err != nil {
-					return err
-				}
+
+			if err := validation.CommitDelivery(); err != nil {
+				return err
 			}
+			if err := options.continuation.CommitDelivery(); err != nil {
+				return err
+			}
+
 		}
 		return nil
 	}
-	if compiled.packagePlan == nil {
-		err = consume(pending)
-	} else {
-		options = options.WithOutputStream(validation)
-		err = encode(consume)
-	}
+
+	options = options.WithOutputStream(validation)
+	err = encode(consume)
+
 	if err != nil {
 		return nil, err
 	}

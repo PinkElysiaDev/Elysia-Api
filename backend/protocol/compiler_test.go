@@ -27,23 +27,36 @@ func optionalArrayMap(source Expression, body Expression) Expression {
 	return Expression{Op: "if", When: &Expression{Op: "exists", Source: &source}, Then: expressionPointer(arrayMap(source, body))}
 }
 
-func testDefinition(id, model, history, functions, reply string) Definition {
+func testDefinition(id, model, history, functions, reply string) ProtocolPackage {
 	decodeNode := objectExpression(map[string]Expression{"kind": readExpression("item", "/kind"), "role": readExpression("item", "/speaker"), "callId": readExpression("item", "/call"), "name": readExpression("item", "/operation"), "input": readExpression("item", "/input"), "payload": readExpression("item", "/result"), "children": readExpression("item", "/parts")})
 	encodeNode := objectExpression(map[string]Expression{"kind": readExpression("item", "/kind"), "speaker": readExpression("item", "/role"), "call": readExpression("item", "/callId"), "operation": readExpression("item", "/name"), "input": readExpression("item", "/input"), "result": readExpression("item", "/payload"), "parts": readExpression("item", "/children")})
 	decodeTool := objectExpression(map[string]Expression{"kind": literalExpression("function"), "name": readExpression("item", "/operation"), "inputSchema": readExpression("item", "/schema")})
 	encodeTool := objectExpression(map[string]Expression{"operation": readExpression("item", "/name"), "schema": readExpression("item", "/inputSchema")})
-	decodeRequest := objectExpression(map[string]Expression{"model": readExpression("input", "/"+model), "content": arrayMap(readExpression("input", "/"+history), decodeNode), "tools": optionalArrayMap(readExpression("input", "/"+functions), decodeTool)})
+	decodeRequest := objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "model": readExpression("input", "/"+model), "content": arrayMap(readExpression("input", "/"+history), decodeNode), "tools": optionalArrayMap(readExpression("input", "/"+functions), decodeTool)})
 	encodeRequest := objectExpression(map[string]Expression{model: readExpression("input", "/model"), history: arrayMap(readExpression("input", "/content"), encodeNode), functions: optionalArrayMap(readExpression("input", "/tools"), encodeTool)})
-	decodeResponse := objectExpression(map[string]Expression{"id": readExpression("input", "/request"), "content": arrayMap(readExpression("input", "/"+reply), decodeNode), "status": literalExpression("completed")})
+	decodeResponse := objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "id": readExpression("input", "/request"), "content": arrayMap(readExpression("input", "/"+reply), decodeNode), "status": literalExpression("completed")})
 	encodeResponse := objectExpression(map[string]Expression{"request": readExpression("input", "/id"), reply: arrayMap(readExpression("input", "/content"), encodeNode)})
-	decodeEvent := objectExpression(map[string]Expression{"type": Expression{Op: "enum", Source: expressionPointer(readExpression("input", "/event")), Values: map[string]Value{"token": StringValue(string(ItemDelta)), "end": StringValue(string(ResponseFinished))}}, "delta": readExpression("input", "/token"), "itemId": readExpression("input", "/item")})
+	decodeEvent := objectExpression(map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion), "type": Expression{Op: "enum", Source: expressionPointer(readExpression("input", "/event")), Values: map[string]Value{"token": StringValue(string(ItemDelta)), "end": StringValue(string(ResponseFinished))}}, "delta": readExpression("input", "/token"), "itemId": readExpression("input", "/item")})
 	encodeEvent := objectExpression(map[string]Expression{"event": Expression{Op: "enum", Source: expressionPointer(readExpression("input", "/type")), Values: map[string]Value{string(ItemDelta): StringValue("token"), string(ResponseFinished): StringValue("end")}}, "token": readExpression("input", "/delta"), "item": readExpression("input", "/itemId")})
-	return Definition{SchemaVersion: 2, ID: id, Name: id, Version: "1", Family: id, WireVersion: "1", Capabilities: CapabilitySet{TextCapability: true, FunctionToolsCapability: true}, Directions: map[Direction]Mapping{DecodeRequest: {Transform: &decodeRequest}, EncodeRequest: {Transform: &encodeRequest}, DecodeResponse: {Transform: &decodeResponse}, EncodeResponse: {Transform: &encodeResponse}, DecodeEvent: {Transform: &decodeEvent}, EncodeEvent: {Transform: &encodeEvent}}, Operations: map[string]Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: HTTPJSON, Request: EncodeRequest, Response: DecodeResponse, Auth: Credential{Location: "none"}}}, Samples: []Sample{}}
+	return ProtocolPackage{
+        SchemaVersion: ProtocolPackageSchemaVersion,
+        Spec: ProtocolSpec{ID: id, Name: id, Version: "1", Family: id, WireVersion: "1",
+            Documents: map[string]WireContractSpec{"test": {Schema: &ValueSchema{Type: AnyType}}, "event": {Schema: &ValueSchema{Type: AnyType}, Stream: testFrameContract()}},
+            Operations: map[string]ProtocolOperationSpec{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: HTTPJSON, Request: "test", Response: "test", Auth: Credential{Location: "none"}}}},
+        Mapping: ProtocolMapping{CoreVersion: ProtocolCoreVersion, DSLVersion: ProtocolDSLVersion,
+            Capabilities: CapabilitySet{TextCapability: true, FunctionToolsCapability: true},
+            Directions: map[Direction]ProtocolDirectionMapping{
+                DecodeRequest: {Document: "test", Program: decodeRequest, Effects: []ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/"+model}}}, EncodeRequest: {Document: "test", Program: encodeRequest, Effects: []ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/"+model}}},
+                DecodeResponse: {Document: "test", Program: decodeResponse, Effects: []ProtocolSemanticEffect{{ID: "id", Kind: "emit", Path: "/id", Target: "/request", When: expressionPointer(Expression{Op: "present", Source: expressionPointer(readExpression("input", "/request"))})}}}, EncodeResponse: {Document: "test", Program: encodeResponse, Effects: []ProtocolSemanticEffect{{ID: "id", Kind: "emit", Path: "/id", Target: "/request", When: expressionPointer(Expression{Op: "present", Source: expressionPointer(readExpression("input", "/id"))})}}},
+                DecodeEvent: {Document: "event", Program: decodeEvent}, EncodeEvent: {Document: "event", Program: encodeEvent}},
+            Operations: map[string]ProtocolOperationMapping{"generate": {Request: EncodeRequest, Response: DecodeResponse}},
+            Samples: []Sample{}},
+    }
 }
 
-func compileTestDefinition(t *testing.T, definition Definition) *Compiled {
+func compileTestDefinition(t *testing.T, definition ProtocolPackage) *Compiled {
 	t.Helper()
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,17 +72,21 @@ func compileTestDefinition(t *testing.T, definition Definition) *Compiled {
 }
 
 func TestCompilerHTTPStreamIdleRange(t *testing.T) {
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, transport := range []Transport{SSE, NDJSON, HTTPJSON} {
 		for _, idle := range []int{-1, 0, 1, 120000, 600000, 900000, 3600000, 3600001} {
 			definition := testDefinition("idle-range", "m", "h", "t", "r")
-			operation := definition.Operations["generate"]
+			operation := definition.Spec.Operations["generate"]
 			operation.Transport = transport
+			if transport != HTTPJSON {
+				operation.Response = "event"
+				definition.Mapping.Operations["generate"] = ProtocolOperationMapping{Request: EncodeRequest, Response: DecodeEvent}
+			}
 			operation.Framing = &Framing{IdleMillis: idle}
-			definition.Operations["generate"] = operation
+			definition.Spec.Operations["generate"] = operation
 			body, err := sonic.ConfigStd.Marshal(definition)
 			if err != nil {
 				t.Fatal(err)
@@ -141,11 +158,11 @@ func TestCompilerNewProtocolsConvertAllDirectionsWithoutModules(t *testing.T) {
 
 func TestCompilerPreservesScalarPresenceAndExactNumbers(t *testing.T) {
 	definition := testDefinition("presence", "m", "h", "t", "r")
-	definition.Directions[EncodeRequest] = Mapping{Transform: expressionPointer(objectExpression(map[string]Expression{"absent": readExpression("input", "/missing"), "null": readExpression("input", "/null"), "false": readExpression("input", "/false"), "zero": readExpression("input", "/zero"), "empty": readExpression("input", "/empty"), "large": readExpression("input", "/large")}))}
+	definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: objectExpression(map[string]Expression{"absent": readExpression("input", "/missing"), "null": readExpression("input", "/null"), "false": readExpression("input", "/false"), "zero": readExpression("input", "/zero"), "empty": readExpression("input", "/empty"), "large": readExpression("input", "/large")})}
 	compiled := compileTestDefinition(t, definition)
 	input, _ := ParseValue([]byte(`{"null":null,"false":false,"zero":0,"empty":[],"large":9007199254740993123}`))
-	output, issues := compiled.Execute(t.Context(), EncodeRequest, input, EvaluationContext{})
-	if err := IssuesError(issues); err != nil {
+	output, err := evaluateFixturePlan(t.Context(), compiled, EncodeRequest, input)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !equalValues(input, output) {
@@ -156,13 +173,13 @@ func TestCompilerPreservesScalarPresenceAndExactNumbers(t *testing.T) {
 func TestCompilerRejectsUnknownAndInvalidDefinitions(t *testing.T) {
 	base := testDefinition("invalid", "m", "h", "t", "r")
 	raw, _ := sonic.ConfigStd.Marshal(base)
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	for name, body := range map[string][]byte{
 		"unknown root":         []byte(strings.TrimSuffix(string(raw), "}") + `,"ignoredCriticalOption":true}`),
 		"trailing JSON":        append(append([]byte{}, raw...), []byte(` {}`)...),
 		"unknown nested":       []byte(strings.Replace(string(raw), `"op":"read"`, `"op":"read","typo":false`, 1)),
 		"irrelevant empty key": []byte(strings.Replace(string(raw), `"op":"literal"`, `"op":"literal","from":""`, 1)),
-		"unsupported schema":   []byte(strings.Replace(string(raw), `"schemaVersion":2`, `"schemaVersion":7`, 1)),
+		"unsupported schema":   []byte(strings.Replace(string(raw), `"schemaVersion":4`, `"schemaVersion":7`, 1)),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if compiled, issues := compiler.Compile(body); compiled != nil || IssuesError(issues) == nil {
@@ -170,31 +187,39 @@ func TestCompilerRejectsUnknownAndInvalidDefinitions(t *testing.T) {
 			}
 		})
 	}
-	for name, edit := range map[string]func(*Definition){
-		"module": func(d *Definition) { d.Directions[EncodeRequest] = Mapping{Module: "not-installed"} },
-		"item outside loop": func(d *Definition) {
-			d.Directions[EncodeRequest] = Mapping{Transform: expressionPointer(readExpression("item", "/x"))}
+	for name, edit := range map[string]func(*ProtocolPackage){
+		"unknown program": func(d *ProtocolPackage) {
+			d.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: Expression{Op: "not-installed"}}
 		},
-		"wrong type": func(d *Definition) {
-			d.Directions[EncodeRequest] = Mapping{Transform: expressionPointer(arrayMap(literalExpression(true), readExpression("item", "")))}
+		"item outside loop": func(d *ProtocolPackage) {
+			d.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: readExpression("item", "/x")}
 		},
-		"recursive ref": func(d *Definition) {
-			d.Expressions = map[string]Expression{"self": {Op: "ref", Ref: "self"}}
-			d.Directions[EncodeRequest] = Mapping{Transform: &Expression{Op: "ref", Ref: "self"}}
+		"wrong type": func(d *ProtocolPackage) {
+			d.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: arrayMap(literalExpression(true), readExpression("item", ""))}
 		},
-		"unreachable ref": func(d *Definition) { d.Expressions = map[string]Expression{"unused": literalExpression(1)} },
-		"unsupported transport": func(d *Definition) {
-			op := d.Operations["generate"]
+		"recursive ref": func(d *ProtocolPackage) {
+			d.Mapping.Expressions = map[string]Expression{"self": {Op: "ref", Ref: "self"}}
+			d.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: Expression{Op: "ref", Ref: "self"}}
+		},
+		"unreachable ref": func(d *ProtocolPackage) {
+			d.Mapping.Expressions = map[string]Expression{"unused": literalExpression(1)}
+		},
+		"unsupported transport": func(d *ProtocolPackage) {
+			op := d.Spec.Operations["generate"]
 			op.Transport = WebSocket
-			d.Operations["generate"] = op
+			d.Spec.Operations["generate"] = op
 		},
-		"absolute URL": func(d *Definition) {
-			op := d.Operations["generate"]
+		"absolute URL": func(d *ProtocolPackage) {
+			op := d.Spec.Operations["generate"]
 			op.Path = "https://example.org/steal"
-			d.Operations["generate"] = op
+			d.Spec.Operations["generate"] = op
 		},
-		"unimplemented capability": func(d *Definition) { d.Capabilities["telepathy"] = true },
-		"increased limits":         func(d *Definition) { limits := DefaultLimits(); limits.Nodes++; d.Limits = &limits },
+		"unimplemented capability": func(d *ProtocolPackage) { d.Mapping.Capabilities["telepathy"] = true },
+		"increased limits": func(d *ProtocolPackage) {
+			limits := DefaultLimits()
+			limits.Nodes++
+			d.Mapping.Limits = &limits
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			definition := testDefinition("invalid", "m", "h", "t", "r")
@@ -209,8 +234,8 @@ func TestCompilerRejectsUnknownAndInvalidDefinitions(t *testing.T) {
 
 func TestCompiledDefinitionIsImmutableAndChecksCancellation(t *testing.T) {
 	compiled := compileTestDefinition(t, testDefinition("immutable", "m", "h", "t", "r"))
-	copy := compiled.Definition()
-	delete(copy.Directions, EncodeRequest)
+	copy, _ := compiled.Package()
+	delete(copy.Mapping.Directions, EncodeRequest)
 	if !compiled.Supports(EncodeRequest) {
 		t.Fatal("copy changed compiled revision")
 	}
@@ -225,20 +250,21 @@ func TestCompiledDefinitionIsImmutableAndChecksCancellation(t *testing.T) {
 
 func TestCompilerRequiresAllDeclaredDiscriminatorBranches(t *testing.T) {
 	definition := testDefinition("branches", "m", "h", "t", "r")
-	definition.Directions[DecodeEvent] = Mapping{Input: &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"type": {Type: StringType, Enum: []Value{StringValue("text"), StringValue("tool")}}}}, Transform: &Expression{Op: "choose", Source: expressionPointer(readExpression("input", "/type")), Cases: map[string]Expression{"text": literalExpression("text")}}}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	definition.Mapping.Directions[DecodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeEvent), Document: testDocument(DecodeEvent), Program: Expression{Op: "choose", Source: expressionPointer(readExpression("input", "/type")), Cases: map[string]Expression{"text": literalExpression("text")}}}
+	definition.Spec.Documents["event"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"type": {Type: StringType, Enum: []Value{StringValue("text"), StringValue("tool")}}}}, Stream: testFrameContract()}
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	body, _ := sonic.ConfigStd.Marshal(definition)
 	_, issues := compiler.Compile(body)
-	if len(issues) == 0 || issues[0].Path != "/directions/decode_event/transform" {
+	if len(issues) == 0 || issues[0].Path != "/mapping/directions/decode_event/program" {
 		t.Fatalf("missing branch was not located: %+v", issues)
 	}
 }
 
 func TestRuntimeLocatesInvalidInputExpression(t *testing.T) {
 	compiled := compileTestDefinition(t, testDefinition("location", "m", "h", "t", "r"))
-	input, _ := ParseValue([]byte(`{"h":false}`))
+	input, _ := ParseValue([]byte(`{"m":"model","h":false}`))
 	_, issues := compiled.Execute(t.Context(), DecodeRequest, input, EvaluationContext{})
-	if len(issues) != 1 || issues[0].Code != InvalidInput || issues[0].Path != "/directions/decode_request/transform/fields/content" {
+	if len(issues) != 1 || issues[0].Code != InvalidInput || issues[0].Path != "/mapping/directions/decode_request/program/fields/content" {
 		t.Fatalf("wrong expression diagnostic: %+v", issues)
 	}
 }

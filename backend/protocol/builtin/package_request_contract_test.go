@@ -79,7 +79,7 @@ func TestPackageRequestTrackingRejectsMalformedCore(t *testing.T) {
 			} {
 				input := testValue(t, `{"schemaVersion":2,"model":"m","content":[],"parameters":`+raw+"}")
 				_, issues := compiled.Execute(t.Context(), p.EncodeRequest, input, p.EvaluationContext{})
-				if len(issues) != 1 || issues[0].Code != p.InvalidInput && issues[0].Code != p.ConversionRejected {
+				if len(issues) != 1 || issues[0].Code != p.InvalidInput && issues[0].Code != p.ConversionRejected && issues[0].Code != p.UnsupportedCapability {
 					t.Fatal("malformed source tracking data was silently omitted", raw, issues)
 				}
 				if !strings.HasPrefix(issues[0].Path, "/parameters/") && issues[0].Path != "/metadata" && issues[0].Path != "/user" {

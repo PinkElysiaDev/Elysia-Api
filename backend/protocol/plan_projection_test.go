@@ -2,9 +2,82 @@ package protocol
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestProjectFieldMaterializationMatrix(t *testing.T) {
+	for _, count := range []int{0, 1, 4, 5, 8, 9, 16} {
+		for _, hasAliases := range []bool{false, true} {
+			input := buildRawFieldFixture(t, count, hasAliases)
+			public, err := input.ReadObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			allKeys := sortedKeys(public)
+			keys := []string{"missing"}
+			for index, key := range allKeys {
+				if index%2 == 0 {
+					keys = append(keys, key)
+				}
+			}
+			canonical, err := EncodeValue(public)
+			if err != nil {
+				t.Fatal(err)
+			}
+			normalized, err := canonical.ReadObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			constructed := make(map[string]JSONOutput, len(normalized))
+			for key, value := range normalized {
+				constructed[key] = JSONLeaf(value)
+			}
+			for _, policy := range []string{"include", "exclude"} {
+				plan := numericTestPlan(t, Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: keys, Policy: policy})
+				expected := Object{}
+				if policy == "exclude" {
+					for key, value := range public {
+						expected[key] = value
+					}
+				}
+				for _, key := range keys {
+					if policy == "exclude" {
+						delete(expected, key)
+					} else if value, exists := public[key]; exists {
+						expected[key] = value
+					}
+				}
+				want, err := EncodeValue(expected)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, isConstructed := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%d/aliases=%t/%s/constructed=%t", count, hasAliases, policy, isConstructed), func(t *testing.T) {
+						state := numericTestState(t, input)
+						if isConstructed {
+							state.inputReader = func([]string) (JSONOutput, error) { return JSONObject(constructed), nil }
+						}
+						projected, err := plan.build(state)
+						if err != nil || state.budget.steps != 2 {
+							t.Fatal("projection changed source evaluation", err, state.budget.steps)
+						}
+						got, err := projected.output.Encode(t.Context())
+						if err != nil || got != want || projected.bytes != want.Len() || projected.output.node.origin != 0 {
+							t.Fatal("projection changed bytes or provenance", got, want, err)
+						}
+						for _, field := range projected.output.node.fields {
+							if sharesValueStorage(input, Value{raw: field.key}) {
+								t.Fatal("projected key retains the source", field.key)
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
 
 func TestProjectObjectFields(t *testing.T) {
 	for _, test := range []struct {
@@ -24,17 +97,17 @@ func TestProjectObjectFields(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			expression := Expression{Op: "project", Source: expressionPointer(readExpression("input", "")), Keys: test.keys, Policy: test.policy}
 			definition := testDefinition("projection", "m", "h", "t", "r")
-			definition.Directions[EncodeRequest] = Mapping{Transform: &expression}
+			definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: expression}
 			compiled := compileTestDefinition(t, definition)
 			input := parseTestValue(t, test.input)
-			output, issues := compiled.Execute(t.Context(), EncodeRequest, input, EvaluationContext{})
-			if err := IssuesError(issues); err != nil || output.raw != test.expected {
+			output, err := evaluateFixturePlan(t.Context(), compiled, EncodeRequest, input)
+			if err != nil || output.raw != test.expected {
 				t.Fatalf("got %s / %v, want %s", output.raw, err, test.expected)
 			}
 			// The historical oracle owns its compilation graph independently of
 			// the production revision, which retains only executable plans.
 			state := evaluation{ctx: t.Context(), input: input, budget: &evaluationBudget{limits: DefaultLimits()}}
-			output, err := compileTestOutputExpression(t, expression).evaluate(state)
+			output, err = compileTestOutputExpression(t, expression).evaluate(state)
 			if err != nil || output.raw != test.expected {
 				t.Fatalf("expression: got %s / %v, want %s", output.raw, err, test.expected)
 			}
@@ -170,6 +243,9 @@ func TestProjectBudgetAndSharedValues(t *testing.T) {
 		t.Fatal("small materialized projection retains the input", encoded, err)
 	}
 	var retained Value
+	if sharesValueStorage(input, Value{raw: projected.output.node.fields[0].key}) {
+		t.Fatal("projected field key retains the excluded body")
+	}
 	if err := assignCoreValue(projected.output.node.fields[0].value, &retained, nil); err != nil || !retained.IsString("small") || sharesValueStorage(input, retained) {
 		t.Fatal("small core value retains the excluded body", retained, err)
 	}

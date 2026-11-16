@@ -1,7 +1,7 @@
 package protocol
 
 // SemanticSchemaVersion changes only when the public semantic contract changes.
-const SemanticSchemaVersion = 1
+const SemanticSchemaVersion = ProtocolCoreVersion
 
 // Direction identifies independently implemented wire operations.
 type Direction string
@@ -150,8 +150,9 @@ type CacheIntent struct {
 // Tool result status separates failure from payload. payloadForm=result_envelope
 // marks a payload with independent error/output members and additional data.
 type Node struct {
-	Metadata []ResponseMetadata `json:"metadata,omitempty"`
-	Kind     NodeKind           `json:"kind"`
+	rangeAssociation string
+	Metadata         []ResponseMetadata `json:"metadata,omitempty"`
+	Kind             NodeKind           `json:"kind"`
 	// ReasoningForm distinguishes provider summaries from visible thinking.
 	// Summaries keep their ordered text parts in Children, never in Payload.
 	ReasoningForm ReasoningForm `json:"reasoningForm,omitempty"`
@@ -221,13 +222,10 @@ type Request struct {
 // RawStreamOptions retains absent/null and extensions for same-wire replay.
 type ClientOutput struct {
 	// RequireContinuationState requests client-visible recovery when protected state exists.
-	RequireContinuationState bool `json:"requireContinuationState,omitempty"`
-	// ResponsesIncludeResolved records the target rule's handling of source selectors.
-	ResponsesIncludeResolved bool                    `json:"responsesIncludeResolved,omitempty"`
+	RequireContinuationState bool                    `json:"requireContinuationState,omitempty"`
 	CollectUsage             bool                    `json:"collectUsage,omitempty"`
 	IncludeUsage             *bool                   `json:"includeUsage,omitempty"`
 	RawStreamOptions         Value                   `json:"rawStreamOptions,omitzero"`
-	RawResponsesInclude      Value                   `json:"rawResponsesInclude,omitzero"`
 	ResponsesStorage         *ResponsesStorageIntent `json:"responsesStorage,omitempty"`
 }
 
@@ -261,10 +259,17 @@ type Counter struct {
 // Usage normalizes input to include cached reads and cache creation tokens.
 // Details retains declared provider counters without inventing missing totals.
 type Usage struct {
-	// Attribution is a validated, separate Responses bucket snapshot. Counts
-	// already belong to the model totals and must never be added a second time.
+	// ExecutionSpeed is an observed execution mode, independent of service tier.
+	// Absent and explicit null retain distinct reporting states.
+	ExecutionSpeed Value `json:"executionSpeed,omitzero"`
+	// Executions is an ordered, complete execution-usage snapshot. Its counters
+	// never augment parent totals implicitly; excluded does not mean billable.
+	Executions Value `json:"executions,omitzero"`
+	// Attribution is a canonical snapshot of items and requestFields buckets.
+	// Their input/output/cacheRead/cacheCreation counts already belong to model
+	// totals and must never be added a second time.
 	Attribution Value `json:"attribution,omitzero"`
-	// CacheBilling retains the declared linapi cache allocation independently.
+	// CacheBilling retains canonical billed/observed cache allocation evidence.
 	CacheBilling  Value              `json:"cacheBilling,omitzero"`
 	Input         *Counter           `json:"input,omitempty"`
 	Output        *Counter           `json:"output,omitempty"`

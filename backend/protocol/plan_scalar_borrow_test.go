@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -8,7 +10,7 @@ import (
 
 func TestBorrowedScalarReadBoundaries(t *testing.T) {
 	read := Expression{Op: "read", Path: "/value", Required: true}
-	for _, operation := range []string{"exists", "present", "type", "is_integer", "equal"} {
+	for _, operation := range []string{"exists", "present", "type", "is_integer", "is_integral", "equal"} {
 		expression := Expression{Op: operation, Source: &read}
 		if operation == "equal" {
 			expression.Source = nil
@@ -69,5 +71,38 @@ func TestBorrowedPredicateDoesNotChangeEscapingRead(t *testing.T) {
 	}
 	if selected.value != borrowed || spanIdentity(selected.value.raw) == spanIdentity(borrowed.raw) || view.owned.isBorrowed {
 		t.Fatal("predicate let an escaping field borrow the original body")
+	}
+}
+
+func TestScalarBorrowFailureLeavesCallerReader(t *testing.T) {
+	input := numericTestInput(t, `{"text":"small","padding":"`+strings.Repeat("x", requestViewMinBytes*2)+`"}`)
+	for _, operation := range []string{"present", "type", "is_integer", "is_integral", "equal"} {
+		for _, shouldCancel := range []bool{false, true} {
+			read := Expression{Op: "read", From: "input", Path: "/missing", Required: true}
+			expression := Expression{Op: operation, Source: &read}
+			if operation == "equal" {
+				expression.Source = nil
+				expression.Items = []Expression{read, literalExpression("known")}
+			}
+			plan := numericTestPlan(t, expression)
+			view := newInputView(input)
+			state := numericTestState(t, input)
+			state.inputView, state.valueReader, state.objectReader = view, &view.owned, view.objectReader()
+			if shouldCancel {
+				state.ctx = &outputPlanCancelContext{Context: t.Context(), remaining: 2}
+			}
+			_, err := plan.buildNode(&state)
+			if err == nil || state.budget.steps != 2 || state.valueReader != &view.owned || view.owned.isBorrowed {
+				t.Fatal("failed borrowed source changed caller state", operation, shouldCancel, err, state.budget.steps)
+			}
+			if shouldCancel != errors.Is(err, context.Canceled) {
+				t.Fatal("borrowed source changed failure precedence", operation, shouldCancel, err)
+			}
+			state.ctx = t.Context()
+			value, err := readValuePointerWithObjectReader(input, []string{"text"}, state.valueReader, state.objectReader)
+			if err != nil || !value.IsString("small") || sharesValueStorage(input, value) {
+				t.Fatal("later retained read borrowed the input after failure", operation, shouldCancel, err)
+			}
+		}
 	}
 }

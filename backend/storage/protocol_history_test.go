@@ -84,7 +84,7 @@ func TestProtocolHistoryArchiveConflictPurgeAndRestart(t *testing.T) {
 
 func TestProtocolHistoryPresetUpdatesAndRollback(t *testing.T) {
 	store := newJobTestStore(t, filepath.Join(t.TempDir(), "presets.sqlite"))
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestProtocolHistoryPresetUpdatesAndRollback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		value, err = protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/id", Value: protocol.StringValue("anthropic-messages")}}, protocol.DefaultLimits())
+		value, err = protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: "/spec/id", Value: protocol.StringValue("anthropic-messages")}}, protocol.DefaultLimits())
 		if err != nil {
 			t.Fatal(err)
 		}

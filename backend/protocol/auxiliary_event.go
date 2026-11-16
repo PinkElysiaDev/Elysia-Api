@@ -14,12 +14,22 @@ type sourceFrameReceipt struct {
 	direction   Direction
 	scope       Scope
 	frame       Value
+	limits      Limits
 	class       wireFrameClass
 	responseID  string
 	hadResponse bool
 	sequence    int64
 	hasSequence bool
 	frameNumber uint64
+}
+
+func (receipt *sourceFrameReceipt) checkLimits(limits Limits) error {
+	// Source validation already proves equal or wider consumer budgets. Only
+	// an independently narrower consumer needs to measure this immutable frame.
+	if limits.BufferBytes >= receipt.limits.BufferBytes && limits.Nodes >= receipt.limits.Nodes && limits.Depth >= receipt.limits.Depth {
+		return nil
+	}
+	return checkResourceValue(receipt.frame, limits, "wire")
 }
 
 type omittedEventReceipt struct {
@@ -33,8 +43,13 @@ type omittedEventReceipt struct {
 }
 
 func (compiled *Compiled) validateSourceFrame(ctx context.Context, direction Direction, frame Value, options EvaluationContext) (EvaluationContext, error) {
-	if compiled.packagePlan == nil || compiled.wireContracts[direction].packageStream == nil {
+	if compiled.wireContracts[direction].packageStream == nil {
 		return options, nil
+	}
+	var err error
+	options, err = options.withSourceFrameView(frame)
+	if err != nil {
+		return options, err
 	}
 	if view := options.inputView; view.owns(frame) && view.sourceReceipt != nil {
 		receipt := view.sourceReceipt
@@ -45,7 +60,7 @@ func (compiled *Compiled) validateSourceFrame(ctx context.Context, direction Dir
 	if options.State == nil {
 		return options, fmt.Errorf("frame decoding requires one EvaluationState per source stream")
 	}
-	key := sourceStreamKey{moduleStateKey: moduleStateKey{compiled: compiled, direction: direction}, scope: options.Scope}
+	key := sourceStreamKey{executionStateKey: executionStateKey{compiled: compiled, direction: direction}, scope: options.Scope}
 	validator := options.State.sourceStreams[key]
 	if validator == nil {
 		if len(options.State.sourceStreams) >= compiled.limits.StateItems {
@@ -66,7 +81,6 @@ func (compiled *Compiled) validateSourceFrame(ctx context.Context, direction Dir
 			}
 		}
 	}
-	options.inputView = newInputView(frame)
 	if err := validator.consume(ctx, frame, options.inputView); err != nil {
 		return options, err
 	}
@@ -82,7 +96,7 @@ func (receipt *sourceFrameReceipt) attach(event *Event) error {
 }
 
 func hasAuxiliaryPayload(event Event) bool {
-	return event.Control != nil || event.ResponsesTurnState != nil || len(event.Metadata) != 0 || !event.SessionID.IsZero() || !event.ItemID.IsZero() || !event.ParentID.IsZero() || event.Collection != "" || !event.CallID.IsZero() || event.Index != nil || !event.Delta.IsZero() || event.Item != nil || event.Response != nil || event.Request != nil || event.Usage != nil || event.Media != nil || !event.Error.IsZero() || event.Unmapped != nil
+	return event.Control != nil || len(event.Metadata) != 0 || !event.SessionID.IsZero() || !event.ItemID.IsZero() || !event.ParentID.IsZero() || event.Collection != "" || !event.CallID.IsZero() || event.Index != nil || !event.Delta.IsZero() || event.Item != nil || event.Response != nil || event.Request != nil || event.Usage != nil || event.Media != nil || !event.Error.IsZero() || event.Unmapped != nil || len(event.UnmappedPaths) != 0
 }
 
 func restoreAuxiliaryEvent(event *Event, receipt *sourceFrameReceipt, omitted *omittedEventReceipt, normalized bool) error {

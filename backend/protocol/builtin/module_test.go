@@ -1,11 +1,9 @@
 package builtin
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
@@ -25,32 +23,36 @@ func testCompiled(t testing.TB, name string) *p.Compiled {
 
 func testCompiledWithLimits(t testing.TB, name string, limits p.Limits) *p.Compiled {
 	t.Helper()
-	compiler, err := p.NewCompiler(limits, Modules(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var adapter module
-	for _, entry := range modules {
-		if entry.name == name {
-			adapter = entry
+	if limits == p.DefaultLimits() {
+		compiled, err := shippedTestProtocols()
+		if err != nil {
+			t.Fatal(err)
 		}
+		if candidate := compiled[name]; candidate != nil {
+			return candidate
+		}
+		t.Fatalf("unknown package fixture %q", name)
 	}
-	capabilities := p.CapabilitySet{}
-	for _, capability := range p.CapabilityCatalog() {
-		capabilities[capability] = true
-	}
-	directions := map[p.Direction]p.Mapping{}
-	for _, direction := range adapter.Directions() {
-		directions[direction] = p.Mapping{Module: name, FrameBatch: direction == p.EncodeEvent}
-	}
-	definition := p.Definition{SchemaVersion: 2, ID: "arbitrary-" + name, Name: name, Version: "1", Family: adapter.family, WireVersion: WireVersion, Capabilities: capabilities, Directions: directions, Native: p.NativePolicy{Preserve: true}, Operations: map[string]p.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: p.HTTPJSON, Auth: p.Credential{Location: "none"}}}}
-	raw, err := sonic.ConfigStd.Marshal(definition)
+	compiler, err := p.NewCompiler(p.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, issues := compiler.Compile(raw)
-	if compiled == nil {
-		t.Fatal(issues)
+	raw, err := readPackage(packageName(name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document p.ProtocolPackage
+	if err := raw.Decode(&document); err != nil {
+		t.Fatal(err)
+	}
+	document.Mapping.Limits = &limits
+	bounded, err := p.EncodeValue(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, issues := compiler.Compile(bounded.Bytes())
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
 	}
 	return compiled
 }
@@ -79,7 +81,7 @@ func TestBuiltinNativeRequestAndResponsePreservation(t *testing.T) {
 	for _, fixture := range cases {
 		t.Run(fixture.name, func(t *testing.T) {
 			compiled := testCompiled(t, fixture.name)
-			options := p.EvaluationContext{Scope: p.Scope{Provider: "p", Account: "a", Model: "m"}}
+			options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Provider: "p", Account: "a", Model: "m"}})
 			request, err := compiled.DecodeRequest(t.Context(), []byte(fixture.request), options)
 			if err != nil {
 				t.Fatal(err)
@@ -107,20 +109,13 @@ func TestBuiltinNativeRequestAndResponsePreservation(t *testing.T) {
 
 func TestBuiltinScopedResponseReferenceAndChoiceLimits(t *testing.T) {
 	compiled := testCompiled(t, Responses)
-	options := p.EvaluationContext{Scope: p.Scope{Provider: "source", Account: "account", Model: "m"}}
-	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"continue","previous_response_id":"previous"}`), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !p.HasScopedResources(request) || len(request.Resources) != 1 {
-		t.Fatal("preceding response bypassed resource-aware routing")
-	}
-	if _, err := compiled.EncodeRequest(t.Context(), request, options); err != nil {
-		t.Fatal(err)
-	}
-	options.Scope.Account = "different"
-	if _, err := compiled.EncodeRequest(t.Context(), request, options); err == nil {
-		t.Fatal("preceding response crossed accounts")
+	options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Provider: "source", Account: "account", Model: "m"}})
+	for _, account := range []string{"account", "different"} {
+		options.Scope.Account = account
+		_, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"continue","previous_response_id":"previous"}`), options)
+		if !isUnsupported(err) {
+			t.Fatal("unverified response reference reached routing", err)
+		}
 	}
 	for name, body := range map[string]string{Chat: `{"model":"m","n":2,"stream":true,"messages":[{"role":"user","content":"hello"}]}`, Gemini: `{"generationConfig":{"candidateCount":2},"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`} {
 		if _, err := testCompiled(t, name).DecodeRequest(t.Context(), []byte(body), options); err == nil {
@@ -130,9 +125,9 @@ func TestBuiltinScopedResponseReferenceAndChoiceLimits(t *testing.T) {
 }
 
 func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
-	request := p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}, {Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}}, {Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.ToolResultNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Payload: testValue(t, `{"ok":true}`)}}}}, Tools: []p.Tool{{Kind: p.FunctionTool, Name: p.StringValue("lookup"), InputSchema: testValue(t, `{"type":"object"}`)}}}
-	for _, source := range modules {
-		for _, target := range modules {
+	request := p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}, {Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.ToolCallNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Input: &p.ToolInput{Kind: p.JSONInput, Value: testValue(t, `{"n":9007199254740993}`)}}}}, {Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.ToolResultNode, Name: p.StringValue("lookup"), CallID: p.StringValue("c"), Payload: testValue(t, `{"ok":true}`)}}}}, Tools: []p.Tool{{Kind: p.FunctionTool, Name: p.StringValue("lookup"), InputSchema: testValue(t, `{"type":"object"}`)}}}
+	for _, source := range packageFixtures {
+		for _, target := range packageFixtures {
 			t.Run(source.name+"-"+target.name, func(t *testing.T) {
 				from, to := testCompiled(t, source.name), testCompiled(t, target.name)
 				result := testValue(t, `{"ok":true}`)
@@ -140,35 +135,63 @@ func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
 					result = p.StringValue("found")
 				}
 				request.Content[2].Children[0].Payload = result
-				input, err := from.EncodeRequest(t.Context(), &request, p.EvaluationContext{})
+				request.Source = from.Identity()
+				setRequestParameter(&request, "max_output_tokens", testValue(t, "64"))
+				preparation, err := p.ResolveConversion(p.DefaultConversionPolicy(from, from))
 				if err != nil {
 					t.Fatal(err)
 				}
-				semantic, err := from.DecodeRequest(t.Context(), input, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				prepared, err := preparation.Request(t.Context(), &request, fixtureConversionContext(t, preparation, p.ConversionRequest, from.Identity()), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if source.name == Gemini && target.name != Gemini {
-					conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
-					semantic, err = conversion.Request(t.Context(), semantic, p.ConversionContext{}, nil)
-					if err != nil {
-						t.Fatal(err)
-					}
+				input, err := from.EncodeRequest(t.Context(), prepared, fixtureOptions(p.EvaluationContext{}))
+				if err != nil {
+					t.Fatal(err)
 				}
-				output, err := to.EncodeRequest(t.Context(), semantic, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				semantic, err := from.DecodeRequest(t.Context(), input, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
+				if err != nil {
+					t.Fatal(err)
+				}
+				route := fixtureConversionContext(t, conversion, p.ConversionRequest, from.Identity())
+				projected, err := conversion.Request(t.Context(), semantic, route, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				output, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
+				if err != nil {
+					t.Fatal(err)
+				}
 				if source.name != Gemini && target.name == Gemini {
-					// 非 JSON 文本工具结果在 Gemini 目标仍显式拒绝（本夹具为 "found"）；
-					// Gemini 的对象结果到其它目标现按 JSON 字符串序列化转换。
-					var conversion *p.ConversionError
-					if !errors.As(err, &conversion) || conversion.Issues[0].Code != p.UnsupportedCapability {
-						t.Fatalf("non-JSON text tool result must stay rejected by Gemini: %v", err)
+					for _, mode := range []string{"strict", "disabled"} {
+						policy := p.DefaultConversionPolicy(from, to)
+						if mode == "strict" {
+							policy.Mode = mode
+						} else {
+							for i := range policy.Rules {
+								if policy.Rules[i].ID == "tool-results" {
+									policy.Rules[i].Enabled = false
+								}
+							}
+						}
+						restricted, err := p.ResolveConversion(policy)
+						if err != nil {
+							t.Fatal(err)
+						}
+						candidate, err := restricted.Request(t.Context(), semantic, route, nil)
+						if err == nil {
+							_, err = to.EncodeRequest(t.Context(), candidate, fixtureOptions(p.EvaluationContext{}))
+						}
+						if err == nil {
+							t.Fatal(mode, "accepted an unresolved text tool result")
+						}
 					}
-					return
 				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				recovered, err := to.DecodeRequest(t.Context(), output, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				recovered, err := to.DecodeRequest(t.Context(), output, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -183,6 +206,13 @@ func TestBuiltinFourByFourTextAndFunctionHistory(t *testing.T) {
 						if node.Kind == p.ToolResultNode {
 							results++
 							payload := node.Payload.Bytes()
+							if source.name != Gemini && target.name == Gemini {
+								fields, err := node.Payload.ReadObject()
+								if err != nil || len(fields) != 1 {
+									t.Fatal("text result wrapper changed", node.Payload, err)
+								}
+								payload = fields["result"].Bytes()
+							}
 							if source.name == Gemini && target.name != Gemini {
 								// 对象结果经 JSON 字符串序列化后，目标侧重回语义仍是文本载荷。
 								var text string

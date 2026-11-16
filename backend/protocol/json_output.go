@@ -7,6 +7,8 @@ import (
 	"unicode/utf8"
 )
 
+const jsonOutputPartCapacity = 64
+
 // JSONOutput is an immutable, closed JSON construction plan. Containers snapshot
 // their input maps/slices; leaves are already validated immutable Values. Nested
 // containers do not encode intermediate documents or expose placeholder Values.
@@ -77,8 +79,7 @@ func (output JSONOutput) encodeWithin(ctx context.Context, cache *semanticCache)
 		}
 		return output.value, nil
 	}
-	var storage [64]string
-	parts := jsonOutputParts{parts: storage[:0], cache: cache}
+	parts := jsonOutputParts{cache: cache}
 	if err := parts.prepare(ctx, output); err != nil {
 		return Value{}, err
 	}
@@ -88,22 +89,22 @@ func (output JSONOutput) encodeWithin(ctx context.Context, cache *semanticCache)
 // equalJSONOutputBytes compares complete encoded roots. Byte equality does not
 // establish provenance or authorize native replay.
 func equalJSONOutputBytes(ctx context.Context, left, right JSONOutput) (bool, error) {
-	var leftStorage, rightStorage [64]string
-	leftParts := jsonOutputParts{parts: leftStorage[:0]}
-	rightParts := jsonOutputParts{parts: rightStorage[:0]}
+	var leftParts, rightParts jsonOutputParts
 	if err := leftParts.prepare(ctx, left); err != nil {
 		return false, err
 	}
 	if err := rightParts.prepare(ctx, right); err != nil {
 		return false, err
 	}
-	return leftParts.equalBytes(ctx, rightParts)
+	return leftParts.equalBytes(ctx, &rightParts)
 }
 
 type jsonOutputParts struct {
-	parts []string
-	bytes int
-	cache *semanticCache
+	parts    [jsonOutputPartCapacity]string
+	overflow []string
+	count    int
+	bytes    int
+	cache    *semanticCache
 }
 
 // prepare borrows exact root spelling; only leaves embedded in containers are
@@ -121,14 +122,14 @@ func (parts *jsonOutputParts) prepare(ctx context.Context, output JSONOutput) er
 	return parts.collect(ctx, output)
 }
 
-func (parts jsonOutputParts) encode(ctx context.Context) (Value, error) {
+func (parts *jsonOutputParts) encode(ctx context.Context) (Value, error) {
 	var builder strings.Builder
 	builder.Grow(parts.bytes)
-	for _, part := range parts.parts {
+	for index := range parts.count {
 		if err := ctx.Err(); err != nil {
 			return Value{}, err
 		}
-		builder.WriteString(part)
+		builder.WriteString(parts.readPart(index))
 	}
 	if err := ctx.Err(); err != nil {
 		return Value{}, err
@@ -136,7 +137,7 @@ func (parts jsonOutputParts) encode(ctx context.Context) (Value, error) {
 	return Value{raw: builder.String()}, nil
 }
 
-func (parts jsonOutputParts) equalBytes(ctx context.Context, other jsonOutputParts) (bool, error) {
+func (parts *jsonOutputParts) equalBytes(ctx context.Context, other *jsonOutputParts) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -145,22 +146,23 @@ func (parts jsonOutputParts) equalBytes(ctx context.Context, other jsonOutputPar
 	}
 	leftIndex, rightIndex := 0, 0
 	leftOffset, rightOffset := 0, 0
-	for leftIndex < len(parts.parts) && rightIndex < len(other.parts) {
+	for leftIndex < parts.count && rightIndex < other.count {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		left, right := parts.parts[leftIndex][leftOffset:], other.parts[rightIndex][rightOffset:]
+		leftPart, rightPart := parts.readPart(leftIndex), other.readPart(rightIndex)
+		left, right := leftPart[leftOffset:], rightPart[rightOffset:]
 		length := min(len(left), len(right))
 		if left[:length] != right[:length] {
 			return false, ctx.Err()
 		}
 		leftOffset += length
 		rightOffset += length
-		if leftOffset == len(parts.parts[leftIndex]) {
+		if leftOffset == len(leftPart) {
 			leftIndex++
 			leftOffset = 0
 		}
-		if rightOffset == len(other.parts[rightIndex]) {
+		if rightOffset == len(rightPart) {
 			rightIndex++
 			rightOffset = 0
 		}
@@ -176,8 +178,23 @@ func (parts *jsonOutputParts) add(raw string) error {
 		return fmt.Errorf("JSON output exceeds integer capacity")
 	}
 	parts.bytes += len(raw)
-	parts.parts = append(parts.parts, raw)
+	if parts.count < len(parts.parts) {
+		parts.parts[parts.count] = raw
+	} else {
+		if parts.count == len(parts.parts) {
+			parts.overflow = make([]string, 0, jsonOutputPartCapacity)
+		}
+		parts.overflow = append(parts.overflow, raw)
+	}
+	parts.count++
 	return nil
+}
+
+func (parts *jsonOutputParts) readPart(index int) string {
+	if index < len(parts.parts) {
+		return parts.parts[index]
+	}
+	return parts.overflow[index-len(parts.parts)]
 }
 
 func (parts *jsonOutputParts) collect(ctx context.Context, output JSONOutput) error {

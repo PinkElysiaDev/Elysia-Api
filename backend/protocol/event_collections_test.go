@@ -13,7 +13,6 @@ func reasoningCollectionEvent(kind EventType, id, parent, collection string, nod
 
 func reasoningCollectionTarget() Target {
 	target := replayTarget()
-	target.coreVersion = ProtocolCoreVersion
 	return target
 }
 

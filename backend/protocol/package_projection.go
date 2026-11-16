@@ -6,7 +6,16 @@ func isRequestProjectionScope(scope string) bool {
 	return scope == cacheIntentScope || scope == requestFieldScope
 }
 
-func validateRequestProjectionEffect(direction Direction, effect ProtocolSemanticEffect) error {
+func validateSemanticEffectScope(direction Direction, effect ProtocolSemanticEffect) error {
+	if effect.Kind == "warn" {
+		if effect.Scope != "" || effect.Target != "" || effect.When == nil || effect.Diagnostic == nil || !effect.Default.IsZero() || effect.Severity != "" || effect.Layout != nil || effect.ValueMapping != nil {
+			return fmt.Errorf("warning requires a condition and diagnostic, without scope, target, default, severity or layout")
+		}
+		return nil
+	}
+	if isOwnerEffectScope(effect.Scope) {
+		return validateOwnerEffect(direction, effect)
+	}
 	if effect.Diagnostic != nil && (effect.Kind != "reject" || effect.Scope != "") {
 		return fmt.Errorf("diagnostic requires an unscoped reject effect")
 	}
@@ -42,12 +51,13 @@ func localProjectionCondition(plan *compiledOutputPlan) bool {
 			return false
 		}
 	}
-	for _, field := range plan.fields {
+	fields, cases := plan.readCollections()
+	for _, field := range fields {
 		if !localProjectionCondition(field.expression) {
 			return false
 		}
 	}
-	for _, child := range plan.cases {
+	for _, child := range cases {
 		if !localProjectionCondition(child) {
 			return false
 		}

@@ -4,6 +4,7 @@ package protocol
 
 import "reflect"
 
+func cloneCoreUsagePointer(*Usage) *Usage                 { panic("coreplan generation") }
 func cloneCoreSemantic(any) reflect.Value                 { panic("coreplan generation") }
 func normalizeCoreSemantic(reflect.Value, *semanticCache) { panic("coreplan generation") }
 
@@ -80,3 +81,8 @@ func writeCoreBoolPointer(JSONOutput, **bool, *valueReader) error       { panic(
 func writeCoreResponsesStorageIntentPointer(JSONOutput, **ResponsesStorageIntent, *valueReader) error {
 	panic("coreplan generation")
 }
+
+func (coreReadContext) readResponsePointer(*Response, []string) (JSONOutput, error) {
+	panic("coreplan generation")
+}
+func (coreReadContext) readNode(Node, []string) (JSONOutput, error) { panic("coreplan generation") }

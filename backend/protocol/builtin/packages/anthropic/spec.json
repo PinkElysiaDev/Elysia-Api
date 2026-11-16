@@ -1,6 +1,6 @@
 {
   "id": "anthropic-messages",
-  "name": "Anthropic Messages migration draft (not enabled)",
+  "name": "Anthropic Messages",
   "version": "2.1.7",
   "family": "claude",
   "wireVersion": "v2",
@@ -267,6 +267,9 @@
                       }
                     ]
                   }
+                },
+                {
+                  "ref": "text-metadata"
                 }
               ]
             }
@@ -710,6 +713,9 @@
               "each": [
                 {
                   "ref": "continuation-wrapper"
+                },
+                {
+                  "ref": "text-metadata"
                 }
               ]
             }
@@ -717,6 +723,17 @@
         },
         {
           "ref": "request-tracking"
+        },
+        {
+          "ref": "request-output-constraint",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_config"
+            }
+          }
         }
       ]
     },
@@ -1114,6 +1131,17 @@
         },
         {
           "ref": "request-tracking"
+        },
+        {
+          "ref": "request-output-constraint",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/output_config"
+            }
+          }
         }
       ]
     },
@@ -1124,693 +1152,61 @@
       },
       "assertions": [
         {
-          "path": "/usage",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
+          "ref": "usage-counters",
+          "path": "/usage"
+        },
+        {
+          "path": "/content",
+          "when": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/content"
+            }
           },
-          "code": "upstream_contract_violation",
-          "reason": "usage must be an object",
+          "schema": {
+            "type": "array"
+          },
+          "reason": "response content must be an array",
+          "each": [
+            {
+              "ref": "tool-caller"
+            }
+          ]
+        },
+        {
+          "ref": "response-metadata"
+        },
+        {
+          "path": "/content",
           "when": {
             "op": "present",
             "source": {
               "op": "read",
-              "from": "input",
-              "path": "/usage"
+              "path": "/content"
             }
-          }
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "reason": "response content must be an array of blocks",
+          "each": [
+            {
+              "ref": "text-metadata"
+            }
+          ]
         },
         {
-          "path": "/usage/cache_creation",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage details must be an object",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage/cache_creation"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
+          "ref": "execution-speed",
+          "path": "/usage"
         },
         {
-          "path": "/usage/output_tokens_details",
-          "schema": {
-            "type": "object",
-            "allowUnknown": true
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage details must be an object",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage/output_tokens_details"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/input_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/output_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/output_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/total_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/total_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/cache_read_input_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_read_input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/cache_creation_input_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_creation_input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/cache_creation/ephemeral_5m_input_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_creation"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_creation/ephemeral_5m_input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/cache_creation/ephemeral_1h_input_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_creation"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/cache_creation/ephemeral_1h_input_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
-        },
-        {
-          "path": "/usage/output_tokens_details/thinking_tokens",
-          "schema": {
-            "type": "any"
-          },
-          "code": "upstream_contract_violation",
-          "reason": "usage counter must be a nonnegative int64",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/usage"
-              }
-            },
-            "then": {
-              "op": "if",
-              "when": {
-                "op": "present",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/output_tokens_details"
-                }
-              },
-              "then": {
-                "op": "exists",
-                "source": {
-                  "op": "read",
-                  "from": "input",
-                  "path": "/usage/output_tokens_details/thinking_tokens"
-                }
-              },
-              "otherwise": {
-                "op": "literal",
-                "value": false
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "check": {
-            "op": "if",
-            "when": {
-              "op": "is_integer",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": ""
-              }
-            },
-            "then": {
-              "op": "integer",
-              "operation": "gte",
-              "items": [
-                {
-                  "op": "read",
-                  "from": "input",
-                  "path": ""
-                },
-                {
-                  "op": "literal",
-                  "value": 0
-                }
-              ]
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          }
+          "ref": "execution-iterations",
+          "path": "/usage"
         }
       ]
     },
@@ -2195,6 +1591,9 @@
                   }
                 ]
               }
+            },
+            {
+              "ref": "tool-caller"
             }
           ],
           "when": {
@@ -2537,6 +1936,40 @@
               "ref": "continuation-wrapper"
             }
           ]
+        },
+        {
+          "ref": "response-metadata"
+        },
+        {
+          "path": "/content",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/content"
+            }
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "reason": "response content must be an array of blocks",
+          "each": [
+            {
+              "ref": "text-metadata"
+            }
+          ]
+        },
+        {
+          "ref": "execution-speed",
+          "path": "/usage"
+        },
+        {
+          "ref": "execution-iterations",
+          "path": "/usage"
         }
       ]
     },
@@ -2659,6 +2092,114 @@
           },
           "code": "upstream_contract_violation",
           "reason": "stream envelope requires its declared object"
+        },
+        {
+          "ref": "tool-caller",
+          "path": "/content_block"
+        },
+        {
+          "ref": "response-metadata",
+          "path": "/message"
+        },
+        {
+          "ref": "text-metadata",
+          "path": "/content_block"
+        },
+        {
+          "ref": "response-metadata",
+          "path": "/delta"
+        },
+        {
+          "ref": "usage-metadata",
+          "path": "/usage"
+        },
+        {
+          "path": "/message/content",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/message"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/message/content"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "reason": "message content must be an array of blocks",
+          "each": [
+            {
+              "ref": "text-metadata"
+            }
+          ]
+        },
+        {
+          "ref": "execution-speed",
+          "path": "/message/usage",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "ref": "execution-iterations",
+          "path": "/message/usage",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "ref": "execution-iterations",
+          "path": "/usage",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_delta"
+              }
+            ]
+          }
         }
       ],
       "stream": {
@@ -2750,124 +2291,10 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/message/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "/message/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "",
-                  "code": "upstream_contract_violation",
-                  "reason": "counter observation requires at least one count",
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage/input_tokens"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage/output_tokens"
-                        }
-                      }
-                    ]
-                  }
+                  "ref": "usage-counters",
+                  "path": "/message/usage"
                 }
               ],
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage"
-                    }
-                  },
-                  {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  }
-                ]
-              },
               "afterTerminal": true
             },
             {
@@ -3202,130 +2629,22 @@
           ],
           "message_delta": [
             {
+              "action": "observe",
+              "requireClosed": [
+                "content_block"
+              ]
+            },
+            {
               "action": "observe"
             },
             {
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "",
-                  "code": "upstream_contract_violation",
-                  "reason": "counter observation requires at least one count",
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage/input_tokens"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage/output_tokens"
-                        }
-                      }
-                    ]
-                  }
+                  "ref": "usage-counters",
+                  "path": "/usage"
                 }
               ],
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage"
-                    }
-                  },
-                  {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  }
-                ]
-              },
               "afterTerminal": true
             },
             {
@@ -3372,6 +2691,27 @@
               "action": "control",
               "allowBeforeStart": true,
               "afterTerminal": true
+            }
+          ],
+          "error": [
+            {
+              "action": "assert",
+              "assertions": [
+                {
+                  "path": "/error",
+                  "schema": {
+                    "type": "object",
+                    "allowUnknown": true
+                  },
+                  "code": "upstream_contract_violation",
+                  "reason": "An error event requires its error object."
+                }
+              ]
+            },
+            {
+              "action": "stream_fail",
+              "error": "/error",
+              "allowBeforeStart": true
             }
           ]
         }
@@ -4757,6 +4097,114 @@
         {
           "ref": "continuation-wrapper",
           "path": "/content_block"
+        },
+        {
+          "ref": "tool-caller",
+          "path": "/content_block"
+        },
+        {
+          "ref": "response-metadata",
+          "path": "/message"
+        },
+        {
+          "ref": "text-metadata",
+          "path": "/content_block"
+        },
+        {
+          "ref": "response-metadata",
+          "path": "/delta"
+        },
+        {
+          "ref": "usage-metadata",
+          "path": "/usage"
+        },
+        {
+          "path": "/message/content",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/message"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/message/content"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "reason": "message content must be an array of blocks",
+          "each": [
+            {
+              "ref": "text-metadata"
+            }
+          ]
+        },
+        {
+          "ref": "execution-speed",
+          "path": "/message/usage",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "ref": "execution-iterations",
+          "path": "/message/usage",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_start"
+              }
+            ]
+          }
+        },
+        {
+          "ref": "execution-iterations",
+          "path": "/usage",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "path": "/type"
+              },
+              {
+                "op": "literal",
+                "value": "message_delta"
+              }
+            ]
+          }
         }
       ],
       "stream": {
@@ -4843,130 +4291,6 @@
           "message_start": [
             {
               "action": "stream_start"
-            },
-            {
-              "action": "assert",
-              "assertions": [
-                {
-                  "path": "/message/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "/message/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "",
-                  "code": "upstream_contract_violation",
-                  "reason": "counter observation requires at least one count",
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage/input_tokens"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage/output_tokens"
-                        }
-                      }
-                    ]
-                  }
-                }
-              ],
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage"
-                    }
-                  },
-                  {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  }
-                ]
-              },
-              "afterTerminal": true
             },
             {
               "when": {
@@ -5333,131 +4657,13 @@
           ],
           "message_delta": [
             {
-              "action": "observe"
+              "action": "observe",
+              "requireClosed": [
+                "content_block"
+              ]
             },
             {
-              "action": "assert",
-              "assertions": [
-                {
-                  "path": "/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "",
-                  "code": "upstream_contract_violation",
-                  "reason": "counter observation requires at least one count",
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage/input_tokens"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage/output_tokens"
-                        }
-                      }
-                    ]
-                  }
-                }
-              ],
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage"
-                    }
-                  },
-                  {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  }
-                ]
-              },
-              "afterTerminal": true
+              "action": "observe"
             },
             {
               "when": {
@@ -5634,6 +4840,59 @@
           },
           "code": "upstream_contract_violation",
           "reason": "stream envelope requires its declared object"
+        },
+        {
+          "ref": "response-metadata",
+          "path": "/message"
+        },
+        {
+          "ref": "text-metadata",
+          "path": "/content_block"
+        },
+        {
+          "ref": "response-metadata",
+          "path": "/delta"
+        },
+        {
+          "ref": "usage-metadata",
+          "path": "/usage"
+        },
+        {
+          "path": "/message/content",
+          "when": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/message"
+              }
+            },
+            "then": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/message/content"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "reason": "message content must be an array of blocks",
+          "each": [
+            {
+              "ref": "text-metadata"
+            }
+          ]
         }
       ],
       "stream": {
@@ -5724,124 +4983,10 @@
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/message/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "/message/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "",
-                  "code": "upstream_contract_violation",
-                  "reason": "counter observation requires at least one count",
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage/input_tokens"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage/output_tokens"
-                        }
-                      }
-                    ]
-                  }
+                  "ref": "usage-counters",
+                  "path": "/message/usage"
                 }
               ],
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/message/usage"
-                    }
-                  },
-                  {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/message/usage"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  }
-                ]
-              },
               "afterTerminal": true
             },
             {
@@ -6176,130 +5321,22 @@
           ],
           "message_delta": [
             {
+              "action": "observe",
+              "requireClosed": [
+                "content_block"
+              ]
+            },
+            {
               "action": "observe"
             },
             {
               "action": "assert",
               "assertions": [
                 {
-                  "path": "/usage/input_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/input_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "/usage/output_tokens",
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage/output_tokens"
-                    }
-                  },
-                  "schema": {
-                    "type": "integer"
-                  },
-                  "code": "upstream_contract_violation",
-                  "reason": "token count must be a nonnegative integer",
-                  "check": {
-                    "op": "integer",
-                    "operation": "gte",
-                    "items": [
-                      {
-                        "op": "read",
-                        "from": "input",
-                        "path": ""
-                      },
-                      {
-                        "op": "literal",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                {
-                  "path": "",
-                  "code": "upstream_contract_violation",
-                  "reason": "counter observation requires at least one count",
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage/input_tokens"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage/output_tokens"
-                        }
-                      }
-                    ]
-                  }
+                  "ref": "usage-counters",
+                  "path": "/usage"
                 }
               ],
-              "when": {
-                "op": "all",
-                "items": [
-                  {
-                    "op": "present",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/usage"
-                    }
-                  },
-                  {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/usage"
-                        },
-                        {
-                          "op": "literal",
-                          "value": {}
-                        }
-                      ]
-                    }
-                  }
-                ]
-              },
               "afterTerminal": true
             },
             {
@@ -7368,6 +6405,32 @@
           }
         }
       ]
+    },
+    "is-nonnegative-usage-counter": {
+      "op": "if",
+      "when": {
+        "op": "is_integer",
+        "source": {
+          "op": "read"
+        }
+      },
+      "then": {
+        "op": "integer",
+        "operation": "gte",
+        "items": [
+          {
+            "op": "read"
+          },
+          {
+            "op": "literal",
+            "value": 0
+          }
+        ]
+      },
+      "otherwise": {
+        "op": "literal",
+        "value": false
+      }
     }
   },
   "constraints": {
@@ -7620,6 +6683,930 @@
           "nullable": true
         },
         "reason": "metadata user_id must be a string or null"
+      }
+    ],
+    "tool-caller": [
+      {
+        "path": "/caller",
+        "when": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "path": "/type"
+                },
+                {
+                  "op": "literal",
+                  "value": "tool_use"
+                }
+              ]
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/caller"
+              }
+            }
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "allowUnknown": true,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string"
+            }
+          }
+        },
+        "reason": "tool caller requires an object with a string type"
+      }
+    ],
+    "response-metadata": [
+      {
+        "path": "/container",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/container"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "container must have its declared metadata type or null"
+      },
+      {
+        "path": "/context_management",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/context_management"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "context_management must have its declared metadata type or null"
+      },
+      {
+        "path": "/stop_details",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/stop_details"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "stop_details must have its declared metadata type or null"
+      },
+      {
+        "path": "/usage/service_tier",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/usage/service_tier"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "service_tier must have its declared metadata type or null"
+      },
+      {
+        "path": "/usage/inference_geo",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/usage/inference_geo"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "inference_geo must have its declared metadata type or null"
+      },
+      {
+        "path": "/usage/server_tool_use",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "if",
+            "when": {
+              "op": "present",
+              "source": {
+                "op": "read",
+                "path": "/usage"
+              }
+            },
+            "then": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/usage/server_tool_use"
+              }
+            },
+            "otherwise": {
+              "op": "literal",
+              "value": false
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "server_tool_use must have its declared metadata type or null"
+      }
+    ],
+    "usage-metadata": [
+      {
+        "path": "/service_tier",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/service_tier"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "service_tier must have its declared metadata type or null"
+      },
+      {
+        "path": "/inference_geo",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/inference_geo"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "inference_geo must have its declared metadata type or null"
+      },
+      {
+        "path": "/server_tool_use",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/server_tool_use"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "server_tool_use must have its declared metadata type or null"
+      }
+    ],
+    "text-metadata": [
+      {
+        "path": "/citations",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/citations"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "array",
+          "nullable": true
+        },
+        "reason": "citations must have its declared metadata type or null"
+      }
+    ],
+    "usage-detail-shapes": [
+      {
+        "path": "/cache_creation",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "path": "/cache_creation"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "usage details must be an object"
+      },
+      {
+        "path": "/output_tokens_details",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "path": "/output_tokens_details"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "usage details must be an object"
+      }
+    ],
+    "usage-total-counter": [
+      {
+        "path": "/total_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "path": "/total_tokens"
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      }
+    ],
+    "usage-detail-counters": [
+      {
+        "path": "/cache_creation/ephemeral_5m_input_tokens",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/cache_creation"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/cache_creation/ephemeral_5m_input_tokens"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      },
+      {
+        "path": "/cache_creation/ephemeral_1h_input_tokens",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/cache_creation"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/cache_creation/ephemeral_1h_input_tokens"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      },
+      {
+        "path": "/output_tokens_details/thinking_tokens",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/output_tokens_details"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/output_tokens_details/thinking_tokens"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      }
+    ],
+    "usage-fields": [
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "usage must be an object"
+      },
+      {
+        "ref": "usage-detail-shapes"
+      },
+      {
+        "path": "/input_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "path": "/input_tokens"
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      },
+      {
+        "path": "/output_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "path": "/output_tokens"
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      },
+      {
+        "ref": "usage-total-counter"
+      },
+      {
+        "path": "/cache_read_input_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "path": "/cache_read_input_tokens"
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      },
+      {
+        "path": "/cache_creation_input_tokens",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "path": "/cache_creation_input_tokens"
+          }
+        },
+        "schema": {
+          "type": "any"
+        },
+        "reason": "usage counter must be a nonnegative int64",
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        }
+      },
+      {
+        "ref": "usage-detail-counters"
+      }
+    ],
+    "usage-counters": [
+      {
+        "ref": "usage-fields",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read"
+          }
+        }
+      }
+    ],
+    "execution-speed": [
+      {
+        "path": "/speed",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/speed"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true,
+          "enum": [
+            "standard",
+            "fast"
+          ]
+        },
+        "reason": "speed must report standard, fast or null"
+      }
+    ],
+    "execution-usage-counters": [
+      {
+        "path": "/input_tokens",
+        "schema": {
+          "type": "any"
+        },
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        },
+        "reason": "known execution iteration requires a nonnegative int64 counter"
+      },
+      {
+        "path": "/output_tokens",
+        "schema": {
+          "type": "any"
+        },
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        },
+        "reason": "known execution iteration requires a nonnegative int64 counter"
+      },
+      {
+        "path": "/cache_read_input_tokens",
+        "schema": {
+          "type": "any"
+        },
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        },
+        "reason": "known execution iteration requires a nonnegative int64 counter"
+      },
+      {
+        "path": "/cache_creation_input_tokens",
+        "schema": {
+          "type": "any"
+        },
+        "check": {
+          "op": "ref",
+          "ref": "is-nonnegative-usage-counter"
+        },
+        "reason": "known execution iteration requires a nonnegative int64 counter"
+      },
+      {
+        "ref": "usage-detail-shapes"
+      },
+      {
+        "ref": "usage-total-counter"
+      },
+      {
+        "ref": "usage-detail-counters"
+      }
+    ],
+    "execution-iterations": [
+      {
+        "path": "/iterations",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": ""
+            }
+          },
+          "then": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/iterations"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        },
+        "each": [
+          {
+            "path": "/type",
+            "schema": {
+              "type": "string"
+            },
+            "reason": "iteration type must be present"
+          },
+          {
+            "ref": "execution-usage-counters",
+            "when": {
+              "op": "enum",
+              "source": {
+                "op": "read",
+                "path": "/type"
+              },
+              "values": {
+                "message": true,
+                "compaction": true,
+                "advisor_message": true,
+                "fallback_message": true
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": false
+              }
+            }
+          },
+          {
+            "path": "/model",
+            "when": {
+              "op": "any",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "advisor_message"
+                    }
+                  ]
+                },
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "fallback_message"
+                    }
+                  ]
+                }
+              ]
+            },
+            "schema": {
+              "type": "string"
+            },
+            "reason": "this iteration must report its model"
+          },
+          {
+            "path": "/model",
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "equal",
+                  "items": [
+                    {
+                      "op": "read",
+                      "path": "/type"
+                    },
+                    {
+                      "op": "literal",
+                      "value": "message"
+                    }
+                  ]
+                },
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "path": "/model"
+                  }
+                }
+              ]
+            },
+            "schema": {
+              "type": "string",
+              "nullable": true
+            },
+            "reason": "sampling model must be a string or null"
+          }
+        ],
+        "reason": "iterations must be an ordered array or null"
+      }
+    ],
+    "request-output-constraint": [
+      {
+        "path": "/output_config/format",
+        "schema": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "json_schema"
+              ]
+            }
+          },
+          "allowUnknown": true
+        },
+        "reason": "output format requires a recognized typed object",
+        "code": "invalid_input",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/output_config/format"
+          }
+        }
+      },
+      {
+        "path": "/output_config/format",
+        "schema": {
+          "type": "object",
+          "required": [
+            "schema"
+          ],
+          "properties": {
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            }
+          },
+          "allowUnknown": true
+        },
+        "reason": "schema format requires its declared members",
+        "code": "invalid_input",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/output_config/format/type"
+            },
+            {
+              "op": "literal",
+              "value": "json_schema"
+            }
+          ]
+        }
       }
     ]
   }

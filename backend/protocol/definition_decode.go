@@ -5,17 +5,28 @@ import (
 	"unicode/utf8"
 )
 
-// UnmarshalJSON rejects unknown expression keys and retains the presence of
-// empty/false fields so an unrelated key cannot evade operation validation.
+// UnmarshalJSON expands compact reads and retains object-field presence so
+// empty or false fields cannot evade operation validation.
 func (expression *Expression) UnmarshalJSON(raw []byte) error {
+	text := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(text, `"`) {
+		var shorthand string
+		if err := decodeContractText(text, &shorthand); err != nil {
+			return err
+		}
+		decoded, err := parseCompactRead(shorthand)
+		if err != nil {
+			return err
+		}
+		*expression = decoded
+		return nil
+	}
 	type plain Expression
 	var decoded plain
-	text := string(raw)
 	if err := decodeContractText(text, &decoded); err != nil {
 		return err
 	}
 	*expression = Expression(decoded)
-	text = strings.TrimSpace(text)
 	if text == "null" {
 		return nil
 	}

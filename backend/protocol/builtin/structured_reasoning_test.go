@@ -35,7 +35,7 @@ const nullableReasoningItem = `{"type":"reasoning","id":"rs-synthetic","summary"
 
 func TestResponsesRequestReasoningContentPresence(t *testing.T) {
 	compiled := testCompiled(t, Responses)
-	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}})
 	for _, tc := range []struct {
 		name, item string
 		form       p.ReasoningForm
@@ -95,7 +95,7 @@ func TestResponsesRequestReasoningContentPresence(t *testing.T) {
 
 func TestResponsesRequestNullReasoningReconstruction(t *testing.T) {
 	compiled := testCompiled(t, Responses)
-	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}})
 	const extension = `{"decimal":1.00,"integer":9007199254740993,"escaped":"\u0061\/\u003c\u003e\u0026"}`
 	item := strings.TrimSuffix(nullableReasoningItem, "}") + `,"vendor":` + extension + `}`
 	body := `{"model":"m","input":[` + item + `]}`
@@ -143,7 +143,7 @@ func TestResponsesRequestNullReasoningReconstruction(t *testing.T) {
 
 func TestResponsesRequestNullReasoningRetainsLegacyHTMLNormalization(t *testing.T) {
 	compiled := testCompiled(t, Responses)
-	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}})
 	const extension = `{"decimal":1.00,"integer":9007199254740993,"escaped":"\u0061\/<>&"}`
 	const normalized = `{"decimal":1.00,"integer":9007199254740993,"escaped":"\u0061\/\u003c\u003e\u0026"}`
 	for _, item := range []string{nullableReasoningItem, strings.Replace(nullableReasoningItem, `,"content":null`, "", 1)} {
@@ -152,21 +152,21 @@ func TestResponsesRequestNullReasoningRetainsLegacyHTMLNormalization(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
+		original := request.Content[0].Native.Value
+		sameJSON(t, original.Bytes(), item)
 		request.Model = p.StringValue("actual-model")
-		wire, err := compiled.EncodeRequest(t.Context(), request, options)
+		wire, err := compiled.EncodeRequestValue(t.Context(), request, options)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fields, _ := testValue(t, string(wire)).ReadObject()
+		fields, _ := wire.ReadObject()
 		items, err := readArray(fields["input"])
 		if err != nil || len(items) != 1 {
 			t.Fatal("history item changed", err)
 		}
 		fields, _ = items[0].ReadObject()
-		// Editing the root already applies the container encoder's HTML escapes;
-		// accepting null must behave like the existing missing-content path.
-		if fields["vendor"].JSONString() != normalized || request.Content[0].Native.Value.JSONString() != item {
-			t.Fatal("HTML normalization or the original node snapshot changed")
+		if fields["vendor"].JSONString() != normalized || request.Content[0].Native.Value != original {
+			t.Fatal("HTML normalization or retained source snapshot changed")
 		}
 	}
 }
@@ -189,7 +189,7 @@ func TestResponsesRequestReasoningRejectsInvalidShapes(t *testing.T) {
 				field = `"summary":[]`
 			}
 			item := strings.Replace(nullableReasoningItem, field, `"`+tc.field+`":`+tc.value, 1)
-			_, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[`+item+`]}`), p.EvaluationContext{})
+			_, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[`+item+`]}`), fixtureOptions(p.EvaluationContext{}))
 			var conversion *p.ConversionError
 			if !errors.As(err, &conversion) || len(conversion.Issues) != 1 {
 				t.Fatal("missing structured failure", err)
@@ -198,8 +198,12 @@ func TestResponsesRequestReasoningRejectsInvalidShapes(t *testing.T) {
 			if issue.Code != p.InvalidInput || issue.Path != tc.path || issue.Direction != p.DecodeRequest || issue.Protocol != compiled.Identity() {
 				t.Fatal(issue)
 			}
-			if !strings.HasPrefix(tc.value, "[") && issue.Stage != string(p.DecodeRequest) {
-				t.Fatal("array failure lost its request decode stage", issue)
+			if issue.Stage != "wire" {
+				t.Fatal("invalid reasoning bypassed source Spec validation", issue)
+			}
+			err = compiled.ValidateWireOutput(p.EncodeRequest, testValue(t, `{"model":"m","input":[`+item+`]}`))
+			if !errors.As(err, &conversion) || len(conversion.Issues) != 1 || conversion.Issues[0].Code != p.ConversionRejected || conversion.Issues[0].Path != tc.path || conversion.Issues[0].Direction != p.EncodeRequest {
+				t.Fatal("invalid reasoning bypassed final Spec validation", err)
 			}
 		})
 	}
@@ -207,13 +211,13 @@ func TestResponsesRequestReasoningRejectsInvalidShapes(t *testing.T) {
 
 func TestResponsesNullReasoningRemainsRequestOnly(t *testing.T) {
 	compiled := testCompiled(t, Responses)
-	_, err := compiled.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+nullableReasoningItem+`]}`), p.EvaluationContext{})
+	_, err := compiled.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+nullableReasoningItem+`]}`), fixtureOptions(p.EvaluationContext{}))
 	if err == nil || !strings.Contains(err.Error(), "/output/0/content") {
 		t.Fatal("response null content became accepted", err)
 	}
 	for _, kind := range []string{"response.output_item.added", "response.output_item.done"} {
 		t.Run(kind, func(t *testing.T) {
-			options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+			options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}})
 			if _, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":{"id":"r","object":"response","model":"m","status":"in_progress","created_at":1,"output":[]}}`), options); err != nil {
 				t.Fatal(err)
 			}
@@ -234,7 +238,7 @@ func TestResponsesNullReasoningRemainsRequestOnly(t *testing.T) {
 
 func TestResponsesRequestNullReasoningMatchesMissingAcrossProtocols(t *testing.T) {
 	from := testCompiled(t, Responses)
-	options := p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}}
+	options := fixtureOptions(p.EvaluationContext{Scope: p.Scope{Provider: "provider", Account: "account", Model: "m"}})
 	for _, codec := range []string{Chat, Anthropic, Gemini} {
 		for _, mode := range []string{"compatible", "strict"} {
 			t.Run(codec+"/"+mode, func(t *testing.T) {
@@ -274,7 +278,7 @@ func TestResponsesRequestNullReasoningMatchesMissingAcrossProtocols(t *testing.T
 
 func TestStructuredReasoningJSONEditsKeepIndependentParts(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
-	r, err := c.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[`+structuredReasoningFinal+`]}`), p.EvaluationContext{})
+	r, err := c.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[`+structuredReasoningFinal+`]}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +292,7 @@ func TestStructuredReasoningJSONEditsKeepIndependentParts(t *testing.T) {
 		t.Fatal("reasoning parts aliased source")
 	}
 	cloned.Native = nil
-	wire, err := c.EncodeRequest(t.Context(), cloned, p.EvaluationContext{})
+	wire, err := c.EncodeRequest(t.Context(), cloned, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,8 +306,8 @@ func TestStructuredReasoningJSONEditsKeepIndependentParts(t *testing.T) {
 
 func TestStructuredReasoningSSESeparatesSummaryAndVisibleParts(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
-	collector, err := p.NewResponseCollector(p.Target{Protocol: c.Identity(), Direction: p.EncodeEvent, Capabilities: c.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	collector, err := p.NewResponseCollector(c.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,19 +336,23 @@ func TestStructuredReasoningSSESeparatesSummaryAndVisibleParts(t *testing.T) {
 	if len(response.Content) != 1 || response.Content[0].ReasoningForm != p.StructuredReasoning || len(response.Content[0].ReasoningContent) != 2 {
 		t.Fatal(response.Content)
 	}
-	encoder := p.EvaluationContext{State: p.NewEvaluationState()}
+	encoder := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	defer encoder.State.Release()
+	encoder, consume := bindFixtureOutput(t, c, encoder)
 	var encoded []p.Value
 	for _, event := range events {
 		batch, err := c.EncodeFrames(t.Context(), event, encoder)
 		if err != nil {
 			t.Fatal(err)
 		}
+		consume(batch)
 		encoded = append(encoded, batch...)
 	}
 	tail, err := c.FinishEvents(t.Context(), encoder)
 	if err != nil {
 		t.Fatal(err)
 	}
+	consume(tail)
 	encoded = append(encoded, tail...)
 	starts := map[int]int{}
 	for _, frame := range encoded {
@@ -353,7 +361,10 @@ func TestStructuredReasoningSSESeparatesSummaryAndVisibleParts(t *testing.T) {
 		}
 		fields, _ := frame.ReadObject()
 		if fields["type"] == p.StringValue("response.content_part.added") {
-			i, _ := frameIndex(fields["content_index"])
+			var i int
+			if err := fields["content_index"].Decode(&i); err != nil {
+				t.Fatal(err)
+			}
 			starts[i]++
 		}
 	}
@@ -365,8 +376,8 @@ func TestStructuredReasoningSSESeparatesSummaryAndVisibleParts(t *testing.T) {
 	items, _ := readArray(body["output"])
 	sameJSON(t, items[0].Bytes(), structuredReasoningFinal)
 	// Re-consume rebuilt frames. JSON and cumulative streaming now agree.
-	options = p.EvaluationContext{State: p.NewEvaluationState()}
-	collector, _ = p.NewResponseCollector(p.Target{Protocol: c.Identity(), Direction: p.EncodeEvent, Capabilities: c.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	options = fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	collector, _ = p.NewResponseCollector(c.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 	for _, wire := range encoded {
 		frame, err := c.DecodeFrame(t.Context(), wire, options)
 		if err != nil {
@@ -386,14 +397,14 @@ func TestStructuredReasoningSSESeparatesSummaryAndVisibleParts(t *testing.T) {
 func TestStructuredReasoningRejectsInvalidPartsAndFinalRewrite(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
 	for _, part := range []string{`42`, `{"type":"summary_text","text":"wrong"}`, `{"type":"reasoning_text","text":null}`, `{"type":"reasoning_text","text":42}`} {
-		_, err := c.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[{"type":"reasoning","summary":[],"content":[`+part+`]}]}`), p.EvaluationContext{})
+		_, err := c.DecodeRequest(t.Context(), []byte(`{"model":"m","input":[{"type":"reasoning","summary":[],"content":[`+part+`]}]}`), fixtureOptions(p.EvaluationContext{}))
 		if err == nil || !strings.Contains(err.Error(), "/input/0/content/0") {
 			t.Fatal(err)
 		}
 	}
 	for _, replacement := range []string{`"rewritten"`, `"first with suffix"`} {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
-		frames := structuredReasoningSequence()
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+		frames := append([]string{`{"type":"response.created","response":{"id":"r","object":"response","model":"m","status":"in_progress","created_at":1,"output":[]}}`}, structuredReasoningSequence()...)
 		frames[len(frames)-1] = strings.Replace(frames[len(frames)-1], `"first"`, replacement, 1)
 		for i, raw := range frames {
 			_, err := c.DecodeFrame(t.Context(), testValue(t, raw), options)
@@ -414,10 +425,6 @@ func TestStructuredSingleVisiblePartProjectsToOtherCodecs(t *testing.T) {
 		for _, initialContent := range []string{"", `,"content":[]`} {
 			t.Run(codec+initialContent, func(t *testing.T) {
 				to := shippedProjectionProtocol(t, codec)
-				conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-				route := p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Model: "m", Delivery: &p.DeliveryState{ID: p.StringValue("r"), Created: testValue(t, "1")}}
-				decodeOptions := p.EvaluationContext{State: p.NewEvaluationState()}
-				encodeOptions := p.EvaluationContext{State: p.NewEvaluationState()}
 				final := `{"type":"reasoning","id":"rs","status":"completed","summary":[],"content":[{"type":"reasoning_text","text":"full thought"}]}`
 				frames := []string{
 					`{"type":"response.created","response":{"id":"r","model":"m","status":"in_progress","output":[]}}`,
@@ -430,36 +437,7 @@ func TestStructuredSingleVisiblePartProjectsToOtherCodecs(t *testing.T) {
 					`{"type":"response.completed","response":{"id":"r","model":"m","status":"completed","output":[` + final + `],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}}`,
 				}
 				var text strings.Builder
-				for _, raw := range frames {
-					frame, err := from.DecodeFrame(t.Context(), testValue(t, raw), decodeOptions)
-					if err != nil {
-						t.Fatal(err)
-					}
-					for _, event := range frame.Events {
-						e, err := conversion.Event(t.Context(), event, route, nil)
-						if err != nil {
-							t.Fatal(err)
-						}
-						batch, err := to.EncodeFrames(t.Context(), e, encodeOptions)
-						if err != nil {
-							t.Fatal(err)
-						}
-						for _, wire := range batch {
-							if err := to.ValidateWireOutput(p.EncodeEvent, wire); err != nil {
-								t.Fatal(err)
-							}
-							text.Write(wire.Bytes())
-						}
-					}
-				}
-				tail, err := to.FinishEvents(t.Context(), encodeOptions)
-				if err != nil {
-					t.Fatal(err)
-				}
-				for _, wire := range tail {
-					if err := to.ValidateWireOutput(p.EncodeEvent, wire); err != nil {
-						t.Fatal(err)
-					}
+				for _, wire := range convertFixtureStream(t, from, to, frames) {
 					text.Write(wire.Bytes())
 				}
 				if strings.Count(text.String(), "full thought") != 1 {
@@ -472,16 +450,17 @@ func TestStructuredSingleVisiblePartProjectsToOtherCodecs(t *testing.T) {
 
 func TestUnprojectedStructuredReasoningCannotDisappearInForeignCodecs(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
-	for _, item := range []string{
-		structuredReasoningFinal,
-		`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"first"},{"type":"reasoning_text","text":"second"}]}`,
-		`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"first","vendor_detail":true}]}`,
-		`{"type":"reasoning","summary":[]}`,
+	for _, fixture := range []struct{ item, eventPath string }{
+		{structuredReasoningFinal, "/item/reasoningForm"},
+		{`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"first"},{"type":"reasoning_text","text":"second"}]}`, "/item/reasoningForm"},
+		{`{"type":"reasoning","summary":[],"content":[{"type":"reasoning_text","text":"first","vendor_detail":true}]}`, "/item/reasoningContent/0/attributes"},
+		{`{"type":"reasoning","summary":[]}`, "/item/reasoningForm"},
 	} {
+		item := fixture.item
 		for _, codec := range []string{Chat, Anthropic, Gemini} {
 			t.Run(codec+item, func(t *testing.T) {
 				to := shippedProjectionProtocol(t, codec)
-				r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+item+`]}`), p.EvaluationContext{})
+				r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","status":"completed","output":[`+item+`]}`), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -490,12 +469,12 @@ func TestUnprojectedStructuredReasoningCannotDisappearInForeignCodecs(t *testing
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+				_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				if err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
 					t.Fatalf("unmapped structured response was not rejected: %v", err)
 				}
-				request := &p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: projected.Content}
-				if _, err := to.EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
+				request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: projected.Content}
+				if _, err := to.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{})); err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
 					t.Fatalf("unmapped structured history was not rejected: %v", err)
 				}
 				// Direct event encoding must retain the same guard even if the
@@ -507,8 +486,8 @@ func TestUnprojectedStructuredReasoningCannotDisappearInForeignCodecs(t *testing
 				if thought.Kind != p.ReasoningNode {
 					t.Fatal("projection lost reasoning node")
 				}
-				event := p.Event{SchemaVersion: 1, Type: p.ItemStarted, ItemID: p.StringValue("thought"), Item: &thought}
-				if _, err := to.EncodeFrames(t.Context(), event, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil || !strings.Contains(err.Error(), "/reasoningForm") {
+				event := p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemStarted, ItemID: p.StringValue("thought"), Item: &thought}
+				if _, err := to.EncodeFrames(t.Context(), event, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil || !strings.Contains(err.Error(), fixture.eventPath) {
 					t.Fatalf("unmapped structured event was not rejected: %v", err)
 				}
 			})

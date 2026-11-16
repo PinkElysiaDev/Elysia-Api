@@ -106,7 +106,7 @@ func TestRejectDiagnosticCompilation(t *testing.T) {
 		t.Run(fixture.name, func(t *testing.T) {
 			document := rejectDiagnosticPackage(t, &RejectDiagnostic{Code: UnsupportedCapability, Stage: "wire"})
 			fixture.edit(&document.Mapping.Directions[EncodeRequest].Effects[0])
-			compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, err := NewCompiler(DefaultLimits(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

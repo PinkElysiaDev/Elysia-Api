@@ -26,16 +26,30 @@ func inspectLiveStream(compiled *protocol.Compiled, raw []byte, scope protocol.S
 	if err != nil {
 		return nil, nil, err
 	}
+	defer replay.Release()
+	sourceValidation, err := compiled.NewWireInputStreamValidation(scope)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer sourceValidation.Release()
+	targetValidation, err := compiled.NewWireStreamValidation(scope)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer targetValidation.Release()
 	evidence := &liveStreamEvidence{Events: map[protocol.EventType]int{}, NativeReplay: true}
 	response := &protocol.Response{SchemaVersion: protocol.SemanticSchemaVersion}
 	decodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: scope}
-	encodeOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: scope}
+	defer decodeOptions.State.Release()
+	includeUsage := true
+	encodeOptions := (protocol.EvaluationContext{State: protocol.NewEvaluationState(), Scope: scope, ClientOutput: &protocol.ClientOutput{IncludeUsage: &includeUsage}}).WithOutputStream(targetValidation)
+	defer encodeOptions.State.Release()
 	identities := protocol.NewItemIdentities(compiled.ResourceLimits().StateItems)
 	items := map[string]*protocol.Node{}
 	arguments := map[string]*strings.Builder{}
 	err = protocol.ReadFrames(ctx, bytes.NewReader(raw), liveOperation(compiled, true), liveBodyLimit, func(value protocol.Value, metadata protocol.Object) error {
 		decodeOptions.Values = metadata
-		frame, err := compiled.DecodeFrame(ctx, value, decodeOptions)
+		frame, err := sourceValidation.DecodeFrame(ctx, value, decodeOptions)
 		if err != nil {
 			return err
 		}
@@ -78,8 +92,17 @@ func inspectLiveStream(compiled *protocol.Compiled, raw []byte, scope protocol.S
 			evidence.NativeReplay = false
 			return fmt.Errorf("same-wire stream frame changed")
 		}
-		return nil
+		if err := targetValidation.Consume(ctx, frames[0]); err != nil {
+			return err
+		}
+		return targetValidation.CommitDelivery()
 	})
+	if err == nil {
+		err = sourceValidation.Finish()
+	}
+	if err == nil {
+		err = targetValidation.Finish()
+	}
 	if err == nil {
 		err = replay.Finish()
 	}

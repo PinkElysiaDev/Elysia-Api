@@ -3,10 +3,6 @@ package protocol
 import "strings"
 
 func (check *capabilityCheck) serverTool(node Node, path string) {
-	if check.target.coreSchemaVersion() != ProtocolCoreVersion {
-		check.add(InvalidInput, path+"/kind", ServerToolsCapability, "server execution requires core schemaVersion 2")
-		return
-	}
 	check.require(ServerToolsCapability, path)
 	check.requireName(node.Name, path+"/name")
 	for _, field := range []struct {

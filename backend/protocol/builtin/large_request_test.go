@@ -10,6 +10,51 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+func TestNativeRequestCanShrinkToTargetLimit(t *testing.T) {
+	const targetBytes, textBytes = 1024, 2048
+	source := testCompiled(t, Chat)
+	document := agentFixturePackage(t)
+	limits := p.DefaultLimits()
+	limits.BufferBytes = targetBytes
+	document.Mapping.Limits = &limits
+	target, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	request, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"`+strings.Repeat("a", textBytes)+`"}],"extra":9007199254740993}`), p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Content[0].Children[0].Payload = p.StringValue("short")
+	output, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output) > targetBytes || !strings.Contains(string(output), "short") || !strings.Contains(string(output), "9007199254740993") {
+		t.Fatal("request shrinking lost native data")
+	}
+	request.Content[0].Children[0].Payload = p.StringValue(strings.Repeat("b", textBytes))
+	_, err = target.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	var resource *p.ResourceLimitError
+	if !errors.As(err, &resource) {
+		t.Fatal("target output limit was not enforced", err)
+	}
+}
+
+func TestGenericLargeRequestAndAfterBudget(t *testing.T) {
+	const textBytes = 9 << 20
+	compiled := testCompiled(t, Chat)
+	text := strings.Repeat("a", textBytes)
+	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"`+text+`"}]}`), p.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	if err != nil || !strings.Contains(string(output), text) {
+		t.Fatal("declared request path lost large text", err)
+	}
+}
+
 // Synthetic media and tool history exercise every native snapshot without
 // storing real conversation data or allocating binary image fixtures.
 func largeAnthropicRequest(imageBytes, textBlocks int) []byte {
@@ -32,7 +77,7 @@ func TestLargeRequestSnapshotBudget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			compiled := shippedProjectionProtocol(t, Anthropic)
 			body := largeAnthropicRequest(tc.bytes, tc.blocks)
-			request, err := compiled.DecodeRequest(t.Context(), body, p.EvaluationContext{})
+			request, err := compiled.DecodeRequest(t.Context(), body, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal("decode:", err)
 			}
@@ -44,7 +89,7 @@ func TestLargeRequestSnapshotBudget(t *testing.T) {
 			if err != nil {
 				t.Fatal("conversion:", err)
 			}
-			out, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			out, err := compiled.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal("encode:", err)
 			}
@@ -60,56 +105,5 @@ func TestLargeRequestSnapshotBudget(t *testing.T) {
 				t.Fatal("native image/tool history changed")
 			}
 		})
-	}
-}
-
-func TestNativeRequestCanShrinkToTargetLimit(t *testing.T) {
-	source := compileAgentDefinition(t, func(*p.Definition) {})
-	target := compileAgentDefinition(t, func(definition *p.Definition) {
-		limits := p.DefaultLimits()
-		limits.BufferBytes = 1024
-		definition.Limits = &limits
-	})
-	body := []byte(`{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("a", 2048) + `"}],"extra":9007199254740993}`)
-	request, err := source.DecodeRequest(t.Context(), body, p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Content[0].Children[0].Payload = p.StringValue("short")
-	output, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(output) > 1024 || !strings.Contains(string(output), "short") || !strings.Contains(string(output), "9007199254740993") {
-		t.Fatal("shrink lost native data")
-	}
-	request.Content[0].Children[0].Payload = p.StringValue(strings.Repeat("b", 2048))
-	_, err = target.EncodeRequest(t.Context(), request, p.EvaluationContext{})
-	var resource *p.ResourceLimitError
-	if !errors.As(err, &resource) {
-		t.Fatalf("target cap not enforced: %v", err)
-	}
-}
-
-func TestGenericLargeRequestAndAfterBudget(t *testing.T) {
-	compiled := compileAgentDefinition(t, func(definition *p.Definition) {
-		mapping := definition.Directions[p.DecodeRequest]
-		mapping.After = &p.Expression{Op: "read", Path: ""}
-		definition.Directions[p.DecodeRequest] = mapping
-		mapping = definition.Directions[p.EncodeRequest]
-		mapping.After = &p.Expression{Op: "read", Path: ""}
-		definition.Directions[p.EncodeRequest] = mapping
-	})
-	body := []byte(`{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("a", 9<<20) + `"}]}`)
-	request, err := compiled.DecodeRequest(t.Context(), body, p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(output), strings.Repeat("a", 9<<20)) {
-		t.Fatal("text lost")
 	}
 }

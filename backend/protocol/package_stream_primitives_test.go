@@ -69,7 +69,7 @@ func TestPackageTextTrackerCommitsOnlySuccessfulEvents(t *testing.T) {
 	if _, err := decodePrimitiveText(t, compiled, options, map[string]any{"text": "changed", "snapshot": true}); err == nil {
 		t.Fatal("rewritten text prefix accepted")
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}].primitives
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}].primitives
 	if retained.texts[streamTrackKey{channel: "body", item: "i"}].Length() != len("hello!") {
 		t.Fatal("failed events advanced the digest")
 	}
@@ -99,7 +99,7 @@ func TestPackageToolTrackerWithheldArgumentsAndRollback(t *testing.T) {
 			t.Fatal(text, err, fixture)
 		}
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}].primitives
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}].primitives
 	tool := retained.tools[streamTrackKey{channel: "arguments", item: "i"}]
 	if retained.toolBuffered != 0 || tool.input.Len() != 0 || !tool.isDone {
 		t.Fatal("completed tool retained argument bytes")
@@ -196,7 +196,7 @@ func TestPackageStreamSharedRetentionBudget(t *testing.T) {
 			}); err != nil {
 				t.Fatal("combined state within the shared budget", err)
 			}
-			key := moduleStateKey{compiled: compiled, direction: DecodeEvent}
+			key := executionStateKey{compiled: compiled, direction: DecodeEvent}
 			before, bytes := options.State.packageStates[key], options.State.packageStateBytes
 			_, err := decodePrimitiveText(t, compiled, options, fixture.fields)
 			var limit *ResourceLimitError

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -197,8 +198,8 @@ func TestAgentCallerOpenAIChatViaAdapter(t *testing.T) {
 		t.Fatalf("text = %q", result.Text)
 	}
 	req := upstream.last()
-	if req.Path != "/chat/completions" {
-		t.Fatalf("path = %q, want /chat/completions", req.Path)
+	if req.Path != "/v1/chat/completions" {
+		t.Fatalf("path = %q, want /v1/chat/completions", req.Path)
 	}
 	if req.Auth != "Bearer sk-caller-key" {
 		t.Fatalf("authorization = %q", req.Auth)
@@ -400,7 +401,7 @@ func TestAgentCallerCustomProtocolPlatform(t *testing.T) {
 		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{}, "stop", nil)))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
-	seedCallerModel(t, s, upstream.URL+"/v1", "custom:openai-chat-completions")
+	seedCallerModel(t, s, upstream.URL, "custom:openai-chat-completions")
 
 	result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
 	if err != nil {
@@ -489,7 +490,7 @@ func TestAgentAttachmentBase64IsTextNotBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := &protocol.Request{SchemaVersion: 1, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "100")}, Model: protocol.StringValue("fake-model"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{*image}}}}
+	request := &protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "100")}, Model: protocol.StringValue("fake-model"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{*image}}}}
 	anthropic, _ := service.Pin("anthropic-messages")
 	anthropicBody, err := anthropic.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
 	if err != nil {
@@ -561,12 +562,13 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, frame := range []string{
 			`{"type":"response.created","response":{"id":"r","model":"fake-model","status":"in_progress","output":[]}}`,
-			`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","content":[]}}`,
-			`{"type":"response.content_part.added","output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}`,
-			`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"done"}`,
-			`{"type":"response.output_text.done","output_index":0,"content_index":0,"text":"done"}`,
-			`{"type":"response.content_part.done","output_index":0,"content_index":0,"part":{"type":"output_text","text":"done"}}`,
-			`{"type":"response.completed","response":{"id":"r","model":"fake-model","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}]}}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg","role":"assistant","content":[]}}`,
+			`{"type":"response.content_part.added","output_index":0,"item_id":"msg","content_index":0,"part":{"type":"output_text","text":""}}`,
+			`{"type":"response.output_text.delta","output_index":0,"item_id":"msg","content_index":0,"delta":"done"}`,
+			`{"type":"response.output_text.done","output_index":0,"item_id":"msg","content_index":0,"text":"done"}`,
+			`{"type":"response.content_part.done","output_index":0,"item_id":"msg","content_index":0,"part":{"type":"output_text","text":"done"}}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg","role":"assistant","content":[{"type":"output_text","text":"done"}]}}`,
+			`{"type":"response.completed","response":{"id":"r","model":"fake-model","status":"completed","output":[{"type":"message","id":"msg","role":"assistant","content":[{"type":"output_text","text":"done"}]}]}}`,
 		} {
 			fmt.Fprintf(w, "data: %s\n\n", frame)
 		}
@@ -581,8 +583,8 @@ func TestAgentCallerResponsesNoStreamOptions(t *testing.T) {
 		t.Fatalf("text = %q", result.Text)
 	}
 	req := upstream.last()
-	if req.Path != "/responses" {
-		t.Fatalf("path = %q, want /responses", req.Path)
+	if req.Path != "/v1/responses" {
+		t.Fatalf("path = %q, want /v1/responses", req.Path)
 	}
 	if strings.Contains(req.Body, "stream_options") {
 		t.Fatalf("responses body must not carry stream_options: %s", req.Body)
@@ -605,10 +607,11 @@ func TestAgentCallerCustomProtocolPostTerminalTextRejected(t *testing.T) {
 		_, _ = w.Write([]byte(openAIChunk("c9", map[string]any{"content": "协议"}, "", nil)))
 		_, _ = w.Write([]byte(openAIDone()))
 	})
-	seedCallerModel(t, s, upstream.URL+"/v1", "custom:openai-chat-completions")
+	seedCallerModel(t, s, upstream.URL, "custom:openai-chat-completions")
 
 	_, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
-	if err == nil || !strings.Contains(err.Error(), "event arrived after terminal") {
+	var failure *protocol.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != protocol.UpstreamContractViolation || failure.Issues[0].Direction != protocol.DecodeEvent || failure.Issues[0].Path != "/object" {
 		t.Fatalf("late content must fail the stream: %v", err)
 	}
 }
@@ -632,6 +635,7 @@ func TestAgentCallerAnthropicPresetToolRound(t *testing.T) {
 		}
 		_, _ = w.Write([]byte("event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"))
 		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"完成\"}}\n\n"))
+		_, _ = w.Write([]byte("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"))
 		_, _ = w.Write([]byte("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n\n"))
 	})
 	seedCallerModel(t, s, upstream.URL, "custom:anthropic-messages")
@@ -661,7 +665,7 @@ func TestAgentPackageResponsesStatelessToolContinuation(t *testing.T) {
 	for _, transport := range []protocol.Transport{protocol.HTTPJSON, protocol.SSE} {
 		t.Run(string(transport), func(t *testing.T) {
 			s := newAgentIntegrationServer(t)
-			seedGatewayPackages(t, s)
+			defaultGatewayPackages(t, s)
 			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, body string, call int) {
 				var request struct {
 					Store   *bool           `json:"store"`

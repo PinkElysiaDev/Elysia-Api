@@ -38,7 +38,7 @@ func (runtime evaluationRuntime) deliveredItem(namespace, id string) (*wireEntit
 }
 
 func (plan *compiledOutputPlan) readDeliveredItem(state evaluation) (plannedOutput, error) {
-	selected, err := plan.source.buildNode(state)
+	selected, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -86,11 +86,11 @@ func (plan *compiledOutputPlan) readDeliveredItem(state evaluation) (plannedOutp
 }
 
 func (plan *compiledOutputPlan) selectDeliveredContinuation(state evaluation) (string, *wireEntityState, error) {
-	keyOutput, err := plan.source.buildNode(state)
+	keyOutput, err := plan.source.buildNode(&state)
 	if err != nil {
 		return "", nil, err
 	}
-	idOutput, err := plan.body.buildNode(state)
+	idOutput, err := plan.body.buildNode(&state)
 	if err != nil {
 		return "", nil, err
 	}

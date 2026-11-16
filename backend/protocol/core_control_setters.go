@@ -70,18 +70,20 @@ func compileUsageControlSetter(path string) (func(any, JSONOutput, *valueReader)
 			return nil
 		}, ObjectType, nil
 	}
-	if path == "/attribution" || path == "/cacheBilling" {
+	var selectValue func(*Usage) *Value
+	switch path {
+	case "/attribution":
+		selectValue = func(usage *Usage) *Value { return &usage.Attribution }
+	case "/cacheBilling":
+		selectValue = func(usage *Usage) *Value { return &usage.CacheBilling }
+	case "/executionSpeed":
+		selectValue = func(usage *Usage) *Value { return &usage.ExecutionSpeed }
+	case "/executions":
+		selectValue = func(usage *Usage) *Value { return &usage.Executions }
+	}
+	if selectValue != nil {
 		return func(document any, output JSONOutput, reader *valueReader) error {
-			usage := document.(*Usage)
-			value := &usage.Attribution
-			if path == "/cacheBilling" {
-				value = &usage.CacheBilling
-			}
-			if output.IsZero() {
-				*value = Value{}
-				return nil
-			}
-			return assignCoreValue(output, value, reader)
+			return replaceControlValue(output, selectValue(document.(*Usage)), reader)
 		}, AnyType, nil
 	}
 	var selectField func(*Usage) **Counter

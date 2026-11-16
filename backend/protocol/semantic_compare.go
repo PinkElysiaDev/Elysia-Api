@@ -98,6 +98,9 @@ func observeCapabilities(value any) capabilityEvidence {
 	evidence := capabilityEvidence{observed: CapabilitySet{}}
 	switch semantic := value.(type) {
 	case *Request:
+		if !semantic.Parameters["outputConstraint"].IsZero() {
+			evidence.observed[OutputConstraintsCapability] = true
+		}
 		if semantic.SchemaVersion == ProtocolCoreVersion && semantic.Reasoning != nil && semantic.Reasoning.HistoryRetention.IsString("all") {
 			evidence.observed[ReasoningHistoryRetentionCapability] = true
 		}
@@ -263,9 +266,9 @@ func (evidence *capabilityEvidence) resources(resources []Resource) {
 func comparableMetadata(items []ResponseMetadata) []ResponseMetadata {
 	var out []ResponseMetadata
 	for _, item := range items {
-		// The required empty output_text annotations array adds no citations.
-		// This applies only to typed protocol metadata, never payload objects.
-		if (item.Name == "annotations" || item.Name == "citations") && MetadataFieldType(item.Codec, item.Location, item.Name) == "array" && string(item.Value.Bytes()) == "[]" {
+		// An explicitly declared empty canonical reference list has no links.
+		// Opaque metadata keeps its source representation and exact presence.
+		if item.Meaning == "url-references" && item.References.IsArray() && !hasMetadataArrayItems(item.References) {
 			continue
 		}
 		item.Path = ""

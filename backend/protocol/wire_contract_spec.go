@@ -27,7 +27,7 @@ type WireContractSpec struct {
 // omitted for a check-only assertion; each always requires an array schema.
 type WireAssertion struct {
 	// Ref calls a named Spec constraint at Path, preserving the document root.
-	// A reference cannot override individual checks in the shared declaration.
+	// When gates the call in its containing scope; shared checks cannot be overridden.
 	Ref    string          `json:"ref,omitempty"`
 	Path   string          `json:"path,omitempty"`
 	When   *Expression     `json:"when,omitempty"`
@@ -107,6 +107,10 @@ func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope
 			return nil, locateMappingError(at+"/path", err)
 		}
 		if assertion.Ref != "" {
+			when, err := compileWirePredicateInScope(assertion.When, at+"/when", scope, expressions, depth)
+			if err != nil {
+				return nil, err
+			}
 			selected := scope
 			selected.input, err = schemaAtPointer(scope.input, pointer)
 			if err != nil {
@@ -116,7 +120,7 @@ func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope
 			if err != nil {
 				return nil, err
 			}
-			checks = append(checks, compiledWireAssertion{group: group, path: assertion.Path, pointer: pointer})
+			checks = append(checks, compiledWireAssertion{group: group, path: assertion.Path, pointer: pointer, when: when})
 			continue
 		}
 		if assertion.Code != "" && !slices.Contains([]IssueCode{InvalidInput, UnsupportedCapability, UpstreamContractViolation, InvalidAssociation, ConversionRejected}, assertion.Code) {
@@ -235,7 +239,7 @@ func (validator *specWireValidator) validateInputView(ctx context.Context, direc
 	if err := validator.schema.validateWithin(ctx, value, "", effectiveLimits, view); err != nil {
 		return wireAssertionError(wireBoundaryCode(direction), mappingErrorPath("", err), "wire document does not match its declared schema", err)
 	}
-	state := evaluation{ctx: ctx, input: value, root: value, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
+	state := evaluation{ctx: ctx, input: value, root: value, context: view.context, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), budget: &evaluationBudget{limits: effectiveLimits, stepLimit: effectiveLimits.Nodes}}
 	if err := validateWireAssertions(validator.assertions, state, "", direction); err != nil {
 		return err
 	}
@@ -246,18 +250,6 @@ func (validator *specWireValidator) validateInputView(ctx context.Context, direc
 func validateWireAssertions(assertions []compiledWireAssertion, state evaluation, parentPath string, direction Direction) error {
 	for _, assertion := range assertions {
 		path := parentPath + assertion.path
-		if assertion.group != nil {
-			selected := state
-			var err error
-			selected.input, err = readValuePointerWithObjectReader(state.input, assertion.pointer, state.valueReader, state.objectReader)
-			if err != nil {
-				return wireAssertionError(wireBoundaryCode(direction), path, "constraint cannot select its declared input", err)
-			}
-			if err := validateWireAssertions(assertion.group, selected, path, direction); err != nil {
-				return err
-			}
-			continue
-		}
 		ctx := state.ctx
 		if err := state.advance(); err != nil {
 			return err
@@ -274,6 +266,18 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 			if !isApplicable {
 				continue
 			}
+		}
+		if assertion.group != nil {
+			selected := state
+			var err error
+			selected.input, err = readValuePointerWithObjectReader(state.input, assertion.pointer, state.valueReader, state.objectReader)
+			if err != nil {
+				return wireAssertionError(wireBoundaryCode(direction), path, "constraint cannot select its declared input", err)
+			}
+			if err := validateWireAssertions(assertion.group, selected, path, direction); err != nil {
+				return err
+			}
+			continue
 		}
 		selected, err := readValuePointerWithObjectReader(state.input, assertion.pointer, state.valueReader, state.objectReader)
 		if err == nil {
@@ -298,6 +302,12 @@ func validateWireAssertions(assertions []compiledWireAssertion, state evaluation
 				var rejection *declaredRejectionError
 				if errors.As(err, &rejection) {
 					return &ConversionError{cause: err, Issues: []ConversionIssue{rejection.issue(Identity{}, "")}}
+				}
+				var unknown *unknownObjectFieldError
+				if errors.As(err, &unknown) {
+					issue := unknown.issue(Identity{}, direction)
+					issue.Path = path + issue.Path
+					return &ConversionError{cause: err, Issues: []ConversionIssue{issue}}
 				}
 				return assertion.failure(state, path, err, direction)
 			}

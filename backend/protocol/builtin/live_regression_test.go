@@ -12,11 +12,11 @@ func TestChatSingleChoiceExtensionKeepsNativeBoundary(t *testing.T) {
 	// A real channel triggered a nil-map panic with native_finish_reason.
 	// Use an unknown vendor key here to retain the extension boundary itself.
 	wire := `{"id":"r","model":"m","created":1,"object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop","vendor_finish":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
-	response, err := source.DecodeResponse(t.Context(), []byte(wire), p.EvaluationContext{})
+	response, err := source.DecodeResponse(t.Context(), []byte(wire), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := source.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	encoded, err := source.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil || !strings.Contains(string(encoded), `"vendor_finish":"stop"`) {
 		t.Fatalf("native extension lost: %s %v", encoded, err)
 	}
@@ -25,9 +25,9 @@ func TestChatSingleChoiceExtensionKeepsNativeBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	projected, err := conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
+	projected, err := conversion.Response(t.Context(), response, fixtureConversionContext(t, conversion, p.ConversionResponse, response.Source), nil)
 	if err == nil {
-		_, err = target.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+		_, err = target.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 	}
 	if err == nil {
 		t.Fatal("unknown choice extension silently crossed protocol boundary")
@@ -36,7 +36,7 @@ func TestChatSingleChoiceExtensionKeepsNativeBoundary(t *testing.T) {
 
 func TestResponsesProgressMetadataDoesNotInventUsage(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	validator, err := compiled.NewWireStreamValidation(p.Scope{})
 	if err != nil {
 		t.Fatal(err)
@@ -58,11 +58,11 @@ func TestResponsesProgressMetadataDoesNotInventUsage(t *testing.T) {
 			for _, codec := range []string{Chat, Anthropic, Gemini} {
 				target := shippedProjectionProtocol(t, codec)
 				conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(target, compiled))
-				projected, err := conversion.Event(t.Context(), frame.Events[0], p.ConversionContext{}, nil)
+				projected, err := conversion.Event(t.Context(), frame.Events[0], fixtureConversionContext(t, conversion, p.ConversionEvent, frame.Events[0].Source), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err = p.IssuesError(p.CheckEvent(projected, p.Target{Protocol: target.Identity(), Direction: p.EncodeEvent, Capabilities: target.Capabilities(p.EncodeEvent)}, p.DefaultLimits())); err != nil {
+				if err = p.IssuesError(p.CheckEvent(projected, target.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())); err != nil {
 					t.Fatalf("%s metadata projection rejected: %v", codec, err)
 				}
 				if projected.Usage != nil {
@@ -77,7 +77,7 @@ func TestResponsesProgressMetadataDoesNotInventUsage(t *testing.T) {
 	if err = validator.Finish(); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.CheckEvent(p.Event{SchemaVersion: 1, Type: p.UsageUpdated}, p.Target{}, p.DefaultLimits())) == 0 {
+	if len(p.CheckEvent(p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.UsageUpdated}, p.Target{}, p.DefaultLimits())) == 0 {
 		t.Fatal("missing usage was globally accepted")
 	}
 }

@@ -121,11 +121,16 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 				s.setupRoutes()
 				return startTestServer(s.engine)
 			}
+			closeGateway := func(gateway *hertzTestServer) {
+				s.httpRequests.stop()
+				gateway.Close()
+				s.httpRequests.wait()
+			}
 			gateway := newGateway()
-			defer gateway.Close()
+			defer func() { closeGateway(gateway) }()
 			if client == "http-reopen" {
 				post := func(body string) string {
-					r, _ := http.NewRequestWithContext(t.Context(), "POST", gateway.URL+"/gateway/openai-chat-completions/chat/completions", strings.NewReader(body))
+					r, _ := http.NewRequestWithContext(t.Context(), "POST", gateway.URL+"/gateway/openai-chat-completions/v1/chat/completions", strings.NewReader(body))
 					r.Header.Set("Authorization", "Bearer gateway-test-token")
 					r.Header.Set("x-elysia-session-id", "reopen-tools")
 					response, err := gateway.Client().Do(r)
@@ -143,7 +148,7 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 				if !strings.Contains(first, protocol.ContinuationPrefix) {
 					t.Fatal("missing streamed client carrier")
 				}
-				gateway.Close()
+				closeGateway(gateway)
 				if err := s.store.Close(); err != nil {
 					t.Fatal(err)
 				}
@@ -153,8 +158,8 @@ func TestConversionClientToolRoundTrip(t *testing.T) {
 				}
 				s.protocolServiceOnce, s.protocolServiceInst, s.protocolServiceErr = sync.Once{}, nil, nil
 				s.invalidateRouteCache()
+				s.httpRequests = httpRequests{}
 				gateway = newGateway()
-				defer gateway.Close()
 				second := post(`{"model":"group","messages":[{"role":"user","content":"fixture"},{"role":"assistant","content":null,"tool_calls":[{"id":"client-call","type":"function","function":{"name":"lookup","arguments":"{\"value\":\"fixture\"}"}}]},{"role":"tool","tool_call_id":"client-call","content":"result"}]}`)
 				if !strings.Contains(second, "LOCAL_CLIENT_OK") || restored.Load() != 1 || returnedCarriers.Load() != 0 {
 					t.Fatal("reopened persistent tool recovery failed", second)

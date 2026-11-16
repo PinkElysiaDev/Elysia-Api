@@ -207,6 +207,8 @@ func (conversion *CompiledConversion) controlDiagnostic(rule ConversionRule, rou
 
 func controlDirection(phase ConversionPhase, isSource bool) Direction {
 	switch phase {
+	case ConversionSourceEvent:
+		return DecodeEvent
 	case ConversionRequest:
 		if isSource {
 			return DecodeRequest
@@ -244,8 +246,9 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 		contextValue, err = EncodeValue(struct {
 			Transport    Transport                   `json:"transport"`
 			Model        string                      `json:"model"`
+			IsSameWire   bool                        `json:"isSameWire"`
 			Observations map[string]fieldObservation `json:"observations,omitempty"`
-		}{route.Transport, route.Model, route.fieldObservations})
+		}{route.Transport, route.Model, route.Source.Family == route.Target.Family && route.Source.WireVersion == route.Target.WireVersion, route.fieldObservations})
 		if err != nil {
 			return false, err
 		}

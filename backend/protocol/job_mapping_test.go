@@ -1,25 +1,12 @@
 package protocol
 
 import (
-	"os"
 	"testing"
 )
 
-func loadJobDefinition(t *testing.T, name string) (*Compiler, Definition, *Compiled) {
+func loadJobDefinition(t *testing.T, name string) (*Compiler, ProtocolPackage, *Compiled) {
 	t.Helper()
-	compiler, err := NewCompiler(DefaultLimits(), nil, []string{"tasks.async"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := os.ReadFile("testdata/" + name + ".json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiled, issues := compiler.Compile(body)
-	if err := IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	return compiler, compiled.Definition(), compiled
+	return loadTaskPackage(t, name)
 }
 
 func TestJobMappingsIndependentFieldsAndVerification(t *testing.T) {
@@ -49,10 +36,10 @@ func TestJobVerificationRejectsMissingStateAndLostIdentity(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			copy := definition
 			if mode == "coverage" {
-				copy.TaskSamples = nil
+				copy.Mapping.TaskSamples = nil
 			} else {
-				operation := copy.Operations["submit"]
-				operation.Task.Encode.Transform.Fields["ticket"] = Expression{Op: "literal", Value: StringValue("wrong")}
+				operation := copy.Mapping.Operations["submit"]
+				operation.Task.Encode.Fields["ticket"] = Expression{Op: "literal", Value: StringValue("wrong")}
 			}
 			raw, err := EncodeValue(copy)
 			if err != nil {

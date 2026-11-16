@@ -1,0 +1,1767 @@
+{
+  "anthropic": {
+    "CLAUDE-SONNET-4-6": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "disable": true,
+      "manual": true,
+      "interleaved": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "MODELS/GEMINI-2.5-FLASH": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "alias": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-3-7-sonnet": {
+      "kind": "budget",
+      "disable": true,
+      "manual": true,
+      "minBudget": 1024,
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-fable-5": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-haiku-4-5": {
+      "kind": "budget",
+      "disable": true,
+      "manual": true,
+      "minBudget": 1024,
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-haiku-5-5": {
+      "kind": "adaptive",
+      "disabledLevels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "minBudget": 1024,
+      "defaultEffort": "medium",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-mythos-5": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-4-1": {
+      "kind": "budget",
+      "disable": true,
+      "manual": true,
+      "interleaved": true,
+      "minBudget": 1024,
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-4-5": {
+      "kind": "budget",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": true,
+      "manual": true,
+      "interleaved": true,
+      "minBudget": 1024,
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-4-6": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "disable": true,
+      "manual": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-4-7": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-4-8": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-5": {
+      "kind": "adaptive",
+      "disabledLevels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-opus-5-5": {
+      "kind": "adaptive",
+      "disabledLevels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "minBudget": 1024,
+      "defaultEffort": "medium",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-sonnet-4": {
+      "kind": "budget",
+      "disable": true,
+      "manual": true,
+      "minBudget": 1024,
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-sonnet-4-20250514": {
+      "kind": "budget",
+      "disable": true,
+      "manual": true,
+      "interleaved": true,
+      "minBudget": 1024,
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-sonnet-4-6": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "disable": true,
+      "manual": true,
+      "interleaved": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "disabled",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-sonnet-5": {
+      "kind": "adaptive",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "claude-sonnet-5-5": {
+      "kind": "adaptive",
+      "betweenToolsLevels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "minBudget": 1024,
+      "defaultEffort": "high",
+      "defaultMode": "auto",
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-2.5-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-2.5-flash-image": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-2.5-flash-lite-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-2.5-pro": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3-audio": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3-pro": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.1-pro-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.2-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.2-flash-lite": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.5-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.5-flash-live": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.5-flash-tts": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.6-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.7-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gemini-3.8-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4.1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4.1-mini": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4.1-nano": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4o": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4o-2024-05-13": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4o-2024-08-06": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4o-2024-11-20": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-4o-mini": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.2": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.2-codex": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.4": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-5.6-sol": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-6-astra": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-6-luna": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-6-sol": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-6.1-pro": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-6.1-sol": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "gpt-6.1-sol-pro": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "models/GPT-6.1-SOL": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "o1-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "o3": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    },
+    "o4-mini": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+    }
+  },
+  "gemini": {
+    "CLAUDE-SONNET-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "MODELS/GEMINI-2.5-FLASH": {
+      "kind": "budget",
+      "disable": true,
+      "maxBudget": 24576,
+      "defaultMode": "auto",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "alias": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-3-7-sonnet": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-fable-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-haiku-4-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-haiku-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-mythos-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-4-1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-4-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-4-7": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-4-8": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-opus-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-sonnet-4": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-sonnet-4-20250514": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-sonnet-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-sonnet-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "claude-sonnet-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-2.5-flash": {
+      "kind": "budget",
+      "disable": true,
+      "maxBudget": 24576,
+      "defaultMode": "auto",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-2.5-flash-image": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-2.5-flash-lite-preview": {
+      "kind": "budget",
+      "disable": true,
+      "minBudget": 512,
+      "maxBudget": 24576,
+      "defaultMode": "disabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-2.5-pro": {
+      "kind": "budget",
+      "disable": false,
+      "minBudget": 128,
+      "maxBudget": 32768,
+      "defaultMode": "auto",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3-audio": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3-pro": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "high",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.1-pro-preview": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "high",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.2-flash": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "high",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.2-flash-lite": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "minimal",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.5-flash": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.5-flash-live": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.5-flash-tts": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.6-flash": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.7-flash": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gemini-3.8-flash": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4.1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4.1-mini": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4.1-nano": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4o": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4o-2024-05-13": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4o-2024-08-06": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4o-2024-11-20": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-4o-mini": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.2": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.2-codex": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.4": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-5.6-sol": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-6-astra": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-6-luna": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-6-sol": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-6.1-pro": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-6.1-sol": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "gpt-6.1-sol-pro": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "models/GPT-6.1-SOL": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "o1-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "o3": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    },
+    "o4-mini": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://ai.google.dev/gemini-api/docs/generate-content/thinking"
+    }
+  },
+  "openai-chat": {
+    "CLAUDE-SONNET-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "MODELS/GEMINI-2.5-FLASH": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "alias": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-3-7-sonnet": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-fable-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-haiku-4-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-haiku-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-mythos-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-7": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-8": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-4": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-4-20250514": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-flash-image": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-flash-lite-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gemini-3-audio": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gemini-3.1-pro-preview": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gemini-3.2-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.2-flash-lite": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.5-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.5-flash-live": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.5-flash-tts": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.6-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.7-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.8-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4.1": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4.1-mini": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4.1-nano": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-2024-05-13": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-2024-08-06": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-2024-11-20": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-mini": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5-preview": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.1": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.2": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.2-codex": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gpt-5.4": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.5": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.6": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.6-sol": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6-astra": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6-luna": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6-sol": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6.1-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gpt-6.1-sol": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6.1-sol-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "models/GPT-6.1-SOL": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "o1-preview": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "o3": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "o4-mini": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    }
+  },
+  "responses": {
+    "CLAUDE-SONNET-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "MODELS/GEMINI-2.5-FLASH": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "alias": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-3-7-sonnet": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-fable-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-haiku-4-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-haiku-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-mythos-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-1": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-7": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-4-8": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-opus-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-4": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-4-20250514": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-4-6": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "claude-sonnet-5-5": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-flash-image": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-flash-lite-preview": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-2.5-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gemini-3-audio": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gemini-3.1-pro-preview": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gemini-3.2-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.2-flash-lite": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.5-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.5-flash-live": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.5-flash-tts": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.6-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.7-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gemini-3.8-flash": {
+      "kind": "unknown",
+      "disable": false,
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4.1": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4.1-mini": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4.1-nano": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-2024-05-13": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-2024-08-06": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-2024-11-20": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-4o-mini": {
+      "kind": "none",
+      "disable": true,
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5-preview": {
+      "kind": "level",
+      "levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.1": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.2": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.2-codex": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gpt-5.4": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "disabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.5": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "disable": true,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.6": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-5.6-sol": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6-astra": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6-luna": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6-sol": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": true,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6.1-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "gpt-6.1-sol": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "gpt-6.1-sol-pro": {
+      "kind": "unknown",
+      "disable": false
+    },
+    "models/GPT-6.1-SOL": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "disable": false,
+      "maxOutputTokens": 128000,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "o1-preview": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "o3": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    "o4-mini": {
+      "kind": "level",
+      "levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "disable": false,
+      "defaultEffort": "medium",
+      "defaultMode": "enabled",
+      "source": "https://developers.openai.com/api/docs/guides/reasoning"
+    }
+  }
+}

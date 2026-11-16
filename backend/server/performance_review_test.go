@@ -40,18 +40,19 @@ func configureReviewMapping(t *testing.T, server *Server) {
 	}
 	changed := 0
 	if hasAfter {
-		definition := presetDefinition(t, "anthropic-messages")
+		definition := presetPackage(t, "anthropic-messages")
 		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest} {
 			if mode == "after-decode" && direction != protocol.DecodeRequest || mode == "after-encode" && direction != protocol.EncodeRequest {
 				continue
 			}
-			mapping := definition.Directions[direction]
-			mapping.After = &protocol.Expression{Op: "read", Path: ""}
-			definition.Directions[direction] = mapping
+			mapping := definition.Mapping.Directions[direction]
+			program := mapping.Program
+			mapping.Program = protocol.Expression{Op: "let", Name: "result", Source: &program, Body: &protocol.Expression{Op: "read", From: "binding", Name: "result"}}
+			definition.Mapping.Directions[direction] = mapping
 		}
-		compiled := activateGatewayDefinition(t, server, definition)
+		compiled := activateGatewayFixture(t, server, definition)
 		for i := range bindings {
-			if bindings[i].Binding.ProtocolID == definition.ID {
+			if bindings[i].Binding.ProtocolID == definition.Spec.ID {
 				bindings[i].Binding.RevisionHash = compiled.Hash()
 				changed++
 			}

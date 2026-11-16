@@ -7,11 +7,11 @@ import (
 
 func TestResponsesPaddingDoesNotBecomeCollectedContent(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
-	collector, err := p.NewResponseCollector(p.Target{Protocol: from.Identity(), Direction: p.EncodeEvent, Capabilities: from.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+	collector, err := p.NewResponseCollector(from.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := p.EvaluationContext{State: p.NewEvaluationState()}
+	opts := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	for _, raw := range responsesPaddedTextFrames() {
 		frame, err := from.DecodeFrame(t.Context(), testValue(t, raw), opts)
 		if err != nil {

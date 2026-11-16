@@ -13,7 +13,7 @@ func TestAuditUnknownFailureRetainsCauseBeforeReplay(t *testing.T) {
 	for _, name := range []string{"***.failed", "vendor.failed", "unknown"} {
 		fields, _ := liveAuditFixture(t, "unknown_failure").ReadObject()
 		fields["type"] = p.StringValue(name)
-		frame, err := from.DecodeFrame(t.Context(), object(fields), p.EvaluationContext{State: p.NewEvaluationState()})
+		frame, err := from.DecodeFrame(t.Context(), object(fields), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		var failure *p.GenerationFailure
 		var issue *p.ConversionError
 		if frame != nil || !errors.As(err, &failure) || !errors.As(err, &issue) || !strings.Contains(err.Error(), "Synthetic account concurrency limit") {
@@ -29,7 +29,7 @@ func TestAuditSourceIdentityIsCheckedBeforeProjection(t *testing.T) {
 	from := shippedProjectionProtocol(t, Chat)
 	var frames []p.Value
 	_ = liveAuditFixture(t, "changed_chat_identity").Decode(&frames)
-	opts := p.EvaluationContext{State: p.NewEvaluationState()}
+	opts := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	for i, frame := range frames {
 		_, err := from.DecodeFrame(t.Context(), frame, opts)
 		if i < 2 {
@@ -39,7 +39,7 @@ func TestAuditSourceIdentityIsCheckedBeforeProjection(t *testing.T) {
 			continue
 		}
 		var issue *p.ConversionError
-		if !errors.As(err, &issue) || issue.Issues[0].Code != p.UpstreamContractViolation || issue.Issues[0].Path != "/id" || issue.Issues[0].Direction != p.DecodeEvent || !strings.Contains(err.Error(), "frame 3") {
+		if !errors.As(err, &issue) || issue.Issues[0].Code != p.UpstreamContractViolation || issue.Issues[0].Path != "/id" || issue.Issues[0].Direction != p.DecodeEvent {
 			t.Fatal(err)
 		}
 	}
@@ -48,7 +48,7 @@ func TestAuditSourceIdentityIsCheckedBeforeProjection(t *testing.T) {
 func TestAuditCodeOnlyUpstreamFailureKeepsPrimaryCategory(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	frame := testValue(t, `{"type":"***.failed","response":{"status":"failed","error":{"code":"upstream_error","message":"Synthetic unavailable"}}}`)
-	_, err := from.DecodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()})
+	_, err := from.DecodeFrame(t.Context(), frame, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 	var failure *p.GenerationFailure
 	if !errors.As(err, &failure) {
 		t.Fatal(err)

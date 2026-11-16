@@ -44,7 +44,9 @@ type ProtocolStreamSpec struct {
 
 // ProtocolStreamNamespaceSpec shares keys across externally named entity variants.
 type ProtocolStreamNamespaceSpec struct {
-	KeyType JSONType `json:"keyType"`
+	KeyType        JSONType `json:"keyType"`
+	ContiguousKeys bool     `json:"contiguousKeys,omitempty"`
+	KeyPath        string   `json:"keyPath,omitempty"`
 }
 
 // ProtocolStreamEntitySpec declares external payload and relation constraints.
@@ -100,44 +102,47 @@ type ProtocolStreamEventSpec []ProtocolStreamActionSpec
 
 // ProtocolStreamActionSpec observes an external lifecycle or updates declared state.
 type ProtocolStreamActionSpec struct {
-	Action              string                             `json:"action,omitempty"`
-	ForEach             string                             `json:"foreach,omitempty"`
-	As                  string                             `json:"as,omitempty"`
-	IndexAs             string                             `json:"indexAs,omitempty"`
-	Actions             []ProtocolStreamActionSpec         `json:"actions,omitempty"`
-	Assertions          []WireAssertion                    `json:"assertions,omitempty"`
-	Updates             map[string]Expression              `json:"updates,omitempty"`
-	When                *Expression                        `json:"when,omitempty"`
-	ResponseID          string                             `json:"responseId,omitempty"`
-	Entity              string                             `json:"entity,omitempty"`
-	Namespace           string                             `json:"namespace,omitempty"`
-	Key                 *ProtocolStreamValueSpec           `json:"key,omitempty"`
-	Parent              *ProtocolStreamValueSpec           `json:"parent,omitempty"`
-	Offset              *ProtocolStreamValueSpec           `json:"offset,omitempty"`
-	Ordinal             *ProtocolStreamValueSpec           `json:"ordinal,omitempty"`
-	Payload             *ProtocolStreamValueSpec           `json:"payload,omitempty"`
-	Encoding            string                             `json:"encoding,omitempty"`
-	Identities          map[string]ProtocolStreamValueSpec `json:"identities,omitempty"`
-	Properties          *ProtocolStreamValueSpec           `json:"properties,omitempty"`
-	ChildrenCount       *ProtocolStreamValueSpec           `json:"childrenCount,omitempty"`
-	ChildrenNamespace   string                             `json:"childrenNamespace,omitempty"`
-	SealPayload         bool                               `json:"sealPayload,omitempty"`
-	Placeholder         bool                               `json:"placeholder,omitempty"`
-	VerifyChildren      []string                           `json:"verifyChildren,omitempty"`
-	VerifyCompleted     bool                               `json:"verifyCompleted,omitempty"`
-	RequireVerified     []string                           `json:"requireVerified,omitempty"`
-	Implicit            bool                               `json:"implicit,omitempty"`
-	AllowBeforeStart    bool                               `json:"allowBeforeStart,omitempty"`
-	ResponseIndependent bool                               `json:"responseIndependent,omitempty"`
-	AfterTerminal       bool                               `json:"afterTerminal,omitempty"`
-	FrameClass          string                             `json:"frameClass,omitempty"`
-	Error               string                             `json:"error,omitempty"`
-	Diagnostic          *RejectDiagnostic                  `json:"diagnostic,omitempty"`
+	Action               string                             `json:"action,omitempty"`
+	ForEach              string                             `json:"foreach,omitempty"`
+	As                   string                             `json:"as,omitempty"`
+	IndexAs              string                             `json:"indexAs,omitempty"`
+	Actions              []ProtocolStreamActionSpec         `json:"actions,omitempty"`
+	Assertions           []WireAssertion                    `json:"assertions,omitempty"`
+	Updates              map[string]Expression              `json:"updates,omitempty"`
+	When                 *Expression                        `json:"when,omitempty"`
+	ResponseID           string                             `json:"responseId,omitempty"`
+	Entity               string                             `json:"entity,omitempty"`
+	Namespace            string                             `json:"namespace,omitempty"`
+	Key                  *ProtocolStreamValueSpec           `json:"key,omitempty"`
+	Parent               *ProtocolStreamValueSpec           `json:"parent,omitempty"`
+	Offset               *ProtocolStreamValueSpec           `json:"offset,omitempty"`
+	Ordinal              *ProtocolStreamValueSpec           `json:"ordinal,omitempty"`
+	Payload              *ProtocolStreamValueSpec           `json:"payload,omitempty"`
+	Encoding             string                             `json:"encoding,omitempty"`
+	Identities           map[string]ProtocolStreamValueSpec `json:"identities,omitempty"`
+	Properties           *ProtocolStreamValueSpec           `json:"properties,omitempty"`
+	ChildrenCount        *ProtocolStreamValueSpec           `json:"childrenCount,omitempty"`
+	ChildrenNamespace    string                             `json:"childrenNamespace,omitempty"`
+	SealPayload          bool                               `json:"sealPayload,omitempty"`
+	RequireSealedPayload bool                               `json:"requireSealedPayload,omitempty"`
+	Placeholder          bool                               `json:"placeholder,omitempty"`
+	VerifyChildren       []string                           `json:"verifyChildren,omitempty"`
+	VerifyCompleted      bool                               `json:"verifyCompleted,omitempty"`
+	RequireVerified      []string                           `json:"requireVerified,omitempty"`
+	RequireClosed        []string                           `json:"requireClosed,omitempty"`
+	Implicit             bool                               `json:"implicit,omitempty"`
+	AllowBeforeStart     bool                               `json:"allowBeforeStart,omitempty"`
+	ResponseIndependent  bool                               `json:"responseIndependent,omitempty"`
+	AfterTerminal        bool                               `json:"afterTerminal,omitempty"`
+	FrameClass           string                             `json:"frameClass,omitempty"`
+	Error                string                             `json:"error,omitempty"`
+	Diagnostic           *RejectDiagnostic                  `json:"diagnostic,omitempty"`
 }
 
 // ProtocolMapping contains only declarative programs and their semantic effects.
 // A v2 module or after mapping cannot be selected through this contract.
 type ProtocolMapping struct {
+	VerificationScopes []ProtocolVerificationScope            `json:"verificationScopes,omitempty"`
 	Continuation       *ProtocolContinuationMapping           `json:"continuation,omitempty"`
 	ConversionDefaults []ProtocolConversionDefault            `json:"conversionDefaults,omitempty"`
 	FieldObservations  map[string]ProtocolFieldObservation    `json:"fieldObservations,omitempty"`
@@ -156,13 +161,14 @@ type ProtocolMapping struct {
 	SessionSamples     []SessionSample                        `json:"sessionSamples,omitempty"`
 	Agent              *ProtocolAgentMapping                  `json:"agent,omitempty"`
 	ModelPolicy        *ProtocolModelPolicy                   `json:"modelPolicy,omitempty"`
+	HeaderControls     *ProtocolHeaderControls                `json:"headerControls,omitempty"`
 }
 
 // ProtocolDirectionMapping transforms one wire/core boundary without a codec module.
 type ProtocolDirectionMapping struct {
 	NativeReplay string `json:"nativeReplay,omitempty"`
-	// NativeWhen selects replay using the wire, client intent and the read-only
-	// runtime.encoding.hasRendered fact. It cannot mutate encoding or delivery.
+	// NativeWhen selects replay using the wire, client intent, prior encoding
+	// and committed output facts. It cannot mutate encoding or delivery.
 	NativeWhen *Expression `json:"nativeWhen,omitempty"`
 	Document   string      `json:"document"`
 	// FinalDocument optionally selects a separate delivery contract for request,
@@ -183,9 +189,12 @@ type ProtocolDirectionMapping struct {
 	Indexes        map[string]ProtocolStateIndex `json:"indexes,omitempty"`
 	Finalize       *Expression                   `json:"finalize,omitempty"`
 	Observe        *Expression                   `json:"observe,omitempty"`
-	Program        Expression                    `json:"program"`
-	Effects        []ProtocolSemanticEffect      `json:"effects"`
-	Capabilities   CapabilitySet                 `json:"capabilities,omitzero"`
+	// FailureObservation preserves declared upstream failure evidence when the
+	// independent source contract rejects a frame. It cannot accept that frame.
+	FailureObservation *Expression              `json:"failureObservation,omitempty"`
+	Program            Expression               `json:"program"`
+	Effects            []ProtocolSemanticEffect `json:"effects"`
+	Capabilities       CapabilitySet            `json:"capabilities,omitzero"`
 }
 
 // ProtocolDeliveryRange associates final wire text with references in one
@@ -226,9 +235,13 @@ type ProtocolStateIndex struct {
 }
 
 // ProtocolSemanticEffect declares how a program handles a core semantic location.
-// Path always addresses core data and Target addresses wire data. When observes
+// Path addresses core data and Target addresses wire data. A warn effect uses
+// Path only to locate its input advisory and cannot declare a Target. When observes
 // the direction's input, one CacheIntent for cache_intents scope, or the
-// selected Value leaf for request_field scope. Default declares an equivalent
+// selected Value leaf for request_field scope. A metadata reject condition reads
+// each owned ResponseMetadata record, including nested history and snapshots.
+// A node reject condition reads each Node; Path is relative to its actual owner.
+// Default declares an equivalent
 // target value; it does not authorize deletion of a different selected value.
 // Declarations alone do not prove fidelity.
 type ProtocolSemanticEffect struct {
@@ -383,6 +396,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 	if err := compiled.bindPackageOperations(spec, mapping); err != nil {
 		return nil, err
 	}
+	if err := compiled.compileHeaderControls(mapping.HeaderControls, expressions); err != nil {
+		return nil, err
+	}
 	if err := compiled.compileContinuation(mapping.Continuation, expressions); err != nil {
 		return nil, err
 	}
@@ -405,6 +421,9 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 		return nil, err
 	}
 	if err := compiled.compileTokenCounting(document, wireSpec, expressions); err != nil {
+		return nil, err
+	}
+	if err := compiled.compileVerificationScopes(mapping.VerificationScopes, expressions); err != nil {
 		return nil, err
 	}
 	for _, name := range sortedKeys(mapping.Expressions) {

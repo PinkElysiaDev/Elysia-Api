@@ -24,7 +24,7 @@ func TestResponsesHostedUsageProjection(t *testing.T) {
 					policy := p.DefaultConversionPolicy(to, from)
 					policy.Mode = mode
 					for i := range policy.Rules {
-						if policy.Rules[i].Action == "usage_projection" {
+						if (policy.Rules[i].ID == "response-usage-projection" || policy.Rules[i].ID == "event-usage-projection") {
 							policy.Rules[i].Enabled = enabled
 						}
 					}
@@ -32,7 +32,7 @@ func TestResponsesHostedUsageProjection(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(hostedUsageFixture)), p.EvaluationContext{})
+					r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(hostedUsageFixture)), fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -40,11 +40,11 @@ func TestResponsesHostedUsageProjection(t *testing.T) {
 						t.Fatalf("tool ledger polluted model totals: %+v", r.Usage)
 					}
 					sink := &p.DiagnosticSink{}
-					projected, err := c.Response(t.Context(), r, p.ConversionContext{}, sink)
+					projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), sink)
 					var wire []byte
 					if err == nil {
 						projected.Native = nil
-						wire, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+						wire, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 					}
 					wantOK := target == Responses || enabled && mode == "compatible"
 					if (err == nil) != wantOK {
@@ -99,7 +99,7 @@ func hostedUsageStreamFrames() []string {
 func TestResponsesHostedUsageStreamSnapshots(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	raw := hostedUsageStreamFrames()
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	var original *p.Usage
 	for _, body := range raw {
 		frame, err := from.DecodeFrame(t.Context(), testValue(t, body), options)
@@ -138,12 +138,12 @@ func TestResponsesHostedUsageEmptyInvalidAndUnknown(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Chat)
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	for _, value := range []string{`null`, `{}`, `{"image_gen":{},"web_search":{}}`, `{"image_gen":{"input_tokens_details":{}}}`} {
-		r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(value)), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(value)), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.Native = nil
-		wire, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+		wire, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,26 +151,26 @@ func TestResponsesHostedUsageEmptyInvalidAndUnknown(t *testing.T) {
 		if !equivalentJSON(fields["tool_usage"], testValue(t, value)) {
 			t.Fatal(string(wire))
 		}
-		projected, err := c.Response(t.Context(), r, p.ConversionContext{}, nil)
+		projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{}); err != nil {
+		if _, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{})); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, value := range []string{`42`, `[]`, `{"web_search":null}`, `{"web_search":{"num_requests":null}}`, `{"web_search":{"num_requests":-1}}`, `{"web_search":{"num_requests":1.5}}`, `{"web_search":{"num_requests":9223372036854775808}}`, `{"image_gen":{"input_tokens":2,"output_tokens":3,"total_tokens":4}}`, `{"image_gen":{"input_tokens":1,"input_tokens_details":{"image_tokens":2}}}`} {
-		if _, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(value)), p.EvaluationContext{}); err == nil {
+		if _, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(value)), fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatalf("invalid tool count accepted: %s", value)
 		}
 	}
 	for _, value := range []string{`{"vendor":0}`, `{"image_gen":{"vendor":0}}`, `{"web_search":{"num_requests":2,"vendor":0}}`} {
-		r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(value)), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(value)), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.Native = nil
-		wire, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+		wire, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,11 +178,11 @@ func TestResponsesHostedUsageEmptyInvalidAndUnknown(t *testing.T) {
 		if !equivalentJSON(fields["tool_usage"], testValue(t, value)) {
 			t.Fatal(string(wire))
 		}
-		projected, err := c.Response(t.Context(), r, p.ConversionContext{}, nil)
+		projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{}); err == nil {
+		if _, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatal("unknown tool usage extension discarded")
 		}
 	}
@@ -191,7 +191,7 @@ func TestResponsesHostedUsageEmptyInvalidAndUnknown(t *testing.T) {
 func TestResponsesHostedUsageRetainsIntegerPrecision(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	const count = int64(9007199254740993)
-	r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(`{"web_search":{"num_requests":9007199254740993}}`)), p.EvaluationContext{})
+	r, err := from.DecodeResponse(t.Context(), []byte(hostedUsageResponse(`{"web_search":{"num_requests":9007199254740993}}`)), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestResponsesHostedUsageRetainsIntegerPrecision(t *testing.T) {
 		t.Fatal(r.Usage)
 	}
 	r.Native = nil
-	wire, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+	wire, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 	if err != nil || !strings.Contains(string(wire), `"num_requests":9007199254740993`) {
 		t.Fatal(string(wire), err)
 	}

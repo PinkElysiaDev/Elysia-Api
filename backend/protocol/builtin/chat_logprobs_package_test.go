@@ -117,6 +117,7 @@ func TestChatPackageNativeContinuationState(t *testing.T) {
 	includeUsage := false
 	options := p.EvaluationContext{State: p.NewEvaluationState(), ClientOutput: &p.ClientOutput{IncludeUsage: &includeUsage}}
 	defer options.State.Release()
+	options, consume := bindFixtureOutput(t, compiled, fixtureOptions(options))
 	var output []p.Value
 	for index, frame := range frames {
 		batch, err := compiled.EncodeConvertedFrame(t.Context(), frame, frame.Events, options)
@@ -129,12 +130,14 @@ func TestChatPackageNativeContinuationState(t *testing.T) {
 			}
 		}
 		output = append(output, batch...)
+		consume(batch)
 	}
 	tail, err := compiled.FinishEvents(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
 	output = append(output, tail...)
+	consume(tail)
 	encoded := make([]string, len(output))
 	annotations, terminals := 0, 0
 	for index, frame := range output {

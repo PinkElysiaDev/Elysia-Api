@@ -8,14 +8,13 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 // Response delivery uses the same narrow handoff as streaming; request history
 // and retry candidates belong exclusively to preparation and dispatch.
 func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestContext, record *usageRecord, plan *gatewayResponsePlan, candidate gatewayCandidate, response *http.Response, responseRoute protocol.ConversionContext, options protocol.EvaluationContext) error {
 	isDeliveryPending := false
-	if continuation := candidate.continuation; continuation != nil && continuation.isPackage {
+	if continuation := candidate.continuation; continuation != nil {
 		defer func() {
 			if !isDeliveryPending {
 				continuation.binding.Release()
@@ -31,11 +30,6 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	if err != nil {
 		return err
 	}
-	if candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
-		if err := observeLegacyHostedTools(record, candidate.compiled, body); err != nil {
-			return err
-		}
-	}
 	// DecodeResponse has already validated usage arithmetic and capabilities.
 	updateRecordProtocolUsage(record, semantic.Usage)
 	if err := protocol.CheckGenerationOutcome(semantic); err != nil {
@@ -47,11 +41,13 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 	if err := s.captureContinuationResponse(ctx, candidate.continuation, semantic); err != nil {
 		return err
 	}
-	// Recovery evidence is created while capturing this response. Only the
-	// outbound model is a dispatch snapshot; refresh mutable recovery context now.
-	route := candidate.conversionContext(plan.ingress, true).WithOperation(options)
-	route.ResponseModel = responseRoute.ResponseModel
-	route, originErr := route.WithObservedResponseModel(body)
+	// Keep dispatch observations bound to the exact outbound request while
+	// refreshing the continuation evidence captured from this response.
+	route := responseRoute.WithOperation(options)
+	if candidate.continuation != nil {
+		route = route.WithContinuation(candidate.continuation.binding, candidate.continuation.requireCarrier)
+	}
+	route, originErr := route.WithObservedResponseFields(body)
 	if originErr != nil {
 		return originErr
 	}
@@ -72,39 +68,23 @@ func (s *Server) forwardGatewayResponse(ctx context.Context, c *app.RequestConte
 		if err != nil {
 			return err
 		}
-		if plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
-			if _, err = plan.ingress.DecodeResponseValue(ctx, wireValue, options); err != nil {
-				return err
-			}
-		}
 	}
-	if candidate.continuation != nil && candidate.continuation.isPackage {
+	if candidate.continuation != nil {
 		options = options.WithContinuation(candidate.continuation.binding)
 		wireValue, err = plan.ingress.EncodeContinuationResponse(ctx, wireValue, options)
 		if err != nil {
 			return err
 		}
-	} else {
-		if candidate.continuation != nil {
-			body, err = builtin.AttachContinuationCarriers(wireValue.Bytes(), plan.ingress.Identity().Family, candidate.continuation.tokens)
-			if err != nil {
-				return err
-			}
-			wireValue, err = protocol.ParseValue(body)
-			if err != nil {
-				return err
-			}
-		}
 	}
 	err = plan.ingress.ValidateResponseOutput(ctx, beforeWire, wireValue, options)
 	if err != nil {
-		return route.AttributeResponseModelFailure(err, semantic, wireValue)
+		return route.AttributeResponseFailure(err, semantic, wireValue)
 	}
 	if wireValue.Len() > plan.ingress.ResourceLimits().BufferBytes {
 		return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/response", Reason: "response including continuation carriers exceeds target buffer limit"}})
 	}
 	record.FirstByteMs = time.Since(record.StartedAt).Milliseconds()
-	if candidate.continuation != nil && candidate.continuation.isPackage && candidate.continuation.binding.HasPending() {
+	if candidate.continuation != nil && candidate.continuation.binding.HasPending() {
 		binding := candidate.continuation.binding
 		state := ensureHTTPDeliveryState(c)
 		onHTTPComplete(c, func() {

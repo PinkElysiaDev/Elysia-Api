@@ -61,7 +61,7 @@ func TestResponseDeliveryRangesCompositionAndPreview(t *testing.T) {
 	if err := verifyResponseCombination(ctx, compiled, compiled, sample); err == nil || !strings.Contains(err.Error(), "unproven text") {
 		t.Fatal("composition missed the final proof", err)
 	}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	service := &Service{compiler: compiler}
 	service.snapshot.Store(&registrySnapshot{entries: map[string]*Compiled{compiled.Identity().DefinitionID: compiled}})
 	result := service.PreviewWorkflow(t.Context(), PreviewInput{Mode: "conversion", Direction: EncodeResponse, ConversionPhase: ConversionWire, ConversionPolicy: &policy,
@@ -77,7 +77,7 @@ func TestDeliveryRangeSelectorsCannotAcquireState(t *testing.T) {
 		entry := document.Mapping.Directions[EncodeResponse]
 		entry.DeliveryRanges[0].Texts = expression
 		document.Mapping.Directions[EncodeResponse] = entry
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
 		if _, issues := compiler.Compile(fixtureValue(t, document).Bytes()); IssuesError(issues) == nil {
 			t.Fatal("read-only selector acquired execution state", expression)
 		}

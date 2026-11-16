@@ -71,7 +71,7 @@ type ContinuationBinding struct {
 // BindContinuation pins one target plan before resources are captured. A target
 // without a carrier can still retain persistence evidence, never client delivery.
 func (compiled *Compiled) BindContinuation(direction Direction, source Identity, scope Scope, allowClient bool) (*ContinuationBinding, error) {
-	if compiled.packagePlan == nil || direction != EncodeResponse && direction != EncodeEvent {
+	if direction != EncodeResponse && direction != EncodeEvent {
 		return nil, operationMetadataError("/continuation", "continuation binding requires a package output direction")
 	}
 	plan := compiled.continuationOutput(direction)

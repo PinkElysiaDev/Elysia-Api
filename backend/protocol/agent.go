@@ -16,15 +16,6 @@ type AgentPreferences struct {
 	ThinkingEffort  string `json:"thinkingEffort"`
 }
 
-// AgentConfig declares how the native Agent supplies semantic model parameters.
-// It cannot change messages, tool permissions, credentials or routing.
-type AgentConfig struct {
-	ToolResults     InputKind     `json:"toolResults"`
-	ThinkingEfforts []string      `json:"thinkingEfforts"`
-	Parameters      Mapping       `json:"parameters"`
-	Samples         []AgentSample `json:"samples"`
-}
-
 // AgentSample asserts prepared parameters, client delivery intent and wire preservation.
 type AgentSample struct {
 	ID                   string           `json:"id"`
@@ -42,30 +33,6 @@ type agentPreparation struct {
 // AgentIdentity marks locally authored history independently of any provider.
 func AgentIdentity() Identity {
 	return Identity{Family: "elysia-agent", WireVersion: "1", DefinitionID: "agent", Revision: "1"}
-}
-
-func (compiler *Compiler) compileAgentMapping(compiled *Compiled, definition Definition, expressions *expressionCompiler) error {
-	configuration := definition.Agent
-	if configuration == nil {
-		return nil
-	}
-	if err := compiled.checkAgentRequirements(configuration.ToolResults); err != nil {
-		return err
-	}
-	mapping := configuration.Parameters
-	if mapping.Transform == nil || mapping.Module != "" || len(mapping.Rules) > 0 || mapping.After != nil || mapping.FrameBatch || mapping.UnknownEvent != "" || mapping.Capabilities != nil {
-		return fmt.Errorf("agent parameters require an independent declarative transform")
-	}
-	entry, err := compiler.compileMapping(mapping, "/agent/parameters", EncodeRequest, expressions)
-	if err != nil {
-		return err
-	}
-	if err := checkAgentEvidence(configuration.ThinkingEfforts, configuration.Samples); err != nil {
-		return err
-	}
-	compiled.agentMapping, compiled.agentEfforts = &entry, append([]string(nil), configuration.ThinkingEfforts...)
-	compiled.agentToolResults = configuration.ToolResults
-	return nil
 }
 
 func (compiled *Compiled) checkAgentRequirements(toolResults InputKind) error {
@@ -179,11 +146,9 @@ func (compiled *Compiled) agentPreferencesInput(preferences AgentPreferences) (V
 func (compiled *Compiled) executeAgentParameters(ctx context.Context, input Value) (Object, error) {
 	var output Value
 	var err error
-	if compiled.packagePlan != nil {
-		output, err = compiled.executePackageOperationPlan(ctx, *compiled.agentMapping, EncodeRequest, "/mapping/agent/parameters", input, Value{raw: "null"}, compiledWireContract{}, compiledWireContract{}, EvaluationContext{})
-	} else {
-		output, err = compiled.executeOperationMapping(ctx, *compiled.agentMapping, EncodeRequest, "/agent/parameters", input, EvaluationContext{})
-	}
+
+	output, err = compiled.executePackageOperationPlan(ctx, *compiled.agentMapping, EncodeRequest, "/mapping/agent/parameters", input, Value{raw: "null"}, compiledWireContract{}, compiledWireContract{}, EvaluationContext{})
+
 	if err != nil {
 		return nil, err
 	}
@@ -229,9 +194,9 @@ func verifyAgentSamples(ctx context.Context, compiled *Compiled, report *Verific
 		return
 	}
 	samplePath := "/agent/samples"
-	if compiled.packagePlan != nil {
-		samplePath = "/mapping" + samplePath
-	}
+
+	samplePath = "/mapping" + samplePath
+
 	hasDisabled := false
 	hasStream := false
 	covered := map[string]bool{}
@@ -322,40 +287,25 @@ func verifyAgentParameterWire(ctx context.Context, compiled *Compiled, prepared 
 		if err != nil {
 			return err
 		}
-		if compiled.packagePlan != nil {
-			before, err := EncodeValue(struct {
-				Parameters Object
-				Reasoning  *ReasoningIntent
-			}{request.Parameters, request.Reasoning})
-			if err != nil {
-				return err
-			}
-			after, err := EncodeValue(struct {
-				Parameters Object
-				Reasoning  *ReasoningIntent
-			}{decoded.Parameters, decoded.Reasoning})
-			if err != nil {
-				return err
-			}
-			if !equalValues(before, after) {
-				return fmt.Errorf("agent parameters or reasoning changed through the declared wire")
-			}
-			return verifyAgentToolResult(ctx, compiled, decoded.Model, request.Parameters, request.Reasoning, request.ClientOutput, options)
-		}
-		beforeParams, err := ReasoningParameters(request, compiled.Codec(EncodeRequest))
+		before, err := EncodeValue(struct {
+			Parameters Object
+			Reasoning  *ReasoningIntent
+		}{request.Parameters, request.Reasoning})
 		if err != nil {
 			return err
 		}
-		afterParams, err := ReasoningParameters(decoded, compiled.Codec(DecodeRequest))
+		after, err := EncodeValue(struct {
+			Parameters Object
+			Reasoning  *ReasoningIntent
+		}{decoded.Parameters, decoded.Reasoning})
 		if err != nil {
 			return err
 		}
-		before, _ := EncodeValue(beforeParams)
-		after, _ := EncodeValue(afterParams)
 		if !equalValues(before, after) {
-			return fmt.Errorf("agent parameters are lost or changed by the wire adapter")
+			return fmt.Errorf("agent parameters or reasoning changed through the declared wire")
 		}
-		return verifyAgentToolResult(ctx, compiled, decoded.Model, beforeParams, nil, request.ClientOutput, options)
+		return verifyAgentToolResult(ctx, compiled, decoded.Model, request.Parameters, request.Reasoning, request.ClientOutput, options)
+
 	}
 	return fmt.Errorf("agent policy requires a positive request fixture")
 }
@@ -418,8 +368,5 @@ func (compiled *Compiled) normalizeAgentReasoning(request *Request) error {
 	request.Parameters = maps.Clone(request.Parameters)
 	delete(request.Parameters, "reasoning")
 	request.Reasoning = &reasoning
-	if compiled.packagePlan != nil {
-		return ValidateReasoningIntent(request.Reasoning)
-	}
-	return NormalizeReasoningParameters(request, compiled.Codec(EncodeRequest), false)
+	return ValidateReasoningIntent(request.Reasoning)
 }

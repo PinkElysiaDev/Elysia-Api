@@ -31,7 +31,7 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 	case "literal":
 		return expression.value, nil
 	case "read":
-		if output, handled, err := expression.readOutput(state); handled {
+		if output, handled, err := expression.readOutput(&state); handled {
 			if err != nil || output.IsZero() {
 				return Value{}, err
 			}
@@ -57,7 +57,7 @@ func (expression *compiledExpression) evaluateValue(state evaluation) (Value, er
 	case "object":
 		object := make(Object, len(expression.fields))
 		bytes := 0
-		for _, key := range expression.keys {
+		for _, key := range expression.fieldKeys {
 			value, err := expression.fields[key].evaluate(state)
 			if err != nil {
 				return Value{}, err

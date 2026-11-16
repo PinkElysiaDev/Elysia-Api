@@ -3,7 +3,6 @@ package builtin
 import (
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -12,20 +11,13 @@ import (
 
 func responsesToolStreamSample(t *testing.T) p.Sample {
 	t.Helper()
-	raw, err := os.ReadFile("definitions/openai-responses.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var definition p.Definition
-	if err := testValue(t, string(raw)).Decode(&definition); err != nil {
-		t.Fatal(err)
-	}
-	for _, sample := range definition.Samples {
-		if sample.ID == "stream-tool-decode" {
+	document, _ := compileBuiltinPackage(t, "openai-responses").Package()
+	for _, sample := range document.Mapping.Samples {
+		if sample.ID == "declared-stream-tool-decode" {
 			return sample
 		}
 	}
-	t.Fatal("existing Responses JSON tool stream sample is missing")
+	t.Fatal("declared Responses tool stream sample is missing")
 	return p.Sample{}
 }
 
@@ -168,7 +160,7 @@ func assertResponsesToolTerminalOrigins(t *testing.T, events []p.Event, frame p.
 }
 
 func TestResponsesPackageToolWireIdentityBoundaries(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Responses), compileBuiltinPackage(t, "openai-responses")
+	compiled := compileBuiltinPackage(t, "openai-responses")
 	sample := responsesToolStreamSample(t)
 	var original []p.Value
 	if err := sample.Input.Decode(&original); err != nil {
@@ -185,40 +177,33 @@ func TestResponsesPackageToolWireIdentityBoundaries(t *testing.T) {
 		{"null-id", `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":null,"delta":"{}","sequence_number":2}`, false},
 		{"stale-sequence", `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"r_item_0","delta":"{}","sequence_number":1}`, false},
 	} {
-		raw := fixture.raw
-		options := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
-		wire, err := candidate.NewWireInputStreamValidation(sample.Scope)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, frame := range original[:2] {
-			if _, err := legacy.DecodeFrame(t.Context(), frame, options); err != nil {
+		t.Run(fixture.name, func(t *testing.T) {
+			options := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
+			defer options.State.Release()
+			validation, err := compiled.NewWireInputStreamValidation(sample.Scope)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := wire.Consume(t.Context(), frame); err != nil {
+			for _, frame := range original[:2] {
+				if _, err := validation.DecodeFrame(t.Context(), frame, options); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err = validation.DecodeFrame(t.Context(), testValue(t, fixture.raw), options)
+			if (err == nil) != fixture.isEquivalent {
+				t.Fatal("source identity boundary changed", err)
+			}
+			if err == nil {
+				return
+			}
+			var failure *p.ConversionError
+			if !errors.As(err, &failure) || len(failure.Issues) == 0 {
 				t.Fatal(err)
 			}
-		}
-		_, oldErr := legacy.DecodeFrame(t.Context(), testValue(t, raw), options)
-		newErr := wire.Consume(t.Context(), testValue(t, raw))
-		options.State.Release()
-		if fixture.isEquivalent {
-			if oldErr == nil || newErr != nil {
-				t.Fatal("typed wire identities must accept equivalent escapes while recording the legacy byte-comparison difference", oldErr, newErr)
+			issue := failure.Issues[0]
+			if issue.Code != p.UpstreamContractViolation || issue.Protocol != compiled.Identity() || issue.Direction != p.DecodeEvent || issue.Path == "" {
+				t.Fatal("source identity rejection lost its location", issue)
 			}
-			continue
-		}
-		var before, after *p.ConversionError
-		if !errors.As(oldErr, &before) || !errors.As(newErr, &after) || len(before.Issues) == 0 || len(after.Issues) == 0 {
-			t.Fatal("identity boundary was accepted or lost its diagnostic", fixture.name, oldErr, newErr)
-		}
-		a, b := before.Issues[0], after.Issues[0]
-		expectedCode, expectedStage := p.UpstreamContractViolation, "wire.stream"
-		if fixture.name == "mixed-id" {
-			expectedStage = "wire"
-		}
-		if b.Code != expectedCode || b.Stage != expectedStage || a.Path != b.Path || a.Protocol != b.Protocol || a.Direction != b.Direction {
-			t.Fatal("identity rejection lost its declared boundary", fixture.name, a, b)
-		}
+		})
 	}
 }

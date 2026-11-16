@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -42,7 +43,8 @@ func TestPackageModelCapabilityBindingAndIsolation(t *testing.T) {
 	}
 }
 
-func TestPackageSourceReasoningNormalization(t *testing.T) {
+func TestPackageSourceRejectsRetiredReasoningControls(t *testing.T) {
+
 	for _, source := range []struct {
 		name, codec, parameters string
 	}{
@@ -115,9 +117,13 @@ func TestPackageSourceReasoningNormalization(t *testing.T) {
 				request := &Request{SchemaVersion: ProtocolCoreVersion, Parameters: parameters}
 				request = request.Clone()
 				fixture.change(request)
-				want, got := request.Clone(), request.Clone()
-				wantErr := NormalizeReasoningParameters(want, source.codec, false)
+
+				got := request.Clone()
+
 				execution := &modelControlExecution{limits: DefaultLimits(), bindings: make([]JSONOutput, normalization.bindingSlots)}
+				if err := execution.bindContext(got, ConversionContext{}, nil); err != nil {
+					t.Fatal(err)
+				}
 				gotErr := execution.apply(t.Context(), &CompiledConversion{}, got, ConversionContext{}, nil, normalization.steps, false)
 				if gotErr == nil {
 					gotErr = ValidateReasoningIntent(got.Reasoning)
@@ -125,27 +131,19 @@ func TestPackageSourceReasoningNormalization(t *testing.T) {
 				if gotErr == nil && execution.changedReasoning {
 					gotErr = execution.apply(t.Context(), &CompiledConversion{}, got, ConversionContext{}, nil, normalization.checks, false)
 				}
-				if (wantErr == nil) != (gotErr == nil) {
-					t.Fatal("source normalization acceptance changed", wantErr, gotErr)
-				}
-				if wantErr == nil {
-					before, _ := EncodeValue(want)
-					after, _ := EncodeValue(got)
-					if before != after {
-						t.Fatal("source normalization changed semantic fields", before.JSONString(), after.JSONString())
+				if len(request.Parameters) == 0 {
+					if gotErr != nil || !reflect.DeepEqual(got, request) {
+						t.Fatal("canonical request changed without a source disposition", got, gotErr)
 					}
 					return
 				}
-				var wantFailure, gotFailure *ConversionError
-				if errors.As(wantErr, &wantFailure) != errors.As(gotErr, &gotFailure) {
-					t.Fatal("source normalization changed error classification", wantErr, gotErr)
+				var failure *ConversionError
+				if !errors.As(gotErr, &failure) || failure.CandidateOnly || len(failure.Issues) != 1 || failure.Issues[0].Code != InvalidInput {
+					t.Fatal("retired reasoning controls were interpreted as canonical intent", gotErr)
 				}
-				if wantFailure != nil {
-					if !reflect.DeepEqual(wantFailure.Issues, gotFailure.Issues) || wantFailure.CandidateOnly != gotFailure.CandidateOnly {
-						t.Fatal("source normalization diagnostic changed", wantFailure, gotFailure)
-					}
-				} else if wantErr.Error() != gotErr.Error() {
-					t.Fatal("source normalization error changed", wantErr, gotErr)
+				field := strings.TrimPrefix(failure.Issues[0].Path, "/parameters/")
+				if _, exists := request.Parameters[field]; !exists || !reflect.DeepEqual(got, request) {
+					t.Fatal("retired control rejection parsed or mutated the opaque source field", got, gotErr)
 				}
 			})
 		}
@@ -163,7 +161,7 @@ func TestPackageModelCapabilitiesValidateProfilesAtCompileTime(t *testing.T) {
 	} {
 		document := textProtocolPackage(t)
 		document.Mapping.ModelPolicy = &ProtocolModelPolicy{Reasoning: expression}
-		compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, err := NewCompiler(DefaultLimits(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,0 +1,274 @@
+{
+  "document": "cumulative-event",
+  "eventBatch": true,
+  "state": {
+    "started": {
+      "schema": {
+        "type": "boolean"
+      },
+      "initial": false,
+      "update": {
+        "op": "any",
+        "items": [
+          {
+            "op": "read",
+            "path": "/started",
+            "from": "state"
+          },
+          {
+            "op": "not",
+            "source": {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "context",
+                  "path": "/eventName"
+                },
+                {
+                  "op": "literal",
+                  "value": "ignored"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "program": {
+    "op": "map",
+    "source": {
+      "op": "if",
+      "when": {
+        "op": "equal",
+        "items": [
+          {
+            "op": "read",
+            "from": "context",
+            "path": "/eventName"
+          },
+          {
+            "op": "literal",
+            "value": "ignored"
+          }
+        ]
+      },
+      "then": {
+        "op": "literal",
+        "value": []
+      },
+      "otherwise": {
+        "op": "if",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "path": "/event"
+          }
+        },
+        "then": {
+          "op": "array",
+          "items": [
+            {
+              "op": "read",
+              "path": "/event"
+            }
+          ]
+        },
+        "otherwise": {
+          "op": "concat",
+          "items": [
+            {
+              "op": "if",
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "read",
+                  "path": "/started",
+                  "from": "state"
+                }
+              },
+              "then": {
+                "op": "literal",
+                "value": [
+                  {
+                    "type": "item.started",
+                    "itemId": "text",
+                    "item": {
+                      "kind": "text",
+                      "payload": ""
+                    }
+                  }
+                ]
+              },
+              "otherwise": {
+                "op": "literal",
+                "value": []
+              }
+            },
+            {
+              "op": "concat",
+              "items": [
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "ref",
+                      "ref": "cumulative-text"
+                    }
+                  },
+                  "then": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "object",
+                        "fields": {
+                          "type": {
+                            "op": "literal",
+                            "value": "item.snapshot"
+                          },
+                          "itemId": {
+                            "op": "literal",
+                            "value": "text"
+                          },
+                          "item": {
+                            "op": "object",
+                            "fields": {
+                              "kind": {
+                                "op": "literal",
+                                "value": "text"
+                              },
+                              "payload": {
+                                "op": "ref",
+                                "ref": "cumulative-text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": []
+                  }
+                },
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "ref",
+                    "ref": "cumulative-finished"
+                  },
+                  "then": {
+                    "op": "literal",
+                    "value": [
+                      {
+                        "type": "item.finished",
+                        "itemId": "text"
+                      },
+                      {
+                        "type": "response.finished",
+                        "response": {
+                          "schemaVersion": 2,
+                          "content": [],
+                          "attributes": {
+                            "finishReason": "stop"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": []
+                  }
+                },
+                {
+                  "op": "if",
+                  "when": {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "path": "/usage"
+                    }
+                  },
+                  "then": {
+                    "op": "array",
+                    "items": [
+                      {
+                        "op": "object",
+                        "fields": {
+                          "type": {
+                            "op": "literal",
+                            "value": "usage.updated"
+                          },
+                          "usage": {
+                            "op": "object",
+                            "fields": {
+                              "input": {
+                                "op": "object",
+                                "fields": {
+                                  "count": {
+                                    "op": "read",
+                                    "path": "/usage/input_tokens",
+                                    "required": true
+                                  },
+                                  "origin": {
+                                    "op": "literal",
+                                    "value": "observed"
+                                  }
+                                }
+                              },
+                              "output": {
+                                "op": "object",
+                                "fields": {
+                                  "count": {
+                                    "op": "read",
+                                    "path": "/usage/output_tokens",
+                                    "required": true
+                                  },
+                                  "origin": {
+                                    "op": "literal",
+                                    "value": "observed"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "otherwise": {
+                    "op": "literal",
+                    "value": []
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "body": {
+      "op": "merge",
+      "policy": "last",
+      "items": [
+        {
+          "op": "read",
+          "path": "",
+          "from": "item"
+        },
+        {
+          "op": "literal",
+          "value": {
+            "schemaVersion": 2
+          }
+        }
+      ]
+    }
+  },
+  "effects": []
+}

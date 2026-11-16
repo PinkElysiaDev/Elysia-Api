@@ -35,8 +35,10 @@ const (
 )
 
 type compiledWireNamespace struct {
-	name    string
-	keyType JSONType
+	name           string
+	keyType        JSONType
+	contiguousKeys bool
+	keyPath        string
 }
 type compiledWireEntity struct {
 	name                     string
@@ -100,9 +102,10 @@ type compiledPackageStreamEvent struct {
 	isPlaceholder                                                                       bool
 	itemBinding, indexBinding                                                           int
 	canBindItem, canBindIndex                                                           bool
-	sealsPayload, verifiesCompleted                                                     bool
+	sealsPayload, requiresSealedPayload, verifiesCompleted                              bool
 	verifiedChildren                                                                    []int
 	requiredEntities                                                                    []int
+	closedNamespaces                                                                    []int
 	diagnostic                                                                          *RejectDiagnostic
 	assertions                                                                          []compiledWireAssertion
 	updates                                                                             []compiledWireStateUpdate
@@ -407,6 +410,9 @@ func (compiler *packageStreamCompiler) compileAction(spec ProtocolStreamActionSp
 		}
 	}
 	if err := compiler.compileEntitySelectors(spec, &event, path); err != nil {
+		return event, err
+	}
+	if err := compiler.compileClosedNamespaces(spec, &event, path); err != nil {
 		return event, err
 	}
 	compiler.actions[event.action] = true

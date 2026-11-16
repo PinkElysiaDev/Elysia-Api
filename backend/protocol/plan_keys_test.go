@@ -187,7 +187,7 @@ func checkTypedRequestQueryBudgets(t *testing.T, operation string) {
 		t.Fatal(err)
 	}
 	var queryPlan *compiledOutputPlan
-	for _, field := range compiled.mappings[EncodeRequest].outputPlan.fields {
+	for _, field := range compiled.mappings[EncodeRequest].outputPlan.collections.fields {
 		if field.key == "query" {
 			queryPlan = field.expression
 		}

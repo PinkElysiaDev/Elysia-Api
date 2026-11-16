@@ -12,21 +12,21 @@ func TestOwnedRulesDoNotCopyUnrelatedPayload(t *testing.T) {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "allocation", Rules: []ConversionRule{}}
 			for index := range count {
-				policy.Rules = append(policy.Rules, ConversionRule{ID: fmt.Sprintf("rule-%d", index), Order: index, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue("anthropic")})
+				policy.Rules = append(policy.Rules, ConversionRule{ID: fmt.Sprintf("rule-%d", index), Order: index, Enabled: true, Phase: ConversionRequest, Action: "core_controls", Value: ownedRuleFixture(t, nil).Value})
 			}
 			conversion, err := CompileConversion(policy)
 			if err != nil {
 				t.Fatal(err)
 			}
 			measure := func(size int) uint64 {
-				request := &Request{Content: []Node{{Kind: ImageNode, Payload: StringValue(strings.Repeat("A", size))}}}
-				if _, err := conversion.Request(t.Context(), request, ConversionContext{}, nil); err != nil {
+				request := &Request{SchemaVersion: ProtocolCoreVersion, Content: []Node{{Kind: ImageNode, Payload: StringValue(strings.Repeat("A", size))}}}
+				if _, err := conversion.Request(t.Context(), request, ConversionContext{Target: Identity{DefinitionID: "owned-controls", Revision: "1"}}, nil); err != nil {
 					t.Fatal(err)
 				}
 				var before, after runtime.MemStats
 				runtime.ReadMemStats(&before)
 				for range 4 {
-					if _, err := conversion.Request(t.Context(), request, ConversionContext{}, nil); err != nil {
+					if _, err := conversion.Request(t.Context(), request, ConversionContext{Target: Identity{DefinitionID: "owned-controls", Revision: "1"}}, nil); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -42,4 +42,14 @@ func TestOwnedRulesDoNotCopyUnrelatedPayload(t *testing.T) {
 			}
 		})
 	}
+}
+
+func ownedRuleFixture(t *testing.T, each *ProtocolControlEach) ConversionRule {
+	t.Helper()
+	step := ProtocolControlStep{Set: map[string]Expression{"/parameters/stream": literalExpression(false)}}
+	if each != nil {
+		step = ProtocolControlStep{Each: each}
+	}
+	value := fixtureValue(t, coreControlOptions{CoreVersion: ProtocolCoreVersion, Target: Identity{DefinitionID: "owned-controls", Revision: "1"}, MappingHash: "fixture", Phase: ConversionRequest, Limits: DefaultLimits(), Steps: []ProtocolControlStep{step}})
+	return ConversionRule{ID: "owned", Enabled: true, Phase: ConversionRequest, Action: "core_controls", Value: value}
 }

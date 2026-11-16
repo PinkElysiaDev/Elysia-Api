@@ -2,6 +2,61 @@ package protocol
 
 import "testing"
 
+func TestRequestFieldDropRequiresEnabledCompatiblePolicy(t *testing.T) {
+	document := textProtocolPackage(t)
+	encode := document.Mapping.Directions[EncodeRequest]
+	encode.Effects = append(encode.Effects, ProtocolSemanticEffect{ID: "tracking", Kind: "drop", Scope: requestFieldScope,
+		Path: "/parameters/tracking", When: expressionPointer(literalExpression(true)), Severity: SeverityInfo, Reason: "target has no tracking field"})
+	document.Mapping.Directions[EncodeRequest] = encode
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "projection", Order: 130, Enabled: true, Phase: ConversionRequest, Use: "request_projection"}}
+	compiled := compilePackageForTest(t, document)
+	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","prompt":"hi"}`), EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Parameters = Object{"tracking": StringValue("observed"), "unrelated": StringValue("kept")}
+	route := ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}
+	for _, mode := range []string{"compatible", "strict", "disabled"} {
+		t.Run(mode, func(t *testing.T) {
+			policy := DefaultConversionPolicy(compiled, compiled)
+			if mode == "disabled" {
+				policy.Rules[0].Enabled = false
+			} else {
+				policy.Mode = mode
+			}
+			conversion, err := ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &DiagnosticSink{}
+			projected, err := conversion.Request(t.Context(), request, route, sink)
+			if mode == "strict" {
+				assertPackageRuntimeIssue(t, err, ConversionRejected, "/parameters/tracking")
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !request.Parameters["tracking"].IsString("observed") || !projected.Parameters["unrelated"].IsString("kept") {
+				t.Fatal("projection changed the input owner or an unrelated field")
+			}
+			if mode == "disabled" {
+				if !projected.Parameters["tracking"].IsString("observed") {
+					t.Fatal("disabled projection consumed tracking")
+				}
+				if _, err := compiled.EncodeRequestValue(t.Context(), projected, EvaluationContext{}); err == nil {
+					t.Fatal("encoder bypassed the disabled disposition")
+				}
+				return
+			}
+			issues := sink.Issues()
+			if !projected.Parameters["tracking"].IsZero() || len(issues) != 1 || issues[0].Severity != SeverityInfo || issues[0].Fidelity != "lossy_compatible" {
+				t.Fatal("field omission lost its declared diagnostic", projected, issues)
+			}
+		})
+	}
+}
+
 func TestRequestFieldDispositionUsesDeclaredValueAndOwner(t *testing.T) {
 	document := textProtocolPackage(t)
 	encode := document.Mapping.Directions[EncodeRequest]

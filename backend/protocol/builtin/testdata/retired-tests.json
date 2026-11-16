@@ -1,0 +1,1058 @@
+{
+  "baseline": "29318400217b2a91afc085373d29ee468fc1cc70",
+  "notice": "Mechanical retirement is not evidence of equivalent coverage. review-required entries must be restored or assigned specific independent counterexamples before release.",
+  "entries": [
+    {
+      "file": "backend/protocol/builtin/agent_package_migration_test.go",
+      "declaration": "TestPackageAgentAndModelDiscoveryMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name. Frozen baseline29318400 model discovery samples and all48 Agent preferences in testdata/agent-discovery-contract.json; independent parameter/client-output expectations, projection and public encode/decode preserve exact tool IDs, 9007199254740993 and null, source history unchanged. Focused run3.610s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/agent_test.go",
+      "declaration": "compileAgentDefinition",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/agent_test.go",
+      "declaration": "TestAgentPolicyRequiresTransportEffortAndIndependentEvidence",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name in agent_test.go. Audited against original: custom ID, missing policy, undeclared effort, missing-stream evidence, mismatched expectation, output-limit loss, tool-result loss and sample-hash coverage all retained through genuine package compilation. Focused run3.610s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/agent_test.go",
+      "declaration": "TestAgentRequestPreparesOnlyLocalResultsWithoutMutatingHistory",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name in agent_test.go. Original local JSON result with large integer/null and scoped signature retained, provider identity refused, unchanged input checked. Focused run3.610s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_history_package_migration_test.go",
+      "declaration": "TestAnthropicPackageHistoryOwner",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name. All6 known history-control variants, all7 unmatched controls, model edit/removal, native byte preservation, native-free canonical history/string text-block reconstruction and canonical+unmatched conflict retained. Independent wire fields replace legacy codec oracle. Focused run0.963s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_package_migration_test.go",
+      "declaration": "TestAnthropicPackageDraftMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original 30 non-event sample wires and 12 boundaries remain in migration-wire-contract.json / migration-boundaries.json. TestDraftSourceReasoningBoundaries retains all 14 positive and 9 invalid Anthropic wire controls, opposite spoofed context flag, and native-free reconstruction; adds symmetric empty/null output_config markers. TestDraftAnthropicNativeEdits retains all three hosted/opaque-tool and reordered inline-system edits, exact long integer and cache removal/null. TestDraftAnthropicNativeFreeCapacity retains original 3 MiB media and 1,800 blocks, in addition to TestLargeRequestSnapshotBudget native coverage. TestDraftAnthropicOwnerEdits retains original empty/nested/equal-leaf owner literals. Core 2 now stores each unknown reasoning remainder only in wire:claude: replacing that owner edits it rather than colliding with a duplicate retired wrapper; exact single-owner result is asserted, with separate equal canonical budget/effort collision rejections. Full original DraftMigration plus new helpers tested on actual Spec/Mapping/core 2 without legacy execution."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_package_migration_test.go",
+      "declaration": "checkAnthropicRequestOwnerMerge",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_package_migration_test.go",
+      "declaration": "checkAnthropicNativeEdits",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_package_migration_test.go",
+      "declaration": "checkAnthropicReasoningMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_stream_identity_test.go",
+      "declaration": "TestAnthropicStreamResponseIDExtension",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "All six response_id extension variants retained across complete lifecycle; source core identity remains message.id=actual and independent final validator also accepts opaque extensions. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_stream_target_migration_test.go",
+      "declaration": "TestAnthropicPackageTargetStreamMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored in target_migration_audit_test.go. Original text/tool/unsigned reasoning/signed reasoning/encrypted streams retained. Unprepared original missing-usage start rejects before emission; declared core usage preparation passes independent expected wire and final Spec. Signed payloads/scopes and exact tool argument integer retained. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_stream_target_migration_test.go",
+      "declaration": "TestAnthropicPackageTargetStreamContinuations",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all seven original transformations: late tool identity, repeated/growing text snapshots, automatic tool close, inferred tool stop, late usage metadata, content-frame and terminal-frame extensions. Independent exact text/tool arguments, one start/stop/terminal and metadata ownership assertions replace codec equality. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_stream_target_migration_test.go",
+      "declaration": "TestAnthropicPackageTargetMetadataRejections",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original foreign response metadata, event extension and unmapped content citation reject with exact owner paths. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_stream_target_migration_test.go",
+      "declaration": "TestAnthropicPackageTargetResourceOrigin",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Both nil and Gemini provenance for Anthropic encrypted_content reject /resources before emission. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_stream_target_migration_test.go",
+      "declaration": "prepareLegacyTargetUsage",
+      "mechanicalReason": "legacy implementation characterization",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_system_message_test.go",
+      "declaration": "TestAnthropicSystemMessageCustomModulesAndExplicitHoist",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored original user+inline-system request across base/custom, custom/base and custom/custom identities. Independent decode-response program edit cannot alter request behavior. Explicit scope hoist is now authored in the target Mapping layout and wire selectors and must emit one lossy diagnostic; default keeps original wire. No retired Module/After path is reintroduced. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_system_message_test.go",
+      "declaration": "TestAnthropicSystemMessageCombinationAndAfterMapping",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored original top+inline-system+cache+output_config request with an independently written core expectation, actual Verify and full binding evidence. Destructive authored developer-role output is rejected by semantic effect proof; the same wire independently fails final Spec. This replaces retired After execution with actual package authoring boundaries. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/anthropic_thinking_usage_test.go",
+      "declaration": "TestAnthropicThinkingUsageMapping",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original null/empty/zero/nonzero details and invalid inputs through packages; unknown detail survives own reconstruction without Native."
+    },
+    {
+      "file": "backend/protocol/builtin/block_assistant_history_test.go",
+      "declaration": "TestBlockHistoryKeepsThinkingTextAndCallsInOneTurn",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored original eight-root mixed Responses reasoning/text/tool/history request and mixed-block-history combination evidence for both block targets. Native-free target grouping retains order, IDs and arguments; compatible/strict/disabled/cache-protected and ID/status variants retained. Focused seven-test run 1.155s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/block_package_failure_test.go",
+      "declaration": "TestAnthropicPackageFailureEnvelopes",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all 12 positive wire inputs: six known error families, nullable and opaque code/param, redundant code, plain/escaped strings, unknown large integer/owner null and no-status context. Native exact replay plus native-free errors/unknown remainder equality; missing category explicit upstream default. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/block_package_failure_test.go",
+      "declaration": "TestGeminiPackageFailureEnvelopes",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all 11 original wires: status aliases, mismatched numeric code, missing status, details/null, escaped/string errors, unknown status code9007199254740993/scale1e2, missing context and opaque code=false. Native-free preservation requires unknown code500 retained; normalization defaults explicitly asserted, known category redundant code omitted. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/block_package_failure_test.go",
+      "declaration": "TestBlockPackageFailureRejections",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored null type/status wire rejection and all four invalid canonical error/foreign-owner cases independently for Anthropic and Gemini. All original negatives retained; shared helper checks structured rejection without requiring legacy first-error wording. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/cache_creation_alias_test.go",
+      "declaration": "TestCacheCreationAliasValidationAndNativeMutation",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "verification": "Full compiled package request/response contract; focused test passed during cutover."
+    },
+    {
+      "file": "backend/protocol/builtin/cache_ownership_test.go",
+      "declaration": "TestUsageReservedDetailNamesAreRejected",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original three reserved input detail names reject before overwriting canonical cache counters; unrelated input.text_tokens7 independently survives actual Chat response encoding. PASS1.078s."
+    },
+    {
+      "file": "backend/protocol/builtin/cache_write_test.go",
+      "declaration": "TestStandardCacheWriteCountersPreservePresenceAndRejectConflicts",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original Chat/Responses missing/zero/nonzero, five invalid counts, conflicting and equal aliases through package response boundaries."
+    },
+    {
+      "file": "backend/protocol/builtin/cache_write_test.go",
+      "declaration": "TestCacheWriteLateFrameAndNativeReplay",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original partial late snapshots and explicit zero through validated full streams; native same-wire equality, count edit and deletion do not resurrect old alias."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_history_mixed_test.go",
+      "declaration": "TestChatMixedHistoryCombinationUsesProjectedOrder",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored exact mixed-tool-history combination sample with two tool calls/results, interleaved assistant text and argument 9007199254740993. verifyRequestEvidence appends original sample, verifies it actually runs and is not skipped; all original package samples remain. Focused seven-test run 1.155s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_package_migration_test.go",
+      "declaration": "TestChatPackageDraftMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original 25 non-event wires/four explicit boundaries remain frozen. TestDraftRequestCacheRemainders retains all four original cache-owner shapes, raw native spelling, root-Native removal, canonical mode edit and owner removal. TestDraftRequestOwnerMerges retains empty/nested/equal-leaf/null owner input and structured rejection; TestDraftChatNamedToolChoice retains the original named-tool input and native-free encoding. TestDraftChatCacheAccounting retains all 16 exact cache alias/overflow/collision usage inputs and independent counter expectations plus native-free roundtrip. TestDraftChatCollectedUsage retains all nine original stream/options/collect combinations and caller immutability. TestDraftChatReasoningInputs retains all 13 original typed/legacy input combinations; retired parameters wrappers reject, typed effort/null remain positive, canonical conflicts retain their current structured paths. TestDraftTrackingInputs retains shared 16 tracking rows plus whitespace-null for typed and raw APIs; removed anthropic_metadata wrapper is explicitly rejected, canonical identity positive counterparts remain covered by TestRequestTrackingIdentityMapping/Spellings. TestDraftMediaURIInputs retains all five original Chat URI edge inputs, including absent URL and null rejection. No legacy oracle."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_package_migration_test.go",
+      "declaration": "checkChatCacheUsage",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/chat_package_migration_test.go",
+      "declaration": "checkChatCollectedUsage",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/chat_package_migration_test.go",
+      "declaration": "checkChatReasoningParameters",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/chat_package_migration_test.go",
+      "declaration": "checkChatRequestOwners",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/chat_package_migration_test.go",
+      "declaration": "checkChatOwnerMerge",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/chat_startup_test.go",
+      "declaration": "TestChatStartupCustomModulesAndPolicy",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Replaced by TestChatStartupCustomMappingsAndPolicy and source_prelude_test.go. Actual old provisional id a/created1→b/81 input succeeds for custom source across four targets in compatible; strict and disabled retain rejection, later identity mutation still rejects. Generic sourcePrelude pins decoder/route, bounds one frame, preserves raw transport evidence, EOF/cancel and resource negatives; host original startup PASS5.8s."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_stream_package_migration_test.go",
+      "declaration": "TestChatLegacyMetadataRetentionBoundaries",
+      "mechanicalReason": "legacy implementation characterization",
+      "status": "restored-on-package-contract",
+      "coverage": "Original512-byte budget, eight96-character probability fragments and optional later empty-item checkpoint retained. Bound shared StreamBudget remains valid through full sequence because track_array retains fixed-size delivered-prefix digest; exactly8 probability frames and one terminal without probability tail. Legacy accumulated-value internal inspection replaced by actual public retention budget. PASS0.632s."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_stream_package_migration_test.go",
+      "declaration": "TestChatLegacyAnnotationsCompareRawJSON",
+      "mechanicalReason": "legacy implementation characterization",
+      "status": "restored-on-package-contract",
+      "coverage": "Original four first/first/spaced/spaced annotation snapshots retained. With delivered OK text only first emits; semantic JSON spelling cannot duplicate annotations. Original no-text case now explicitly refused with no frames by actual final range contract. PASS0.632s."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_stream_package_migration_test.go",
+      "declaration": "TestChatPackageTargetStreamMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored original text/tool/reasoning samples across nil, empty, include and exclude ClientOutput preferences. Actual target encoding, independent authored wire expectations, final lifecycle and delivery commit validate each branch. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_stream_package_migration_test.go",
+      "declaration": "TestChatPackageTargetMetadataMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all three original annotation/raw spelling, native finish reason and metadata-only annotation cases, with original service-tier snapshots and late usage. Independent exact delivered text, citation count, terminal/native reason, usage counts and first/final tier checks replace legacy encoder equality. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_stream_package_migration_test.go",
+      "declaration": "TestChatPackageStreamReplaysOriginalFramesOnce",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "All actual declared Chat source sequence samples replay each raw frame exactly once, no fabricated FinishEvents tail; final output binding/validation committed. Original public invariant independent of deleted legacy encoder. PASS0.605s."
+    },
+    {
+      "file": "backend/protocol/builtin/chat_tool_delta_test.go",
+      "declaration": "TestChatToolIdentityIsEmittedOnceWithArgumentFragments",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original two parallel IDs, once-only audit_echo, split argument fragments and stable dense indexes restored through actual bound target Mapping/Spec. PASS0.598s."
+    },
+    {
+      "file": "backend/protocol/builtin/client_output_test.go",
+      "declaration": "TestChatClientOutputContract",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name on real Chat package; original stream=true/include_usage=true/messages=[] input remains and ClientOutput is separate from Parameters. Adds independent client raw-option edit with and without Native, immutable source. Ordinary focused1.181s and race24.079s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/content_canonical_test.go",
+      "declaration": "TestCanonicalContentMatchesCodec",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "All original string inputs through actual Chat source package: empty, 256KiB, escapes, HTML chars, U+2028/U+2029, emoji, invalid UTF8. Independent decoded text and source-byte assertions replace removed codec oracle. PASS0.568s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_audit_test.go",
+      "declaration": "TestAuditMetadataScopeAndStrict",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original Chat logprobs=null/service_tier/default fixture restored and strengthened by clearing Native. Found and fixed null/empty choice logprobs loss in own Mapping; source role ownership, strict foreign loss and invalid service_tier42 still reject. PASS0.780s and builtin full15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_context_test.go",
+      "declaration": "TestResponsesContextOldCustomAfterAndDisabled",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Custom Responses ID+family through actual declaration retains null reference; enabled reasoning-controls normalizes and disabled target refuses. Unproved identity let wrapper is explicitly refused by emission proof; old after itself rejected in generic contract. Original source intent unchanged. PASS1.273s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_context_test.go",
+      "declaration": "TestResponsesContextSemanticValidationAndEvidence",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original authored invalid truncation/reference values remain negative. Original null-reference+include wire added as independent expected core sample (not decoder oracle), verifies and participates in paired evidence with unchanged fidelity and exact source normalization path. PASS1.273s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_envelope_test.go",
+      "declaration": "TestEnvelopeDefaultsUseInstalledMappings",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Custom Gemini Mapping with Anthropic family label tests declaration ownership. Only enabled target usage envelope produces explicit placeholder counters; disabled rule leaves final Anthropic Spec rejecting missing usage. PASS0.780s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_envelope_test.go",
+      "declaration": "TestStrictEnvelopeEvidenceRequiresPositiveFixtures",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Strict Gemini→Anthropic text/usage proof keeps unmetered stream rejection negative, then removal of the one metered text fixture blocks paired coverage. Recompiled policy pins changed Mapping hash. PASS0.780s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_projection_test.go",
+      "declaration": "TestUsageProjectionIsolationAndModes",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original counters and four targets × compatible/strict restored. Both response and event usage project through declared rules; actual target encoding succeeds, source accounting stays unchanged, all strict losses reject. Focused PASS0.558s; builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_projection_test.go",
+      "declaration": "TestCustomModuleProjectionAndUnknownBoundaries",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original custom Responses ID, include encrypted input and malformed responses_text/parallel_tool_calls restored. Revealed genuine silent-ignore: all target mappings now reject undeclared parameters with one combined owner/parameter guard; Responses text uses own wire bucket. Unknown inputs cannot disappear or mutate. Obsolete inferred-module behavior replaced by explicit-default custom tests. FocusedPASS2.492s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_projection_test.go",
+      "declaration": "TestProjectionEvidenceAndDisabledRules",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original Gemini3input/2visible+3thought/8total/toolUse1 wire and independent core2 expectation preserved. Compatible passes lossy projection; strict exact sample is Rejected with no positive capabilities; disabled proof fails. Existing strict positive-evidence test separately ensures rejected fixtures cannot satisfy coverage. Original include request has independent clientOutput expectation and must execute in combination proof. Selected model bound by actual verification context. PASS2.492s."
+    },
+    {
+      "file": "backend/protocol/builtin/conversion_projection_test.go",
+      "declaration": "TestUsageProjectionNeverHidesInvalidOrUnknownDetails",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original inconsistent subtotal, vendor.unknown=0 and negative TTL counter retained. Invalid counters reject before projection; unknown detail survives core unchanged and target encoder rejects /usage/details. PASS0.558s."
+    },
+    {
+      "file": "backend/protocol/builtin/deepseek_usage_test.go",
+      "declaration": "TestDeepSeekPromptCacheAliases",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original two cache hit/miss inputs, own wire equality, three foreign projections and all six invalid/conflicting inputs through source Spec/Mapping."
+    },
+    {
+      "file": "backend/protocol/builtin/deepseek_usage_test.go",
+      "declaration": "TestDeepSeekCacheMissAndNestedHitInferInput",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original nested cache hit plus miss source response; count5 is inferred and cache read is observed."
+    },
+    {
+      "file": "backend/protocol/builtin/definitions_test.go",
+      "declaration": "TestShippedDefinitionsVerify",
+      "mechanicalReason": "retired codec API: Definitions",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Replaced by TestBuiltinPackageEvidence plus TestShippedPackageLoaderUsesAuthoredSources (package_loader_test.go). Actual four default packages compile with zero codecs and Verify checks independent expected fixtures/capabilities; retired Modules count has no runtime meaning. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/error_protocol_test.go",
+      "declaration": "TestProtocolErrorBodyMatrix",
+      "mechanicalReason": "retired codec API: ProtocolErrorBody",
+      "status": "restored-on-package-contract",
+      "coverage": "All eight categories now tested against all four Mapping encoders with independently constructed required error fields. Host HTTP class defaults checked separately; observed Anthropic529 decode covered by TestDeclaredFailureCategories. PASS0.561s."
+    },
+    {
+      "file": "backend/protocol/builtin/error_protocol_test.go",
+      "declaration": "TestProtocolErrorBodyUpstreamOverride",
+      "mechanicalReason": "retired codec API: ProtocolErrorBody",
+      "status": "restored-on-package-contract",
+      "coverage": "Original slow_down/quota429 preserved and extended to observed524. Generic host status remains observed; Chat declared error code passes unchanged. PASS0.561s."
+    },
+    {
+      "file": "backend/protocol/builtin/error_protocol_test.go",
+      "declaration": "TestErrorClassOrDefault",
+      "mechanicalReason": "retired codec API: ProtocolErrorBody",
+      "status": "restored-on-package-contract",
+      "coverage": "Unclassified host error stays server/500 without invoking removed provider renderer. PASS0.561s."
+    },
+    {
+      "file": "backend/protocol/builtin/escaped_roles_test.go",
+      "declaration": "TestWireContractEscapedRoles",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Four original equivalent/invalid/escaped role cases restored under independent final Spec. Anthropic positive final envelopes add required max_tokens8; Responses invalid role/type bypass remain negative. PASS0.568s."
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_package_migration_test.go",
+      "declaration": "TestGeminiPackageDraftMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original 28 frozen sample wires/five boundaries remain. TestDraftSourceReasoningBoundaries retains all 11 positive/five invalid Gemini wire controls; TestDraftGeminiReasoningEdits retains current-level/removal with unknown remainder; TestDraftGeminiConflictingReasoning retains both original canonical conflict requests. TestDraftRequestCacheRemainders retains four cache remainder inputs, mixed long integers/null/false/scientific spelling, native and native-free reconstruction, and system-owner input. Redundant systemInstruction.role is normalized only without root Native, consistent with TestGeminiSystemInstructionRoleAcrossInstalledCodecs; its unknown vendor data remains exact. TestDraftGeminiOwnerContainers retains absent/empty/null bucket inputs. TestDraftRequestOwnerMerges retains all six generationConfig owner cases with independent union expectations and structured collision rejection, now repaired in parent-owned Mapping. No provider codec oracle or resource-limit changes."
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_package_migration_test.go",
+      "declaration": "checkGeminiGenerationOwner",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_package_migration_test.go",
+      "declaration": "checkGeminiCacheRemainder",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_package_migration_test.go",
+      "declaration": "checkGeminiOwnerBucket",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_package_migration_test.go",
+      "declaration": "checkGeminiReasoningMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_package_migration_test.go",
+      "declaration": "compareGeminiMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_safety_test.go",
+      "declaration": "TestGeminiSafetySettingsCustomPreviewAndCombination",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original five disabled safety categories and max32 retained under custom Spec ID, independent canonical category/threshold expected. All four combinations, typed/runtime vs value/preview output and diagnostics checked. Authored passthrough still fails final Spec; defaults remain explicit declarations. Focused suitePASS."
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_system_instruction_test.go",
+      "declaration": "TestGeminiSystemInstructionOldCustomCombination",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original SDK systemInstruction role=user, prefix/hello and max32 restored under custom Spec ID with independent core2 expected and explicit client storage owner. Verification and all four target combination samples pass. Retired after registration covered by v4 rejection, not executed. PASS1.864s/then final custom suitePASS."
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_thinking_total_test.go",
+      "declaration": "TestGeminiThinkingTotalInfersOnlyUnambiguousOutput",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original eight usage inputs; real DecodeResponse, inferred/observed/absent output and native own roundtrip."
+    },
+    {
+      "file": "backend/protocol/builtin/gemini_thinking_total_test.go",
+      "declaration": "TestGeminiThinkingTotalLateSnapshotRemainsInferred",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Actual source Spec stream, partial/repeated usage and later observed output replacing inference."
+    },
+    {
+      "file": "backend/protocol/builtin/identity_after_test.go",
+      "declaration": "TestIdentityAfterEncodingEligibility",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Retired After-specific optimization dispatch has no v4 equivalent. TestCompileSourcesRejectsInvalidDocuments now explicitly rejects module, after and transform fields; PackageCacheNative* independently tests actual current encoding reuse, unchanged baselines, workspace/provenance/edit invalidation. Generic full race passed; explicit retired-field counterexamples focused passed."
+    },
+    {
+      "file": "backend/protocol/builtin/identity_after_test.go",
+      "declaration": "TestIdentityAfterRequestSampleParity",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Old test compared module JSON/typed execution with identity After and had no independent expected result. Removed interfaces are now rejected by TestCompileSourcesRejectsInvalidDocuments. TestBuiltinPackageEvidence verifies all request samples against authored expected semantics, and TestPackageRuntimeRetainsWireAndEffectChecks protects current request boundaries. No old codec oracle remains."
+    },
+    {
+      "file": "backend/protocol/builtin/large_request_test.go",
+      "declaration": "TestNativeRequestCanShrinkToTargetLimit",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name using authored Mapping.Limits. Original2048-byte payload shrinks under1024 target while extra9007199254740993 survives; expanding back must yield ResourceLimitError. Focused3.874s PASS; no limits raised."
+    },
+    {
+      "file": "backend/protocol/builtin/large_request_test.go",
+      "declaration": "TestGenericLargeRequestAndAfterBudget",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name. Original9MiB request text preserved by public package decode/encode. Retired identity-After dispatch has no remaining execution branch; actual DSL request path now exercised. Focused3.874s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/message_phase_test.go",
+      "declaration": "TestResponsesMessagePhaseOldCustomRequestProjection",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original commentary assistant request with store=false/max64 checked under custom ID+family, four targets and compatible/strict/disabled modes. Disable targets history-response-metadata; phase retained only by own protocol, source intent unchanged, foreign loss diagnosed. Focused suitePASS."
+    },
+    {
+      "file": "backend/protocol/builtin/message_phase_test.go",
+      "declaration": "TestResponsesMessagePhaseCombinationEvidence",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original complete message-phase wire and independent expected retained with core2/source-owned metadata meaning. Source verification plus four targets x compatible/strict/disabled executes the exact added sample with no skipped evidence. Focused suitePASS."
+    },
+    {
+      "file": "backend/protocol/builtin/metadata_audit_test.go",
+      "declaration": "TestAuditMultipleChoicesKeepOwnership",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original sparse choices2/4, separate vendor markers, empty/null logprobs and finish reasons retained without Native; entire choices array independently compared and no choiceExtensions leaks at response root. PASS0.564s."
+    },
+    {
+      "file": "backend/protocol/builtin/metadata_snapshot_test.go",
+      "declaration": "TestMetadataUpdatesKeepOwnerAndMappedFieldChecks",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Audited existing restoration against baseline. Original auto/default metadata path replacement, parallel choice logprobs owners and flex/default mapped conflict run through actual core collector and Chat encoding. Focused normal PASS 2.273s and race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/model_policy_package_migration_test.go",
+      "declaration": "TestPackageThinkingProjectionMatrix",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name: original four sources by four target models, compatible and strict. Standalone model-policy stage isolates ClientOutput as well as Parameters; all32 checks enforce high effort,8192 limit, exact wire-decoded reasoning and strict rejection of generation/reasoning scope loss, diagnostic policy identity. Focused0.963s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/model_policy_package_migration_test.go",
+      "declaration": "TestPackageModelLateRulesMatchExistingPolicy",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name: original7 late edits x4 packages. Budget string/object/null, retired control conflict/invalid bucket, interleaved operation and unresolved history are retained; public target encoding is additionally checked. Gemini can express null budget; Anthropic can express historyRetention all; other unsupported controls refuse. Source input unchanged. Focused0.936s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/model_policy_package_migration_test.go",
+      "declaration": "TestPackageModelProjectionEdgesMatchExistingPolicy",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name: original12 edge cases x2 modes. Independent budget6553/24576/8192, expanded output8193, dynamic medium, high effort, disabled/unknown Agent behavior and strict-loss rejection. Both original interleaved inputs lack tools and stay rejected. Focused0.936s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/model_policy_package_migration_test.go",
+      "declaration": "TestPackageModelOutputControlsMatchExistingPolicy",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name: original13 cases x4 packages, including absence/null/0/-0/128,4096 bound, default8192 vs explicit hard cap, invalid strings/negative, late invalid/cap edits and disabled rule. Independent exact limit/default origin, candidate/global rejection and policy evidence assertions. Focused0.963s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/native_transition_migration_test.go",
+      "declaration": "TestLegacyNativeStreamTransitionFailure",
+      "mechanicalReason": "legacy implementation characterization",
+      "status": "restored-on-package-contract",
+      "coverage": "Original modified native delta rejected by unbound encoder; legal required start envelope retained, bound continuation covered separately. PASS0.598s."
+    },
+    {
+      "file": "backend/protocol/builtin/output_text_test.go",
+      "declaration": "TestResponsesOutputTextPolicyAndCustomModules",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original output_text fixture under custom ID retained; unrelated container identity stripped only to isolate original duplicate-visible-text condition. compatible+strict normalize only when response-metadata enabled; explicitly disabled authored defaults are not inferred active from family. Original old after/module dispatch itself is retired. PASS0.881s."
+    },
+    {
+      "file": "backend/protocol/builtin/package_final_request_test.go",
+      "declaration": "TestPackageFinalRequestKeepsOperationConstraints",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract"
+    },
+    {
+      "file": "backend/protocol/builtin/package_migration_test.go",
+      "declaration": "checkPackageTrackingUsers",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/package_migration_test.go",
+      "declaration": "checkPackageMediaURIs",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/package_migration_test.go",
+      "declaration": "checkMigrationReencoding",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/performance_review_test.go",
+      "declaration": "BenchmarkReviewRequestBoundaries",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name with original2MiBAnthropic request and default/json-rule boundaries through actual DSL plus both encoding boundaries. The three old after-wrapper variants address a retired execution API and are separately refused by TestCompileSourcesRejectsInvalidDocuments; no old executable shim retained. Both1xsmokePASS, not performance acceptance."
+    },
+    {
+      "file": "backend/protocol/builtin/profiling_overhead_test.go",
+      "declaration": "TestContinuationExtractionNoChangePreservesWire",
+      "mechanicalReason": "retired codec API: ExtractContinuationCarriers",
+      "status": "restored-on-package-contract",
+      "coverage": "Three original families, 64KiB carrier-like user text and exact 9007199254740993 retained. Public extraction now enforces source Spec: original missing-model Chat/Anthropic bodies reject, valid equivalents add model and Chat root n becomes vendor_count; Native source bytes remain equal. PASS0.873s."
+    },
+    {
+      "file": "backend/protocol/builtin/profiling_overhead_test.go",
+      "declaration": "TestContinuationExtractionRebuildsOnlyChangedHistory",
+      "mechanicalReason": "retired codec API: ExtractContinuationCarriers",
+      "status": "restored-on-package-contract",
+      "coverage": "Original carrier, untouched user message/9007199254740993, assistant text, input immutability and invalid token negative restored through ExtractContinuations/AcceptContinuations/public encoding; valid source envelope now has model. PASS0.873s."
+    },
+    {
+      "file": "backend/protocol/builtin/request_output_test.go",
+      "declaration": "TestDeferredRequestOutputParity",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name using public EncodeRequest and EncodeRequestValue, not removed deferred renderer. Original64KiB text and1MiB tool-result image, tool argument9007199254740993, message extension9007199254740993 all checked. Added max_tokens64 required by current real Spec. Ordinary1.181s and race24.079s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/request_projection_test.go",
+      "declaration": "TestAnthropicThinkingRetentionProjectionScope",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored native/Chat/Responses/disabled/custom-package retention cases through real package runtime. Current core field historyRetention replaces retired opaque wrapper; Chat/Responses and disabled target retain rejection at /reasoning/historyRetention, native retains exact wire/no projection, custom package applies declared projection with evidence. Focused seven-test run 1.155s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/request_projection_test.go",
+      "declaration": "TestRequestProjectionCombinationReportsInfoLoss",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored original tracking-hint request metadata trace=anonymous, store=false, Responses-to-Gemini combination. Requires lossy_compatible result and actual request-projection info-severity evidence; original package samples remain. Focused seven-test run 1.155s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/request_workspace_test.go",
+      "declaration": "observedRequestModule",
+      "mechanicalReason": "retired codec API: module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/request_workspace_test.go",
+      "declaration": "",
+      "mechanicalReason": "retired codec API: module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/request_workspace_test.go",
+      "declaration": "TestRequestWorkspaceIsolationAndInvalidation",
+      "mechanicalReason": "depends on retired testRequestWorkspaceIsolationAndInvalidation",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same name: original Anthropic unknown9007199254740993, authorization mutation,8 concurrent clones, serialization replay and single authorization retained. Exact private workspace invalidation is separately covered by protocol/package_cache_native_test.go TestPackageCacheNativeReusesOnlyExactWorkspace(source,value,context,scope,independent compilation,serialization,limits,account). Ordinary1.181s and race24.079s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/request_workspace_test.go",
+      "declaration": "testRequestWorkspaceIsolationAndInvalidation",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/response_model_test.go",
+      "declaration": "TestChatResponseModelModuleSelectionAndCombination",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored custom identity/default declaration, both handwritten direction replacements, all three foreign sources and original missing-model-audit wire with vendor_integer 9007199254740993. Malformed passthrough packages now reject compilation; foreign core sources cannot inherit a guessed Chat model. Independent expected core plus VerifyCombination requires original sample and lossy repair evidence. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_control_package_test.go",
+      "declaration": "TestResponsesPackageControlSourceStream",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Audited all nine original sequences including output:42/usage:false inside response.failed and usage after error. Independent lifecycle, exact failure message, partial tool identity and unknown metadata checks replace legacy differential equality. Initial run exposed two production failures, retained unchanged; parent repair now passes focused 0.551s and combined race 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_control_package_test.go",
+      "declaration": "TestResponsesPackageControlPreservesExtensions",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Four original heartbeat/error extension inputs retained in responses_stream_observation_test.go; exact complete raw frame retained as Unmapped with source protocol/direction/path. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_metadata_test.go",
+      "declaration": "TestResponsesMetadataCustomMappingsAndLimits",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored custom identity native replay, incompatible program rejection and original 4096-byte frame budget. The authored native event receives omission authority only from actual independent Spec observation; serialized semantic data cannot manufacture that receipt. Old /metadata path-marker inference is retired. Original auxiliary payload and source identity retained. Focused race PASS 33.228s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_metadata_test.go",
+      "declaration": "TestResponsesMetadataAfterCannotEmitInvalidEnvelope",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original metadata:null invalid output injected into actual v4 authored program without growing expression depth; immediate encode rejects with no frames, independent final and source validators also reject. PASS0.661s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestResponsesPackageFailureEnvelopes",
+      "mechanicalReason": "depends on retired checkOpenAIPackageFailureEnvelopes",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all 17 original positive wire inputs including escaped/string errors, nullable status/code/param, aliases, vendor large integer/null/array and error-only store/provider-state+tool_usage42. Requires failed outcome, exact Native replay, native-free Error and owner retention. Only unspecified category defaults use explicit per-fixture expected canonical error. server_error alias and pure-error Spec guards fixed. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestChatPackageFailureEnvelopes",
+      "mechanicalReason": "depends on retired checkOpenAIPackageFailureEnvelopes",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all 17 original positive inputs, replacing response content fixture with original choices form. Checks failure, exact Native replay and native-free error/owner preservation. Original status=failed must be retained in core after normalization, then redundant opaque status removed from equality expectation. Known server_error maps back to server category. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "checkOpenAIPackageFailureEnvelopes",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "checkPackageFailureEnvelope",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestResponsesPackageFailureContextBoundary",
+      "mechanicalReason": "depends on retired checkOpenAIPackageFailureContext",
+      "status": "restored-on-package-contract",
+      "coverage": "Original invalid HTTP context matrix restored with decode/encode direction, issue code and runtime path assertions. Included in builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestChatPackageFailureContextBoundary",
+      "mechanicalReason": "depends on retired checkOpenAIPackageFailureContext",
+      "status": "restored-on-package-contract",
+      "coverage": "Original invalid HTTP context matrix restored with decode/encode direction, issue code and runtime path assertions. Included in builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "checkOpenAIPackageFailureContext",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestResponsesPackageFailureRejections",
+      "mechanicalReason": "depends on retired checkOpenAIPackageFailureRejections",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored all four invalid wire errors and nine invalid canonical/opaque owner errors, including scalar error, foreign wire owner with 9007199254740993, conflicting owned message, details and null/array own owner. All must reject structurally through actual Mapping. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestChatPackageFailureRejections",
+      "mechanicalReason": "depends on retired checkOpenAIPackageFailureRejections",
+      "status": "restored-on-package-contract",
+      "coverage": "Restored same four invalid wire errors and nine canonical/owner negatives on actual Chat package; own namespace substitution retained. No legacy differential/error-text oracle. Failure suite 0.570s PASS."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "TestChatPackageFailureValidationOrder",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Both original multifault inputs plus isolated error/usage negatives retained. Structured source rejection is required; obsolete incidental first-error wording is not. Included in builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_failure_test.go",
+      "declaration": "checkOpenAIPackageFailureRejections",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_migration_test.go",
+      "declaration": "TestResponsesPackageMetadataWithoutNative",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original empty annotations/logprobs fixture, both native preservation modes, source path/scope and rebuilt metadata retained. Independent expected complete response includes required object=response. PASS0.740s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_migration_test.go",
+      "declaration": "TestResponsesPackageGroupedHistory",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original before/adjacent/tool(9007199254740993)/after/empty message input restored for request and response. Response layout now explicitly executes response-output-layout with boundary diagnostic; independent wire arrays preserve runs and tool identity. PASS0.740s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_migration_test.go",
+      "declaration": "TestResponsesPackageDerivedTextAndNullFilters",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "All five original positive and seven negative wires restored, native-free field presence/value and reconstructed decode checked; intervening exact large tool argument retained. PASS0.740s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_migration_test.go",
+      "declaration": "TestResponsesPackageDraftMigration",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original 36 sample wires/six boundaries remain. TestDraftResponsesExtensions retains three original unknown/metadata/null response inputs across native/model-edit/native-free modes, raw native spelling, caller immutability and three invalid metadata types. TestDraftResponsesModelOwners retains all 15 original model/owner tuples and three invalid owner container types; models not allowed by actual final request Spec are explicitly rejected rather than treated as valid public requests, while direct missing/empty model behavior remains independently checked. TestDraftRequestCacheRemainders retains four source cache-owner inputs and model edits; native-free input-string canonicalization is intentional, but empty/null cache markers now remain and corresponding frozen rebuilt expectations include the original markers. Shared 16 tracking rows plus whitespace-null and Responses base64 image input are retained in TestDraftTrackingInputs/TestDraftMediaURIInputs. No legacy execution."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_migration_test.go",
+      "declaration": "checkResponsesResponseExtensions",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_migration_test.go",
+      "declaration": "checkResponsesModelOwnerEncoding",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_package_tool_usage_test.go",
+      "declaration": "TestResponsesPackageToolUsage",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "All original7 hosted ledger shapes × with/without model usage and9 malformed cases restored. Independent exact wire assertion after removing Native; hosted-only never invents model counters, long integers/unknown fields retained and source diagnostic paths checked. PASS0.585s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_progress_package_test.go",
+      "declaration": "TestResponsesPackageProgressSourceStream",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original partial usage, tails, empty hosted containers, metadata-before-start and ordinary update shapes restored. Independent collector assertions cover exact count/ownership/terminal semantics instead of deleted codec equality. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_progress_package_test.go",
+      "declaration": "TestResponsesPackageProgressReplacesLargeUsageField",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Both original sequential4MiB usage extension snapshots retained; source validation and EventReplay complete under unchanged limits and emit exactly one observation per replacement. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_progress_package_test.go",
+      "declaration": "TestResponsesPackageProgressPreservesExtensions",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original created/cache alias/hosted usage unknowns carrying 9007199254740993 stay source-owned complete Unmapped frames. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_stream_package_migration_test.go",
+      "declaration": "responsesToolStreamSample",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_stream_package_migration_test.go",
+      "declaration": "TestResponsesPackageToolSourceStream",
+      "mechanicalReason": "depends on retired responsesToolStreamSample",
+      "status": "restored-on-package-contract"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_stream_package_migration_test.go",
+      "declaration": "TestResponsesPackageToolWireIdentityBoundaries",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_stream_roundtrip_test.go",
+      "declaration": "TestResponsesPackageStreamRebuildAndNativeDelivery",
+      "mechanicalReason": "depends on retired responsesToolStreamSample",
+      "status": "restored-on-package-contract"
+    },
+    {
+      "file": "backend/protocol/builtin/responses_text_stream_package_test.go",
+      "declaration": "TestResponsesPackageSourceCapacity",
+      "mechanicalReason": "legacy differential oracle",
+      "status": "restored-on-package-contract",
+      "coverage": "Original48 messages under StateItems64 retained in responses_source_capacity_test.go with independent final wire validation, exactly48 ItemFinished and one ResponseFinished containing all48. No limit increase. Builtin full PASS15.808s."
+    },
+    {
+      "file": "backend/protocol/builtin/responses_turn_state_test.go",
+      "declaration": "TestResponsesTurnStateCustomModulesAndProtectedScope",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "restored-on-package-contract",
+      "coverage": "Original custom identity, all4targets, wrong account,8MiBoversize and old forge-path retained; actual core/control forge also refuses. Conversion/encoder scopes match for positive branches. Original mixed-module and passthrough attempts now rejected as unproved or foreign v4 program at compilation. PASS0.845s."
+    },
+    {
+      "file": "backend/protocol/builtin/safety_buffering_test.go",
+      "declaration": "TestResponsesSafetyBufferingThroughoutStream",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original false at created/progress/delta/completed retained in same-source stream and absent in foreign output; true accepted at each phase, null/42/string-false refused. PASS0.630s."
+    },
+    {
+      "file": "backend/protocol/builtin/stream_logprob_bench_test.go",
+      "declaration": "BenchmarkAlgorithmTargetLogprobs",
+      "mechanicalReason": "retired codec API: streamModule",
+      "status": "restored-on-package-contract",
+      "coverage": "Root restored actual compiled Responses target pipeline, output Spec validation and delivery commits. Original 128/512/2048 probability fragment load and default 100,000-node aggregate limit retained. Root Mapping timing fix completes item snapshots on response.finished and keeps final response for usage tail; original benchmark passed all sizes at benchtime=1x (capacity smoke only, not D0 evidence). TestResponsesClosesItemsBeforeUsageTail plus original cancellation/budget/owner/snapshot tests passed race per root verification."
+    },
+    {
+      "file": "backend/protocol/builtin/stream_logprobs_test.go",
+      "declaration": "TestTargetDeferredLogprobsPreserveFramesAndBudget",
+      "mechanicalReason": "retired codec API: streamModule",
+      "status": "restored-on-package-contract",
+      "coverage": "Original two targets x buffers256/1024/8192 x stateItems2/4096 x explicit/implicit/cancel/wrong-codec endings preserved. Metadata uses current item-owned append contract; actual declared disposition removes unsupported target IDs. Immediate metadata-only delivery, exact nine probabilities/six text chars, wrong owner refusal, structured small-limit rejection and caller immutability checked. Activation samples excluded only from isolated reduced-state fixture; production limits unchanged. PASS1.376s."
+    },
+    {
+      "file": "backend/protocol/builtin/stream_logprobs_test.go",
+      "declaration": "TestTargetLogprobSnapshotsKeepParallelItems",
+      "mechanicalReason": "retired codec API: streamModule",
+      "status": "restored-on-package-contract",
+      "coverage": "Original interleaved left/right fragments and empty left snapshot retained. Delivered arrays cannot shrink under current contract: empty snapshot must reject with no output; continued right/final confirms rollback and independent left3/right4 probabilities. Replaces legacy materializeLogprobs differential oracle with bound target Spec and independently asserted source reconstruction. PASS1.376s."
+    },
+    {
+      "file": "backend/protocol/builtin/stream_usage_ownership_test.go",
+      "declaration": "TestTargetStreamUsageMatchesSnapshotMerging",
+      "mechanicalReason": "retired codec API: streamModule",
+      "status": "restored-on-package-contract",
+      "coverage": "Original input9/output0/cache0/total9 with empty metadata and late usage restored. Mutating caller input to999 after start does not change wire; exactly one cumulative usage output. PASS0.569s."
+    },
+    {
+      "file": "backend/protocol/builtin/stream_usage_test.go",
+      "declaration": "TestStreamUsageLateComponentsRecomputeTotals",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original five Anthropic and five Gemini partial usage updates, actual source lifecycle and independent expected totals; partial TTL remains absent until both buckets arrive."
+    },
+    {
+      "file": "backend/protocol/builtin/structured_reasoning_test.go",
+      "declaration": "TestResponsesRequestNullReasoningRetainsLegacyHTMLNormalization",
+      "mechanicalReason": "legacy implementation characterization",
+      "status": "restored-on-package-contract",
+      "coverage": "Both original null/missing content and vendor decimal1.00/9007199254740993/HTML-escape input preserved. Root model edit uses original normalized vendor spelling; source snapshot is semantically equal to original and unchanged by encoding (core JSON boundary may normalize HTML on capture). PASS0.605s."
+    },
+    {
+      "file": "backend/protocol/builtin/tool_choice_equivalence_test.go",
+      "declaration": "TestGeminiSingletonRequiredToolChoiceIsNamedFunction",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "verification": "Full compiled package request/response contract; focused test passed during cutover."
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "jsonOnlyModule",
+      "mechanicalReason": "retired protocol API: Module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "",
+      "mechanicalReason": "retired protocol API: Module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "jsonEventFactory",
+      "mechanicalReason": "retired codec API: module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "jsonEventStream",
+      "mechanicalReason": "retired protocol API: Module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "",
+      "mechanicalReason": "retired codec API: module",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "",
+      "mechanicalReason": "depends on retired jsonEventStream",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "TestFinalWireValidationTypedParity",
+      "mechanicalReason": "retired codec API: Definitions",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Old test only compared two Module wrappers on each preset sample. TestBuiltinPackageEvidence plus final request/response/event Spec tables now check independent pass/fail contracts; TestPackageEventVerificationChecksWireLifecycle checks full lifecycle. Parsed-vs-combined source state isolation is covered by TestWireSourceDecodeFrameSharesReadsWithoutSharingState/CannotHideInvalidWire. No alternate validator is kept solely as oracle."
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "TestRequestWireSchemaTypedParity",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Old wire/semantic/after/reject-input/reject-output dispatch matrix only asserted module-wrapper parity. TestPackageRuntimeRetainsWireAndEffectChecks directly asserts all four synthetic input/output wire rejections and decode/encode effect guards; KeepsSemanticChecks protects core association/counter errors. Old after is explicitly rejected rather than executed. Focused generic suite passed."
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "TestResponsesNullableHistoryRetainsAuthoredBoundaries",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original null reasoning body/custom identity retained. Custom source Spec array-only assertion rejects null; final authored content{} mutation rejects. Discovered real missing final request reasoning constraint; reused request-reasoning-item with direction-sensitive shared diagnostics. Eight malformed reasoning cases now test both source and final Spec. Removed module/after parity modes covered separately by explicit retired-API rejection. PASS1.918s with package evidence."
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "",
+      "mechanicalReason": "depends on retired jsonOnlyModule",
+      "status": "removed-helper"
+    },
+    {
+      "file": "backend/protocol/builtin/typed_module_test.go",
+      "declaration": "TestJSONModuleFallbackMatchesShippedSamples",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "replaced-with-independent-contract",
+      "coverage": "JSON-only Module fallback was removed. TestBuiltinPackageEvidence executes the same actual four default packages against independent sample expectations and capability evidence, without a fallback implementation. Full builtin and race passed."
+    },
+    {
+      "file": "backend/protocol/builtin/typed_stream_pipeline_test.go",
+      "declaration": "TestTypedStreamConversionAndEncodingParity",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Replaced the deleted jsonOnlyModule encoder oracle with TestTypedEventConversionBoundaries (typed/value conversion, authored changes, limits/cancel and owner isolation), plus TestBuiltinStreamToolMatrix and TestBuiltinStreamMatrixPreservesTextAndUsageTails on original textStreams/toolStreams through all16 source-target paths and independent target Spec. Full protocol/builtin race passed; source and result isolation remains directly asserted."
+    },
+    {
+      "file": "backend/protocol/builtin/usage_test.go",
+      "declaration": "TestUsageDetailsPreserveExtensionsAndRejectUnsupportedCounters",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Unknown usage/detail/root ownership without Native, current model/count edits, all foreign targets reject, own conflict rejects, unknown usage tail and TTL projection diagnostic."
+    },
+    {
+      "file": "backend/protocol/builtin/usage_test.go",
+      "declaration": "TestUsageGeminiCreationTotalIsProjectedAndDiagnosed",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original counts, target rejection before disposition, declared projection and exactly one omission diagnostic including nil sink."
+    },
+    {
+      "file": "backend/protocol/builtin/usage_test.go",
+      "declaration": "TestUsageMissingBucketAndReasoningNormalization",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "Original missing TTL bucket and Gemini thinking/tool prompt counts through source and target package."
+    },
+    {
+      "file": "backend/protocol/builtin/visible_reasoning_test.go",
+      "declaration": "TestVisibleReasoningBindingEvidence",
+      "mechanicalReason": "retired codec API: Modules",
+      "status": "restored-on-package-contract",
+      "coverage": "Original full thought+OK source body and independent expected semantic sample restored; real verification uses selected model context to provide required target model. Visible sample passes while full summary reasoning contract may reject. PASS1.078s."
+    },
+    {
+      "file": "backend/protocol/builtin/wire_selected_members_test.go",
+      "declaration": "TestWireSelectedMembersUseLastDecodedKey",
+      "mechanicalReason": "retired codec API: module",
+      "status": "restored-on-package-contract",
+      "coverage": "All six original duplicate/escaped role, delta and tool-index shapes preserved under complete final frame envelope. Last sparse index1 is intentionally legal, consistent with restored sparse native continuation; malformed/null delta and invalid role remain negative. PASS0.568s."
+    },
+    {
+      "file": "backend/protocol/builtin/wire_views_test.go",
+      "declaration": "TestWireObjectValidationParityAndIsolation",
+      "mechanicalReason": "retired codec API: module",
+      "status": "replaced-with-independent-contract",
+      "coverage": "Parsed module-object validator API was removed. Current TestWireSourceDecodeFrameSharesReadsWithoutSharingState checks separate/combined execution, independent scope and final lifecycle; CannotHideInvalidWire rejects malformed source. Independent builtin final Spec cases retain normal/invalid role/object/error shapes; public core-owned values remain immutable. Focused generic suite passed."
+    },
+    {
+      "file": "backend/protocol/builtin/workload_benchmark_test.go",
+      "declaration": "BenchmarkRequestWorkloads",
+      "mechanicalReason": "depends on retired benchmarkEnvelope",
+      "status": "restored-on-package-contract",
+      "coverage": "All original4paths x short/prefix32KiB/history256KiB/tools32 preserved. Custom packet protocol now has independent v4 Spec+Mapping and exact model/content emit declarations; real request policy runs between source decode and target encode. All16one-iteration smoke checks pass; no throughput claim under concurrent race run."
+    },
+    {
+      "file": "backend/protocol/builtin/workload_benchmark_test.go",
+      "declaration": "benchmarkEnvelope",
+      "mechanicalReason": "retired protocol API: Definition",
+      "status": "removed-helper"
+    }
+  ]
+}

@@ -206,69 +206,11 @@ func (s *Server) validateModelGroup(groupName string) (*config.ModelGroupConfig,
 }
 
 func (s *Server) listModels(ctx context.Context, c *app.RequestContext) {
-	if s.servePackageModelCatalog(ctx, c) {
-		return
-	}
-	groups := s.getGroups()
-
-	// 返回模型组名称作为模型 ID
-	// 客户端看到的是模型组名称，请求时使用模型组名称
-	// 后端根据配置的轮询策略将请求转发给组内的具体模型
-	var models []utils.H
-	for _, group := range groups {
-		if !group.Enabled {
-			continue
-		}
-		models = append(models, utils.H{
-			"id":       group.Name, // 使用模型组名称
-			"object":   "model",
-			"created":  0,
-			"owned_by": "elysia-api",
-		})
-	}
-
-	c.JSON(200, utils.H{
-		"object": "list",
-		"data":   models,
-	})
+	s.servePublicModelCatalog(ctx, c)
 }
 
 func (s *Server) listGeminiModels(ctx context.Context, c *app.RequestContext) {
-	if s.servePackageModelCatalog(ctx, c) {
-		return
-	}
-	groups := s.getGroups()
-
-	// 返回 Gemini 原生格式：{ models: [{ name: "models/GROUP_NAME", ... }] }
-	type geminiModel struct {
-		Name                       string   `json:"name"`
-		DisplayName                string   `json:"displayName"`
-		Description                string   `json:"description"`
-		InputTokenLimit            int      `json:"inputTokenLimit"`
-		OutputTokenLimit           int      `json:"outputTokenLimit"`
-		SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
-	}
-
-	var models []geminiModel
-	for _, group := range groups {
-		if !group.Enabled {
-			continue
-		}
-		inputLimit := group.MaxTokens
-		if inputLimit == 0 {
-			inputLimit = geminiDefaultInputTokenLimit
-		}
-		models = append(models, geminiModel{
-			Name:                       "models/" + group.Name,
-			DisplayName:                group.Name,
-			Description:                "elysia-api model group",
-			InputTokenLimit:            inputLimit,
-			OutputTokenLimit:           geminiDefaultOutputTokenLimit,
-			SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"},
-		})
-	}
-
-	c.JSON(200, utils.H{"models": models})
+	s.servePublicModelCatalog(ctx, c)
 }
 
 func (s *Server) countTokens(ctx context.Context, c *app.RequestContext) {

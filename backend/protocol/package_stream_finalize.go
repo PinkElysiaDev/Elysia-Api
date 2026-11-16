@@ -6,29 +6,37 @@ import (
 )
 
 func hasCurrentEventRead(plan *compiledOutputPlan) bool {
+	return readsCurrentEvent(plan, false)
+}
+
+func readsCurrentEvent(plan *compiledOutputPlan, isInputBound bool) bool {
 	if plan == nil {
 		return false
 	}
-	if plan.expression.op == "read" && (plan.expression.from == "input" || plan.expression.from == "root") {
+	if plan.expression.op == "read" && (plan.expression.from == "root" || plan.expression.from == "input" && !isInputBound) {
 		return true
 	}
+	if plan.expression.op == "with_input" {
+		return readsCurrentEvent(plan.source, isInputBound) || readsCurrentEvent(plan.body, true)
+	}
 	for _, child := range []*compiledOutputPlan{plan.source, plan.body, plan.when, plan.then, plan.otherwise} {
-		if hasCurrentEventRead(child) {
+		if readsCurrentEvent(child, isInputBound) {
 			return true
 		}
 	}
 	for _, child := range plan.items {
-		if hasCurrentEventRead(child) {
+		if readsCurrentEvent(child, isInputBound) {
 			return true
 		}
 	}
-	for _, field := range plan.fields {
-		if hasCurrentEventRead(field.expression) {
+	fields, cases := plan.readCollections()
+	for _, field := range fields {
+		if readsCurrentEvent(field.expression, isInputBound) {
 			return true
 		}
 	}
-	for _, child := range plan.cases {
-		if hasCurrentEventRead(child) {
+	for _, child := range cases {
+		if readsCurrentEvent(child, isInputBound) {
 			return true
 		}
 	}
@@ -36,7 +44,7 @@ func hasCurrentEventRead(plan *compiledOutputPlan) bool {
 }
 
 func (compiled *Compiled) finishPackageEvents(ctx context.Context, direction Direction, options EvaluationContext) ([]Value, error) {
-	key := moduleStateKey{compiled: compiled, direction: direction}
+	key := executionStateKey{compiled: compiled, direction: direction}
 	retained := options.State.packageStates[key]
 	if retained == nil {
 		return nil, nil
@@ -86,8 +94,6 @@ func (state *EvaluationState) Release() {
 		return
 	}
 	clear(state.packageStates)
-	clear(state.modules)
-	clear(state.initialized)
 	for _, validation := range state.sourceStreams {
 		validation.Release()
 	}

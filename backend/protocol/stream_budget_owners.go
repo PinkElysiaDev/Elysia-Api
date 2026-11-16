@@ -46,33 +46,15 @@ func (state *ConversionEventState) bindStreamBudget(budget *StreamBudget) error 
 	if state.conversion != nil {
 		budget.constrain(state.conversion.limits)
 	}
-	if state.usage != nil {
-		size, err := measureSemanticValue(state.usage, budget.limits)
-		if err != nil {
-			return err
-		}
-		state.usageBytes = size.bytes
-	}
-	if state.terminal != nil {
-		size, err := measureSemanticValue(state.terminal, semanticLimits(budget.limits))
-		if err != nil {
-			return err
-		}
-		state.terminalBytes = size.bytes
-	}
 	return state.retention.bind(budget, state.retainedItems(), state.retainedBytes())
 }
 
 func (state *ConversionEventState) retainedItems() int {
-	items := len(state.pending)
-	if state.usage != nil {
-		items += len(state.usage.Details)
-	}
-	return items
+	return len(state.pending)
 }
 
 func (state *ConversionEventState) retainedBytes() int {
-	return state.bytes + state.openBytes + state.terminalBytes + state.usageBytes + state.id.Len() + state.model.Len() + state.route.Delivery.Created.Len()
+	return state.bytes + state.openBytes + state.route.Delivery.Created.Len()
 }
 
 func (state *ConversionEventState) commitRetention() error {

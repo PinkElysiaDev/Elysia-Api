@@ -101,8 +101,7 @@ func TestJSONOutputByteComparisonBorrowsPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var storage [64]string
-	parts := jsonOutputParts{parts: storage[:0]}
+	var parts jsonOutputParts
 	if err := parts.prepare(t.Context(), plan); err != nil {
 		t.Fatal(err)
 	}

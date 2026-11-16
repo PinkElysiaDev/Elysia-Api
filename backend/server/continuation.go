@@ -4,16 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"strings"
-	"time"
 
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
 type gatewayContinuation struct {
-	isPackage                        bool
 	binding                          *protocol.ContinuationBinding
 	phase                            protocol.ConversionPhase
 	codec                            *protocol.ContinuationCodec
@@ -25,40 +22,8 @@ type gatewayContinuation struct {
 	requireCarrier                   bool
 	conversion                       *protocol.CompiledConversion
 	route                            protocol.ConversionContext
-	tokens                           []string
-	tokenBytes                       int
-	saved                            map[string]bool
 	restored                         map[string]bool
 	sink                             *protocol.DiagnosticSink
-}
-
-func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) (*gatewayContinuation, error) {
-	if plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
-		return s.newPackageGatewayContinuation(token, plan, candidate, sink)
-	}
-	policy := candidate.conversion
-	if policy == nil || policy.Policy.Continuation == nil {
-		return nil, nil
-	}
-	if !policy.SignatureProjectionEnabled(protocol.ConversionResponse, candidate.conversionContext(plan.ingress, true)) &&
-		!policy.SignatureProjectionEnabled(protocol.ConversionEvent, candidate.conversionContext(plan.ingress, true)) {
-		return nil, nil
-	}
-	if plan.ingress.Identity().Family == candidate.compiled.Identity().Family && plan.ingress.Identity().WireVersion == candidate.compiled.Identity().WireVersion {
-		return nil, nil
-	}
-	codec, _ := protocol.NewContinuationCodec(s.config.GetDBEncryptionKey())
-	if codec == nil {
-		return &gatewayContinuation{identity: candidate.compiled.Identity(), strict: policy.Policy.Mode == "strict", sink: sink}, nil
-	}
-	g := newContinuationOwner(codec, token, plan, candidate, sink)
-	g.saved = map[string]bool{}
-	switch plan.ingress.Identity().Family {
-	case "claude", "openai_chat", "openai_responses":
-	default:
-		g.settings.ClientCarrier = false
-	}
-	return g, nil
 }
 
 func newContinuationOwner(codec *protocol.ContinuationCodec, token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) *gatewayContinuation {
@@ -82,7 +47,7 @@ func (g *gatewayContinuation) prepareParent(nodes []protocol.Node) {
 	if g == nil || g.codec == nil || !g.settings.ClientCarrier && !(g.settings.Persist && g.session != "") {
 		return
 	}
-	if g.isPackage && !g.conversion.HasContinuationRecovery(g.phase, g.route) {
+	if !g.conversion.HasContinuationRecovery(g.phase, g.route) {
 		return
 	}
 	if g.parent == "" {
@@ -102,9 +67,6 @@ func (g *gatewayContinuation) warning(reason string) error {
 
 // A recognized package carrier is an authenticated input, never a lossy hint.
 func (g *gatewayContinuation) recoveryFailure(reason string) error {
-	if !g.isPackage {
-		return g.warning(reason)
-	}
 	return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.ContinuationUnavailable, Severity: protocol.SeverityError, Protocol: g.identity, Stage: "continuation", Path: "/continuation", Reason: reason}})
 }
 
@@ -137,32 +99,20 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 		return nil
 	}
 	if !g.needsRecovery(tokens) {
-		if g.isPackage {
-			return request.AcceptContinuations(tokens)
-		}
-		return nil
+		return request.AcceptContinuations(tokens)
 	}
 	if g.codec == nil {
-		if len(tokens) > 0 {
-			return g.recoveryFailure("continuation recovery requires the configured master key")
-		}
-		return nil
+		return g.recoveryFailure("continuation recovery requires the configured master key")
 	}
 	var records []protocol.ContinuationRecord
 	used := map[string]bool{}
 	for _, token := range tokens {
 		r, err := g.codec.Open(token, g.settings.RecordBytes)
 		if err != nil {
-			if e := g.recoveryFailure(err.Error()); e != nil {
-				return e
-			}
-			continue
+			return g.recoveryFailure(err.Error())
 		}
 		if r.Session != g.session || r.Owner != g.owner || !protocol.CheckScope(r.Scope, g.scope) {
-			if e := g.recoveryFailure("continuation session, owner or upstream scope differs"); e != nil {
-				return e
-			}
-			continue
+			return g.recoveryFailure("continuation session, owner or upstream scope differs")
 		}
 		records = append(records, r)
 	}
@@ -216,26 +166,17 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 				}
 			}
 			if len(matches) > 1 {
-				if e := g.recoveryFailure("continuation association is ambiguous"); e != nil {
-					return e
-				}
-				continue
+				return g.recoveryFailure("continuation association is ambiguous")
 			}
 			if len(matches) == 1 {
 				if matches[0].Session != g.session {
-					if e := g.recoveryFailure("continuation session differs"); e != nil {
-						return e
-					}
-					continue
+					return g.recoveryFailure("continuation session differs")
 				}
 				if err := protocol.RestoreContinuation(n, matches[0], g.owner, g.scope, g.identity); err != nil {
-					if e := g.recoveryFailure(err.Error()); e != nil {
-						return e
-					}
-				} else {
-					g.restored[digest] = true
-					used[matches[0].ID] = true
+					return g.recoveryFailure(err.Error())
 				}
+				g.restored[digest] = true
+				used[matches[0].ID] = true
 			}
 		}
 		return nil
@@ -270,76 +211,7 @@ func (s *Server) restoreGatewayContinuation(ctx context.Context, g *gatewayConti
 		}
 	}
 	g.parent = parents[len(request.Content)]
-	if g.isPackage {
-		return request.AcceptContinuations(tokens)
-	}
-	return nil
-}
-
-func (s *Server) captureContinuationNode(ctx context.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
-	if g == nil || !protocol.HasContinuationState(node) {
-		return nil
-	}
-	if g.isPackage {
-		return s.capturePackageContinuationNode(ctx, g, node, ordinal)
-	}
-	if g.codec == nil {
-		return g.warning("signature recovery requires the configured master key")
-	}
-	if !g.settings.ClientCarrier && !g.settings.Persist {
-		return g.warning("signature recovery is disabled")
-	}
-	if g.requireCarrier && !g.settings.ClientCarrier {
-		if err := g.conversion.CheckIncludeCarrier(g.route, g.sink); err != nil {
-			return err
-		}
-	}
-	digest := protocol.ContinuationNodeDigest(node)
-	key := fmt.Sprintf("%d:%s", ordinal, digest)
-	if g.saved[key] {
-		return nil
-	}
-	id, err := protocol.NewContinuationID()
-	if err != nil {
-		return g.warning("could not allocate continuation identity")
-	}
-	record := protocol.ContinuationRecord{Version: 1, ID: id, Owner: g.owner, Session: g.session, Scope: g.scope, Protocol: g.identity, Parent: g.parent, Ordinal: ordinal, Digest: digest, Node: node, ExpiresAt: time.Now().Unix() + g.settings.RetentionSeconds}
-	token, err := g.codec.Seal(record, g.settings.RecordBytes)
-	if err != nil {
-		return g.warning(err.Error())
-	}
-	preserved := false
-	if g.settings.Persist && g.session != "" {
-		err = s.store.SaveContinuation(ctx, storage.StoredContinuation{ID: id, Owner: g.owner, Session: g.session, ScopeKey: g.scopeKey, Parent: g.parent, Ordinal: ordinal, Digest: g.codec.Digest(digest), Ciphertext: token, ExpiresAt: record.ExpiresAt}, g.settings)
-		if err != nil {
-			if g.settings.ClientCarrier {
-				g.sink.Add(protocol.ConversionIssue{Code: protocol.ContinuationUnavailable, Severity: protocol.SeverityWarning, Protocol: g.identity, Stage: "continuation", Path: "/continuation/persistence", Reason: "persistent continuation write failed; authenticated client carrier remains available"})
-			} else if e := g.warning("persistent continuation write failed"); e != nil {
-				return e
-			}
-		}
-	}
-	if g.settings.Persist && g.session != "" && err == nil {
-		preserved = true
-	}
-	if g.settings.ClientCarrier {
-		if g.tokenBytes+len(token) > protocol.DefaultLimits().BufferBytes {
-			return g.warning("continuation carrier buffer limit exceeded")
-		}
-		g.tokens = append(g.tokens, token)
-		g.tokenBytes += len(token)
-		preserved = true
-	}
-	if !preserved {
-		return g.warning("signature has no usable recovery channel")
-	}
-	g.saved[key] = true
-	for _, res := range node.Resources {
-		if protocol.IsContinuationResource(res) {
-			g.saved[protocol.ContinuationResourceKey(res)] = true
-		}
-	}
-	return nil
+	return request.AcceptContinuations(tokens)
 }
 
 func (s *Server) captureContinuationResponse(ctx context.Context, g *gatewayContinuation, response *protocol.Response) error {

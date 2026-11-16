@@ -41,7 +41,7 @@ func TestGatewayAnthropicDirectToolToResponsesStream(t *testing.T) {
 	}
 	s.invalidateRouteCache()
 	body := `{"model":"group","stream":true,"store":false,"max_output_tokens":64,"input":"call echo","tools":[{"type":"function","name":"echo","parameters":{"type":"object"}}]}`
-	req := httptest.NewRequest(http.MethodPost, "/gateway/openai-responses/responses", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/gateway/openai-responses/v1/responses", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer gateway-test-token")
 	rec := httptest.NewRecorder()
 	serveTestHTTP(s.engine, rec, req)

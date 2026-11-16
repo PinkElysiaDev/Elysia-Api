@@ -21,7 +21,7 @@ func TestPackageAgentClientOutputOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	includeUsage := true
-	current := &ClientOutput{IncludeUsage: &includeUsage, RawResponsesInclude: fixtureValue(t, []string{"retained"}),
+	current := &ClientOutput{IncludeUsage: &includeUsage, RequireContinuationState: true,
 		ResponsesStorage: &ResponsesStorageIntent{SourceCodec: "original", Requested: true, Effective: true}}
 	request := Request{SchemaVersion: ProtocolCoreVersion, Source: AgentIdentity(), ClientOutput: current}
 	before := fixtureValue(t, request)
@@ -33,7 +33,7 @@ func TestPackageAgentClientOutputOwnership(t *testing.T) {
 		t.Fatal("Agent preparation mutated caller output intent")
 	}
 	output := prepared.ClientOutput
-	if !output.CollectUsage || output.IncludeUsage == nil || *output.IncludeUsage || output.RawResponsesInclude != current.RawResponsesInclude || output.ResponsesStorage == nil || *output.ResponsesStorage != (ResponsesStorageIntent{}) {
+	if !output.CollectUsage || output.IncludeUsage == nil || *output.IncludeUsage || !output.RequireContinuationState || output.ResponsesStorage == nil || *output.ResponsesStorage != (ResponsesStorageIntent{}) {
 		t.Fatalf("Agent policy lost an unrelated field or retained stale storage facts: %+v", output)
 	}
 	if prepared.Parameters["limit"].JSONString() != "10" {
@@ -47,7 +47,7 @@ func TestPackageAgentClientOutputOwnership(t *testing.T) {
 }
 
 func TestPackageAgentClientOutputPermissions(t *testing.T) {
-	for _, field := range []string{"collectUsage", "/responsesStorage/effective", "unknown"} {
+	for _, field := range []string{"collectUsage", "/responsesStorage/effective", "rawResponsesInclude", "responsesIncludeResolved", "unknown"} {
 		compiled, configuration := agentOutputFixture(t)
 		configuration.ClientOutput = map[string]Expression{field: literalExpression(true)}
 		if err := compiled.compilePackageAgent(configuration, newExpressionCompiler(DefaultLimits(), nil)); err == nil || !strings.Contains(err.Error(), "cannot write") {

@@ -10,86 +10,6 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-func TestChatLegacyMetadataRetentionBoundaries(t *testing.T) {
-	const bufferLimit, deltaCount = 512, 8
-	limits := p.DefaultLimits()
-	limits.BufferBytes = bufferLimit
-	probabilities := testValue(t, `{"content":[{"token":"`+strings.Repeat("x", 96)+`","logprob":-0.1,"bytes":[120]}]}`)
-	for _, shouldCheckpoint := range []bool{false, true} {
-		name := "finish-without-item"
-		if shouldCheckpoint {
-			name = "later-item-checkpoint"
-		}
-		t.Run(name, func(t *testing.T) {
-			instance, err := (module{name: Chat}).NewStream(p.EncodeEvent, limits)
-			if err != nil {
-				t.Fatal(err)
-			}
-			stream := instance.(*streamModule)
-			encode := func(event p.Event) {
-				t.Helper()
-				if _, err := stream.EncodeEventFrames(t.Context(), event, p.EvaluationContext{}); err != nil {
-					t.Fatal(event.Type, err)
-				}
-			}
-			encode(p.Event{Type: p.ResponseStarted, Response: &p.Response{ID: p.StringValue("r"), Model: p.StringValue("m"), Attributes: p.Object{"created_at": testValue(t, "1")}}})
-			encode(p.Event{Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}})
-			for range deltaCount {
-				encode(p.Event{Type: p.ItemDelta, ItemID: p.StringValue("text"), Delta: p.StringValue("x"), Metadata: []p.ResponseMetadata{{Codec: Chat, Location: "choice", Name: "logprobs", Path: "/choices/0/logprobs", Value: probabilities}}})
-			}
-			if shouldCheckpoint {
-				_, err := stream.EncodeEventFrames(t.Context(), p.Event{Type: p.ItemSnapshot, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}}, p.EvaluationContext{})
-				var failure *p.ConversionError
-				if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != p.UnsupportedCapability || failure.Issues[0].Path != "/items" {
-					t.Fatal("legacy accumulated metadata checkpoint changed", err)
-				}
-				t.Log("later Item snapshot rejects accumulated logprobs at /items")
-				return
-			}
-			encode(p.Event{Type: p.ItemFinished, ItemID: p.StringValue("text")})
-			encode(p.Event{Type: p.ResponseFinished, Response: &p.Response{Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": p.StringValue("stop")}}})
-			tail, err := stream.Finish(t.Context(), p.EvaluationContext{})
-			if err != nil || len(tail) != 1 || strings.Contains(tail[0].JSONString(), "logprobs") {
-				t.Fatal("Chat finish unexpectedly checks or emits a cumulative probability snapshot", err, tail)
-			}
-			for _, item := range stream.items {
-				metadata, err := p.EncodeValue(item.node.Metadata)
-				if err != nil || metadata.Len() <= bufferLimit {
-					t.Fatal("fixture did not cross the retained metadata boundary", metadata.Len(), err)
-				}
-				t.Logf("finish accepted %d bytes of accumulated metadata with BufferBytes=%d; no probability tail", metadata.Len(), bufferLimit)
-			}
-		})
-	}
-}
-
-func TestChatLegacyAnnotationsCompareRawJSON(t *testing.T) {
-	instance, err := (module{name: Chat}).NewStream(p.EncodeEvent, p.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream := instance.(*streamModule)
-	for _, event := range []p.Event{
-		{Type: p.ResponseStarted, Response: &p.Response{ID: p.StringValue("r"), Model: p.StringValue("m"), Attributes: p.Object{"created_at": testValue(t, "1")}}},
-		{Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}},
-	} {
-		if _, err := stream.EncodeEventFrames(t.Context(), event, p.EvaluationContext{}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for index, event := range chatAnnotationUpdates(t) {
-		frames, err := stream.EncodeEventFrames(t.Context(), event, p.EvaluationContext{})
-		want := 0
-		if index == 0 || index == 2 {
-			want = 1
-		}
-		if err != nil || len(frames) != want {
-			t.Fatal("raw annotation delivery changed", index, len(frames), err)
-		}
-		t.Logf("annotation update %d emitted %d frame(s)", index, len(frames))
-	}
-}
-
 func TestChatPackageSourceStreamMigration(t *testing.T) {
 	candidate := compileBuiltinPackage(t, "openai-chat")
 	document, _ := candidate.Package()
@@ -222,65 +142,6 @@ func TestChatPackageSourceStreamMigration(t *testing.T) {
 	}
 }
 
-func TestChatPackageTargetStreamMigration(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
-	include, exclude := true, false
-	for _, sample := range legacy.Definition().Samples {
-		if sample.Direction != p.EncodeEvent {
-			continue
-		}
-		var events []p.Event
-		if err := sample.Input.Decode(&events); err != nil {
-			t.Fatal(err)
-		}
-		for _, preference := range []struct {
-			name   string
-			output *p.ClientOutput
-		}{{"unspecified", nil}, {"without-include", &p.ClientOutput{}}, {"include", &p.ClientOutput{IncludeUsage: &include}}, {"exclude", &p.ClientOutput{IncludeUsage: &exclude}}} {
-			t.Run(sample.ID+"/"+preference.name, func(t *testing.T) {
-				before := encodeChatMigrationEvents(t, legacy, events, sample.Scope, preference.output)
-				after := encodeChatMigrationEvents(t, candidate, streamEventsAtVersion(events, p.ProtocolCoreVersion), sample.Scope, preference.output)
-				if !bytes.Equal(before.Bytes(), after.Bytes()) {
-					t.Fatal("target frames changed", before.JSONString(), after.JSONString())
-				}
-			})
-		}
-	}
-}
-
-func TestChatPackageTargetMetadataMigration(t *testing.T) {
-	legacy, candidate := shippedProjectionProtocol(t, Chat), compileBuiltinPackage(t, "openai-chat")
-	for _, fixture := range []struct {
-		name     string
-		updates  []p.Event
-		terminal []p.ResponseMetadata
-	}{
-		{name: "annotation-raw-spelling", updates: chatAnnotationUpdates(t)},
-		{name: "native-stop-and-usage", terminal: []p.ResponseMetadata{{Codec: Chat, Location: "choice", Name: "native_finish_reason", Path: "/choices/0/native_finish_reason", Value: p.StringValue("provider_stop")}}},
-		{name: "metadata-only-annotation", updates: []p.Event{{Type: p.MetadataUpdated, ItemID: p.StringValue("text"), Metadata: []p.ResponseMetadata{{Codec: Chat, Location: "message", Name: "annotations", Path: "/choices/0/delta/annotations", Value: testValue(t, citationChat)}}}}},
-	} {
-		t.Run(fixture.name, func(t *testing.T) {
-			events := []p.Event{
-				{Type: p.ResponseStarted, Response: &p.Response{ID: p.StringValue("r"), Model: p.StringValue("m"), Attributes: p.Object{"created_at": testValue(t, "1")}, Metadata: []p.ResponseMetadata{{Codec: Chat, Location: "response", Name: "service_tier", Path: "/service_tier", Value: p.StringValue("auto")}}}},
-				{Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}},
-				// Final wire validation associates annotations with text already delivered.
-				{Type: p.ItemDelta, ItemID: p.StringValue("text"), Delta: p.StringValue("OK")},
-			}
-			events = append(events, fixture.updates...)
-			events = append(events,
-				p.Event{Type: p.ItemFinished, ItemID: p.StringValue("text")},
-				p.Event{Type: p.ResponseFinished, Metadata: fixture.terminal, Response: &p.Response{Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": testValue(t, `"stop"`)}, Metadata: []p.ResponseMetadata{{Codec: Chat, Location: "response", Name: "service_tier", Path: "/service_tier", Value: p.StringValue("default")}}}},
-				p.Event{Type: p.UsageUpdated, Usage: &p.Usage{Input: &p.Counter{Count: 2, Origin: p.ObservedCount}, Output: &p.Counter{Count: 1, Origin: p.ObservedCount}}},
-			)
-			want := encodeChatMigrationEvents(t, legacy, streamEventsAtVersion(events, p.SemanticSchemaVersion), p.Scope{}, nil)
-			got := encodeChatMigrationEvents(t, candidate, streamEventsAtVersion(events, p.ProtocolCoreVersion), p.Scope{}, nil)
-			if !bytes.Equal(want.Bytes(), got.Bytes()) {
-				t.Fatal("metadata delivery or ordering changed", want.JSONString(), got.JSONString())
-			}
-		})
-	}
-}
-
 func chatAnnotationUpdates(t *testing.T) []p.Event {
 	t.Helper()
 	first := testValue(t, citationChat)
@@ -293,6 +154,98 @@ func chatAnnotationUpdates(t *testing.T) []p.Event {
 		updates = append(updates, p.Event{Type: p.ItemDelta, ItemID: p.StringValue("text"), Delta: p.StringValue(""), Metadata: []p.ResponseMetadata{{Codec: Chat, Location: "message", Name: "annotations", Path: "/choices/0/delta/annotations", Value: value}}})
 	}
 	return updates
+}
+
+func TestChatLegacyAnnotationsCompareRawJSON(t *testing.T) {
+	compiled := testCompiled(t, Chat)
+	for _, hasText := range []bool{false, true} {
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+		defer options.State.Release()
+		options, consume := bindFixtureOutput(t, compiled, options)
+		prefix := []p.Event{
+			{Type: p.ResponseStarted, Response: &p.Response{ID: p.StringValue("r"), Model: p.StringValue("m"), Attributes: p.Object{"created_at": testValue(t, "1")}}},
+			{Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}},
+		}
+		if hasText {
+			prefix = append(prefix, p.Event{Type: p.ItemDelta, ItemID: p.StringValue("text"), Delta: p.StringValue("OK")})
+		}
+		for _, event := range streamEventsAtVersion(prefix, compiled.CoreVersion()) {
+			frames, err := compiled.EncodeFrames(t.Context(), event, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			consume(frames)
+		}
+		for index, event := range streamEventsAtVersion(chatAnnotationUpdates(t), compiled.CoreVersion()) {
+			frames, err := compiled.EncodeFrames(t.Context(), event, options)
+			if !hasText {
+				if err == nil || len(frames) != 0 {
+					t.Fatal("citation preceded the text range it references", frames, err)
+				}
+				break
+			}
+			if err != nil {
+				t.Fatal(index, err)
+			}
+			consume(frames)
+			want := 0
+			if index == 0 {
+				want = 1
+			}
+			if len(frames) != want {
+				t.Fatal("equivalent citation snapshot was emitted again", index, len(frames))
+			}
+		}
+	}
+}
+
+func TestChatLegacyMetadataRetentionBoundaries(t *testing.T) {
+	const bufferLimit, deltaCount = 512, 8
+	limits := p.DefaultLimits()
+	limits.BufferBytes = bufferLimit
+	compiled := compileLogprobBudget(t, Chat, limits)
+	probabilities := testValue(t, `[{"token":"`+strings.Repeat("x", 96)+`","logprob":-0.1,"bytes":[120]}]`)
+	for _, shouldCheckpoint := range []bool{false, true} {
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+		defer options.State.Release()
+		budget := p.NewStreamBudget(limits)
+		if err := budget.Bind(options.State); err != nil {
+			t.Fatal(err)
+		}
+		events := []p.Event{
+			{Type: p.ResponseStarted, Response: &p.Response{ID: p.StringValue("r"), Model: p.StringValue("m"), Attributes: p.Object{"created_at": testValue(t, "1")}}},
+			{Type: p.ItemStarted, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}},
+		}
+		for range deltaCount {
+			events = append(events, p.Event{Type: p.ItemDelta, ItemID: p.StringValue("text"), Delta: p.StringValue("x"), Metadata: []p.ResponseMetadata{{Codec: Chat, SourceCodec: Chat, Location: "content", Name: "logprobs", Path: "/choices/0/logprobs", Value: probabilities, Update: "append"}}})
+		}
+		if shouldCheckpoint {
+			events = append(events, p.Event{Type: p.ItemSnapshot, ItemID: p.StringValue("text"), Item: &p.Node{Kind: p.TextNode}})
+		}
+		events = append(events,
+			p.Event{Type: p.ItemFinished, ItemID: p.StringValue("text")},
+			p.Event{Type: p.ResponseFinished, Response: &p.Response{Status: p.StringValue("completed"), Attributes: p.Object{"finishReason": p.StringValue("stop")}}},
+		)
+		probabilityFrames := 0
+		for index, event := range streamEventsAtVersion(events, compiled.CoreVersion()) {
+			frames, err := compiled.EncodeFrames(t.Context(), event, options)
+			if err != nil {
+				t.Fatal(index, err)
+			}
+			if err := budget.Check(); err != nil {
+				t.Fatal("delivered probabilities grew retained stream state", err)
+			}
+			for _, frame := range frames {
+				if strings.Contains(frame.JSONString(), `"logprobs"`) {
+					probabilityFrames++
+				}
+			}
+		}
+		tail, err := compiled.FinishEvents(t.Context(), options)
+		if err != nil || len(tail) != 1 || strings.Contains(tail[0].JSONString(), "logprobs") || probabilityFrames != deltaCount {
+			t.Fatal("digest tracking duplicated or dropped probability frames", probabilityFrames, tail, err)
+		}
+	}
 }
 
 func TestChatPackageTargetMetadataRejection(t *testing.T) {
@@ -335,44 +288,8 @@ func TestChatPackageTargetMetadataRejection(t *testing.T) {
 
 func encodeChatMigrationEvents(t *testing.T, compiled *p.Compiled, events []p.Event, scope p.Scope, preference *p.ClientOutput) p.Value {
 	t.Helper()
-	options := p.EvaluationContext{Scope: scope, ClientOutput: preference, State: p.NewEvaluationState()}
-	defer options.State.Release()
-	validation, err := compiled.NewWireStreamValidation(scope)
+	frames, err := encodeMigrationTargetEvents(t, compiled, events, p.EvaluationContext{Scope: scope, ClientOutput: preference})
 	if err != nil {
-		t.Fatal(err)
-	}
-	_, isPackage := compiled.Package()
-	if isPackage {
-		options = options.WithOutputStream(validation)
-	}
-	var frames []p.Value
-	consume := func(batch []p.Value) {
-		t.Helper()
-		for _, frame := range batch {
-			if err := validation.Consume(t.Context(), frame); err != nil {
-				t.Fatal("target wire rejected", err, frame.JSONString())
-			}
-		}
-		if isPackage && len(batch) > 0 {
-			if err := validation.CommitDelivery(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		frames = append(frames, batch...)
-	}
-	for _, event := range events {
-		batch, err := compiled.EncodeFrames(t.Context(), event, options)
-		if err != nil {
-			t.Fatal(event.Type, err)
-		}
-		consume(batch)
-	}
-	tail, err := compiled.FinishEvents(t.Context(), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	consume(tail)
-	if err := validation.Finish(); err != nil {
 		t.Fatal(err)
 	}
 	encoded, err := p.EncodeValue(frames)
@@ -383,35 +300,42 @@ func encodeChatMigrationEvents(t *testing.T, compiled *p.Compiled, events []p.Ev
 }
 
 func TestChatPackageStreamReplaysOriginalFramesOnce(t *testing.T) {
-	legacy := shippedProjectionProtocol(t, Chat)
-	candidate := compileBuiltinPackage(t, "openai-chat")
-	for _, sample := range legacy.Definition().Samples {
-		if sample.Direction != p.DecodeEvent {
+	compiled := testCompiled(t, Chat)
+	document, _ := compiled.Package()
+	hasSequences := false
+	for _, sample := range document.Mapping.Samples {
+		if sample.Direction != p.DecodeEvent || !sample.Sequence || sample.ExpectedIssue != "" {
 			continue
 		}
+		hasSequences = true
 		t.Run(sample.ID, func(t *testing.T) {
 			var frames []p.Value
 			if err := sample.Input.Decode(&frames); err != nil {
 				t.Fatal(err)
 			}
-			decode := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
-			encode := p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()}
+			decode := fixtureOptions(p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()})
+			encode := fixtureOptions(p.EvaluationContext{Scope: sample.Scope, State: p.NewEvaluationState()})
 			defer decode.State.Release()
 			defer encode.State.Release()
+			encode, consume := bindFixtureOutput(t, compiled, encode)
 			for _, original := range frames {
-				frame, err := candidate.DecodeFrame(t.Context(), original, decode)
+				frame, err := compiled.DecodeFrame(t.Context(), original, decode)
 				if err != nil {
 					t.Fatal(err)
 				}
-				replayed, err := candidate.EncodeFrame(t.Context(), frame, encode)
+				replayed, err := compiled.EncodeFrame(t.Context(), frame, encode)
 				if err != nil || len(replayed) != 1 || replayed[0] != original {
 					t.Fatal("native frame was not replayed exactly once", err, replayed)
 				}
+				consume(replayed)
 			}
-			if tail, err := candidate.FinishEvents(t.Context(), encode); err != nil || len(tail) != 0 {
+			if tail, err := compiled.FinishEvents(t.Context(), encode); err != nil || len(tail) != 0 {
 				t.Fatal("native replay fabricated a terminal tail", err, tail)
 			}
 		})
+	}
+	if !hasSequences {
+		t.Fatal("native stream evidence disappeared")
 	}
 }
 
@@ -439,6 +363,7 @@ func TestChatPackageNativeUsageRespectsClientPreference(t *testing.T) {
 			encode := p.EvaluationContext{State: p.NewEvaluationState(), ClientOutput: fixture.output}
 			defer decode.State.Release()
 			defer encode.State.Release()
+			encode, consume := bindFixtureOutput(t, candidate, fixtureOptions(encode))
 			second := content
 			if fixture.extension {
 				second = strings.TrimSuffix(second, "}") + `,"future":{"n":9007199254740993}}`
@@ -471,6 +396,7 @@ func TestChatPackageNativeUsageRespectsClientPreference(t *testing.T) {
 					t.Fatal("allowed native frame changed", index, batch)
 				}
 				output = append(output, batch...)
+				consume(batch)
 			}
 			// Null usage remains native; even an empty usage object must obey
 			// the delivery preference when a caller owns ClientOutput.
@@ -479,6 +405,7 @@ func TestChatPackageNativeUsageRespectsClientPreference(t *testing.T) {
 				t.Fatal("finish", err, tail)
 			}
 			output = append(output, tail...)
+			consume(tail)
 			var text strings.Builder
 			terminals := 0
 			for _, frame := range output {

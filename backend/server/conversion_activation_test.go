@@ -11,8 +11,8 @@ import (
 
 func TestConversionActivationKeepsPinnedRevision(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
-	upstream := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-beta"))
+	activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
+	upstream := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-beta"))
 	setupGatewayModel(t, s, upstream, "https://example.test")
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
 	var previous string

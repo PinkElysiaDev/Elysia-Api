@@ -10,13 +10,40 @@ const citationChat = `[{"type":"url_citation","url_citation":{"url":"https://exa
 const citationResponses = `[{"type":"url_citation","url":"https://example.org/","title":"source","start_index":0,"end_index":2}]`
 const auditLogprobs = `[{"token":"OK","logprob":-0.125,"bytes":[79,75],"top_logprobs":[]}]`
 
+func TestAuditMultipleChoicesKeepOwnership(t *testing.T) {
+	compiled := testCompiled(t, Chat)
+	const raw = `{"id":"r","model":"m","created":1,"service_tier":"default","choices":[{"index":2,"message":{"role":"assistant","content":"first"},"finish_reason":"stop","logprobs":{"content":[]},"vendor_choice":"one"},{"index":4,"message":{"role":"assistant","content":"second"},"finish_reason":"length","logprobs":null,"vendor_choice":"two"}]}`
+	response, err := compiled.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Native = nil
+	wire, err := compiled.EncodeResponseValue(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := testValue(t, raw).ReadObject()
+	after, _ := wire.ReadObject()
+	if !after["choiceExtensions"].IsZero() {
+		t.Fatal("choice metadata moved to the response root")
+	}
+	sameJSON(t, after["choices"].Bytes(), before["choices"].JSONString())
+}
+
 func TestAuditLogprobDeltaAfterNullSnapshot(t *testing.T) {
-	meta := p.ResponseMetadata{Name: "logprobs", Codec: Chat, Location: "choice", Value: testValue(t, "null")}
-	next := meta
-	next.Value = testValue(t, `{"content":`+auditLogprobs+`}`)
-	merged := p.MergeNodeMetadata([]p.ResponseMetadata{meta}, []p.ResponseMetadata{next}, true)
-	if len(merged) != 1 || !strings.Contains(string(merged[0].Value.Bytes()), `-0.125`) {
-		t.Fatal(merged)
+	frames := []string{
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"OK"},"logprobs":{"content":` + auditLogprobs + `},"finish_reason":null}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+	}
+	for _, target := range []string{Chat, Responses} {
+		t.Run(target, func(t *testing.T) {
+			output := auditConvertFrames(t, Chat, target, frames)
+			wire, err := p.EncodeValue(output)
+			if err != nil || !strings.Contains(wire.JSONString(), `"logprob":-0.125`) {
+				t.Fatal("probabilities after null snapshot were lost", wire.JSONString(), err)
+			}
+		})
 	}
 }
 
@@ -34,23 +61,23 @@ func TestAuditPublicMetadataJSON(t *testing.T) {
 		} else {
 			raw = strings.Replace(raw, `"annotations":[]`, `"annotations":`+citationResponses+`,"logprobs":`+auditLogprobs, 1)
 		}
-		r, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-		r, err = c.Response(t.Context(), r, c.VerificationRoute(from.Identity(), to.Identity(), p.HTTPJSON), nil)
+		r, err = c.Response(t.Context(), r, c.VerificationRoute(from.Identity(), to.Identity(), p.HTTPJSON).WithOperation(fixtureOptions(p.EvaluationContext{})), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := to.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+		wire, err := to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(source, err)
 		}
 		if !strings.Contains(string(wire), `https://example.org/`) || !strings.Contains(string(wire), `-0.125`) {
 			t.Fatal(string(wire))
 		}
-		decoded, err := to.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+		decoded, err := to.DecodeResponse(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,56 +90,7 @@ func TestAuditPublicMetadataJSON(t *testing.T) {
 
 func auditConvertFrames(t *testing.T, source, target string, raw []string) []p.Value {
 	t.Helper()
-	from, to := shippedProjectionProtocol(t, source), shippedProjectionProtocol(t, target)
-	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-	route := c.VerificationRoute(from.Identity(), to.Identity(), p.SSE)
-	state := p.NewConversionEventState(c, route)
-	opts := p.EvaluationContext{State: p.NewEvaluationState()}
-	var result []p.Value
-	emit := func(e p.Event) {
-		converted, err := c.Event(t.Context(), e, route, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out, err := to.EncodeFrame(t.Context(), &p.EventFrame{Events: []p.Event{converted}}, opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		result = append(result, out...)
-	}
-	for _, body := range raw {
-		frame, err := from.DecodeFrame(t.Context(), testValue(t, body), opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, e := range p.DeliveryFrameEvents(frame.Events) {
-			batch, err := state.Push(e)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, v := range batch {
-				emit(v)
-			}
-		}
-	}
-	tail, err := state.Drain()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range tail {
-		emit(e)
-	}
-	out, err := to.FinishEvents(t.Context(), opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result = append(result, out...)
-	for _, v := range result {
-		if err := to.ValidateWireOutput(p.EncodeEvent, v); err != nil {
-			t.Fatal(err, string(v.Bytes()))
-		}
-	}
-	return result
+	return convertFixtureStream(t, shippedProjectionProtocol(t, source), shippedProjectionProtocol(t, target), raw)
 }
 
 func TestAuditPublicMetadataStream(t *testing.T) {
@@ -150,7 +128,7 @@ func TestAuditEmptyMetadataDiagnosticAndUnknownCitation(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	sink := &p.DiagnosticSink{}
-	r, err := from.DecodeResponse(t.Context(), []byte(auditResponses[Responses]), p.EvaluationContext{})
+	r, err := from.DecodeResponse(t.Context(), []byte(auditResponses[Responses]), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,40 +146,18 @@ func TestAuditEmptyMetadataDiagnosticAndUnknownCitation(t *testing.T) {
 		t.Fatal(sink.Issues())
 	}
 	raw := strings.Replace(auditResponses[Responses], `"annotations":[]`, `"annotations":[{"type":"file_citation","file_id":"secret"}]`, 1)
-	r, err = from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+	r, err = from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = c.Response(t.Context(), r, p.ConversionContext{}, nil); err == nil {
+	if _, err = c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil); err == nil {
 		t.Fatal("file citation silently discarded")
-	}
-}
-
-func TestAuditMultipleChoicesKeepOwnership(t *testing.T) {
-	a := module{name: Chat, family: "openai_chat"}
-	r, err := a.decodeResponse(testValue(t, `{"id":"r","model":"m","created":1,"service_tier":"default","choices":[{"index":2,"message":{"role":"assistant","content":"first"},"finish_reason":"stop","logprobs":{"content":[]},"vendor_choice":"one"},{"index":4,"message":{"role":"assistant","content":"second"},"finish_reason":"length","logprobs":null,"vendor_choice":"two"}]}`), p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire, err := a.encodeResponse(r, p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, _ := wire.ReadObject()
-	choices, _ := readArray(f["choices"])
-	if len(choices) != 2 || !f["choiceExtensions"].IsZero() {
-		t.Fatal(string(wire.Bytes()))
-	}
-	first, _ := choices[0].ReadObject()
-	second, _ := choices[1].ReadObject()
-	if first["vendor_choice"] != p.StringValue("one") || second["vendor_choice"] != p.StringValue("two") || second["finish_reason"] != p.StringValue("length") || second["index"] != testValue(t, `4`) {
-		t.Fatal(string(wire.Bytes()))
 	}
 }
 
 func TestAuditTextMergeRebasesCitationsAndKeepsToolID(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Chat)
-	r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","created_at":1,"status":"completed","output":[{"type":"message","id":"m1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"AB","annotations":[]}]},{"type":"function_call","id":"fc1","call_id":"call1","name":"f","arguments":"{}"},{"type":"message","id":"m2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":`+citationResponses+`}]}]}`), p.EvaluationContext{})
+	r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","created_at":1,"status":"completed","output":[{"type":"message","id":"m1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"AB","annotations":[]}]},{"type":"function_call","id":"fc1","call_id":"call1","name":"f","arguments":"{}"},{"type":"message","id":"m2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":`+citationResponses+`}]}]}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +167,7 @@ func TestAuditTextMergeRebasesCitationsAndKeepsToolID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := to.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+	wire, err := to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,24 +209,41 @@ func TestAuditStreamingTextCitationOffsets(t *testing.T) {
 		}
 		route := c.VerificationRoute(from.Identity(), to.Identity(), p.SSE)
 		sink := &p.DiagnosticSink{}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Diagnostics: sink})
+		defer options.State.Release()
+		options, consume := bindFixtureOutput(t, to, options.WithConversion(c, route))
+		encode := func(event p.Event) ([]p.Value, error) {
+			projected, err := c.Event(t.Context(), event, route, sink)
+			if err != nil {
+				return nil, err
+			}
+			frames, err := to.EncodeFrames(t.Context(), projected, options)
+			if err == nil {
+				consume(frames)
+			}
+			return frames, err
+		}
+		if _, err := encode(p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseStarted, Source: from.Identity(), Response: &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Model: p.StringValue("m"), Attributes: p.Object{"created_at": testValue(t, "1")}}}); err != nil {
+			t.Fatal(err)
+		}
 		event := func(typ p.EventType, id, txt string, metadata bool) p.Event {
-			e := p.Event{SchemaVersion: 1, Type: typ, Source: from.Identity(), ItemID: p.StringValue(id)}
-			if typ == p.ItemStarted || typ == p.ItemFinished {
+			e := p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: typ, Source: from.Identity(), ItemID: p.StringValue(id)}
+			if typ == p.ItemStarted || typ == p.ItemSnapshot || typ == p.ItemFinished {
 				e.Item = &p.Node{Kind: p.TextNode, Payload: p.StringValue(txt)}
 			} else {
 				e.Delta = p.StringValue(txt)
 			}
 			if metadata {
-				e.Item.Metadata = []p.ResponseMetadata{{Name: "annotations", Location: "content", Codec: Responses, SourceCodec: Responses, Path: "/output/1/content/0/annotations", Value: testValue(t, citationResponses)}}
+				e.Item.Metadata = []p.ResponseMetadata{{Meaning: "url-references", References: testValue(t, `[{"url":"https://example.test","title":"reference","start":0,"end":2}]`), Name: "annotations", Location: "content", Codec: Responses, SourceCodec: Responses, Path: "/output/1/content/0/annotations", Value: testValue(t, citationResponses)}}
 			}
 			return e
 		}
 		for _, e := range []p.Event{event(p.ItemStarted, "a", "", false), event(p.ItemDelta, "a", "\U0001f600", false), event(p.ItemFinished, "a", "\U0001f600", false)} {
-			if _, err = c.Event(t.Context(), e, route, sink); err != nil {
+			if _, err = encode(e); err != nil {
 				t.Fatal(err)
 			}
 		}
-		_, err = c.Event(t.Context(), event(p.ItemStarted, "b", "", false), route, sink)
+		_, err = encode(event(p.ItemStarted, "b", "", false))
 		if strict {
 			if err == nil {
 				t.Fatal("strict accepted text boundary loss")
@@ -280,14 +253,14 @@ func TestAuditStreamingTextCitationOffsets(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = c.Event(t.Context(), event(p.ItemDelta, "b", "OK", false), route, sink); err != nil {
+		if _, err = encode(event(p.ItemDelta, "b", "OK", false)); err != nil {
 			t.Fatal(err)
 		}
-		projected, err := c.Event(t.Context(), event(p.ItemFinished, "b", "OK", true), route, sink)
+		frames, err := encode(event(p.ItemSnapshot, "b", "OK", true))
 		if err != nil {
 			t.Fatal(err)
 		}
-		raw, _ := p.EncodeValue(projected)
+		raw, _ := p.EncodeValue(frames)
 		if !strings.Contains(string(raw.Bytes()), `"start_index":2`) || !strings.Contains(string(raw.Bytes()), `"end_index":4`) {
 			t.Fatal(string(raw.Bytes()))
 		}
@@ -295,13 +268,18 @@ func TestAuditStreamingTextCitationOffsets(t *testing.T) {
 			t.Fatal("no boundary diagnostic")
 		}
 		// A duplicate full snapshot must neither add text nor rebase twice.
-		again, err := c.Event(t.Context(), event(p.ItemFinished, "b", "OK", true), route, sink)
+		again, err := encode(event(p.ItemSnapshot, "b", "OK", true))
 		if err != nil {
 			t.Fatal(err)
 		}
-		encoded, _ := p.EncodeValue(again)
-		if string(encoded.Bytes()) != string(raw.Bytes()) {
-			t.Fatal("snapshot accumulated twice")
+		if len(again) != 0 {
+			t.Fatal("snapshot was delivered twice", again)
+		}
+		if _, err := encode(event(p.ItemFinished, "b", "OK", true)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := encode(event(p.ItemFinished, "b", "OK", true)); err == nil {
+			t.Fatal("finished item accepted a second completion")
 		}
 	}
 }

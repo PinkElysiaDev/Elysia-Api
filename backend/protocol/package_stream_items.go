@@ -81,6 +81,9 @@ func (state *packageStreamValidation) consumeEntity(ctx context.Context, action 
 	if item.isFinished && !canVerify {
 		return state.itemIssue(action, action.key.path, "entity received an action after completion", nil)
 	}
+	if action.requiresSealedPayload && !item.sealed {
+		return state.itemIssue(action, action.key.path, "entity completion requires a sealed payload", nil)
+	}
 	if err := state.bindEntityIdentities(item, action, isNew, read); err != nil {
 		return err
 	}
@@ -380,6 +383,9 @@ func (item *wireEntityState) payloadLocation(action compiledPackageStreamEvent) 
 	return action.key.path
 }
 func (state *packageStreamValidation) finishEntities(ctx context.Context, action compiledPackageStreamEvent) error {
+	if err := state.checkContiguousNamespaces(ctx, action); err != nil {
+		return err
+	}
 	for _, item := range state.entityOrder {
 		for _, required := range action.requiredEntities {
 			if item.definition == required && item.verifiedFrame != state.frameNumber {
@@ -396,6 +402,38 @@ func (state *packageStreamValidation) finishEntities(ctx context.Context, action
 		if !item.isFinished {
 			if err := state.finishEntity(ctx, item, action); err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (state *packageStreamValidation) checkContiguousNamespaces(ctx context.Context, action compiledPackageStreamEvent) error {
+	for slot, namespace := range state.contract.namespaces {
+		if !namespace.contiguousKeys {
+			continue
+		}
+		entities := state.entities[slot]
+		for index := range len(entities) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if entities[strconv.Itoa(index)] == nil {
+				return state.itemIssue(action, namespace.keyPath, "completed namespace requires contiguous integer keys from zero", nil)
+			}
+		}
+	}
+	return nil
+}
+
+func (state *packageStreamValidation) checkClosedNamespaces(ctx context.Context, action compiledPackageStreamEvent) error {
+	for _, slot := range action.closedNamespaces {
+		for _, entity := range state.entities[slot] {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if !entity.isFinished {
+				return state.itemIssue(action, state.contract.discriminator.path, "observation requires completed entities", nil)
 			}
 		}
 	}

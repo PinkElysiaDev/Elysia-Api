@@ -2,8 +2,11 @@ package protocol
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -73,6 +76,127 @@ func TestPlanTypeQueries(t *testing.T) {
 		if err != nil || !value.IsString(operation) {
 			t.Fatal("constructed container type changed", value, err)
 		}
+	}
+}
+
+func integerCodecFixtures() []struct{ name, raw string } {
+	return []struct{ name, raw string }{
+		{"zero", "0"}, {"negative-zero", "-0"}, {"positive", "42"}, {"negative", "-42"},
+		{"whitespace", " \t\r\n42\t\n "}, {"negative-zero-whitespace", " \n-0\r\t"},
+		{"beyond-float-integer", "9007199254740993"}, {"negative-beyond-float-integer", "-9007199254740993"},
+		{"maximum", "9223372036854775807"}, {"minimum", "-9223372036854775808"},
+		{"positive-overflow", "9223372036854775808"}, {"negative-overflow", "-9223372036854775809"},
+		{"wide-overflow", "999999999999999999999999999999999999999999999999"},
+		{"decimal-zero", "0.0"}, {"decimal-negative-zero", "-0.0"}, {"decimal-integral", "1.0"},
+		{"fractional", "1.5"}, {"negative-fractional", "-1.5"}, {"decimal-large", "9007199254740993.0"},
+		{"exponent-zero", "1e0"}, {"exponent-positive", "1E+2"}, {"exponent-negative", "1e-1"},
+		{"exponent-integral", "10e-1"}, {"exponent-negative-zero", "-0e100"}, {"exponent-large", "1e999999999"},
+		{"positive-eighteen-bytes", "999999999999999999"},
+		{"positive-nineteen-bytes", "1000000000000000000"},
+		{"negative-eighteen-bytes", "-99999999999999999"},
+		{"negative-nineteen-bytes", "-100000000000000000"},
+		{"absent", ""}, {"null", "null"}, {"string", `"1"`}, {"boolean", "true"},
+		{"object", "{}"}, {"array", "[]"},
+	}
+}
+
+// This oracle preserves the frozen original codec boundary, including its wrapper.
+func readIntegerWithCodec(output JSONOutput) (int64, error) {
+	if plannedJSONType(output) != "number" {
+		return 0, fmt.Errorf("expected an int64 number")
+	}
+	var number int64
+	if err := output.value.Decode(&number); err != nil {
+		return 0, fmt.Errorf("expected an int64 number: %w", err)
+	}
+	return number, nil
+}
+
+func compareIntegerErrors(t testing.TB, actual, expected error) {
+	t.Helper()
+	for _, sentinel := range []error{strconv.ErrRange, strconv.ErrSyntax, context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(actual, sentinel) != errors.Is(expected, sentinel) {
+			t.Fatalf("integer error identity changed for %v: got %v, want %v", sentinel, actual, expected)
+		}
+	}
+	var actualType, expectedType *json.UnmarshalTypeError
+	if errors.As(actual, &actualType) != errors.As(expected, &expectedType) || !reflect.DeepEqual(actualType, expectedType) {
+		t.Fatalf("integer codec type error changed: got %#v, want %#v", actualType, expectedType)
+	}
+	var actualNumber, expectedNumber *strconv.NumError
+	if errors.As(actual, &actualNumber) != errors.As(expected, &expectedNumber) || !reflect.DeepEqual(actualNumber, expectedNumber) {
+		t.Fatalf("integer numeric error changed: got %#v, want %#v", actualNumber, expectedNumber)
+	}
+	for actual != nil || expected != nil {
+		if actual == nil || expected == nil || reflect.TypeOf(actual) != reflect.TypeOf(expected) || actual.Error() != expected.Error() || mappingErrorPath("", actual) != mappingErrorPath("", expected) {
+			t.Fatalf("integer error chain changed: got %T %v, want %T %v", actual, actual, expected, expected)
+		}
+		actual, expected = errors.Unwrap(actual), errors.Unwrap(expected)
+	}
+}
+
+func TestPlannedIntegerCodecParity(t *testing.T) {
+	read := readExpression("input", "")
+	query := numericTestPlan(t, Expression{Op: "is_integer", Source: &read})
+	for _, fixture := range integerCodecFixtures() {
+		t.Run(fixture.name, func(t *testing.T) {
+			input := numericTestInput(t, fixture.raw)
+			output := JSONLeaf(input)
+			want, expectedErr := readIntegerWithCodec(output)
+			actual, actualErr := readPlannedInteger(output)
+			if actual != want {
+				t.Fatal("exact integer changed", actual, want)
+			}
+			compareIntegerErrors(t, actualErr, expectedErr)
+			state := numericTestState(t, input)
+			result, err := query.evaluate(state)
+			if err != nil || result != coreBoolean(expectedErr == nil) || state.budget.steps != 2 {
+				t.Fatal("integer predicate changed codec acceptance or steps", result, err, state.budget.steps)
+			}
+		})
+	}
+}
+
+func TestPlanIntegerCodecErrorPaths(t *testing.T) {
+	expression := Expression{Op: "integer", Operation: "add", Items: []Expression{readExpression("input", ""), literalExpression(0)}}
+	plan := numericTestPlan(t, expression)
+	for _, fixture := range integerCodecFixtures() {
+		t.Run(fixture.name, func(t *testing.T) {
+			input := numericTestInput(t, fixture.raw)
+			want, expectedErr := readIntegerWithCodec(JSONLeaf(input))
+			state := numericTestState(t, input)
+			result, actualErr := plan.evaluate(state)
+			compareIntegerErrors(t, actualErr, locateMappingError("/mapping/items/0", expectedErr))
+			if state.budget.steps != 3 || expectedErr == nil && result != coreInteger(want) {
+				t.Fatal("integer operand result or eager steps changed", result, state.budget.steps)
+			}
+		})
+	}
+}
+
+func TestPlannedIntegerConstructedContainers(t *testing.T) {
+	for _, fixture := range []struct {
+		operation string
+		output    JSONOutput
+	}{
+		{"object", JSONObject(map[string]JSONOutput{})},
+		{"array", JSONArray([]JSONOutput{})},
+	} {
+		t.Run(fixture.operation, func(t *testing.T) {
+			want, expectedErr := readIntegerWithCodec(fixture.output)
+			actual, actualErr := readPlannedInteger(fixture.output)
+			if actual != want {
+				t.Fatal("constructed container changed integer result", actual, want)
+			}
+			compareIntegerErrors(t, actualErr, expectedErr)
+			source := Expression{Op: fixture.operation}
+			plan := numericTestPlan(t, Expression{Op: "is_integer", Source: &source})
+			state := numericTestState(t, Value{})
+			result, err := plan.evaluate(state)
+			if err != nil || result != coreBoolean(false) || state.budget.steps != 2 {
+				t.Fatal("constructed container was treated as an integer", result, err, state.budget.steps)
+			}
+		})
 	}
 }
 
@@ -184,7 +308,7 @@ func TestPlanIntegerEvaluationBoundaries(t *testing.T) {
 
 func TestSmallOperandConsumersPreserveFailureOrder(t *testing.T) {
 	for _, operation := range []string{"integer", "join", "merge_usage"} {
-		for _, count := range []int{2, 3} {
+		for _, count := range []int{2, 3, 4, 5, 16} {
 			expression := Expression{Op: operation}
 			if operation == "integer" {
 				expression.Operation = "add"

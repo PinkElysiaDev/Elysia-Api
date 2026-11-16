@@ -16,21 +16,22 @@ func TestEmptyResponseStateMetadataIsNotActiveContext(t *testing.T) {
 				field = "moderation"
 			}
 			wire := strings.Replace(auditResponses[source], `{`, `{"`+field+`":`+state+`,`, 1)
-			response, err := from.DecodeResponse(t.Context(), []byte(wire), p.EvaluationContext{})
+			response, err := from.DecodeResponse(t.Context(), []byte(wire), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 			sink := &p.DiagnosticSink{}
-			_, err = c.Response(t.Context(), response, p.ConversionContext{}, sink)
+			_, err = c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), sink)
 			wantOK := state == `null` || state == `{}` || source == Anthropic && state == `{"applied_edits":[]}`
 			if (err == nil) != wantOK {
 				t.Fatalf("%s %s: %v", source, state, err)
 			}
 			if wantOK && !sinkHas(sink, "/"+field) {
-				t.Fatal("normalization not diagnosed")
+				t.Fatal("normalization not diagnosed", source, state, response.Metadata, sink.Issues())
 			}
-			encoded, err := from.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			response.Native = nil
+			encoded, err := from.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 			if err != nil || !strings.Contains(string(encoded), `"`+field+`":`+state) {
 				t.Fatalf("same-wire state changed: %s %v", encoded, err)
 			}
@@ -42,18 +43,18 @@ func TestAnthropicNullStopDetailsJSONAndSSE(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Chat)
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	wire := strings.Replace(auditResponses[Anthropic], `{`, `{"stop_details":null,`, 1)
-	r, err := from.DecodeResponse(t.Context(), []byte(wire), p.EvaluationContext{})
+	r, err := from.DecodeResponse(t.Context(), []byte(wire), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err = c.Response(t.Context(), r, p.ConversionContext{}, nil)
+	r, err = c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = to.EncodeResponse(t.Context(), r, p.EvaluationContext{}); err != nil {
+	if _, err = to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{})); err != nil {
 		t.Fatal(err)
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	for _, frame := range []string{
 		`{"type":"message_start","message":{"id":"r","type":"message","model":"m","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1,"output_tokens":0}}}`,
 		`{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"output_tokens":0}}`,
@@ -66,7 +67,7 @@ func TestAnthropicNullStopDetailsJSONAndSSE(t *testing.T) {
 			if event.Unmapped != nil {
 				t.Fatal("known null state captured as unknown")
 			}
-			if _, err = c.Event(t.Context(), event, p.ConversionContext{}, nil); err != nil {
+			if _, err = c.Event(t.Context(), event, fixtureConversionContext(t, c, p.ConversionEvent, event.Source), nil); err != nil {
 				t.Fatal(err)
 			}
 		}

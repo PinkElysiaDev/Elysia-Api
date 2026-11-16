@@ -15,11 +15,11 @@ func TestResponseCollectorInterleavedToolsSnapshotsAndTail(t *testing.T) {
 	start.Index, start.ItemID, start.Item.CallID = &index, Value{}, Value{}
 	events := []Event{
 		start,
-		{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hello")}},
-		{SchemaVersion: 1, Type: ItemDelta, Index: &index, ItemID: StringValue("later"), CallID: StringValue("c"), Delta: StringValue(`{"n":9007199254740993}`)},
-		{SchemaVersion: 1, Type: ItemSnapshot, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hello world")}},
-		{SchemaVersion: 1, Type: ResponseFinished},
-		{SchemaVersion: 1, Type: UsageUpdated, Usage: &Usage{CacheRead: &Counter{Count: 21, Origin: ObservedCount}, Output: &Counter{Count: 0, Origin: ObservedCount}}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hello")}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, Index: &index, ItemID: StringValue("later"), CallID: StringValue("c"), Delta: StringValue(`{"n":9007199254740993}`)},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemSnapshot, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hello world")}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished},
+		{SchemaVersion: SemanticSchemaVersion, Type: UsageUpdated, Usage: &Usage{CacheRead: &Counter{Count: 21, Origin: ObservedCount}, Output: &Counter{Count: 0, Origin: ObservedCount}}},
 	}
 	var streamed strings.Builder
 	for _, event := range events {
@@ -46,7 +46,7 @@ func TestResponseCollectorDoesNotMaskFailuresOrGrowWithoutLimit(t *testing.T) {
 	if _, err := collector.Finish(); err == nil {
 		t.Fatal("accepted missing terminal")
 	}
-	if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: OperationFailed, Error: StringValue("failed")}); err == nil {
+	if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: OperationFailed, Error: StringValue("failed")}); err == nil {
 		t.Fatal("accepted failure")
 	}
 	limits := DefaultLimits()
@@ -55,11 +55,11 @@ func TestResponseCollectorDoesNotMaskFailuresOrGrowWithoutLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := Event{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("prefix")}}
+	start := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("prefix")}}
 	if _, _, err := collector.Consume(start); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("text"), Delta: StringValue(strings.Repeat("x", limits.BufferBytes))}); err == nil {
+	if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("text"), Delta: StringValue(strings.Repeat("x", limits.BufferBytes))}); err == nil {
 		t.Fatal("unbounded collection")
 	}
 }
@@ -76,8 +76,8 @@ func TestResponseCollectorPreservesUnmappedStreamExtensions(t *testing.T) {
 	extensions, _ := ParseValue([]byte(`{"/":{"system_fingerprint":"fp"},"/usage":{"provider_metrics":{"write_tokens":31}}}`))
 	provenance := Native{Source: Provenance{Protocol: family, Direction: DecodeEvent}, Value: extensions}
 	events := []Event{
-		{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hi")}, Unmapped: &provenance},
-		{SchemaVersion: 1, Type: ResponseFinished},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode, Payload: StringValue("hi")}, Unmapped: &provenance},
+		{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished},
 	}
 	for _, event := range events {
 		if _, _, err := collector.Consume(event); err != nil {
@@ -99,7 +99,7 @@ func TestResponseCollectorPreservesUnmappedStreamExtensions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}, Unmapped: &provenance}); err == nil {
+	if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}, Unmapped: &provenance}); err == nil {
 		t.Fatal("unbounded unmapped extensions")
 	}
 }

@@ -29,7 +29,7 @@ func TestPackageDeclaredRequestDefaults(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			target := compileBuiltinPackage(t, name)
 			for _, mode := range []string{"compatible", "strict"} {
-				policy := declaredRulePolicy(t, source, target, "gemini-safety-settings", mode)
+				policy := declaredRulePolicy(t, source, target, "safety-settings", mode)
 				conversion, err := p.ResolveConversion(policy)
 				if err != nil {
 					t.Fatal(err)
@@ -39,33 +39,33 @@ func TestPackageDeclaredRequestDefaults(t *testing.T) {
 				if _, err := conversion.Request(t.Context(), absent, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, absentSink); err != nil || len(absentSink.Issues()) != 0 {
 					t.Fatal("absent safety settings triggered a disposition", absentSink.Issues(), err)
 				}
-				request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Parameters: p.Object{"gemini_safety_settings": testValue(t, `[{"category":"HARM_CATEGORY_HARASSMENT","threshold":"OFF"}]`)}}
+				request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Parameters: p.Object{"safety": testValue(t, `[{"category":"harassment","threshold":"off"}]`)}}
 				sink := &p.DiagnosticSink{}
 				result, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, sink)
 				if mode == "strict" {
 					var failure *p.ConversionError
-					if !errors.As(err, &failure) || failure.Issues[0].RuleID != "gemini-safety-settings" {
+					if !errors.As(err, &failure) || failure.Issues[0].RuleID != "safety-settings" {
 						t.Fatal("strict safety loss was not attributed", err)
 					}
-				} else if err != nil || !result.Parameters["gemini_safety_settings"].IsZero() || len(sink.Issues()) != 1 {
+				} else if err != nil || !result.Parameters["safety"].IsZero() || len(sink.Issues()) != 1 {
 					t.Fatal("compatible safety disposition changed", result, sink.Issues(), err)
 				}
 			}
 		})
 	}
 	target := compileBuiltinPackage(t, "openai-chat")
-	policy := declaredRulePolicy(t, source, target, "responses-context", "strict")
+	policy := declaredRulePolicy(t, source, target, "request-context", "strict")
 	conversion, err := p.ResolveConversion(policy)
 	if err != nil {
 		t.Fatal(err)
 	}
 	route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
-	request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Parameters: p.Object{"responses_previous_response_id": testValue(t, `null`)}}
+	request := &p.Request{SchemaVersion: p.ProtocolCoreVersion}
 	result, err := conversion.Request(t.Context(), request, route, nil)
-	if err != nil || !result.Parameters["responses_previous_response_id"].IsZero() {
-		t.Fatal("null reference normalization became lossy", err)
+	if err != nil || len(result.Resources) != 0 {
+		t.Fatal("absent session reference triggered a disposition", err)
 	}
-	request.Parameters["responses_previous_response_id"] = p.StringValue("previous")
+	request.Resources = []p.Resource{{Kind: "session", ID: p.StringValue("previous")}}
 	if _, err := conversion.Request(t.Context(), request, route, nil); err == nil {
 		t.Fatal("unrestored history reference was discarded")
 	}
@@ -78,7 +78,7 @@ func TestPackageDeclaredResponseModelObservation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		route, err := (p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Transport: p.HTTPJSON}).WithResponseModelOrigin(compiled, compiled, []byte(`{"model":"actually-sent"}`), []byte(`{"id":"r"}`))
+		route, err := (p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Transport: p.HTTPJSON}).WithResponseObservations(compiled, compiled, []byte(`{"model":"actually-sent"}`), []byte(`{"id":"r"}`))
 		if err != nil {
 			t.Fatal(err)
 		}

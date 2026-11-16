@@ -123,19 +123,52 @@ func verifyEventRoundTrip(ctx context.Context, compiled *Compiled, sample Sample
 	defer options.State.Release()
 	var frames []Value
 	if isEventDecoder(sample.Direction) {
+		var validation *WireStreamValidation
+		if sample.Sequence {
+			var err error
+			validation, err = compiled.newWireStreamValidation(eventEncoder(sample.Direction), options.Scope)
+			if err != nil {
+				return err
+			}
+			defer validation.Release()
+			options = options.WithOutputStream(validation)
+		}
+		consume := func(batch []Value) error {
+			if validation != nil {
+				for _, frame := range batch {
+					if err := validation.Consume(ctx, frame); err != nil {
+						return err
+					}
+				}
+				if len(batch) != 0 && eventEncoder(sample.Direction) == EncodeEvent {
+					if err := validation.CommitDelivery(); err != nil {
+						return err
+					}
+				}
+			}
+			frames = append(frames, batch...)
+			return nil
+		}
 		for _, frame := range result.frames {
 			encoded, err := compiled.encodeFrame(ctx, eventEncoder(sample.Direction), frame, options)
 			if err != nil {
 				return err
 			}
-			frames = append(frames, encoded...)
+			if err := consume(encoded); err != nil {
+				return err
+			}
 		}
 		if sample.Sequence {
 			tail, err := compiled.finishEvents(ctx, eventEncoder(sample.Direction), options)
 			if err != nil {
 				return err
 			}
-			frames = append(frames, tail...)
+			if err := consume(tail); err != nil {
+				return err
+			}
+			if err := validation.Finish(); err != nil {
+				return err
+			}
 		}
 		if compiled.native.Preserve {
 			var preserved Value

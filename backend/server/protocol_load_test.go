@@ -78,7 +78,7 @@ func TestProtocolLoad(t *testing.T) {
 			if targetID == "declarative" {
 				upstreamID = "openai-chat-completions"
 			}
-			upstream := compileFixtureDefinition(t, presetDefinition(t, upstreamID))
+			upstream := compileFixturePackage(t, presetPackage(t, upstreamID))
 			var isDelayed, isStream atomic.Bool
 			frames, body := loadResponse(t, upstream)
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -101,19 +101,19 @@ func TestProtocolLoad(t *testing.T) {
 				}
 			}))
 			t.Cleanup(provider.Close)
-			var definitions []protocol.Definition
+			var definitions []protocol.ProtocolPackage
 			if targetID == "declarative" {
 				definitions = append(definitions, verificationEnvelopeDefinition(t))
 			}
-			server := newTestServerWithStore(t, presetGroup(t, "custom:"+upstreamID, loadBase(provider.URL, upstream)), definitions...)
-			ingress := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
+			server := newTestServerWithStore(t, presetGroup(t, "custom:"+upstreamID, provider.URL), definitions...)
+			ingress := compileFixturePackage(t, presetPackage(t, "openai-chat-completions"))
 			path := "/v1/chat/completions"
 			if targetID == "declarative" {
 				service, err := server.protocolService()
 				if err != nil {
 					t.Fatal(err)
 				}
-				ingress, _ = service.Pin(definitions[0].ID)
+				ingress, _ = service.Pin(definitions[0].Spec.ID)
 				path = "/gateway/" + ingress.Identity().DefinitionID + "/generate"
 				bindings, err := server.store.ListProtocolBindings(t.Context())
 				if err != nil {
@@ -214,15 +214,8 @@ func loadSetting(t *testing.T, name string, fallback int) int {
 	return value
 }
 
-func loadBase(origin string, compiled *protocol.Compiled) string {
-	if path := compiled.Operations()["generate"].Path; path == "/chat/completions" || path == "/responses" {
-		return origin + "/v1"
-	}
-	return origin
-}
-
 func loadRequest(t *testing.T, workload string) *protocol.Request {
-	request := &protocol.Request{SchemaVersion: 1, Model: protocol.StringValue("grp"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("hello")}}}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "128")}}
+	request := &protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Model: protocol.StringValue("grp"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("hello")}}}}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, "128")}}
 	switch workload {
 	case "prefix32k":
 		request.Content = append([]protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue(strings.Repeat("stable prefix. ", (32<<10)/15))}}}}, request.Content...)
@@ -247,18 +240,18 @@ func loadRequest(t *testing.T, workload string) *protocol.Request {
 
 func loadResponse(t *testing.T, compiled *protocol.Compiled) ([][]byte, []byte) {
 	usage := &protocol.Usage{Input: &protocol.Counter{Count: 100, Origin: protocol.ObservedCount}, Output: &protocol.Counter{Count: 5, Origin: protocol.ObservedCount}, Total: &protocol.Counter{Count: 105, Origin: protocol.ObservedCount}, CacheRead: &protocol.Counter{Count: 70, Origin: protocol.ObservedCount}}
-	response := &protocol.Response{SchemaVersion: 1, ID: protocol.StringValue("r"), Status: protocol.StringValue("completed"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("ok")}}}}, Usage: usage, Attributes: protocol.Object{"finishReason": protocol.StringValue("stop")}}
+	response := &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, ID: protocol.StringValue("r"), Status: protocol.StringValue("completed"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("ok")}}}}, Usage: usage, Attributes: protocol.Object{"finishReason": protocol.StringValue("stop")}}
 	body, err := compiled.EncodeResponse(t.Context(), response, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	index := 0
-	event := protocol.Event{SchemaVersion: 1, ItemID: protocol.StringValue("text"), Index: &index, Type: protocol.ItemStarted, Item: &protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue("")}}
+	event := protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, ItemID: protocol.StringValue("text"), Index: &index, Type: protocol.ItemStarted, Item: &protocol.Node{Kind: protocol.TextNode, Payload: protocol.StringValue("")}}
 	events := []protocol.Event{event}
 	for range loadStreamBytes / loadFrameBytes {
-		events = append(events, protocol.Event{SchemaVersion: 1, ItemID: event.ItemID, Index: &index, Type: protocol.ItemDelta, Delta: protocol.StringValue(strings.Repeat("x", loadFrameBytes))})
+		events = append(events, protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, ItemID: event.ItemID, Index: &index, Type: protocol.ItemDelta, Delta: protocol.StringValue(strings.Repeat("x", loadFrameBytes))})
 	}
-	events = append(events, protocol.Event{SchemaVersion: 1, ItemID: event.ItemID, Index: &index, Type: protocol.ItemFinished}, protocol.Event{SchemaVersion: 1, Type: protocol.ResponseFinished, Response: &protocol.Response{SchemaVersion: 1, Status: protocol.StringValue("completed"), Content: []protocol.Node{}, Attributes: response.Attributes}}, protocol.Event{SchemaVersion: 1, Type: protocol.UsageUpdated, Usage: usage})
+	events = append(events, protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, ItemID: event.ItemID, Index: &index, Type: protocol.ItemFinished}, protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, Type: protocol.ResponseFinished, Response: &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, Status: protocol.StringValue("completed"), Content: []protocol.Node{}, Attributes: response.Attributes}}, protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, Type: protocol.UsageUpdated, Usage: usage})
 	options := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 	var frames [][]byte
 	write := func(values []protocol.Value, err error) {

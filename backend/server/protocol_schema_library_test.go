@@ -12,15 +12,15 @@ func TestProtocolSchemaLibraryHTTPAndCLI(t *testing.T) {
 	s.adminProtocolSchemaV2(contextForTest(c), c)
 	flushTestResponse(c)
 	data := decodeAdminData(t, rec)
-	definition := data["definitionSchema"].(map[string]any)
-	if definition["$ref"] != "#/$defs/Definition" || definition["$id"] != nil {
+	definition := data["packageSchema"].(map[string]any)
+	if definition["$ref"] != "#/$defs/ProtocolPackage" || definition["$id"] != nil {
 		t.Fatalf("unexpected root: %v", definition)
 	}
 	if definition["$defs"].(map[string]any)["CapabilitySet"] == nil {
 		t.Fatal("named map definition missing over HTTP")
 	}
 	for _, command := range []string{
-		"elysia protocol schema --section definition --type Expression",
+		"elysia protocol schema --section mapping --type Expression",
 		"elysia protocol schema --section semantic --type CacheIntent",
 		"elysia protocol schema --section binding --type CapabilitySet",
 	} {

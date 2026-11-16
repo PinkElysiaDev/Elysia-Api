@@ -44,10 +44,7 @@ func (s *Server) recoverRequiredPresets(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.refreshProtocolRuntimeScope(ctx, service, true); err != nil {
-		return err
-	}
-	if err := service.ReloadAvailable(ctx, requiredPresetIDs...); err != nil {
+	if err := s.refreshAndPublishProtocols(ctx, service, true); err != nil {
 		return err
 	}
 	return checkRequiredPresets(service.View())
@@ -69,10 +66,7 @@ func (s *Server) reloadProtocolRuntime(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	if err := s.refreshProtocolRuntime(ctx, service); err != nil {
-		return err
-	}
-	if err := service.ReloadAvailable(ctx, requiredPresetIDs...); err != nil {
+	if err := s.refreshAndPublishProtocols(ctx, service, false); err != nil {
 		return err
 	}
 	if err := checkRequiredPresets(service.View()); err != nil {

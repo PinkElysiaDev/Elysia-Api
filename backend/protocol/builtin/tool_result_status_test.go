@@ -23,7 +23,7 @@ func TestToolResultStatusProjection(t *testing.T) {
 						content = `[{"type":"text","text":"result-"},{"type":"text","text":"body"}]`
 					}
 					raw := fmt.Sprintf(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"read"},{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"read","input":{"is_error":true,"error":"untouched"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":%s%s}]}],"tools":[{"name":"read","input_schema":{"type":"object"}}]}`, content, status)
-					r, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+					r, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -37,11 +37,11 @@ func TestToolResultStatusProjection(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					wire, err := to.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+					wire, err := to.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
-					back, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{})
+					back, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -55,13 +55,9 @@ func TestToolResultStatusProjection(t *testing.T) {
 							t.Fatal("native error flag or content changed")
 						}
 					case Gemini:
-						payload := result.Payload
-						if flag == "true" {
-							fields, _ := payload.ReadObject()
-							payload = fields["error"]
-						}
-						if payload != testValue(t, `{"result":"result-body"}`) {
-							t.Fatal("incorrect object result", string(wire))
+						hasError := result.Status == testValue(t, `{"isError":true}`)
+						if result.Payload != testValue(t, `{"result":"result-body"}`) || hasError != (flag == "true") {
+							t.Fatal("object result or separate status changed", string(wire))
 						}
 					default:
 						expected := "result-body"
@@ -88,7 +84,7 @@ func TestToolResultStatusProjection(t *testing.T) {
 						}
 					}
 					wantIssues := 0
-					if codec != Anthropic && flag != "absent" {
+					if (codec == Chat || codec == Responses) && flag != "absent" {
 						wantIssues = 1
 					}
 					if statusIssues != wantIssues {
@@ -126,7 +122,7 @@ func toolResultStatusNodes(nodes []p.Node) (result, call *p.Node) {
 func TestToolResultStatusModesAndGuards(t *testing.T) {
 	from := shippedProjectionProtocol(t, Anthropic)
 	raw := `{"model":"m","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"read","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"body","is_error":true}]}]}`
-	input, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+	input, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +143,7 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 					}
 					if mode == "disabled" {
 						for i := range policy.Rules {
-							if strings.HasPrefix(policy.Rules[i].Action, "tool_result_") {
+							if policy.Rules[i].ID == "tool-results" {
 								policy.Rules[i].Enabled = false
 							}
 						}
@@ -157,9 +153,9 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 					out, err := c.Request(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, sink)
 					var wire []byte
 					if err == nil {
-						wire, err = to.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+						wire, err = to.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 					}
-					wantError := codec != Anthropic && mode == "disabled" || flag && mode == "strict" && (codec == Chat || codec == Responses)
+					wantError := (codec == Chat || codec == Responses) && mode == "disabled" || mode == "strict" && (codec == Chat || flag && codec == Responses)
 					if (err != nil) != wantError {
 						t.Fatal("unexpected result", err, string(wire))
 					}
@@ -168,13 +164,13 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 					}
 					projected, _ := toolResultStatusNodes(out.Content)
 					if codec == Gemini {
-						key := "output"
-						if flag {
-							key = "error"
+						decoded, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
+						if err != nil {
+							t.Fatal(err)
 						}
-						fields, _ := projected.Payload.ReadObject()
-						if fields[key] != result.Payload {
-							t.Fatal("caller object altered or success misclassified", string(wire))
+						observed, _ := toolResultStatusNodes(decoded.Content)
+						if projected.Payload != result.Payload || observed.Payload != result.Payload || observed.Status != result.Status {
+							t.Fatal("caller object or separate status altered", string(wire))
 						}
 					}
 					if codec == Chat || codec == Responses {
@@ -182,7 +178,7 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 						request := r.Clone()
 						original, _ := toolResultStatusNodes(request.Content)
 						*original = *projected
-						back, err := from.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+						back, err := from.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 						if err != nil || strings.Contains(string(back), `"is_error"`) {
 							t.Fatal("native snapshot restored status", err, string(back))
 						}
@@ -197,12 +193,12 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 		result, _ := toolResultStatusNodes(r.Content)
 		result.Status = testValue(t, status)
 		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
-		if _, err := c.Request(t.Context(), r, p.ConversionContext{}, nil); err == nil {
+		if _, err := c.Request(t.Context(), r, fixtureConversionContext(t, c, p.ConversionRequest, r.Source), nil); err == nil {
 			t.Fatal("malformed or unknown status accepted", status)
 		}
 	}
 	for _, value := range []string{`null`, `1`, `"false"`, `[]`} {
-		if _, err := from.DecodeRequest(t.Context(), []byte(strings.Replace(raw, `"is_error":true`, `"is_error":`+value, 1)), p.EvaluationContext{}); err == nil {
+		if _, err := from.DecodeRequest(t.Context(), []byte(strings.Replace(raw, `"is_error":true`, `"is_error":`+value, 1)), fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatal("invalid wire flag accepted", value)
 		}
 		r := input.Clone()
@@ -211,7 +207,7 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 		policy := p.DefaultConversionPolicy(from, to)
 		policy.Rules = append(policy.Rules, p.ConversionRule{ID: "remove-status", Order: 1, Enabled: true, Phase: p.ConversionRequest, Match: p.ConversionMatch{NodeKind: p.ToolResultNode}, Action: "remove", Path: "/status"})
 		c, _ := p.ResolveConversion(policy)
-		if _, err := c.Request(t.Context(), r, p.ConversionContext{}, nil); err == nil {
+		if _, err := c.Request(t.Context(), r, fixtureConversionContext(t, c, p.ConversionRequest, r.Source), nil); err == nil {
 			t.Fatal("authored removal hid malformed error flag", value)
 		}
 	}
@@ -224,7 +220,7 @@ func TestToolResultStatusModesAndGuards(t *testing.T) {
 		result, _ := toolResultStatusNodes(r.Content)
 		result.Children = []p.Node{block}
 		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
-		if _, err := c.Request(t.Context(), r, p.ConversionContext{}, nil); err == nil {
+		if _, err := c.Request(t.Context(), r, fixtureConversionContext(t, c, p.ConversionRequest, r.Source), nil); err == nil {
 			t.Fatal("unhandled result content discarded", block)
 		}
 	}
@@ -237,14 +233,14 @@ func TestEmptyToolResultStatus(t *testing.T) {
 		for _, content := range []string{`""`, `[]`, `[ ]`} {
 			for _, failed := range []bool{false, true} {
 				raw := fmt.Sprintf(`{"model":"m","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":%s,"is_error":%t}]}]}`, content, failed)
-				r, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+				r, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
 				c, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, to))
 				out, err := c.Request(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity()}, nil)
 				if err == nil {
-					_, err = to.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+					_, err = to.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 				}
 				if err != nil {
 					t.Fatal(codec, content, failed, err)

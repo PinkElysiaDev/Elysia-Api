@@ -36,8 +36,7 @@ func hashContinuationNode(node Node) string {
 	cache := &semanticCache{limits: DefaultLimits()}
 	output, err := readCoreNode(node, nil, cache)
 	retainContinuationLeaves(cache)
-	var storage [64]string
-	parts := jsonOutputParts{parts: storage[:0], cache: cache}
+	parts := jsonOutputParts{cache: cache}
 	if err != nil || parts.prepare(context.Background(), output) != nil {
 		// The existing API hashes the absent result when Core encoding fails.
 		return hashValue(Value{})
@@ -46,12 +45,12 @@ func hashContinuationNode(node Node) string {
 	if parts.bytes <= valueHashChunkBytes {
 		buffer := make([]byte, parts.bytes)
 		offset := 0
-		for _, part := range parts.parts {
-			offset += copy(buffer[offset:], part)
+		for index := range parts.count {
+			offset += copy(buffer[offset:], parts.readPart(index))
 		}
 		sum = sha256.Sum256(buffer)
 	} else {
-		sum = hashContinuationParts(parts.parts)
+		sum = hashContinuationParts(&parts)
 	}
 	return hex.EncodeToString(sum[:])
 }
@@ -78,10 +77,11 @@ func retainContinuationLeaves(cache *semanticCache) {
 	}
 }
 
-func hashContinuationParts(parts []string) [sha256.Size]byte {
+func hashContinuationParts(parts *jsonOutputParts) [sha256.Size]byte {
 	digest := sha256.New()
 	var buffer [valueHashChunkBytes]byte
-	for _, part := range parts {
+	for index := range parts.count {
+		part := parts.readPart(index)
 		for len(part) > 0 {
 			n := copy(buffer[:], part)
 			_, _ = digest.Write(buffer[:n])

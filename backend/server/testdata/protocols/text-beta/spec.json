@@ -1,0 +1,46 @@
+{
+  "id": "text-beta",
+  "name": "text-beta",
+  "version": "1",
+  "family": "text-beta",
+  "wireVersion": "1",
+  "documents": {
+    "decode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "decode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  },
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/generate",
+      "transport": "http_json",
+      "auth": {
+        "location": "none"
+      },
+      "request": "encode_request",
+      "response": "decode_response"
+    }
+  }
+}

@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 )
 
@@ -57,7 +56,6 @@ func (c *CompiledConversion) convertOwnedRequest(ctx context.Context, request *R
 	limits := c.phaseLimits(ctx, ConversionRequest)
 	state := conversionState{document: owned, limits: limits, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: limits}}
 	state.cache.normalizeDocument(reflect.ValueOf(owned), plan)
-	state.requestNormalized = true
 	if _, err := c.applyConversionState(ctx, ConversionIngress, Value{}, route, sink, &state, false); err != nil {
 		return nil, err
 	}
@@ -84,24 +82,36 @@ func applyClientOutputSettings(request *Request, settings *ConversionUsageSettin
 }
 
 func (c *CompiledConversion) Response(ctx context.Context, response *Response, route ConversionContext, sink *DiagnosticSink) (*Response, error) {
-	v, err := EncodeSemantic(ctx, DecodeResponse, response)
-	if err == nil {
-		v, err = c.ApplyValue(ctx, ConversionResponse, v, route, sink)
+	limits := semanticLimits(DefaultLimits())
+	if c != nil {
+		limits = c.phaseLimits(ctx, ConversionResponse)
 	}
-	if err != nil {
+	if err := checkSemanticValue(response, limits); err != nil {
 		return nil, err
 	}
-	var result Response
-	if err = decodeContract(v.Bytes(), &result); err != nil {
+	owned := normalizeMappingSemantic(response, limits)
+	bindRangeAssociations(owned)
+	state := conversionState{document: owned, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: limits}, limits: limits}
+	if _, err := c.applyConversionState(ctx, ConversionResponse, Value{}, route, sink, &state, false); err != nil {
 		return nil, err
 	}
-	inheritResponseRangeOrigin(response, &result)
-	return &result, nil
+	if err := state.load(ConversionResponse, true); err != nil {
+		return nil, err
+	}
+	result := state.document.(*Response)
+	inheritResponseRangeOrigin(response, result)
+	return result, nil
 }
 
 func (c *CompiledConversion) Event(ctx context.Context, event Event, route ConversionContext, sink *DiagnosticSink) (result Event, err error) {
+	if event.prelude != nil && (c == nil || event.prelude.PolicyHash != c.Hash || event.prelude.Protocol != route.Target) {
+		return Event{}, streamIssue(InvalidAssociation, "/response", "generated response header belongs to a different target policy")
+	}
 	origin := event.rangeOrigin
 	defer func() {
+		if err == nil && event.prelude != nil {
+			sink.Add(*event.prelude)
+		}
 		if err == nil && event.SchemaVersion == ProtocolCoreVersion {
 			inheritResponseRangeOrigin(event.Response, result.Response)
 			if origin == nil && !sameEventRangeInput(&event, &result) {
@@ -133,17 +143,21 @@ func (c *CompiledConversion) convertEvent(ctx context.Context, event Event, rout
 	if event.auxiliary != nil || event.omittedAuxiliary != nil || event.controlReceipt != nil || event.omittedControl != nil {
 		return c.convertProtectedEvent(ctx, event, route, sink)
 	}
-	if c != nil && c.canOwnPhase(ConversionEvent) {
+	if c != nil {
 		budget := semanticLimits(DefaultLimits())
 		if err := checkSemanticValue(event, budget); err != nil {
 			return Event{}, err
 		}
 		owned := normalizeMappingSemantic(&event, budget)
+		bindRangeAssociations(owned)
 		state := conversionState{document: owned, isStrict: true, needsEncoding: true, cache: &semanticCache{limits: budget}}
 		if _, err := c.applyConversionState(ctx, ConversionEvent, Value{}, route, sink, &state, false); err != nil {
 			return Event{}, err
 		}
-		return *owned, nil
+		if err := state.load(ConversionEvent, true); err != nil {
+			return Event{}, err
+		}
+		return *state.document.(*Event), nil
 	}
 	v, err := EncodeSemantic(ctx, DecodeEvent, event)
 	if err == nil {
@@ -159,59 +173,4 @@ func (c *CompiledConversion) convertEvent(ctx context.Context, event Event, rout
 
 func (c *CompiledConversion) canOwnPhase(phase ConversionPhase) bool {
 	return c.ownedPhases[phase]
-}
-
-func (c *CompiledConversion) streamOptions(request *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	stream := false
-	_ = request.Parameters["stream"].Decode(&stream)
-	codec, _ := readConversionOption[string](c, rule)
-	for i := range request.Tools {
-		tool := &request.Tools[i]
-		value := tool.Options["eager_input_streaming"]
-		if value.IsZero() {
-			continue
-		}
-		at := fmt.Sprintf("/tools/%d/options/eager_input_streaming", i)
-		if err := ValidateToolStreamOption(value, at); err != nil {
-			return err
-		}
-		if stream && (codec == "" || codec == "anthropic") {
-			continue
-		}
-		if !stream || value.IsNull() {
-			c.normalized(rule, route, at, "tool input streaming preference has no effect on this request", sink)
-		} else if err := c.issueSeverity(rule, ConversionRequest, route, at, "target cannot express per-tool input streaming timing; tool input and schema remain intact", sink, true, SeverityInfo); err != nil {
-			return err
-		}
-		delete(tool.Options, "eager_input_streaming")
-	}
-	output := request.ClientOutput
-	if output == nil || output.RawStreamOptions.IsZero() {
-		return nil
-	}
-	if _, err := ParseClientOutput(output.RawStreamOptions); err != nil {
-		return err
-	}
-	foreign := route.Source.Family != route.Target.Family || route.Source.WireVersion != route.Target.WireVersion
-	fields, _ := output.RawStreamOptions.ReadObject()
-	for _, key := range sortedKeys(fields) {
-		if key != "include_usage" && foreign {
-			reject := rule
-			reject.Action = "reject"
-			return candidateFailure(c.issue(reject, ConversionRequest, route, "/stream_options/"+escapePointer(key), "client stream extension requires an explicit target mapping", sink, false))
-		}
-	}
-	if !stream {
-		if _, exists := fields["include_usage"]; exists || output.RawStreamOptions.IsNull() || len(fields) == 0 {
-			delete(fields, "include_usage")
-			output.RawStreamOptions = Value{}
-			if len(fields) > 0 {
-				output.RawStreamOptions, _ = EncodeValue(fields)
-			}
-			c.normalized(rule, route, "/stream_options", "known stream options have no effect on a non-streaming request", sink)
-		}
-	} else if foreign {
-		output.RawStreamOptions = Value{}
-	}
-	return nil
 }

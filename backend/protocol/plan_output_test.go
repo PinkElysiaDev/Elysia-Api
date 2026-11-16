@@ -51,6 +51,10 @@ func TestOutputPlanParity(t *testing.T) {
 		{"map-scalar", mapObjects, `false`},
 		{"flatmap-raw", Expression{Op: "flatmap", Source: &read, Body: &item}, `[[ {"x":"<"} ],[],[1e+3,null]]`},
 		{"flatmap-planned", Expression{Op: "flatmap", Source: &read, Body: &mapItems}, `[[{"text":"<"},{"text":"two"}],[],[{"text":"three"}]]`},
+		{"flatmap-empty-raw", Expression{Op: "flatmap", Source: &read, Body: &item}, `[[],[]]`},
+		{"flatmap-empty-planned", Expression{Op: "flatmap", Source: &read, Body: expressionPointer(Expression{Op: "array"})}, `[null,1]`},
+		{"flatmap-mixed-raw", Expression{Op: "flatmap", Source: &read, Body: expressionPointer(readExpression("item", "/values"))}, `[{}, {"values":[]}, {"values":[1,2,3,4,5,6]}, {}, {"values":[]}, {"values":[9007199254740993]}]`},
+		{"flatmap-mixed-planned", Expression{Op: "flatmap", Source: &read, Body: expressionPointer(Expression{Op: "if", When: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("item", "/values"))}), Then: expressionPointer(Expression{Op: "map", Source: expressionPointer(readExpression("item", "/values")), Body: &item})})}, `[{}, {"values":[]}, {"values":[1,2,3,4,5,6]}, {}, {"values":[]}, {"values":[9007199254740993]}]`},
 		{"flatmap-invalid", Expression{Op: "flatmap", Source: &read, Body: &item}, `[[1],true]`},
 		{"flatmap-object-scopes", Expression{Op: "flatmap", Source: &read, Body: expressionPointer(Expression{Op: "array", Items: []Expression{object}})}, `[{"text":"first"},{"text":"second","missing":null},{}]`},
 		{"if-object", Expression{Op: "if", When: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/present"))}), Then: expressionPointer(objectExpression(map[string]Expression{"value": readExpression("input", "/present")}))}, `{"present":false}`},
@@ -203,7 +207,7 @@ func TestOutputPlanCoversCatalog(t *testing.T) {
 		}
 		group := "historical"
 		switch operation.Name {
-		case "type", "is_integer", "integer", "let", "index", "walk", "recur", "capture_native", "replay_native", "native_matches", "split_data_uri", "with_index", "remember", "recall", "keys", "merge_deep", "entries", "from_entries", "group_runs", "equal_text":
+		case "type", "is_integer", "is_integral", "integer", "let", "index", "walk", "recur", "capture_native", "replay_native", "native_matches", "split_data_uri", "with_index", "remember", "recall", "keys", "merge_deep", "entries", "from_entries", "group_runs", "equal_text":
 			group = "plan-only"
 		}
 		t.Run(group+"/"+operation.Name, func(t *testing.T) {

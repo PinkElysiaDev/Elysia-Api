@@ -9,24 +9,45 @@ import (
 // ProtocolStreamDisposition declares a loss that a target event program may
 // request. It never grants resource, provenance or delivery authority.
 type ProtocolStreamDisposition struct {
-	Kind   string `json:"kind" jsonschema:"enum=degrade,enum=reject"`
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
+	Kind         string `json:"kind" jsonschema:"enum=degrade,enum=reject"`
+	Path         string `json:"path"`
+	Reason       string `json:"reason"`
+	ResponseRule string `json:"responseRule,omitempty"`
 }
 
 type streamDispositionOptions struct {
-	CoreVersion int                       `json:"coreVersion"`
-	Target      Identity                  `json:"target"`
-	EncoderHash string                    `json:"encoderHash"`
-	Disposition ProtocolStreamDisposition `json:"disposition"`
+	CoreVersion      int                       `json:"coreVersion"`
+	Target           Identity                  `json:"target"`
+	EncoderHash      string                    `json:"encoderHash"`
+	Disposition      ProtocolStreamDisposition `json:"disposition"`
+	ResponseRuleHash string                    `json:"responseRuleHash,omitempty"`
 }
 
 func (compiled *Compiled) compileStreamDisposition(declaration ProtocolConversionDefault) (ConversionRule, error) {
 	if declaration.Phase != ConversionEvent || declaration.Use != "" || declaration.Recovery != nil || declaration.Steps != nil || declaration.Auxiliary != nil || declaration.Control != nil || declaration.Collection || declaration.FrameUsage {
 		return ConversionRule{}, fmt.Errorf("streamDisposition requires a standalone target event rule")
 	}
-	value, err := EncodeValue(streamDispositionOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity,
-		EncoderHash: compiled.mappings[EncodeEvent].definitionHash, Disposition: *declaration.StreamDisposition})
+	options := streamDispositionOptions{CoreVersion: compiled.CoreVersion(), Target: compiled.identity,
+		EncoderHash: compiled.mappings[EncodeEvent].definitionHash, Disposition: *declaration.StreamDisposition}
+	if name := options.Disposition.ResponseRule; name != "" {
+		for _, rule := range compiled.packagePlan.conversionDefaults {
+			if rule.ID != name {
+				continue
+			}
+			if rule.Phase != ConversionResponse || rule.Action != "core_controls" || rule.Match.Path != "" || rule.Match.Present != nil {
+				return ConversionRule{}, fmt.Errorf("streamDisposition responseRule requires a local response control with route conditions only")
+			}
+			var err error
+			options.ResponseRuleHash, err = conversionRuleFingerprint(rule)
+			if err != nil {
+				return ConversionRule{}, err
+			}
+		}
+		if options.ResponseRuleHash == "" {
+			return ConversionRule{}, fmt.Errorf("streamDisposition responseRule %q is not declared", name)
+		}
+	}
+	value, err := EncodeValue(options)
 	if err != nil {
 		return ConversionRule{}, err
 	}
@@ -50,6 +71,9 @@ func compileStreamDispositionOption(rule ConversionRule) (conversionOption, erro
 	if _, err := parsePointer(disposition.Path); err != nil {
 		return conversionOption{}, err
 	}
+	if disposition.ResponseRule == "" && options.ResponseRuleHash != "" || disposition.ResponseRule != "" && (!definitionIdentifier.MatchString(disposition.ResponseRule) || len(options.ResponseRuleHash) != 64 || disposition.Kind != "degrade") {
+		return conversionOption{}, fmt.Errorf("stream_disposition responseRule requires a pinned response control and a degrade disposition")
+	}
 	return conversionOption{raw: rule.Value, value: options}, nil
 }
 
@@ -68,7 +92,7 @@ func (options EvaluationContext) WithConversion(conversion *CompiledConversion, 
 type streamDispositionRequest struct{ name, path string }
 
 func (plan *compiledOutputPlan) requireStreamDisposition(state evaluation) (plannedOutput, error) {
-	output, err := plan.source.buildNode(state)
+	output, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

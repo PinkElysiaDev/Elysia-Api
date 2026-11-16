@@ -17,35 +17,6 @@ type TaskControl struct {
 	Query map[string]string `json:"query,omitempty"`
 }
 
-func (compiler *Compiler) compileTaskMappings(compiled *Compiled, definition Definition, expressions *expressionCompiler) error {
-	compiled.taskMappings = map[string]map[string]compiledMapping{}
-	for name, operation := range definition.Operations {
-		if operation.Kind != "submit" {
-			continue
-		}
-		flow := operation.Task
-		if err := checkTaskFlow(operation, definition.Operations, definition.Capabilities, hasDefinitionDirections(definition, DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse)); err != nil {
-			return err
-		}
-		compiled.taskMappings[name] = map[string]compiledMapping{}
-		for kind, mapping := range map[string]Mapping{"decode": flow.Decode, "encode": flow.Encode, "control": flow.Control} {
-			if mapping.Module != "" || len(mapping.Rules) > 0 || mapping.Transform == nil {
-				return fmt.Errorf("task %s requires a declarative transform", kind)
-			}
-			direction := EncodeResponse
-			if kind == "decode" {
-				direction = DecodeResponse
-			}
-			entry, err := compiler.compileMapping(mapping, "/operations/"+name+"/task/"+kind, direction, expressions)
-			if err != nil {
-				return err
-			}
-			compiled.taskMappings[name][kind] = entry
-		}
-	}
-	return compiled.checkTaskSamples(definition.TaskSamples)
-}
-
 func checkTaskFlow(operation Operation, operations map[string]Operation, capabilities CapabilitySet, hasAdapters bool) error {
 	flow := operation.Task
 	if flow == nil || operation.Transport != HTTPJSON || !capabilities[AsyncJobsCapability] {
@@ -98,16 +69,11 @@ func (compiled *Compiled) ConvertTask(ctx context.Context, operation, kind, purp
 	if !exists {
 		return Value{}, fmt.Errorf("task mapping is unavailable")
 	}
-	direction := EncodeResponse
-	if kind == "decode" {
-		direction = DecodeResponse
-	}
 	options.Values = copyObject(options.Values)
 	options.Values["operation"] = StringValue(purpose)
-	if compiled.packagePlan != nil {
-		return compiled.executePackageTask(ctx, operation, kind, purpose, mapping, input, options)
-	}
-	return compiled.executeOperationMapping(ctx, mapping, direction, "/operations/"+operation+"/task/"+kind, input, options)
+
+	return compiled.executePackageTask(ctx, operation, kind, purpose, mapping, input, options)
+
 }
 
 // DecodeTaskUpdate validates provider state without inventing identities or

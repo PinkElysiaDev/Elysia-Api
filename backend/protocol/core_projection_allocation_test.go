@@ -18,7 +18,13 @@ func projectionNodes() map[string]Node {
 }
 
 func TestCoreProjectionPresenceParity(t *testing.T) {
-	for name, node := range projectionNodes() {
+	nodes := projectionNodes()
+	nodes["empty-containers"] = Node{ReasoningContent: []Node{}, Children: []Node{}, Attributes: Object{}, Metadata: []ResponseMetadata{}}
+	nodes["present-zero-values"] = Node{
+		Role: parseTestValue(t, `null`), ID: parseTestValue(t, `9007199254740993`), Payload: parseTestValue(t, `false`),
+		Input: &ToolInput{}, Source: &Provenance{}, Native: &Native{Value: parseTestValue(t, `null`)},
+	}
+	for name, node := range nodes {
 		t.Run(name, func(t *testing.T) {
 			assertCoreReaderParity(t, node, func(pointer []string) (JSONOutput, error) {
 				return readCoreNode(node, pointer, nil)

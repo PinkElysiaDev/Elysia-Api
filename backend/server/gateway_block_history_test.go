@@ -102,7 +102,7 @@ func TestGatewayResponsesReturnsSignedThinkingWithItsAnthropicToolTurn(t *testin
 			}
 			s.invalidateRouteCache()
 			call := func(body string) *httptest.ResponseRecorder {
-				r := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(body))
+				r := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(body))
 				r.Header.Set("Authorization", "Bearer gateway-test-token")
 				r.Header.Set("x-elysia-session-id", "block-history")
 				out := httptest.NewRecorder()

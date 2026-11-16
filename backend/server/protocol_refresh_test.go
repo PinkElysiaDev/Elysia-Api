@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,12 +23,35 @@ func persistPreviousRevision(t *testing.T, server *Server, definition protocol.V
 	if err := protocol.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	id, hash := compiled.Identity().DefinitionID, compiled.Hash()
+	persistStoredRevision(t, server, compiled.Identity().DefinitionID, compiled.Hash(), compiled.SamplesHash(), definition)
+	return compiled
+}
+
+func persistLegacyPreset(t *testing.T, server *Server, id string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "previous", id+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := mustProtocolValue(t, string(raw))
+	fields, err := definition.ReadObject()
+	if err != nil || !fields["id"].IsString(id) {
+		t.Fatal("historical preset identity mismatch", id, err)
+	}
+	// Historical bytes remain storage evidence; the retired compiler is never loaded.
+	hash := fmt.Sprintf("%x", sha256.Sum256(definition.Bytes()))
+	samplesHash := fmt.Sprintf("%x", sha256.Sum256(fields["samples"].Bytes()))
+	persistStoredRevision(t, server, id, hash, samplesHash, definition)
+	return hash
+}
+
+func persistStoredRevision(t *testing.T, server *Server, id, hash, samplesHash string, definition protocol.Value) {
+	t.Helper()
 	revision := protocol.Revision{ProtocolID: id, Hash: hash, Definition: definition, CreatedAt: time.Now().UTC()}
 	if err := server.store.SaveProtocolRevision(t.Context(), revision); err != nil {
 		t.Fatal(err)
 	}
-	report := protocol.VerificationReport{DefinitionHash: hash, CompilerVersion: "2.0.0-dev.7", SamplesHash: compiled.SamplesHash(), Kind: protocol.OfflineVerification, Passed: true, VerifiedAt: time.Now().UTC()}
+	report := protocol.VerificationReport{DefinitionHash: hash, CompilerVersion: "2.0.0-dev.7", SamplesHash: samplesHash, Kind: protocol.OfflineVerification, Passed: true, VerifiedAt: time.Now().UTC()}
 	if err := server.store.SaveProtocolReport(t.Context(), id, hash, report); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +61,6 @@ func persistPreviousRevision(t *testing.T, server *Server, definition protocol.V
 	if _, err := server.store.SaveProtocolDraft(t.Context(), protocol.Draft{ProtocolID: id, Hash: hash, Definition: definition, UpdatedAt: time.Now().UTC()}, ""); err != nil {
 		t.Fatal(err)
 	}
-	return compiled
 }
 
 func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) {
@@ -47,15 +71,11 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 		t.Fatal(err)
 	}
 	for _, id := range []string{"openai-chat-completions", "anthropic-messages", "openai-responses", "google-generate-content"} {
-		raw, err := os.ReadFile(filepath.Join("..", "protocol", "builtin", "testdata", "previous", id+".json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		old := persistPreviousRevision(t, server, mustProtocolValue(t, string(raw)))
+		persistLegacyPreset(t, server, id)
 		if id == "openai-responses" {
-			edited := old.Definition()
-			edited.Name = "unfinished operator draft"
-			edited.ID = "openai-responses-operator"
+			edited := presetPackage(t, id)
+			edited.Spec.Name = "unfinished operator draft"
+			edited.Spec.ID = "openai-responses-operator"
 			value := mustEncodedProtocolValue(t, edited)
 			if _, _, err := service.SaveDraft(t.Context(), "openai-responses-operator", value.Bytes(), ""); err != nil {
 				t.Fatal(err)
@@ -78,7 +98,7 @@ func TestRuntimeRefreshUpgradesOnlyKnownPresetsAndPreservesDrafts(t *testing.T) 
 		// Derive the expected revision from the shipped definition instead of a
 		// hardcoded string: built-in presets version independently, so only the
 		// ones whose content changed this cycle carry a new revision.
-		if compiled.Identity().Revision != presetDefinition(t, id).Version {
+		if compiled.Identity().Revision != presetPackage(t, id).Spec.Version {
 			t.Fatalf("preset not upgraded: %v", compiled.Identity())
 		}
 		report, err := server.store.ReadProtocolReport(t.Context(), id, compiled.Hash())
@@ -116,10 +136,10 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 	for _, isInvalid := range []bool{false, true} {
 		t.Run(map[bool]string{false: "preserve", true: "block"}[isInvalid], func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			definition := loadGatewayDefinition(t, "text-alpha")
-			definition.Name = "operator-owned protocol"
+			definition := loadGatewayFixture(t, "text-alpha")
+			definition.Spec.Name = "operator-owned protocol"
 			if isInvalid {
-				definition.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
+				definition.Mapping.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
 			}
 			old := persistPreviousRevision(t, server, mustEncodedProtocolValue(t, definition))
 			before, err := server.store.ListProtocolActivations(t.Context())
@@ -132,10 +152,10 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 					t.Fatal("custom failure blocked healthy presets", err)
 				}
 				service, _ := server.protocolService()
-				if _, ok := service.Pin(definition.ID); ok {
+				if _, ok := service.Pin(definition.Spec.ID); ok {
 					t.Fatal("invalid custom revision loaded")
 				}
-				if service.View().Failures()[definition.ID] == "" {
+				if service.View().Failures()[definition.Spec.ID] == "" {
 					t.Fatal("missing isolation reason")
 				}
 				after, readErr := server.store.ListProtocolActivations(t.Context())
@@ -143,7 +163,7 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 					t.Fatal(readErr)
 				}
 				for _, activation := range after {
-					if activation.ProtocolID == definition.ID && !reflect.DeepEqual(activation, before[0]) {
+					if activation.ProtocolID == definition.Spec.ID && !reflect.DeepEqual(activation, before[0]) {
 						t.Fatal("custom activation intent changed")
 					}
 				}
@@ -156,7 +176,7 @@ func TestRuntimeRefreshPreservesCustomRevisionsAndBlocksInvalidEvidence(t *testi
 				t.Fatal(err)
 			}
 			service, _ := server.protocolService()
-			actual, exists := service.Pin(definition.ID)
+			actual, exists := service.Pin(definition.Spec.ID)
 			if !exists || actual.Hash() != old.Hash() {
 				t.Fatal("custom content replaced")
 			}
@@ -176,10 +196,10 @@ func TestRuntimeRefreshResetsPresetRevisionsToShipped(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	// 在预置 ID 下持久化一份「运营者持有」修订（带无效样例）：预置只读策略
 	// 下，启动刷新无条件回归 shipped 版本并重建证据，而不是被旧修订阻断。
-	definition := loadGatewayDefinition(t, "text-alpha")
-	definition.ID = "openai-chat-completions"
-	definition.Name = "operator-owned protocol"
-	definition.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
+	definition := loadGatewayFixture(t, "text-alpha")
+	definition.Spec.ID = "openai-chat-completions"
+	definition.Spec.Name = "operator-owned protocol"
+	definition.Mapping.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
 	persistPreviousRevision(t, server, mustEncodedProtocolValue(t, definition))
 	if err := server.reloadProtocolRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -192,8 +212,8 @@ func TestRuntimeRefreshResetsPresetRevisionsToShipped(t *testing.T) {
 	if !exists {
 		t.Fatal("preset not active after refresh")
 	}
-	shipped := presetDefinition(t, "openai-chat-completions")
-	if active.Definition().Name == "operator-owned protocol" || active.Identity().Revision != shipped.Version {
+	shipped := presetPackage(t, "openai-chat-completions")
+	if compiledPackage(active).Spec.Name == "operator-owned protocol" || active.Identity().Revision != shipped.Spec.Version {
 		t.Fatal("operator revision under a preset ID survived refresh", active.Identity())
 	}
 	report, err := server.store.ReadProtocolReport(t.Context(), "openai-chat-completions", active.Hash())
@@ -206,11 +226,10 @@ func TestRuntimeProjectionUpgradeRestartsPreserveCustomAndFailedEvidence(t *test
 	t.Parallel()
 	s, path := newProtocolAdminTestServer(t)
 	for _, id := range []string{"old-copy", "broken-copy"} {
-		d := presetDefinition(t, protocol.PresetResponsesID)
-		d.ID = id
-		d.Requires = []string{protocol.ReasoningControlsFeature}
+		d := presetPackage(t, protocol.PresetResponsesID)
+		d.Spec.ID = id
 		if id == "broken-copy" {
-			d.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
+			d.Mapping.Samples[0].Expected = mustProtocolValue(t, `{"schemaVersion":1,"content":[]}`)
 		}
 		persistPreviousRevision(t, s, mustEncodedProtocolValue(t, d))
 	}

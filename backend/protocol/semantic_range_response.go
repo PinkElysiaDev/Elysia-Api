@@ -9,13 +9,13 @@ import (
 // authority or delivery receipts. Recursive children retain the same projection.
 var semanticRangeResponseSchema = func() ValueSchema {
 	node := &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{
-		"id": {Type: AnyType}, "kind": {Type: StringType}, "payload": {Type: AnyType},
+		"id": {Type: AnyType}, "association": {Type: StringType}, "kind": {Type: StringType}, "payload": {Type: AnyType},
 		"metadata": {Type: ArrayType, Items: &ValueSchema{Type: AnyType}},
 	}}
 	node.Properties["children"] = ValueSchema{Type: ArrayType, Items: node}
 	node.Properties["reasoningContent"] = ValueSchema{Type: ArrayType, Items: node}
 	return ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{
-		"id": {Type: AnyType}, "content": {Type: ArrayType, Items: node},
+		"id": {Type: AnyType}, "association": {Type: StringType}, "content": {Type: ArrayType, Items: node},
 		"metadata": {Type: ArrayType, Items: &ValueSchema{Type: AnyType}},
 	}}
 }()
@@ -43,7 +43,7 @@ func captureRangeNodes(nodes []Node) []Node {
 	}
 	result := make([]Node, len(nodes))
 	for i, node := range nodes {
-		result[i] = Node{ID: node.ID, Kind: node.Kind, Payload: node.Payload, Metadata: slices.Clone(node.Metadata),
+		result[i] = Node{rangeAssociation: node.rangeAssociation, ID: node.ID, Kind: node.Kind, Payload: node.Payload, Metadata: slices.Clone(node.Metadata),
 			Children: captureRangeNodes(node.Children), ReasoningContent: captureRangeNodes(node.ReasoningContent)}
 	}
 	return result
@@ -69,13 +69,15 @@ func sameRangeNodes(before, after []Node) bool {
 
 func readSemanticRangeResponse(response *Response, pointer []string) (JSONOutput, error) {
 	if len(pointer) == 0 {
-		return readRangeObject([]string{"id", "content", "metadata"}, func(path []string) (JSONOutput, error) {
+		return readRangeObject([]string{"id", "association", "content", "metadata"}, func(path []string) (JSONOutput, error) {
 			return readSemanticRangeResponse(response, path)
 		})
 	}
 	switch pointer[0] {
+	case "association":
+		return readOutputPointer(JSONLeaf(StringValue(responseRangeAssociation)), pointer[1:], nil)
 	case "content":
-		return readRangeNodes(response.Content, pointer[1:])
+		return readRangeNodes(response.Content, pointer[1:], responseRangeAssociation+"/content")
 	case "id", "metadata":
 		return readCoreResponseOutput(response, pointer, nil)
 	default:
@@ -83,17 +85,17 @@ func readSemanticRangeResponse(response *Response, pointer []string) (JSONOutput
 	}
 }
 
-func readRangeNodes(nodes []Node, pointer []string) (JSONOutput, error) {
+func readRangeNodes(nodes []Node, pointer []string, parent string) (JSONOutput, error) {
 	if len(pointer) != 0 {
 		index, err := coreArrayIndex(pointer[0], len(nodes))
 		if err != nil || index < 0 {
 			return JSONOutput{}, err
 		}
-		return readRangeNode(nodes[index], pointer[1:])
+		return readRangeNode(nodes[index], pointer[1:], readRangeNodeAssociation(parent, nodes[index], index))
 	}
 	items := make([]JSONOutput, len(nodes))
 	for i, node := range nodes {
-		value, err := readRangeNode(node, nil)
+		value, err := readRangeNode(node, nil, readRangeNodeAssociation(parent, node, i))
 		if err != nil {
 			return JSONOutput{}, err
 		}
@@ -102,17 +104,19 @@ func readRangeNodes(nodes []Node, pointer []string) (JSONOutput, error) {
 	return JSONOutput{node: &jsonOutputNode{items: items}}, nil
 }
 
-func readRangeNode(node Node, pointer []string) (JSONOutput, error) {
+func readRangeNode(node Node, pointer []string, association string) (JSONOutput, error) {
 	if len(pointer) == 0 {
-		return readRangeObject([]string{"id", "kind", "payload", "metadata", "children", "reasoningContent"}, func(path []string) (JSONOutput, error) {
-			return readRangeNode(node, path)
+		return readRangeObject([]string{"id", "association", "kind", "payload", "metadata", "children", "reasoningContent"}, func(path []string) (JSONOutput, error) {
+			return readRangeNode(node, path, association)
 		})
 	}
 	switch pointer[0] {
+	case "association":
+		return readOutputPointer(JSONLeaf(StringValue(association)), pointer[1:], nil)
 	case "children":
-		return readRangeNodes(node.Children, pointer[1:])
+		return readRangeNodes(node.Children, pointer[1:], association+"/children")
 	case "reasoningContent":
-		return readRangeNodes(node.ReasoningContent, pointer[1:])
+		return readRangeNodes(node.ReasoningContent, pointer[1:], association+"/reasoningContent")
 	case "id", "kind", "payload", "metadata":
 		return readCoreNode(node, pointer, nil)
 	default:

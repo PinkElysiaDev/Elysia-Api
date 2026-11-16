@@ -12,7 +12,6 @@ import (
 
 	"github.com/elysia-api/backend/internal/eventstream"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 const gatewayStreamErrorTrailer = "X-Elysia-Stream-Error"
@@ -32,10 +31,8 @@ type gatewayStream struct {
 	route              protocol.ConversionContext
 	eventState         *protocol.ConversionEventState
 	source             *protocolSourceStream
-	carriers           *builtin.ContinuationStream
 	collector          *protocol.ResponseCollector
 	replay             *protocol.EventReplay
-	wireValidation     protocol.EvaluationContext
 	finalValidation    *protocol.WireStreamValidation
 	terminalFailure    error
 	deliveryFailure    error
@@ -59,18 +56,13 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	options = options.WithConversion(candidate.conversion, route)
 	eventState := protocol.NewConversionEventState(candidate.conversion, route)
 	defer eventState.Release()
-	var carriers *builtin.ContinuationStream
 	var collector *protocol.ResponseCollector
 	if candidate.continuation != nil {
 		candidate.continuation.sink = options.Diagnostics
 		collector, _ = protocol.NewResponseCollector(candidate.sourceEventTarget(), limits)
 		defer collector.Release()
-		if candidate.continuation.isPackage {
-			defer candidate.continuation.binding.Release()
-			options = options.WithContinuation(candidate.continuation.binding)
-		} else {
-			carriers = &builtin.ContinuationStream{Family: plan.ingress.Identity().Family}
-		}
+		defer candidate.continuation.binding.Release()
+		options = options.WithContinuation(candidate.continuation.binding)
 	}
 	if options.ClientOutput == nil {
 		options.ClientOutput = &protocol.ClientOutput{}
@@ -84,25 +76,18 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 	c.Header("Content-Type", protocol.TransportContentType(plan.operation.Transport))
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Trailer", gatewayStreamErrorTrailer)
-	wireValidation := operationOptions
-	if plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
-		wireValidation.State = protocol.NewEvaluationState()
-		defer wireValidation.State.Release()
-	}
 	finalValidation, err := plan.ingress.NewWireStreamValidation(candidate.scope)
 	if err != nil {
 		return err
 	}
 	defer finalValidation.Release()
 	sourceOptions := options
-	if plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
-		options = options.WithOutputStream(finalValidation)
-	}
+	options = options.WithOutputStream(finalValidation)
 	stream := &gatewayStream{server: s, context: c, ctx: ctx, writer: startStream(c), record: record, plan: plan, candidate: candidate,
-		limits: limits, options: options, route: route, eventState: eventState, carriers: carriers,
+		limits: limits, options: options, route: route, eventState: eventState,
 		collector: collector, replay: replay,
-		wireValidation: wireValidation, finalValidation: finalValidation}
-	stream.source, err = newProtocolSourceStream(ctx, candidate, plan.ingress, route, sourceOptions, record, stream.consumeSourceFrame)
+		finalValidation: finalValidation}
+	stream.source, err = newProtocolSourceStream(ctx, candidate, route, sourceOptions, record, stream.consumeSourceFrame)
 	if err != nil {
 		return err
 	}
@@ -115,11 +100,8 @@ func (s *Server) forwardGatewayStream(ctx context.Context, c *app.RequestContext
 }
 
 func (stream *gatewayStream) bindBudget() error {
-	if stream.plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion || stream.candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
-		return nil
-	}
 	budget := protocol.NewStreamBudget(stream.limits)
-	if err := budget.Bind(stream.options.State, stream.source.wireValidation, stream.source.replay, stream.finalValidation, stream.replay, stream.eventState); err != nil {
+	if err := budget.Bind(stream.options.State, stream.source.state, stream.source.wireValidation, stream.source.replay, stream.finalValidation, stream.replay, stream.eventState); err != nil {
 		return err
 	}
 	if stream.collector != nil {
@@ -141,11 +123,6 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		if e != nil {
 			return e
 		}
-		if stream.plan.ingress.CoreVersion() != protocol.ProtocolCoreVersion {
-			if _, e = stream.plan.ingress.DecodeFrame(stream.ctx, converted, stream.wireValidation); e != nil {
-				return e
-			}
-		}
 		value = converted
 	}
 	var single [1]protocol.Value
@@ -153,7 +130,7 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 	frames := single[:]
 	var originals []protocol.Value
 	continuation := stream.candidate.continuation
-	if continuation != nil && continuation.isPackage {
+	if continuation != nil {
 		prior, inserted, err := stream.plan.ingress.EncodeContinuationTransformedFrames(stream.ctx, before, value, stream.options)
 		if err != nil {
 			return err
@@ -162,26 +139,13 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 			frames = inserted
 			originals = prior
 		}
-	} else if continuation != nil {
-		stream.carriers.Tokens = stream.candidate.continuation.tokens
-		var err error
-		frames, err = stream.carriers.Frames(value)
-		if err != nil {
-			return err
-		}
 	}
 	for index, frame := range frames {
-		var err error
-		if stream.plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
-			original := before
-			if originals != nil {
-				original = originals[index]
-			}
-			err = stream.finalValidation.ConsumeTransformed(stream.ctx, original, frame, stream.options)
-		} else {
-			err = stream.finalValidation.Consume(stream.ctx, frame)
+		original := before
+		if originals != nil {
+			original = originals[index]
 		}
-		if err != nil {
+		if err := stream.finalValidation.ConsumeTransformed(stream.ctx, original, frame, stream.options); err != nil {
 			return err
 		}
 		if frame.Len() > stream.limits.BufferBytes {
@@ -197,13 +161,11 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 	if err := stream.writer.Flush(); err != nil {
 		return stream.abortDelivery(err, deliveryFlush)
 	}
-	if stream.plan.ingress.CoreVersion() == protocol.ProtocolCoreVersion {
-		if err := stream.finalValidation.CommitDelivery(); err != nil {
-			return err
-		}
-		if continuation != nil && continuation.isPackage {
-			return continuation.binding.CommitDelivery()
-		}
+	if err := stream.finalValidation.CommitDelivery(); err != nil {
+		return err
+	}
+	if continuation != nil {
+		return continuation.binding.CommitDelivery()
 	}
 	return nil
 }
@@ -211,10 +173,42 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 func (stream *gatewayStream) abortDelivery(err error, phase string) error {
 	stream.deliveryFailure = wrapDownstreamError(err, phase)
 	stream.finalValidation.AbortDelivery()
-	if continuation := stream.candidate.continuation; continuation != nil && continuation.isPackage {
+	if continuation := stream.candidate.continuation; continuation != nil {
 		continuation.binding.AbortDelivery()
 	}
 	return stream.deliveryFailure
+}
+
+func (stream *gatewayStream) captureContinuation(event protocol.Event) error {
+	if stream.collector == nil {
+		return nil
+	}
+	if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
+		// Failed generations cannot authenticate unfinished nodes as recoverable history.
+		stream.collector.Release()
+		stream.collector = nil
+		return nil
+	}
+	if _, _, err := stream.collector.Consume(event); err != nil {
+		return err
+	}
+	node, ordinal, isComplete, err := stream.collector.CompletedNode(event)
+	if err != nil {
+		return err
+	}
+	if isComplete {
+		if err := stream.server.captureContinuationNode(stream.ctx, stream.candidate.continuation, node, ordinal); err != nil {
+			return err
+		}
+	}
+	if event.Type != protocol.ResponseFinished {
+		return nil
+	}
+	response, err := stream.collector.Finish()
+	if err != nil {
+		return err
+	}
+	return stream.server.captureContinuationResponse(stream.ctx, stream.candidate.continuation, response)
 }
 
 func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, metadata protocol.Object) error {
@@ -237,41 +231,12 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 			stream.acceptedScratch = nil
 		}
 	}()
-	deliveryEvents := decoded.Events
-	if stream.candidate.conversion.HasAnthropicEnvelope(protocol.ConversionEvent, stream.route) {
-		deliveryEvents = protocol.DeliveryFrameEvents(decoded.Events)
-	}
-	for eventIndex, event := range decoded.Events {
-		if stream.collector != nil {
-			if _, _, captureErr := stream.collector.Consume(event); captureErr != nil {
-				if stream.candidate.continuation.isPackage {
-					return captureErr
-				}
-				if err := stream.candidate.continuation.warning("continuation stream collection unavailable: " + captureErr.Error()); err != nil {
-					return err
-				}
-				stream.collector = nil
-			} else {
-				if node, ordinal, ok, err := stream.collector.CompletedNode(event); err != nil {
-					return err
-				} else if ok {
-					if err := stream.server.captureContinuationNode(stream.ctx, stream.candidate.continuation, node, ordinal); err != nil {
-						return err
-					}
-				}
-				if event.Type == protocol.ResponseFinished {
-					collected, e := stream.collector.Finish()
-					if e != nil {
-						return e
-					}
-					if e = stream.server.captureContinuationResponse(stream.ctx, stream.candidate.continuation, collected); e != nil {
-						return e
-					}
-				}
-			}
+	for _, event := range decoded.Events {
+		if err := stream.captureContinuation(event); err != nil {
+			return err
 		}
-		projected := deliveryEvents[eventIndex]
-		if stream.collector != nil && stream.candidate.continuation.isPackage {
+		projected := event
+		if stream.collector != nil {
 			projected, err = stream.collector.BindContinuationEvent(projected, stream.candidate.continuation.binding)
 			if err != nil {
 				return err
@@ -283,7 +248,6 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 		}
 		for _, next := range queued {
 			if stream.candidate.conversion != nil {
-				stream.route.Recoverable = stream.candidate.conversionContext(stream.plan.ingress, true).Recoverable
 				next, err = stream.candidate.conversion.Event(stream.ctx, next, stream.route, stream.options.Diagnostics)
 				if err != nil {
 					return err
@@ -327,37 +291,10 @@ func (stream *gatewayStream) finish(err error) error {
 	err = stream.source.Finish(err)
 	stream.terminalFailure = stream.source.terminalFailure
 	if err == nil {
-		var tail []protocol.Event
-		tail, err = stream.eventState.Drain()
-		if err == nil {
-			stream.route, err = stream.candidate.conversion.WithFrameUsage(stream.route, tail)
-		}
-		for _, event := range tail {
-			if err != nil {
-				break
-			}
-			stream.route.Recoverable = stream.candidate.conversionContext(stream.plan.ingress, true).Recoverable
-			event, err = stream.candidate.conversion.Event(stream.ctx, event, stream.route, stream.options.Diagnostics)
-			if err != nil {
-				break
-			}
-			if _, err = stream.replay.Consume(event); err != nil {
-				break
-			}
-			var frames []protocol.Value
-			frames, err = stream.plan.ingress.EncodeFrame(stream.ctx, &protocol.EventFrame{Events: []protocol.Event{event}}, stream.options)
-			if err != nil {
-				break
-			}
-			for _, frame := range frames {
-				if err = stream.emit(frame); err != nil {
-					break
-				}
-			}
-		}
-		if err == nil {
-			err = stream.replay.Finish()
-		}
+		err = stream.eventState.Finish()
+	}
+	if err == nil {
+		err = stream.replay.Finish()
 	}
 	if err == nil {
 		var frames []protocol.Value
@@ -374,7 +311,7 @@ func (stream *gatewayStream) finish(err error) error {
 	if err == nil {
 		err = stream.finalValidation.Finish()
 	}
-	if err == nil && stream.candidate.continuation != nil && stream.candidate.continuation.isPackage {
+	if err == nil && stream.candidate.continuation != nil {
 		err = stream.candidate.continuation.binding.Finish()
 	}
 	if err != nil {

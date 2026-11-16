@@ -44,7 +44,7 @@ func TestStructuredReasoningReplayRejectsPartRewrites(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		start := Event{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("r"), Item: &Node{Kind: ReasoningNode, ReasoningForm: StructuredReasoning, ReasoningContent: []Node{{Kind: TextNode, Payload: StringValue("original")}}}}
+		start := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("r"), Item: &Node{Kind: ReasoningNode, ReasoningForm: StructuredReasoning, ReasoningContent: []Node{{Kind: TextNode, Payload: StringValue("original")}}}}
 		if _, err = replay.Consume(start); err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func TestStructuredReasoningPartReceivesNamedNodeRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := &Request{SchemaVersion: 1, Content: []Node{{Kind: ReasoningNode, ReasoningForm: StructuredReasoning, ReasoningContent: []Node{{Kind: TextNode, Payload: StringValue("original")}}}}}
+	source := &Request{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: ReasoningNode, ReasoningForm: StructuredReasoning, ReasoningContent: []Node{{Kind: TextNode, Payload: StringValue("original")}}}}}
 	sink := &DiagnosticSink{}
 	result, err := c.Request(t.Context(), source, ConversionContext{}, sink)
 	if err != nil {

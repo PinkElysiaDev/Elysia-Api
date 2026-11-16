@@ -7,6 +7,32 @@ import (
 	"testing"
 )
 
+func TestWireContractFieldDiagnosticUsesSelectedLocation(t *testing.T) {
+	check := Expression{Op: "check_fields", Source: expressionPointer(readExpression("input", "")), Keys: []string{"known"}, Policy: "member",
+		OnUnknown: &ObjectFieldDiagnostic{Code: UnsupportedCapability, Stage: "wire", Reason: "unknown field needs a mapping"}}
+	predicate := Expression{Op: "let", Name: "checked", Source: &check, Body: expressionPointer(literalExpression(true))}
+	spec := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{
+		{Path: "/records", Schema: &ValueSchema{Type: ArrayType}, Reason: "records must be an array", Each: []WireAssertion{
+			{Path: "/attributes", Check: &predicate, Reason: "generic failure must not hide the field diagnostic"},
+		}},
+	}}
+	contract, err := compileWireContractSpec(spec, "/spec/documents/response", DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, direction := range []Direction{DecodeResponse, EncodeResponse} {
+		err := contract.validator.ValidateWireOutput(direction, fixtureValue(t, Object{"records": fixtureValue(t, []Object{{"attributes": fixtureValue(t, Object{"x/y": StringValue("private value")})}})}))
+		var failure *ConversionError
+		if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+			t.Fatal(err)
+		}
+		issue := failure.Issues[0]
+		if issue.Code != UnsupportedCapability || issue.Path != "/records/0/attributes/x~1y" || issue.Direction != direction || issue.Reason != "unknown field needs a mapping" {
+			t.Fatal("field diagnostic lost its declared classification or wire location", issue)
+		}
+	}
+}
+
 func TestWireContractSpecOrderedAssertions(t *testing.T) {
 	spec := WireContractSpec{
 		Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true},
@@ -67,7 +93,7 @@ func TestWireContractSpecRejectsPostMappingChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	compiled.wireContracts[EncodeResponse] = contract
-	semantic := fixtureValue(t, Response{SchemaVersion: 1, ID: StringValue("r"), Content: []Node{}})
+	semantic := fixtureValue(t, Response{SchemaVersion: SemanticSchemaVersion, ID: StringValue("r"), Content: []Node{}})
 	wire, issues := compiled.Execute(t.Context(), EncodeResponse, semantic, EvaluationContext{})
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
@@ -119,7 +145,7 @@ func TestWireContractSpecUsesRequestContextAndBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled := &Compiled{limits: limits, wireContracts: map[Direction]compiledWireContract{EncodeRequest: contract}}
+	compiled := &Compiled{packagePlan: &compiledPackagePlan{coreVersion: ProtocolCoreVersion}, limits: limits, wireContracts: map[Direction]compiledWireContract{EncodeRequest: contract}}
 	value := StringValue(strings.Repeat("x", 32))
 	ctx, err := WithRequestBodyLimit(t.Context(), int64(value.Len()))
 	if err != nil {

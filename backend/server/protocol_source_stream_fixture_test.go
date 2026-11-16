@@ -99,7 +99,7 @@ func sourceStreamPackage(t testing.TB) protocol.ProtocolPackage {
 
 func compileSourceStreamPackage(t testing.TB, document protocol.ProtocolPackage) *protocol.Compiled {
 	t.Helper()
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

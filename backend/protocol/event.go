@@ -51,21 +51,21 @@ type ControlState struct {
 
 // Event associates deltas and snapshots with stable session/response/item IDs.
 type Event struct {
-	rangeOrigin        *Event
-	continuation       *continuationEntity
-	auxiliary          *sourceFrameReceipt
-	omittedAuxiliary   *omittedEventReceipt
-	controlReceipt     *controlEventReceipt
-	omittedControl     *omittedEventReceipt
-	Control            *ControlState       `json:"control,omitempty"`
-	ResponsesTurnState *ResponsesTurnState `json:"responsesTurnState,omitempty"`
-	Metadata           []ResponseMetadata  `json:"metadata,omitempty"`
-	SchemaVersion      int                 `json:"schemaVersion"`
-	Source             Identity            `json:"source"`
-	Type               EventType           `json:"type"`
-	SessionID          Value               `json:"sessionId,omitzero"`
-	ResponseID         Value               `json:"responseId,omitzero"`
-	ItemID             Value               `json:"itemId,omitzero"`
+	prelude          *ConversionIssue
+	rangeOrigin      *Event
+	continuation     *continuationEntity
+	auxiliary        *sourceFrameReceipt
+	omittedAuxiliary *omittedEventReceipt
+	controlReceipt   *controlEventReceipt
+	omittedControl   *omittedEventReceipt
+	Control          *ControlState      `json:"control,omitempty"`
+	Metadata         []ResponseMetadata `json:"metadata,omitempty"`
+	SchemaVersion    int                `json:"schemaVersion"`
+	Source           Identity           `json:"source"`
+	Type             EventType          `json:"type"`
+	SessionID        Value              `json:"sessionId,omitzero"`
+	ResponseID       Value              `json:"responseId,omitzero"`
+	ItemID           Value              `json:"itemId,omitzero"`
 	// ParentID references an open message or structured reasoning item. Index
 	// remains response-wide; children are ordered by ItemStarted per collection.
 	ParentID Value `json:"parentId,omitzero"`
@@ -86,6 +86,9 @@ type Event struct {
 	// Unmapped is semantic evidence of wire fields without a declared mapping.
 	// It may survive same-wire frame replay, but cannot silently cross families.
 	Unmapped *Native `json:"unmapped,omitempty"`
+	// UnmappedPaths identifies source wire members that the source Mapping could
+	// not interpret. These pointers grant no native replay or conversion authority.
+	UnmappedPaths []string `json:"unmappedPaths,omitempty"`
 }
 
 // TaskStatus includes uncertain submission separately from provider failures.

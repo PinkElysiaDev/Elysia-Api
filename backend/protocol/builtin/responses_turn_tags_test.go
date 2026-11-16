@@ -15,12 +15,12 @@ func TestResponsesMessageTurnTagsJSONAndSSE(t *testing.T) {
 			policy := p.DefaultConversionPolicy(to, from)
 			policy.Mode = mode
 			c, _ := p.ResolveConversion(policy)
-			r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","created_at":1,"status":"completed","output":[{`+tags+`"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":2,"output_tokens":1}}`), p.EvaluationContext{})
+			r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","created_at":1,"status":"completed","output":[{`+tags+`"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":2,"output_tokens":1}}`), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			sink := &p.DiagnosticSink{}
-			projected, err := c.Response(t.Context(), r, p.ConversionContext{}, sink)
+			projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), sink)
 			if target != Responses && mode == "strict" {
 				if err == nil || !strings.Contains(err.Error(), "metadata") {
 					t.Fatal(err)
@@ -34,7 +34,7 @@ func TestResponsesMessageTurnTagsJSONAndSSE(t *testing.T) {
 			for i := range projected.Content {
 				projected.Content[i].Native = nil
 			}
-			wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+			wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,12 +78,13 @@ func TestResponsesTurnTagsUnknownAndInvalid(t *testing.T) {
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	for _, name := range []string{"metadata", "internal_chat_message_metadata_passthrough"} {
 		for _, value := range []string{`42`, `[]`, `{"turn_id":null}`, `{"turn_id":""}`, `{"turn_id":42}`} {
-			if err := p.ValidateMetadataValue(Responses, "message", name, testValue(t, value), "/output/0/"+name); err == nil {
+			body := `{"id":"r","model":"m","output":[{"type":"message","role":"assistant","` + name + `":` + value + `,"content":[{"type":"output_text","text":"OK"}]}]}`
+			if _, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{})); err == nil || !strings.Contains(err.Error(), "/"+name) {
 				t.Fatal(name, value)
 			}
 		}
 		for _, value := range []string{`{"unknown":true}`, `{"turn_id":"t","unknown":true}`} {
-			r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","output":[{"type":"message","role":"assistant","`+name+`":`+value+`,"content":[{"type":"output_text","text":"OK"}]}]}`), p.EvaluationContext{})
+			r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","output":[{"type":"message","role":"assistant","`+name+`":`+value+`,"content":[{"type":"output_text","text":"OK"}]}]}`), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -91,13 +92,13 @@ func TestResponsesTurnTagsUnknownAndInvalid(t *testing.T) {
 			for i := range r.Content {
 				r.Content[i].Native = nil
 			}
-			wire, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+			wire, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 			if err != nil || !strings.Contains(string(wire), `"unknown":true`) {
 				t.Fatal(string(wire), err)
 			}
-			projected, err := c.Response(t.Context(), r, p.ConversionContext{}, nil)
+			projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 			if err == nil {
-				_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+				_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 			}
 			if err == nil {
 				t.Fatal("unknown vendor message annotation discarded")

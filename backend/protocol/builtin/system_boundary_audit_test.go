@@ -9,17 +9,17 @@ import (
 func TestActualPresetsKeepSystemAndReminderBoundaries(t *testing.T) {
 	anthropic := shippedProjectionProtocol(t, Anthropic)
 	body := `{"model":"m","max_tokens":64,"system":[{"type":"text","text":"top","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":"<system-reminder>ordinary text</system-reminder>"}]}`
-	r, err := anthropic.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{})
+	r, err := anthropic.DecodeRequest(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(anthropic, anthropic))
 	sink := &p.DiagnosticSink{}
-	r, err = c.Request(t.Context(), r, p.ConversionContext{}, sink)
+	r, err = c.Request(t.Context(), r, fixtureConversionContext(t, c, p.ConversionRequest, r.Source), sink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := anthropic.EncodeRequest(t.Context(), r, p.EvaluationContext{})
+	wire, err := anthropic.EncodeRequest(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestActualPresetsKeepSystemAndReminderBoundaries(t *testing.T) {
 			to := shippedProjectionProtocol(t, target)
 			for _, mode := range []string{"compatible", "strict", "disabled"} {
 				body := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"},{"role":"system","content":"middle"},{"role":"user","content":"<system-reminder>ordinary</system-reminder>"}]}`
-				r, err := from.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{})
+				r, err := from.DecodeRequest(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -54,10 +54,10 @@ func TestActualPresetsKeepSystemAndReminderBoundaries(t *testing.T) {
 					t.Fatal(err)
 				}
 				sink := &p.DiagnosticSink{}
-				projected, err := c.Request(t.Context(), r, p.ConversionContext{}, sink)
+				projected, err := c.Request(t.Context(), r, fixtureConversionContext(t, c, p.ConversionRequest, r.Source), sink)
 				var wire []byte
 				if err == nil {
-					wire, err = to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+					wire, err = to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				}
 				isNativeAnthropic := source == Anthropic && target == Anthropic
 				wantOK := mode == "compatible" || isNativeAnthropic
@@ -72,7 +72,7 @@ func TestActualPresetsKeepSystemAndReminderBoundaries(t *testing.T) {
 						}
 						continue
 					}
-					if !strings.Contains(string(wire), "middle") || !strings.Contains(string(wire), "system-reminder") || !sinkHas(sink, "/messages/1") {
+					if !strings.Contains(string(wire), "middle") || !strings.Contains(string(wire), "system-reminder") || !sinkHas(sink, "/content/1") {
 						t.Fatal("scope change or ordinary text lost", string(wire), sink.Issues())
 					}
 				}

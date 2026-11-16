@@ -32,7 +32,7 @@ func TestToolStrictProjection(t *testing.T) {
 				for _, mode := range []string{"compatible", "strict"} {
 					t.Run(strings.Join([]string{sourceCodec, targetCodec, strict, mode}, "/"), func(t *testing.T) {
 						source, target := testCompiled(t, sourceCodec), testCompiled(t, targetCodec)
-						req, err := source.DecodeRequest(t.Context(), []byte(strictToolRequest(sourceCodec, strict)), p.EvaluationContext{})
+						req, err := source.DecodeRequest(t.Context(), []byte(strictToolRequest(sourceCodec, strict)), fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -46,7 +46,7 @@ func TestToolStrictProjection(t *testing.T) {
 						sink := &p.DiagnosticSink{}
 						out, err := conversion.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, sink)
 						absent := strict == "omitted" || strict == "null"
-						loss := targetCodec == Gemini && !absent || sourceCodec == Responses && targetCodec != Responses && absent
+						loss := targetCodec == Gemini && strict == "true" || sourceCodec == Responses && targetCodec != Responses && absent
 						if mode == "strict" && loss {
 							var failure *p.ConversionError
 							if !errors.As(err, &failure) || !failure.CandidateOnly {
@@ -60,16 +60,16 @@ func TestToolStrictProjection(t *testing.T) {
 						if out.Tools[0].InputSchema != req.Tools[0].InputSchema {
 							t.Fatal("tool schema changed")
 						}
-						wire, err := target.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+						wire, err := target.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							t.Fatal(err)
 						}
-						decoded, err := target.DecodeRequest(t.Context(), wire, p.EvaluationContext{})
+						decoded, err := target.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							t.Fatal(err)
 						}
 						want := strict
-						if sourceCodec != targetCodec && absent {
+						if sourceCodec == Responses && targetCodec != Responses && absent {
 							want = "omitted"
 						}
 						if absent && targetCodec == Responses && (sourceCodec == Chat || sourceCodec == Anthropic) {
@@ -90,7 +90,7 @@ func TestToolStrictProjection(t *testing.T) {
 						for _, issue := range sink.Issues() {
 							if issue.Fidelity == "lossy_compatible" {
 								losses++
-								if issue.RuleID != "request-projection" || issue.Severity != p.SeverityWarning {
+								if issue.RuleID != "tool-options" || issue.Severity != p.SeverityWarning {
 									t.Fatal(issue)
 								}
 							}
@@ -114,10 +114,10 @@ func TestToolStrictInvalidInput(t *testing.T) {
 		for _, value := range []string{`"true"`, `1`, `[]`, `{}`} {
 			t.Run(codec+"/"+value, func(t *testing.T) {
 				source := testCompiled(t, codec)
-				req, err := source.DecodeRequest(t.Context(), []byte(strictToolRequest(codec, value)), p.EvaluationContext{})
+				req, err := source.DecodeRequest(t.Context(), []byte(strictToolRequest(codec, value)), fixtureOptions(p.EvaluationContext{}))
 				if err == nil {
 					conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, testCompiled(t, Responses)))
-					_, err = conversion.Request(t.Context(), req, p.ConversionContext{}, nil)
+					_, err = conversion.Request(t.Context(), req, fixtureConversionContext(t, conversion, p.ConversionRequest, req.Source), nil)
 				}
 				if err == nil {
 					t.Fatal("accepted invalid strict")

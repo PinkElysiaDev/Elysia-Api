@@ -22,6 +22,11 @@ func TestChatPackageBareHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy := declaredRulePolicy(t, compiled, compiled, "assistant-history", "compatible")
+	for _, rule := range p.DefaultConversionPolicy(compiled, compiled).Rules {
+		if rule.ID == "history-order" {
+			policy.Rules = append(policy.Rules, rule)
+		}
+	}
 	conversion, err := p.ResolveConversion(policy)
 	if err != nil {
 		t.Fatal(err)

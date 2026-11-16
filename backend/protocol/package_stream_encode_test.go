@@ -32,7 +32,7 @@ func TestPackageDeclaredFrameBatch(t *testing.T) {
 			t.Fatal("rendered frame violates its own wire contract", err)
 		}
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: EncodeEvent}]
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: EncodeEvent}]
 	if retained.slots[0].raw != "1" {
 		t.Fatal("batch updated event state once per frame", retained.slots)
 	}

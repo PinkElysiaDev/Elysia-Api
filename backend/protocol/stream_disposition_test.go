@@ -39,7 +39,7 @@ func TestStreamDispositionTransaction(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: EncodeEvent}]
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: EncodeEvent}]
 	if retained.primitives.positionEnds["text"] != 2 || len(options.Diagnostics.Issues()) != 1 || options.Diagnostics.Issues()[0].RuleID != "layout" {
 		t.Fatal("failed event advanced state or repeated diagnostics", options.Diagnostics.Issues(), retained.primitives.positionEnds)
 	}
@@ -110,7 +110,7 @@ func TestStreamDispositionCompileBoundary(t *testing.T) {
 			case "mixed-rule":
 				document.Mapping.ConversionDefaults[0].Use = "request_projection"
 			}
-			compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, err := NewCompiler(DefaultLimits(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +154,7 @@ func TestStreamDispositionNativeObservation(t *testing.T) {
 }
 
 func TestStreamDispositionMappingPreview(t *testing.T) {
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

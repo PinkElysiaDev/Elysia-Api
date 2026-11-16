@@ -8,7 +8,7 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-func (s *Server) newPackageGatewayContinuation(token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) (*gatewayContinuation, error) {
+func (s *Server) newGatewayContinuation(token string, plan *gatewayPlan, candidate gatewayCandidate, sink *protocol.DiagnosticSink) (*gatewayContinuation, error) {
 	conversion := candidate.conversion
 	phase, direction := protocol.ConversionResponse, protocol.EncodeResponse
 	if plan.operation.Transport != protocol.HTTPJSON {
@@ -25,7 +25,7 @@ func (s *Server) newPackageGatewayContinuation(token string, plan *gatewayPlan, 
 	}
 	codec, _ := protocol.NewContinuationCodec(s.config.GetDBEncryptionKey())
 	g := newContinuationOwner(codec, token, plan, candidate, sink)
-	g.isPackage, g.phase, g.conversion, g.route = true, phase, conversion, route
+	g.phase, g.conversion, g.route = phase, conversion, route
 	g.requireCarrier = plan.request.ClientOutput != nil && plan.request.ClientOutput.RequireContinuationState
 	g.settings.ClientCarrier = g.settings.ClientCarrier && plan.ingress.HasContinuationCarrier(direction)
 	var err error
@@ -37,7 +37,10 @@ func (s *Server) newPackageGatewayContinuation(token string, plan *gatewayPlan, 
 	return g, nil
 }
 
-func (s *Server) capturePackageContinuationNode(ctx context.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
+func (s *Server) captureContinuationNode(ctx context.Context, g *gatewayContinuation, node protocol.Node, ordinal int) error {
+	if g == nil || !protocol.HasContinuationState(node) {
+		return nil
+	}
 	needsRecovery, err := g.conversion.NeedsContinuationRecovery(ctx, g.phase, node, g.route)
 	if err != nil || !needsRecovery {
 		return err

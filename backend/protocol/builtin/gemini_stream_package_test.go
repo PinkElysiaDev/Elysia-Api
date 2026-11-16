@@ -109,6 +109,14 @@ func TestGeminiPackageStreamSignaturesToolsAndUsage(t *testing.T) {
 	request := &p.Request{SchemaVersion: compiled.CoreVersion(), Model: p.StringValue("m"), Content: []p.Node{
 		call, {Kind: p.ToolResultNode, CallID: call.CallID, Name: call.Name, Payload: testValue(t, `{"ok":true}`)},
 	}}
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(compiled, compiled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Scope: scope}, nil)
+	if err != nil {
+		t.Fatal("tool follow-up projection", err)
+	}
 	wire, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: scope})
 	if err != nil {
 		t.Fatal("tool follow-up encoding", err)

@@ -2,7 +2,7 @@ package protocol
 
 import "testing"
 
-func TestGeminiSafetySettingsRuleValidation(t *testing.T) {
+func TestRetiredVendorActionCannotCompile(t *testing.T) {
 	base := ConversionRule{ID: "safety", Enabled: true, Order: 170, Phase: ConversionRequest, Action: "gemini_safety_settings", Value: StringValue("responses")}
 	for _, tc := range []struct {
 		name   string
@@ -20,7 +20,7 @@ func TestGeminiSafetySettingsRuleValidation(t *testing.T) {
 			}
 		})
 	}
-	if _, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "safety", Rules: []ConversionRule{base}}); err != nil {
-		t.Fatal(err)
+	if _, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "safety", Rules: []ConversionRule{base}} ); err == nil {
+		t.Fatal("retired vendor action remains executable")
 	}
 }

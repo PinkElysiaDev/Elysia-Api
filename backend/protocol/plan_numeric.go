@@ -3,14 +3,25 @@ package protocol
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
-func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput, error) {
+// Eighteen-byte plain JSON numbers fit int64; longer spellings use the codec.
+const (
+	jsonIntegerBase      = 10
+	jsonIntegerBits      = 64
+	maxIntegerParseBytes = 18
+)
+
+func (plan *compiledOutputPlan) buildTypeQuery(state *evaluation) (plannedOutput, error) {
 	if plan.borrowsScalarInput {
-		state.valueReader = &scalarInputReader
+		borrowed := *state
+		borrowed.valueReader = &scalarInputReader
+		state = &borrowed
 	}
 	if plan.hasRequestObjectSource && state.coreRequest != nil {
-		object, isPresent, err := plan.source.expression.readRequestObject(state)
+		object, isPresent, err := plan.source.expression.readRequestObject(*state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -32,8 +43,11 @@ func (plan *compiledOutputPlan) buildTypeQuery(state evaluation) (plannedOutput,
 	if plannedJSONType(source.output) != "number" {
 		return plannedLeaf(coreBoolean(false)), nil
 	}
-	var number int64
-	return plannedLeaf(coreBoolean(source.output.value.Decode(&number) == nil)), nil
+	if plan.expression.op == "is_integral" {
+		return plannedLeaf(coreBoolean(isIntegralNumber(source.output.value.raw))), nil
+	}
+	_, err = decodeInteger(source.output.value)
+	return plannedLeaf(coreBoolean(err == nil)), nil
 }
 
 // Values are already valid JSON. The leading token identifies their kind;
@@ -52,19 +66,35 @@ func readPlannedInteger(output JSONOutput) (int64, error) {
 	if plannedJSONType(output) != "number" {
 		return 0, fmt.Errorf("expected an int64 number")
 	}
-	var value int64
-	if err := output.value.Decode(&value); err != nil {
+	value, err := decodeInteger(output.value)
+	if err != nil {
 		return 0, fmt.Errorf("expected an int64 number: %w", err)
 	}
 	return value, nil
 }
 
-func (plan *compiledOutputPlan) buildInteger(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(state)
+// Callers establish a valid numeric Value. Keep the codec's acceptance and
+// error contract for decimal, exponent and out-of-range spellings.
+func decodeInteger(value Value) (int64, error) {
+	raw := strings.TrimSpace(value.raw)
+	if len(raw) <= maxIntegerParseBytes && !strings.ContainsAny(raw, ".eE") {
+		number, _ := strconv.ParseInt(raw, jsonIntegerBase, jsonIntegerBits)
+		return number, nil
+	}
+	var number int64
+	err := value.Decode(&number)
+	return number, err
+}
+
+func (plan *compiledOutputPlan) buildInteger(state *evaluation) (plannedOutput, error) {
+	var storage [operandWorkspaceCapacity]plannedOutput
+	operands := selectOperandStorage(storage[:], len(plan.items))
+	err := plan.buildOperandValuesInto(state, operands)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	values := make([]int64, len(operands))
+	var integers [operandWorkspaceCapacity]int64
+	values := selectOperandStorage(integers[:], len(operands))
 	for index, operand := range operands {
 		values[index], err = readPlannedInteger(operand.output)
 		if err != nil {
@@ -114,4 +144,52 @@ func (plan *compiledOutputPlan) buildInteger(state evaluation) (plannedOutput, e
 		return plannedLeaf(coreInteger(total)), nil
 	}
 	panic("uncompiled integer operation")
+}
+
+// The caller has established valid numeric JSON. Compare decimal positions so
+// even enormous exponents need neither expanded digits nor floating point.
+func isIntegralNumber(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	mantissa, exponent := raw, 0
+	if position := strings.IndexAny(raw, "eE"); position >= 0 {
+		mantissa = raw[:position]
+		exponent = readBoundedExponent(raw[position+1:], len(mantissa))
+	}
+	fractionalDigits := 0
+	if position := strings.IndexByte(mantissa, '.'); position >= 0 {
+		fractionalDigits = len(mantissa) - position - 1
+	}
+	trailingZeros := 0
+	for position := len(mantissa) - 1; position >= 0; position-- {
+		digit := mantissa[position]
+		if digit == '.' || digit == '-' {
+			continue
+		}
+		if digit != '0' {
+			return exponent >= fractionalDigits-trailingZeros
+		}
+		trailingZeros++
+	}
+	return true
+}
+
+// Only the exponent's relation to mantissa length matters for integrality.
+func readBoundedExponent(raw string, limit int) int {
+	isNegative := raw[0] == '-'
+	if isNegative || raw[0] == '+' {
+		raw = raw[1:]
+	}
+	exponent := 0
+	for position := range len(raw) {
+		digit := int(raw[position] - '0')
+		if exponent > limit/jsonIntegerBase || exponent == limit/jsonIntegerBase && digit > limit%jsonIntegerBase {
+			exponent = limit
+			break
+		}
+		exponent = exponent*jsonIntegerBase + digit
+	}
+	if isNegative {
+		return -exponent
+	}
+	return exponent
 }

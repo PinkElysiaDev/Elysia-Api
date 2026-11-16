@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/agent"
 	p "github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -60,10 +60,7 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.invalidateRouteCache()
-	for _, sample := range upstream.Definition().Samples {
-		if sample.ID != "stream-text-decode" && sample.ID != "stream-tool-decode" {
-			continue
-		}
+	for _, sample := range selectProtocolSamples(t, upstream, "declared-stream-text-decode", "declared-stream-tool-decode") {
 		var input []p.Value
 		if err := sample.Input.Decode(&input); err != nil {
 			t.Fatal(err)
@@ -89,14 +86,14 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 			}
 		}
 		for _, ingress := range []struct{ id, path, body, tools string }{
-			{p.PresetResponsesID, "/responses", `{"model":"group","input":"hi","store":false,"stream":true}`, `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
-			{p.PresetChatCompletionsID, "/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`, `[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]`},
+			{p.PresetResponsesID, "/v1/responses", `{"model":"group","input":"hi","store":false,"stream":true}`, `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
+			{p.PresetChatCompletionsID, "/v1/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`, `[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]`},
 			{p.PresetAnthropicID, "/v1/messages", `{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":true}`, `[{"name":"lookup","input_schema":{"type":"object"}}]`},
 			{p.PresetGeminiID, "/v1beta/models/group:streamGenerateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`, `[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"object"}}]}]`},
 		} {
 			t.Run(sample.ID+"/"+ingress.id, func(t *testing.T) {
 				body := ingress.body
-				if sample.ID == "stream-tool-decode" {
+				if sample.ID == "declared-stream-tool-decode" {
 					body = strings.TrimSuffix(body, "}") + `,"tools":` + ingress.tools + "}"
 				}
 				request := httptest.NewRequest("POST", "/gateway/"+ingress.id+ingress.path, strings.NewReader(body))
@@ -111,7 +108,7 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 				}
 				target, _ := service.Pin(ingress.id)
 				validator, _ := target.NewWireStreamValidation(p.Scope{})
-				collector, err := p.NewResponseCollector(p.Target{Codec: target.Codec(p.DecodeEvent), Protocol: target.Identity(), Direction: p.EncodeEvent, Capabilities: target.Capabilities(p.EncodeEvent)}, target.ResourceLimits())
+				collector, err := p.NewResponseCollector(target.Target(p.EncodeEvent, p.Scope{}), target.ResourceLimits())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -150,7 +147,7 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 					t.Fatalf("generated usage changed: %+v", usage)
 				}
 				calls := liveCalls(result.Content)
-				if sample.ID == "stream-text-decode" {
+				if sample.ID == "declared-stream-text-decode" {
 					if flameRequestText(result.Content) != "hi" || len(calls) != 0 {
 						t.Fatal("generated text changed", result.Content)
 					}
@@ -198,21 +195,19 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 				if err := p.IssuesError(preview.Issues); err != nil || preview.Output.IsZero() {
 					t.Fatal(preview, err)
 				}
-				if ingress.id != p.PresetResponsesID && (len(preview.Issues) != 1 || preview.Issues[0].RuleID != "event-metadata") {
-					t.Fatal(preview.Issues)
-				}
+				checkProtectedEventPreview(t, target, metadata, preview)
 			})
 		}
 	}
-	definition := upstream.Definition()
-	for i := range definition.Samples {
-		if definition.Samples[i].ID == "stream-text-decode" {
+	definition := compiledPackage(upstream)
+	for i := range definition.Mapping.Samples {
+		if definition.Mapping.Samples[i].ID == "declared-stream-text-decode" {
 			var input []p.Value
-			_ = definition.Samples[i].Input.Decode(&input)
-			definition.Samples[i].Input, _ = p.EncodeValue(insertResponsesMetadata(t, input))
+			_ = definition.Mapping.Samples[i].Input.Decode(&input)
+			definition.Mapping.Samples[i].Input, _ = p.EncodeValue(insertResponsesMetadata(t, input))
 		}
 	}
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), builtin.Modules(), nil)
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), nil)
 	raw, _ := p.EncodeValue(definition)
 	fixture, issues := compiler.Compile(raw.Bytes())
 	if fixture == nil {
@@ -223,7 +218,7 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 		report := p.VerifyCombination(t.Context(), target, fixture)
 		found := false
 		for _, check := range report.Checks {
-			if check.SampleID == "stream-text-decode" {
+			if check.SampleID == "declared-stream-text-decode" {
 				found = true
 				if !check.Passed {
 					t.Fatal(id, report.Issues)
@@ -233,6 +228,40 @@ func TestGatewayResponsesMetadataFullStreamsAndPreview(t *testing.T) {
 		if !found {
 			t.Fatal("missing metadata combination evidence")
 		}
+	}
+}
+
+// A JSON preview cannot manufacture the source-wire receipt that permits an
+// auxiliary or control event to be omitted by a target mapping.
+func checkProtectedEventPreview(t *testing.T, target *p.Compiled, source p.Event, preview p.PreviewResult) {
+	t.Helper()
+	var result p.Event
+	if err := preview.Output.Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Type != source.Type || len(preview.Issues) != 0 || (result.Native == nil) != (source.Native == nil) || (result.Control == nil) != (source.Control == nil) {
+		t.Fatal("serialized preview invented a source receipt or omitted protected data", preview)
+	}
+	if source.Native != nil && result.Native.Value != source.Native.Value || source.Control != nil && result.Control.Payload != source.Control.Payload {
+		t.Fatal("preview changed the protected source payload")
+	}
+	if target.Identity() == source.Source {
+		return
+	}
+	options, err := (p.EvaluationContext{State: p.NewEvaluationState()}).WithOperation("untrusted-preview", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer options.State.Release()
+	validation, err := target.NewWireStreamValidation(options.Scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer validation.Release()
+	_, err = target.EncodeFrames(t.Context(), result, options.WithOutputStream(validation))
+	var failure *p.ConversionError
+	if !errors.As(err, &failure) || len(failure.Issues) == 0 || failure.Issues[0].Code != p.UnsupportedNative {
+		t.Fatal("unproven preview output lost its native ownership rejection", err)
 	}
 }
 

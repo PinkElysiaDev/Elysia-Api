@@ -16,7 +16,7 @@ import (
 )
 
 func TestLiveInspectorSuppliesResourceProvenance(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
+	compiled := compileFixturePackage(t, presetPackage(t, "openai-responses"))
 	wire := []byte(`{"id":"r","status":"completed","output":[{"type":"reasoning","id":"reason","summary":[],"encrypted_content":"synthetic-encrypted-payload"}],"usage":{"input_tokens":100,"output_tokens":2,"input_tokens_details":{"cached_tokens":70}}}`)
 	result := liveCase{Wire: liveWireEvidence{body: wire, RawUsage: readLiveUsage(wire, liveOperation(compiled, false), false)}}
 	response, err := inspectLiveWire(compiled, &result)
@@ -29,7 +29,7 @@ func TestLiveInspectorSuppliesResourceProvenance(t *testing.T) {
 }
 
 func TestLiveInspectorRejectsUnassociatedGeminiToolFragments(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "google-generate-content"))
+	compiled := compileFixturePackage(t, presetPackage(t, "google-generate-content"))
 	wire := "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"verify_echo\",\"args\":{}}}]},\"finishReason\":null,\"index\":0}]}\n\n" +
 		"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"\",\"args\":{\"arguments\":\"7}\"}}}]},\"finishReason\":null,\"index\":0}]}\n\n" +
 		"data: {\"candidates\":[{\"content\":{\"parts\":[]},\"finishReason\":\"STOP\",\"index\":0}]}\n\n"
@@ -39,8 +39,8 @@ func TestLiveInspectorRejectsUnassociatedGeminiToolFragments(t *testing.T) {
 }
 
 func TestLiveStreamInspectorPreservesUnknownFramesAndUsageTails(t *testing.T) {
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
-	wire := "data: {\"id\":\"r\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"}}],\"vendor\":{\"n\":9007199254740993}}\n\n" +
+	compiled := compileFixturePackage(t, presetPackage(t, "openai-chat-completions"))
+	wire := "data: {\"id\":\"r\",\"model\":\"m\",\"created\":1,\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"OK\"}}],\"vendor\":{\"n\":9007199254740993}}\n\n" +
 		"data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n" +
 		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\ndata: [DONE]\n\n"
 	response, evidence, err := inspectLiveStream(compiled, []byte(wire), liveInspectionScope())
@@ -58,7 +58,7 @@ func TestLiveStreamInspectorPreservesUnknownFramesAndUsageTails(t *testing.T) {
 func TestLiveObserverChecksFourEvidenceLayersWithoutStoringCredentials(t *testing.T) {
 	for _, fixture := range cacheWireFixtures() {
 		t.Run(fixture.id, func(t *testing.T) {
-			compiled := compileFixtureDefinition(t, presetDefinition(t, fixture.id))
+			compiled := compileFixturePackage(t, presetPackage(t, fixture.id))
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
 				isStream := bytes.Contains(body, []byte(`"stream":true`)) || strings.Contains(r.URL.Path, "streamGenerateContent")

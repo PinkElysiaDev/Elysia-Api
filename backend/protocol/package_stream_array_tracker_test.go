@@ -93,7 +93,7 @@ func TestPackageArrayTrackerTransactionsAndRetention(t *testing.T) {
 	if _, err := apply(`["`+strings.Repeat("x", largeMemberBytes)+`"]`, false, false); err != nil {
 		t.Fatal(err)
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}]
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}]
 	tracker := retained.primitives.arrays[streamTrackKey{channel: "probabilities", item: "i"}]
 	if tracker.count != 4 || options.State.packageStateBytes != retainedBytes || len(retained.primitives.arrays) != 1 {
 		t.Fatal("array tracking retained payload or changed failed transactions", tracker.count, options.State.packageStateBytes, retainedBytes)

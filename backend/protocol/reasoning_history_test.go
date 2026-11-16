@@ -13,7 +13,7 @@ func TestReasoningHistoryContractAndLegacyBoundary(t *testing.T) {
 		}
 	}
 	request := &Request{SchemaVersion: ProtocolCoreVersion, Reasoning: &ReasoningIntent{HistoryRetention: StringValue("all")}}
-	target := Target{coreVersion: ProtocolCoreVersion, Capabilities: CapabilitySet{ReasoningHistoryRetentionCapability: true}}
+	target := Target{Capabilities: CapabilitySet{ReasoningHistoryRetentionCapability: true}}
 	if issues := CheckRequest(request, target, DefaultLimits()); IssuesError(issues) != nil {
 		t.Fatal("declared core2 history rejected", issues)
 	}
@@ -21,24 +21,19 @@ func TestReasoningHistoryContractAndLegacyBoundary(t *testing.T) {
 	if issues := CheckRequest(request, target, DefaultLimits()); !hasIssueCode(IssuesError(issues), UnsupportedCapability) {
 		t.Fatal("history bypassed target capability", issues)
 	}
-	request.SchemaVersion, target.coreVersion = SemanticSchemaVersion, SemanticSchemaVersion
+	request.SchemaVersion = 1
 	target.Capabilities = CapabilitySet{ReasoningHistoryRetentionCapability: true}
 	if issues := CheckRequest(request, target, DefaultLimits()); !hasIssueCode(IssuesError(issues), InvalidInput) {
 		t.Fatal("core1 accepted a field its encoders could ignore", issues)
 	}
 	for _, value := range []string{`"all"`, `null`} {
 		raw := []byte(`{"schemaVersion":1,"reasoning":{"historyRetention":` + value + `}}`)
-		if parsed, err := DecodeRequestContract(raw); parsed != nil || err == nil || !strings.Contains(err.Error(), "historyRetention requires core schemaVersion 2") {
+		if parsed, err := DecodeRequestContract(raw); parsed != nil || err == nil || !strings.Contains(err.Error(), "schemaVersion") {
 			t.Fatal("legacy contract parser accepted a core2 field", parsed, err)
 		}
 	}
 	if _, err := decodeRequestContract([]byte(`{"schemaVersion":2,"reasoning":{"historyRetention":"all"}}`), ProtocolCoreVersion); err != nil {
 		t.Fatal("versioned core2 parser rejected history retention", err)
-	}
-	for _, codec := range []string{"openai-chat", "responses", "anthropic", "gemini"} {
-		if _, err := ReasoningParameters(request, codec); !hasIssueCode(err, UnsupportedCapability) {
-			t.Fatal("legacy generation renderer consumed history retention", codec, err)
-		}
 	}
 	legacy, err := EncodeValue(ReasoningIntent{Mode: "enabled", Budget: controlValue(4096)})
 	if err != nil || legacy.raw != `{"mode":"enabled","budget":4096}` {
@@ -46,39 +41,25 @@ func TestReasoningHistoryContractAndLegacyBoundary(t *testing.T) {
 	}
 }
 
-func TestReasoningHistoryCoexistsWithLegacyGeneration(t *testing.T) {
-	history := &ReasoningIntent{HistoryRetention: StringValue("all")}
-	request := &Request{SchemaVersion: ProtocolCoreVersion, Reasoning: history, Parameters: Object{"reasoning_effort": StringValue("high")}}
-	if err := NormalizeReasoningParameters(request, "openai-chat", false); err != nil {
+func TestReasoningHistoryCoexistsWithCanonicalGeneration(t *testing.T) {
+	history := &ReasoningIntent{HistoryRetention: StringValue("all"), Mode: "enabled", Effort: StringValue("high"), EffortScope: "reasoning"}
+	request := &Request{SchemaVersion: ProtocolCoreVersion, Reasoning: history, Parameters: Object{}}
+	if err := normalizeReasoningFixture(t, request, "openai-chat", false); err != nil {
 		t.Fatal(err)
 	}
 	if request.Reasoning.Mode != "enabled" || !request.Reasoning.Effort.IsString("high") || request.Reasoning.EffortScope != "reasoning" || !request.Reasoning.HistoryRetention.IsString("all") || len(request.Parameters) != 0 {
-		t.Fatal("legacy generation and independent history were not combined", request)
+		t.Fatal("canonical generation and independent history were not preserved", request)
 	}
-	if history.Mode != "" || !history.Effort.IsZero() || !history.HistoryRetention.IsString("all") {
+	if history.Mode != "enabled" || !history.Effort.IsString("high") || !history.HistoryRetention.IsString("all") {
 		t.Fatal("normalization mutated the previous intent owner")
 	}
 	request.Parameters["reasoning_effort"] = StringValue("low")
-	if err := NormalizeReasoningParameters(request, "openai-chat", false); !hasIssueCode(err, InvalidInput) {
+	if err := normalizeReasoningFixture(t, request, "openai-chat", false); !hasIssueCode(err, InvalidInput) {
 		t.Fatal("history weakened canonical generation conflict checks", err)
 	}
 	request.Reasoning = &ReasoningIntent{}
-	if err := NormalizeReasoningParameters(request, "openai-chat", false); !hasIssueCode(err, InvalidInput) {
+	if err := normalizeReasoningFixture(t, request, "openai-chat", false); !hasIssueCode(err, InvalidInput) {
 		t.Fatal("an old empty canonical intent changed its conflict behavior", err)
-	}
-}
-
-func TestReasoningHistorySurvivesGenerationCleanup(t *testing.T) {
-	conversion := reasoningTestConversion(t, "responses", "openai-chat", "compatible")
-	request := &Request{SchemaVersion: ProtocolCoreVersion, Reasoning: &ReasoningIntent{Mode: "disabled", Summary: StringValue("omitted"), HistoryRetention: StringValue("all")}}
-	route := ConversionContext{Model: "plain-model", Reasoning: &ReasoningCapabilities{Kind: "none"}}
-	err := conversion.reasoningControls(request, route, conversion.Policy.Rules[0], nil)
-	if !hasIssueCode(err, UnsupportedCapability) || request.Reasoning == nil || request.Reasoning.Mode != "" || !request.Reasoning.HistoryRetention.IsString("all") {
-		t.Fatal("generation cleanup dropped unresolved history", request.Reasoning, err)
-	}
-	request.Reasoning.HistoryRetention = Value{}
-	if err := conversion.reasoningControls(request, route, conversion.Policy.Rules[0], nil); err != nil || request.Reasoning != nil {
-		t.Fatal("resolved empty intent was not released", request.Reasoning, err)
 	}
 }
 

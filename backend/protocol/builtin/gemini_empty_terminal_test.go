@@ -9,7 +9,7 @@ import (
 
 func TestGeminiTerminalEmptyTextDoesNotInventHistoryItem(t *testing.T) {
 	from := shippedProjectionProtocol(t, Gemini)
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	for _, wire := range []string{
 		`{"responseId":"r","modelVersion":"m","candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call_1","name":"echo","args":{"value":7}}}]}}]}`,
 		`{"responseId":"r","modelVersion":"m","candidates":[{"content":{"role":"model","parts":[{"text":""}]},"finishReason":"STOP"}]}`,
@@ -30,7 +30,7 @@ func TestGeminiTerminalEmptyTextDoesNotInventHistoryItem(t *testing.T) {
 		if strings.Contains(ending, "Signature") {
 			wire += `,"finishReason":"STOP"`
 		}
-		frame, err := compiled.DecodeFrame(t.Context(), testValue(t, wire+`}]}`), p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}})
+		frame, err := compiled.DecodeFrame(t.Context(), testValue(t, wire+`}]}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Provider: "fixture", Account: "fixture", Model: "m"}}))
 		if err != nil {
 			t.Fatal(err)
 		}

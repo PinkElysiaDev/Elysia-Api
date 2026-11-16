@@ -64,7 +64,7 @@ func TestTransportFailureAttribution(t *testing.T) {
 				<-r.Context().Done()
 			}))
 			defer provider.Close()
-			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []p.Transport{p.SSE}}}
+			candidate := gatewayCandidate{compiled: upstream, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.DeclaredCapabilities(), Transports: []p.Transport{p.SSE}}}
 			record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}
 			_, err := s.collectProtocolGeneration(ctx, candidate, request, record, nil)
 			if err == nil || calls.Load() != 1 {

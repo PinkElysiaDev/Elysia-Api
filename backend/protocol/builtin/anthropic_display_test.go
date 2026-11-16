@@ -59,13 +59,13 @@ func TestAnthropicThinkingDisplayInvalidInput(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Anthropic)
 	for _, display := range []string{`"future"`, `""`, `42`, `true`, `{}`, `[]`} {
 		t.Run(display, func(t *testing.T) {
-			_, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":8192,"thinking":{"type":"adaptive","display":`+display+`},"messages":[{"role":"user","content":"hi"}]}`), p.EvaluationContext{})
+			_, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":8192,"thinking":{"type":"adaptive","display":`+display+`},"messages":[{"role":"user","content":"hi"}]}`), fixtureOptions(p.EvaluationContext{}))
 			var failure *p.ConversionError
 			if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Path != "/thinking/display" || failure.Issues[0].Code != p.InvalidInput {
 				t.Fatal("missing field-level display validation", err)
 			}
 			issue := failure.Issues[0]
-			if issue.Direction != p.DecodeRequest || issue.Stage != "request.validation" || issue.Protocol != compiled.Identity() || strings.Contains(issue.Suggestion, "upstream stream") {
+			if issue.Direction != p.DecodeRequest || issue.Stage != "wire" || issue.Protocol != compiled.Identity() || strings.Contains(issue.Suggestion, "upstream stream") {
 				t.Fatal("request error misclassified", issue)
 			}
 		})

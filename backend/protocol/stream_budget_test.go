@@ -38,7 +38,7 @@ func TestStreamBudgetRejectsMappingBeforeCommit(t *testing.T) {
 	if err := budget.Bind(state, wire); err != nil || budget.items != 3 {
 		t.Fatal("rebinding charged the same holder twice", err)
 	}
-	key := moduleStateKey{compiled: compiled, direction: DecodeEvent}
+	key := executionStateKey{compiled: compiled, direction: DecodeEvent}
 	before, bytes := state.packageStates[key], budget.bytes
 	_, err = decodePrimitiveText(t, compiled, options, map[string]any{"record_key": "b", "record": "new"})
 	var failure *ResourceLimitError
@@ -80,13 +80,13 @@ func TestStreamBudgetCombinesWireIdentityAndMappingBytes(t *testing.T) {
 	if _, err := decodePrimitiveText(t, compiled, options, map[string]any{"record_key": "a", "record": strings.Repeat("v", 200)}); err != nil {
 		t.Fatal(err)
 	}
-	before, bytes := state.packageStates[moduleStateKey{compiled, DecodeEvent}], budget.bytes
+	before, bytes := state.packageStates[executionStateKey{compiled, DecodeEvent}], budget.bytes
 	_, err = decodePrimitiveText(t, compiled, options, map[string]any{"record_key": "a", "record": strings.Repeat("v", 400)})
 	var failure *ResourceLimitError
 	if !errors.As(err, &failure) || failure.Metric != "state_bytes" || failure.Observed <= 512 {
 		t.Fatal("aggregate byte excess was accepted", err)
 	}
-	if state.packageStates[moduleStateKey{compiled, DecodeEvent}] != before || budget.bytes != bytes {
+	if state.packageStates[executionStateKey{compiled, DecodeEvent}] != before || budget.bytes != bytes {
 		t.Fatal("failed replacement changed retained state")
 	}
 }
@@ -205,7 +205,7 @@ func TestStreamBudgetHistoryYieldsToOtherOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	for sequence := int64(1); sequence <= 6; sequence++ {
-		event := Event{SchemaVersion: 1, Type: MetadataUpdated, Sequence: coreInteger(sequence)}
+		event := Event{SchemaVersion: SemanticSchemaVersion, Type: MetadataUpdated, Sequence: coreInteger(sequence)}
 		for _, replay := range []*EventReplay{left, right} {
 			if _, err := replay.Consume(event); err != nil {
 				t.Fatal(err)
@@ -228,7 +228,7 @@ func TestStreamBudgetHistoryYieldsToOtherOwners(t *testing.T) {
 		t.Fatal("optional history did not yield to mandatory state")
 	}
 	for _, replay := range []*EventReplay{left, right} {
-		latest := Event{SchemaVersion: 1, Type: MetadataUpdated, Sequence: coreInteger(6)}
+		latest := Event{SchemaVersion: SemanticSchemaVersion, Type: MetadataUpdated, Sequence: coreInteger(6)}
 		if accepted, err := replay.Consume(latest); err != nil || accepted {
 			t.Fatal("history eviction lost the latest replay receipt", accepted, err)
 		}
@@ -248,14 +248,14 @@ func TestStreamBudgetHistorySharesBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for sequence := int64(1); sequence <= 20; sequence++ {
-		if _, err := replay.Consume(Event{SchemaVersion: 1, Type: MetadataUpdated, Sequence: coreInteger(sequence)}); err != nil {
+		if _, err := replay.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: MetadataUpdated, Sequence: coreInteger(sequence)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if replay.sequence.count*retainedSequenceBytes > limits.BufferBytes || replay.sequence.count != 3 {
 		t.Fatal("history payload escaped the retained byte budget", replay.sequence.count)
 	}
-	if _, err := replay.Consume(Event{SchemaVersion: 1, Type: MetadataUpdated, Sequence: coreInteger(17)}); err == nil {
+	if _, err := replay.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: MetadataUpdated, Sequence: coreInteger(17)}); err == nil {
 		t.Fatal("expired sequence was accepted")
 	}
 }
@@ -331,7 +331,7 @@ func TestStreamBudgetIncludesWaitingConversionEvents(t *testing.T) {
 	if _, err := replay.Consume(start); err != nil {
 		t.Fatal(err)
 	}
-	delta := Event{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"n":`)}
+	delta := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"n":`)}
 	for _, event := range []Event{start, delta} {
 		if output, err := waiting.PushContext(t.Context(), event); err != nil || len(output) != 0 {
 			t.Fatal("waiting input did not fit the shared capacity", output, err)
@@ -352,32 +352,33 @@ func TestStreamBudgetIncludesWaitingConversionEvents(t *testing.T) {
 }
 
 func TestStreamBudgetIncludesDeferredTerminal(t *testing.T) {
-	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "shared-tail", Rules: []ConversionRule{{ID: "envelope", Enabled: true, Phase: ConversionEvent, Action: "anthropic_usage_envelope"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	document := deferredTerminalPackage(t)
+	mapping := document.Mapping.Directions[EncodeEvent]
+	mapping.State["terminal"] = ProtocolStateSlot{Schema: ValueSchema{Type: ObjectType, AllowUnknown: true}, Update: readExpression("input", "/response")}
+	document.Mapping.Directions[EncodeEvent] = mapping
+	compiled := compilePackageForTest(t, document)
 	limits := DefaultLimits()
 	limits.BufferBytes = 1024
-	state := NewEvaluationState()
-	waiting := NewConversionEventState(conversion, ConversionContext{Model: "fixture"})
-	defer state.Release()
-	defer waiting.Release()
+	sourceState, targetState := NewEvaluationState(), NewEvaluationState()
+	defer sourceState.Release()
+	defer targetState.Release()
 	budget := NewStreamBudget(limits)
-	if err := budget.Bind(state, waiting); err != nil {
+	if err := budget.Bind(sourceState, targetState); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := decodePrimitiveText(t, combinedRetentionPackage(t), EvaluationContext{State: state}, map[string]any{"record_key": "a", "record": strings.Repeat("v", 400)}); err != nil {
+	if _, err := decodePrimitiveText(t, combinedRetentionPackage(t), EvaluationContext{State: sourceState}, map[string]any{"record_key": "a", "record": strings.Repeat("v", 400)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := waiting.PushContext(t.Context(), Event{SchemaVersion: 1, Type: ResponseStarted, ResponseID: StringValue("r")}); err != nil {
+	options := EvaluationContext{State: targetState}
+	if _, err := compiled.EncodeFrames(t.Context(), Event{SchemaVersion: ProtocolCoreVersion, Type: ResponseStarted, ResponseID: StringValue("r"), Sequence: coreInteger(0)}, options); err != nil {
 		t.Fatal(err)
 	}
-	terminal := Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("t", 650))}}}}
+	terminal := Event{SchemaVersion: ProtocolCoreVersion, Type: ResponseFinished, ResponseID: StringValue("r"), Sequence: coreInteger(1), Response: &Response{SchemaVersion: ProtocolCoreVersion, Content: []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("t", 650))}}}}
 	var failure *ResourceLimitError
-	if output, err := waiting.PushContext(t.Context(), terminal); !errors.As(err, &failure) || failure.Metric != "state_bytes" || len(output) != 0 {
+	if output, err := compiled.EncodeFrames(t.Context(), terminal, options); !errors.As(err, &failure) || failure.Metric != "state_bytes" || len(output) != 0 {
 		t.Fatal("deferred terminal obtained an independent buffer", output, err)
 	}
-	if output, err := waiting.Drain(); err == nil || len(output) != 0 {
+	if output, err := compiled.FinishEvents(t.Context(), options); err == nil || len(output) != 0 {
 		t.Fatal("oversized terminal drained successfully", output, err)
 	}
 }

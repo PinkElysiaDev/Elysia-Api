@@ -15,13 +15,12 @@ type conversionState struct {
 	isStrict              bool
 	needsEncoding         bool
 	cache                 *semanticCache
-	requestNormalized     bool
-	requestPartition      *requestPartition
 	resolvedModelControls *modelControlExecution
 	auxiliary             *sourceFrameReceipt
 	omittedAuxiliary      *omittedEventReceipt
 	control               *controlEventReceipt
 	omittedControl        *omittedEventReceipt
+	rangeAssociations     map[string]string
 }
 
 func (state *conversionState) validateContext(phase ConversionPhase) error {
@@ -41,21 +40,7 @@ func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule
 	if rule.Action == "core_controls" || rule.Action == "continuation_recovery" {
 		return phase == ConversionRequest || phase == ConversionResponse || phase == ConversionEvent
 	}
-	if phase == ConversionResponse || phase == ConversionEvent {
-		switch rule.Action {
-		case "chat_response_model", "responses_turn_state", "anthropic_usage_envelope", "response_shape", "response_envelope", "response_metadata", "error_metadata", "usage_projection", "signatures":
-			return true
-		}
-		return false
-	}
-	if phase != ConversionRequest {
-		return false
-	}
-	switch rule.Action {
-	case "system_instruction_hoist", "chat_history", "assistant_history", "stream_options", "request_projection", "responses_include", "responses_context", "responses_storage", "gemini_safety_settings", "reasoning_controls", "model_controls", "response_metadata", "signatures", "tool_result_text", "tool_result_object":
-		return true
-	}
-	return false
+	return phase == ConversionRequest && (rule.Action == "model_controls" || rule.Action == "request_projection")
 }
 
 func (state *conversionState) load(phase ConversionPhase, strict bool) error {
@@ -92,34 +77,29 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 	if err != nil {
 		return err
 	}
+	restoreRangeAssociations(document, state.rangeAssociations)
+	state.rangeAssociations = nil
 	if phase == ConversionEvent {
 		if err := restoreProtectedEvent(document.(*Event), state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl, true); err != nil {
 			return err
 		}
 	}
 	state.document, state.isStrict = document, strict
-	state.requestNormalized, state.requestPartition = false, nil
 	return nil
 }
 
-func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, phase ConversionPhase, rule ConversionRule, route ConversionContext, sink *DiagnosticSink) (string, error) {
-	isNodeRule := rule.Action == "signatures" || rule.Action == "tool_result_text" || rule.Action == "tool_result_object"
+func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, phase ConversionPhase, rule ConversionRule, route ConversionContext, sink *DiagnosticSink) error {
+	isNodeRule := rule.Action == "provider_signature"
 	if !isNodeRule && !state.matches(rule.Match, route) {
-		return "", nil
+		return nil
 	}
-	isStrict := isNodeRule || rule.Action == "core_controls" || rule.Action == "responses_turn_state" || (phase == ConversionRequest && rule.Action != "response_metadata")
+	isStrict := isNodeRule || rule.Action == "core_controls" || phase == ConversionRequest
 	if err := state.load(phase, isStrict); err != nil {
-		return "", err
+		return err
 	}
 	if state.cache == nil {
 		state.cache = &semanticCache{limits: state.limits}
 	}
-	if rule.partitionRequest {
-		state.prepareRequestPartition(phase, rule.Action)
-	} else {
-		state.requestPartition = nil
-	}
-	var target string
 	var err error
 	shouldEncode := true
 	if rule.Action == "control_event" {
@@ -139,41 +119,30 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 		}
 	} else if isNodeRule {
 		err = c.applyNodeObject(ctx, phase, state.document, route, sink, rule, state.cache)
-	} else if rule.Action == "response_metadata" {
-		err = c.metadataObject(phase, state.document, route, rule, sink)
+
 	} else if rule.Action == "model_controls" {
 		state.resolvedModelControls, err = c.applyModelControls(ctx, state.document.(*Request), route, rule, sink)
-	} else if phase == ConversionRequest {
-		target, err = c.applyRequestObject(ctx, state.document.(*Request), route, rule, sink)
 	} else {
-		shouldEncode, err = c.applyResponseObject(phase, state.document, route, rule, sink)
+		err = c.requestProjection(ctx, state.document.(*Request), route, rule, sink)
 	}
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !shouldEncode {
-		return target, nil
+		return nil
 	}
-	// Match the old pre-serialization check before removing omitted fields.
-	if !state.checkRequestPartition() {
-		if err := state.cache.check(state.document, state.limits); err != nil {
-			return "", err
-		}
+	if err := state.cache.check(state.document, state.limits); err != nil {
+		return err
 	}
-	if state.requestPartition != nil {
-		state.normalizeRequestPartition()
-	} else {
-		state.cache.normalizeDocument(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
-	}
-	state.requestNormalized = phase == ConversionRequest
+	state.cache.normalizeDocument(reflect.ValueOf(state.document), typedLimitPlans[reflect.TypeOf(state.document)])
 	if phase == ConversionEvent {
 		if err := restoreProtectedEvent(state.document.(*Event), state.auxiliary, state.omittedAuxiliary, state.control, state.omittedControl, true); err != nil {
-			return "", err
+			return err
 		}
 	}
 	state.needsEncoding, state.isStrict = true, true
 	state.wire = Value{} // The owned document now contains the complete current value.
-	return target, nil
+	return nil
 }
 
 func (state *conversionState) matches(match ConversionMatch, route ConversionContext) bool {
@@ -183,24 +152,6 @@ func (state *conversionState) matches(match ConversionMatch, route ConversionCon
 		return match.matches(route, state.wire)
 	}
 	return match.matchesSemantic(route, state.document)
-}
-
-func (c *CompiledConversion) applyResponseObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
-	switch rule.Action {
-	case "chat_response_model":
-		return true, c.repairChatResponseModel(document.(*Response), route, rule, sink)
-	case "responses_turn_state":
-		return c.projectTurnStateObject(document.(*Event), rule, sink)
-	case "anthropic_usage_envelope":
-		return c.envelopeUsageObject(phase, document, route, rule, sink)
-	case "response_shape", "response_envelope":
-		return c.responseObject(rule.Action, phase, document, route, rule, sink)
-	case "error_metadata":
-		return c.errorMetadataObject(phase, document, route, rule, sink)
-	case "usage_projection":
-		return c.projectUsageObject(phase, document, route, rule, sink)
-	}
-	panic("unregistered typed response action")
 }
 
 func (state *conversionState) flush() (Value, error) {

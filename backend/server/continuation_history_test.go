@@ -70,6 +70,8 @@ func TestContinuationHistorySharesOnlyPreparationDigests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ingress := compileFixturePackage(t, presetPackage(t, protocol.PresetChatCompletionsID))
+	request = selectContinuationFixture(t, ingress, request, []string{token})
 	for range 2 {
 		candidate := *g
 		if err := (&Server{}).restoreGatewayContinuation(t.Context(), &candidate, request.Clone(), []string{token}, history); err != nil {
@@ -106,6 +108,7 @@ func BenchmarkContinuationCandidateRecovery(b *testing.B) {
 	codec, _ := protocol.NewContinuationCodec([]byte("isolated-candidate-key"))
 	original := continuationHistoryFixture(64)
 	owner := gatewayContinuation{codec: codec, owner: "candidate-fixture"}
+	bindContinuationFixture(b, &owner)
 	parent := owner.historyDigest(original.Content)
 	node := original.Content[63].Children[0]
 	record := protocol.ContinuationRecord{Version: 1, ID: "fixture", Owner: owner.owner, Parent: owner.historyDigest(original.Content[:63]), Digest: protocol.ContinuationNodeDigest(node), Node: node, ExpiresAt: time.Now().Add(time.Hour).Unix()}
@@ -113,6 +116,7 @@ func BenchmarkContinuationCandidateRecovery(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	ingress := compileFixturePackage(b, presetPackage(b, protocol.PresetChatCompletionsID))
 	for _, count := range []int{1, 4} {
 		for _, hasCarrier := range []bool{false, true} {
 			b.Run(fmt.Sprintf("candidates-%d/carrier-%t", count, hasCarrier), func(b *testing.B) {
@@ -120,13 +124,14 @@ func BenchmarkContinuationCandidateRecovery(b *testing.B) {
 				if hasCarrier {
 					tokens = []string{token}
 				}
+				selected := selectContinuationFixture(b, ingress, original, tokens)
 				server := &Server{}
 				b.ReportAllocs()
 				for b.Loop() {
 					history := &continuationHistory{}
 					for range count {
-						candidate := gatewayContinuation{codec: codec, owner: owner.owner, strict: true, restored: map[string]bool{}, settings: protocol.ContinuationSettings{ClientCarrier: true, RecordBytes: 1 << 20}}
-						if err := server.restoreGatewayContinuation(b.Context(), &candidate, original.Clone(), tokens, history); err != nil {
+						candidate := gatewayContinuation{codec: codec, owner: owner.owner, strict: true, restored: map[string]bool{}, settings: protocol.ContinuationSettings{ClientCarrier: true, RecordBytes: 1 << 20}, conversion: owner.conversion, route: owner.route, phase: owner.phase}
+						if err := server.restoreGatewayContinuation(b.Context(), &candidate, selected.Clone(), tokens, history); err != nil {
 							b.Fatal(err)
 						}
 						candidate.prepareParent(original.Content)
@@ -138,4 +143,47 @@ func BenchmarkContinuationCandidateRecovery(b *testing.B) {
 			})
 		}
 	}
+}
+
+func bindContinuationFixture(t testing.TB, owner *gatewayContinuation) {
+	t.Helper()
+	ingress := compileFixturePackage(t, presetPackage(t, protocol.PresetChatCompletionsID))
+	upstream := compileFixturePackage(t, presetPackage(t, protocol.PresetAnthropicID))
+	conversion, err := protocol.CompileConversion(protocol.DefaultConversionPolicy(ingress, upstream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.conversion, owner.phase = conversion, protocol.ConversionResponse
+	owner.route = protocol.ConversionContext{Source: upstream.Identity(), Target: ingress.Identity(), Transport: protocol.HTTPJSON}
+	if !conversion.HasContinuationRecovery(owner.phase, owner.route) {
+		t.Fatal("fixture must use declared continuation recovery")
+	}
+}
+
+func selectContinuationFixture(t testing.TB, ingress *protocol.Compiled, request *protocol.Request, tokens []string) *protocol.Request {
+	t.Helper()
+	if len(tokens) == 0 {
+		return request
+	}
+	wire, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := protocol.ParseValue(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err = protocol.ApplyMutations(value, []protocol.Mutation{{Op: protocol.SetValue, Path: fmt.Sprintf("/messages/%d/elysia_continuation", len(request.Content)-1), Value: mustEncodedProtocolValue(t, tokens)}}, protocol.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, selected, err := ingress.ExtractContinuations(t.Context(), value, protocol.EvaluationContext{})
+	if err != nil || len(selected) != len(tokens) {
+		t.Fatal("carrier selection", err, selected)
+	}
+	decoded, err := ingress.DecodeRequest(t.Context(), value.Bytes(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decoded
 }

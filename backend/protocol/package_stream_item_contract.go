@@ -6,7 +6,7 @@ import (
 )
 
 func hasStreamEntitySelectors(spec ProtocolStreamActionSpec) bool {
-	return spec.Entity != "" || spec.Namespace != "" || spec.Key != nil || spec.Parent != nil || spec.Ordinal != nil || spec.Offset != nil || len(spec.VerifyChildren) != 0 || spec.Payload != nil || spec.Encoding != "" || len(spec.Identities) != 0 || spec.Properties != nil || spec.ChildrenCount != nil || spec.ChildrenNamespace != "" || spec.SealPayload || spec.Placeholder || spec.VerifyCompleted || len(spec.RequireVerified) != 0 || spec.Diagnostic != nil
+	return spec.Entity != "" || spec.Namespace != "" || spec.Key != nil || spec.Parent != nil || spec.Ordinal != nil || spec.Offset != nil || len(spec.VerifyChildren) != 0 || spec.Payload != nil || spec.Encoding != "" || len(spec.Identities) != 0 || spec.Properties != nil || spec.ChildrenCount != nil || spec.ChildrenNamespace != "" || spec.SealPayload || spec.RequireSealedPayload || spec.Placeholder || spec.VerifyCompleted || len(spec.RequireVerified) != 0 || len(spec.RequireClosed) != 0 || spec.Diagnostic != nil
 }
 
 func (compiler *packageStreamCompiler) compilePredicate(value *Expression, path string) (*compiledOutputPlan, error) {
@@ -60,8 +60,18 @@ func (compiler *packageStreamCompiler) compileEntities(spec *ProtocolStreamSpec,
 		if !definitionIdentifier.MatchString(name) || declaration.KeyType != StringType && declaration.KeyType != IntegerType {
 			return fmt.Errorf("%s/namespaces/%s: requires an identifier and string or integer keys", path, name)
 		}
+		if declaration.ContiguousKeys {
+			if declaration.KeyType != IntegerType {
+				return fmt.Errorf("%s/namespaces/%s: contiguousKeys requires integer keys", path, name)
+			}
+			if _, err := parsePointer(declaration.KeyPath); err != nil {
+				return fmt.Errorf("%s/namespaces/%s/keyPath: %w", path, name, err)
+			}
+		} else if declaration.KeyPath != "" {
+			return fmt.Errorf("%s/namespaces/%s/keyPath: requires contiguousKeys", path, name)
+		}
 		compiler.contract.namespaceSlots[name] = len(compiler.contract.namespaces)
-		compiler.contract.namespaces = append(compiler.contract.namespaces, compiledWireNamespace{name: name, keyType: declaration.KeyType})
+		compiler.contract.namespaces = append(compiler.contract.namespaces, compiledWireNamespace{name: name, keyType: declaration.KeyType, contiguousKeys: declaration.ContiguousKeys, keyPath: declaration.KeyPath})
 	}
 	for _, name := range sortedKeys(spec.Entities) {
 		declaration := spec.Entities[name]
@@ -150,14 +160,14 @@ func (compiler *packageStreamCompiler) compileEntitySelectors(spec ProtocolStrea
 		if !ok {
 			return fmt.Errorf("%s: unknown entity or namespace", path)
 		}
-	} else if spec.Entity != "" || spec.Namespace != "" || spec.Key != nil || spec.Parent != nil || spec.Ordinal != nil || spec.Offset != nil || len(spec.VerifyChildren) != 0 || spec.Payload != nil || spec.Encoding != "" || len(spec.Identities) != 0 || spec.Properties != nil || spec.ChildrenCount != nil || spec.SealPayload || spec.Placeholder || spec.VerifyCompleted {
+	} else if spec.Entity != "" || spec.Namespace != "" || spec.Key != nil || spec.Parent != nil || spec.Ordinal != nil || spec.Offset != nil || len(spec.VerifyChildren) != 0 || spec.Payload != nil || spec.Encoding != "" || len(spec.Identities) != 0 || spec.Properties != nil || spec.ChildrenCount != nil || spec.SealPayload || spec.RequireSealedPayload || spec.Placeholder || spec.VerifyCompleted {
 		return fmt.Errorf("%s: entity selectors require an entity action", path)
 	}
-	if isEntity && event.entity < 0 && (spec.Parent != nil || spec.Ordinal != nil || spec.Offset != nil || len(spec.VerifyChildren) != 0 || spec.Payload != nil || spec.Properties != nil || spec.ChildrenCount != nil || len(spec.Identities) != 0 || spec.Placeholder || spec.VerifyCompleted) {
+	if isEntity && event.entity < 0 && (spec.Parent != nil || spec.Ordinal != nil || spec.Offset != nil || len(spec.VerifyChildren) != 0 || spec.Payload != nil || spec.Properties != nil || spec.ChildrenCount != nil || len(spec.Identities) != 0 || spec.Placeholder || spec.RequireSealedPayload || spec.VerifyCompleted) {
 		return fmt.Errorf("%s: namespace finish cannot redefine entity payloads", path)
 	}
-	if spec.SealPayload && event.action != wireEntitySnapshot || spec.VerifyCompleted && event.action != wireEntityFinish {
-		return fmt.Errorf("%s: sealPayload requires snapshot and verifyCompleted requires finish", path)
+	if spec.SealPayload && event.action != wireEntitySnapshot || (spec.RequireSealedPayload || spec.VerifyCompleted) && event.action != wireEntityFinish {
+		return fmt.Errorf("%s: sealPayload requires snapshot; requireSealedPayload and verifyCompleted require finish", path)
 	}
 	if spec.Ordinal != nil && spec.Parent == nil {
 		return fmt.Errorf("%s/ordinal: requires parent", path)
@@ -169,6 +179,9 @@ func (compiler *packageStreamCompiler) compileEntitySelectors(spec ProtocolStrea
 		}
 		if (spec.Parent != nil) != (entity.parentNamespace >= 0) {
 			return fmt.Errorf("%s/parent: must agree with entity parent namespace", path)
+		}
+		if spec.RequireSealedPayload && entity.payload == "none" {
+			return fmt.Errorf("%s/requireSealedPayload: requires an entity with a payload", path)
 		}
 		if spec.Payload != nil && entity.payload == "none" || (event.action == wireEntityAppend || event.action == wireEntitySnapshot && entity.payload != "none") && spec.Payload == nil {
 			return fmt.Errorf("%s/payload: missing or incompatible entity payload", path)
@@ -275,7 +288,24 @@ func (compiler *packageStreamCompiler) compileEntitySelectors(spec ProtocolStrea
 		copy := *spec.Diagnostic
 		event.diagnostic = &copy
 	}
-	event.sealsPayload, event.verifiesCompleted = spec.SealPayload, spec.VerifyCompleted
+	event.sealsPayload, event.requiresSealedPayload, event.verifiesCompleted = spec.SealPayload, spec.RequireSealedPayload, spec.VerifyCompleted
 	event.isPlaceholder = spec.Placeholder
+	return nil
+}
+
+func (compiler *packageStreamCompiler) compileClosedNamespaces(spec ProtocolStreamActionSpec, event *compiledPackageStreamEvent, path string) error {
+	if len(spec.RequireClosed) == 0 {
+		return nil
+	}
+	if event.action != wireObserve {
+		return fmt.Errorf("%s/requireClosed: requires an observation", path)
+	}
+	for _, name := range spec.RequireClosed {
+		slot, exists := compiler.contract.namespaceSlots[name]
+		if !exists || slices.Contains(event.closedNamespaces, slot) {
+			return fmt.Errorf("%s/requireClosed: requires distinct declared namespaces", path)
+		}
+		event.closedNamespaces = append(event.closedNamespaces, slot)
+	}
 	return nil
 }

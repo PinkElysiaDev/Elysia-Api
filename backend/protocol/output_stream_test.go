@@ -234,7 +234,7 @@ func TestOutputStreamRuntimeReadContracts(t *testing.T) {
 	}{{DecodeEvent, "/stream/started"}, {EncodeEvent, "/stream"}, {EncodeEvent, "/stream/private"}} {
 		document := eventProtocolPackage(t)
 		document.Mapping.Directions[fixture.direction].Program.Fields["private"] = readExpression("runtime", fixture.path)
-		compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
 		if compiled, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes()); compiled != nil || IssuesError(issues) == nil {
 			t.Fatal("undeclared or non-output stream metadata compiled", fixture, issues)
 		}

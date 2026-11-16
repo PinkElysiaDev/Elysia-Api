@@ -78,8 +78,8 @@ func TestCollectorInitialSnapshotSharesLaterContentBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot := &Response{SchemaVersion: 1, Content: []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("a", 220))}}}
-	if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ResponseStarted, Response: snapshot}); err != nil {
+	snapshot := &Response{SchemaVersion: SemanticSchemaVersion, Content: []Node{{Kind: TextNode, Payload: StringValue(strings.Repeat("a", 220))}}}
+	if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseStarted, Response: snapshot}); err != nil {
 		t.Fatal(err)
 	}
 	event := messageEvent(ItemStarted, "next", "", &Node{Kind: TextNode, Payload: StringValue(strings.Repeat("b", 220))})
@@ -111,7 +111,7 @@ func TestCollectorTerminalSnapshotSharesMetadataBudget(t *testing.T) {
 	}
 }
 
-func TestCollectorLegacyMetadataBudgetSurvivesCompaction(t *testing.T) {
+func TestCollectorMetadataBudgetSurvivesCompaction(t *testing.T) {
 	for _, codec := range []string{"openai-chat", "responses"} {
 		t.Run(codec, func(t *testing.T) {
 			limits := DefaultLimits()
@@ -123,11 +123,7 @@ func TestCollectorLegacyMetadataBudgetSurvivesCompaction(t *testing.T) {
 			if _, _, err := collector.Consume(messageEvent(ItemStarted, "text", "", &Node{Kind: TextNode, Payload: StringValue(strings.Repeat("x", 128))})); err != nil {
 				t.Fatal(err)
 			}
-			metadata := ResponseMetadata{Codec: codec, Location: "content", Name: "logprobs", Value: parseTestValue(t, `[{"token":"x","logprob":-0.1,"bytes":[120]}]`)}
-			if codec == "openai-chat" {
-				metadata.Location = "choice"
-				metadata.Value = fixtureValue(t, Object{"content": metadata.Value})
-			}
+			metadata := ResponseMetadata{Codec: codec, Location: "content", Name: "logprobs", Update: "append", Value: parseTestValue(t, `[{"token":"x","logprob":-0.1,"bytes":[120]}]`)}
 			delta := messageEvent(ItemDelta, "text", "", nil)
 			delta.Delta, delta.Metadata = StringValue(""), []ResponseMetadata{metadata}
 			for range 32 {
@@ -158,7 +154,7 @@ func TestCollectorTerminalSnapshotDoesNotDoubleCountStreamedNodes(t *testing.T) 
 	for _, event := range []Event{
 		messageEvent(ItemStarted, "text", "", &node),
 		messageEvent(ItemFinished, "text", "", nil),
-		{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: []Node{node}}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: &Response{SchemaVersion: SemanticSchemaVersion, Content: []Node{node}}},
 	} {
 		if _, _, err := collector.Consume(event); err != nil {
 			t.Fatal(err)
@@ -177,14 +173,14 @@ func TestCollectorCancellationReleasesAccumulationBuffers(t *testing.T) {
 	start := toolStart()
 	for _, event := range []Event{
 		start,
-		{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"partial":`)},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"partial":`)},
 		messageEvent(ItemStarted, "text", "", &Node{Kind: TextNode, Payload: StringValue("visible")}),
 	} {
 		if _, _, err := collector.Consume(event); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: OperationCancelled}); err == nil {
+	if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: OperationCancelled}); err == nil {
 		t.Fatal("cancelled collection succeeded")
 	}
 	if len(collector.texts) != 0 || collector.metadataItems != 0 || collector.replay.state.buffered != 0 {
@@ -209,7 +205,7 @@ func TestCollectorSharesByteBudgetWithReplay(t *testing.T) {
 	}
 	// Each owner fits alone. Together the response copy and replay's unfinished
 	// JSON input exceed one response's capacity, so the delta cannot be published.
-	delta := Event{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(strings.Repeat(" ", 220))}
+	delta := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(strings.Repeat(" ", 220))}
 	if collector.bytes+220 > limits.BufferBytes || collector.replay.retainedBytes()+220 > limits.BufferBytes {
 		t.Fatal("fixture exceeds a single holder's capacity")
 	}
@@ -234,7 +230,7 @@ func TestCollectorReleasePreservesReturnedResponses(t *testing.T) {
 			start := toolStart()
 			for _, event := range []Event{
 				start,
-				{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"n":9007199254740993}`)},
+				{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue(`{"n":9007199254740993}`)},
 				messageEvent(ItemStarted, "text", "", &Node{Kind: TextNode, Payload: StringValue("visible")}),
 			} {
 				if _, _, err := collector.Consume(event); err != nil {
@@ -243,7 +239,7 @@ func TestCollectorReleasePreservesReturnedResponses(t *testing.T) {
 			}
 			var response *Response
 			if isComplete {
-				if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ResponseFinished}); err != nil {
+				if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished}); err != nil {
 					t.Fatal(err)
 				}
 				response, err = collector.Finish()
@@ -265,7 +261,7 @@ func TestCollectorReleasePreservesReturnedResponses(t *testing.T) {
 			if !isComplete && len(collector.response.Content) != 0 {
 				t.Fatal("release retained an abandoned response")
 			}
-			if _, _, err := collector.Consume(Event{SchemaVersion: 1, Type: ResponseFinished}); err == nil {
+			if _, _, err := collector.Consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished}); err == nil {
 				t.Fatal("released collector resumed")
 			}
 			if _, err := collector.Finish(); err == nil {

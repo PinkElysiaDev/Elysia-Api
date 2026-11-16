@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-func sessionVerificationDefinition(t *testing.T) Definition {
+func sessionVerificationDefinition(t *testing.T) ProtocolPackage {
 	t.Helper()
 	definition := textVerificationDefinition(t, "session-protocol")
-	definition.Native.Preserve = true
-	for direction, mapping := range definition.Directions {
+	definition.Mapping.Native.Preserve = true
+	for direction, mapping := range definition.Mapping.Directions {
 		mapping.Capabilities = CapabilitySet{TextCapability: true}
-		definition.Directions[direction] = mapping
+		definition.Mapping.Directions[direction] = mapping
 	}
-	definition.Capabilities = CapabilitySet{TextCapability: true, SessionsCapability: true, FunctionToolsCapability: true, UsageCapability: true}
-	decode := Expression{Op: "object", Fields: map[string]Expression{"schemaVersion": literalExpression(1)}}
+	definition.Mapping.Capabilities = CapabilitySet{TextCapability: true, SessionsCapability: true, FunctionToolsCapability: true, UsageCapability: true}
+	decode := Expression{Op: "object", Fields: map[string]Expression{"schemaVersion": literalExpression(ProtocolCoreVersion)}}
 	encode := Expression{Op: "object", Fields: map[string]Expression{}}
 	for wire, semantic := range map[string]string{"event": "type", "session": "sessionId", "response": "responseId", "itemKey": "itemId", "part": "item", "settings": "request", "counts": "usage", "failure": "error"} {
 		decode.Fields[semantic] = Expression{Op: "read", Path: "/" + wire}
@@ -22,16 +22,23 @@ func sessionVerificationDefinition(t *testing.T) Definition {
 	}
 	client := CapabilitySet{TextCapability: true, SessionsCapability: true, FunctionToolsCapability: true}
 	server := CapabilitySet{TextCapability: true, SessionsCapability: true, FunctionToolsCapability: true, UsageCapability: true}
-	definition.Directions[DecodeClientEvent] = Mapping{Transform: &decode, Capabilities: client}
-	definition.Directions[EncodeUpstreamEvent] = Mapping{Transform: &encode, Capabilities: client}
-	definition.Directions[DecodeEvent] = Mapping{Transform: &decode, Capabilities: server}
-	definition.Directions[EncodeEvent] = Mapping{Transform: &encode, Capabilities: server}
+	definition.Mapping.Directions[DecodeClientEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeClientEvent), Document: testDocument(DecodeClientEvent), Program: decode, Capabilities: client}
+	definition.Mapping.Directions[EncodeUpstreamEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeUpstreamEvent), Document: testDocument(EncodeUpstreamEvent), Program: encode, Capabilities: client}
+	definition.Mapping.Directions[DecodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeEvent), Document: testDocument(DecodeEvent), Program: decode, Capabilities: server}
+	definition.Mapping.Directions[EncodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeEvent), Document: testDocument(EncodeEvent), Program: encode, Capabilities: server}
+	definition.Spec.Documents["session-frame"] = WireContractSpec{Schema: &ValueSchema{Type: AnyType}}
+	for _, direction := range []Direction{DecodeClientEvent, EncodeUpstreamEvent, DecodeEvent, EncodeEvent} {
+		mapping := definition.Mapping.Directions[direction]
+		mapping.Document = "session-frame"
+		definition.Mapping.Directions[direction] = mapping
+	}
+	definition.Mapping.Operations["session"] = ProtocolOperationMapping{Request: EncodeRequest}
 	config := DefaultSessionConfig()
-	definition.Operations["session"] = Operation{Kind: "session", Method: "GET", Path: "/session", Transport: WebSocket, Auth: Credential{Location: "none"}, Session: &config}
+	definition.Spec.Operations["session"] = ProtocolOperationSpec{Request: "test", Kind: "session", Method: "GET", Path: "/session", Transport: WebSocket, Auth: Credential{Location: "none"}, Session: &ProtocolSessionSpec{SessionConfig: config, ClientEvent: "session-frame", ServerEvent: "session-frame"}}
 	start := sessionEvent(SessionStarted, "")
 	start.SessionID = StringValue("s")
 	configure := sessionEvent(SessionConfigure, "")
-	configure.Request = &Request{SchemaVersion: 1, Model: StringValue("m"), Tools: []Tool{{Kind: FunctionTool, Name: StringValue("count")}}}
+	configure.Request = &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("m"), Tools: []Tool{{Kind: FunctionTool, Name: StringValue("count")}}}
 	input := sessionEvent(InputAppend, "")
 	input.Item = &Node{Kind: TextNode, Payload: StringValue("please count")}
 	tool := sessionEvent(ItemStarted, "r")
@@ -80,14 +87,14 @@ func sessionVerificationDefinition(t *testing.T) Definition {
 			}
 			sample.Steps = append(sample.Steps, step)
 		}
-		definition.SessionSamples = append(definition.SessionSamples, sample)
+		definition.Mapping.SessionSamples = append(definition.Mapping.SessionSamples, sample)
 	}
 	return definition
 }
 
-func compileSessionDefinition(t *testing.T, definition Definition) *Compiled {
+func compileSessionDefinition(t *testing.T, definition ProtocolPackage) *Compiled {
 	t.Helper()
-	compiler, err := NewCompiler(DefaultLimits(), nil, []string{"transport.websocket"})
+	compiler, err := NewCompiler(DefaultLimits(), []string{"transport.websocket"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,16 +121,17 @@ func TestCompoundSessionFramesShareOfflineAndLivePreservation(t *testing.T) {
 	decode := readExpression("input", "/events")
 	encode := objectExpression(map[string]Expression{"events": {Op: "array", Items: []Expression{readExpression("input", "")}}})
 	for _, direction := range []Direction{DecodeClientEvent, DecodeEvent} {
-		mapping := definition.Directions[direction]
-		mapping.Transform = &decode
-		definition.Directions[direction] = mapping
+		mapping := definition.Mapping.Directions[direction]
+		mapping.Program = decode
+		mapping.IsEventBatch = true
+		definition.Mapping.Directions[direction] = mapping
 	}
 	for _, direction := range []Direction{EncodeUpstreamEvent, EncodeEvent} {
-		mapping := definition.Directions[direction]
-		mapping.Transform = &encode
-		definition.Directions[direction] = mapping
+		mapping := definition.Mapping.Directions[direction]
+		mapping.Program = encode
+		definition.Mapping.Directions[direction] = mapping
 	}
-	sample := definition.SessionSamples[0]
+	sample := definition.Mapping.SessionSamples[0]
 	sample.Scope = Scope{Model: "m"}
 	var steps []SessionStep
 	for _, step := range sample.Steps {
@@ -145,7 +153,7 @@ func TestCompoundSessionFramesShareOfflineAndLivePreservation(t *testing.T) {
 		steps = append(steps, step)
 	}
 	sample.Steps = steps
-	definition.SessionSamples = []SessionSample{sample}
+	definition.Mapping.SessionSamples = []SessionSample{sample}
 	compiled := compileSessionDefinition(t, definition)
 	evidence, err := executeSessionSample(t.Context(), compiled, sample)
 	if err != nil {
@@ -155,7 +163,7 @@ func TestCompoundSessionFramesShareOfflineAndLivePreservation(t *testing.T) {
 	if err := replaySessionCombination(t.Context(), compiled, operation, sample, evidence); err != nil {
 		t.Fatal("offline compound replay", err)
 	}
-	binding := Binding{ProtocolID: definition.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Capabilities, Transports: []Transport{WebSocket}}
+	binding := Binding{ProtocolID: definition.Spec.ID, RevisionHash: compiled.Hash(), Capabilities: definition.Mapping.Capabilities, Transports: []Transport{WebSocket}}
 	adapter, err := NewSessionAdapter(compiled, compiled, operation, operation, binding, sessionTestContext(t, sample.Scope), sample.Model)
 	if err != nil {
 		t.Fatal(err)
@@ -181,24 +189,24 @@ func TestSessionVerificationRejectsMissingAndInvalidTraces(t *testing.T) {
 			definition := sessionVerificationDefinition(t)
 			switch mode {
 			case "missing":
-				definition.SessionSamples = nil
+				definition.Mapping.SessionSamples = nil
 			case "orphan-result":
-				for index := range definition.SessionSamples {
-					definition.SessionSamples[index].Steps[5], definition.SessionSamples[index].Steps[9] = definition.SessionSamples[index].Steps[9], definition.SessionSamples[index].Steps[5]
+				for index := range definition.Mapping.SessionSamples {
+					definition.Mapping.SessionSamples[index].Steps[5], definition.Mapping.SessionSamples[index].Steps[9] = definition.Mapping.SessionSamples[index].Steps[9], definition.Mapping.SessionSamples[index].Steps[5]
 				}
 			case "truncated":
-				for index := range definition.SessionSamples {
-					definition.SessionSamples[index].Steps = definition.SessionSamples[index].Steps[:6]
+				for index := range definition.Mapping.SessionSamples {
+					definition.Mapping.SessionSamples[index].Steps = definition.Mapping.SessionSamples[index].Steps[:6]
 				}
 			case "lost-model":
-				mapping := definition.Directions[EncodeUpstreamEvent]
-				copy := *mapping.Transform
+				mapping := definition.Mapping.Directions[EncodeUpstreamEvent]
+				copy := mapping.Program
 				copy.Fields = map[string]Expression{"event": {Op: "read", Path: "/type"}}
-				mapping.Transform = &copy
-				definition.Directions[EncodeUpstreamEvent] = mapping
+				mapping.Program = copy
+				definition.Mapping.Directions[EncodeUpstreamEvent] = mapping
 			case "missing-tool-definition":
-				for index := range definition.SessionSamples {
-					definition.SessionSamples[index].Steps = append(definition.SessionSamples[index].Steps[:1], definition.SessionSamples[index].Steps[2:]...)
+				for index := range definition.Mapping.SessionSamples {
+					definition.Mapping.SessionSamples[index].Steps = append(definition.Mapping.SessionSamples[index].Steps[:1], definition.Mapping.SessionSamples[index].Steps[2:]...)
 				}
 			}
 			report := Verify(t.Context(), compileSessionDefinition(t, definition))
@@ -217,19 +225,19 @@ func TestSessionOptionsValidationAndIsolation(t *testing.T) {
 	if compiled.Operations()["session"].Session.FrameBytes != DefaultSessionFrameBytes {
 		t.Fatal("mutated compiled session options")
 	}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, []string{"transport.websocket"})
+	compiler, _ := NewCompiler(DefaultLimits(), []string{"transport.websocket"})
 	for _, mode := range []string{"zero-queue", "timeout-order", "wrong-direction", "undeclared-media", "resume"} {
 		t.Run(mode, func(t *testing.T) {
 			definition := sessionVerificationDefinition(t)
-			op := definition.Operations["session"]
+			op := definition.Spec.Operations["session"]
 			switch mode {
 			case "zero-queue":
 				op.Session.QueueBytes = 0
 			case "timeout-order":
 				op.Session.PingMillis = op.Session.IdleMillis
 			case "wrong-direction":
-				delete(definition.Directions, DecodeClientEvent)
-				delete(definition.Directions, EncodeUpstreamEvent)
+				delete(definition.Mapping.Directions, DecodeClientEvent)
+				delete(definition.Mapping.Directions, EncodeUpstreamEvent)
 			case "undeclared-media":
 				op.Session.InputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
 			}
@@ -246,43 +254,44 @@ func TestSessionOptionsValidationAndIsolation(t *testing.T) {
 
 func TestVerifySessionCompositionAndPureSessionBindings(t *testing.T) {
 	definition := sessionVerificationDefinition(t)
-	delete(definition.Operations, "generate")
-	for name, operation := range definition.Operations {
+	delete(definition.Spec.Operations, "generate")
+	delete(definition.Mapping.Operations, "generate")
+	for name, operation := range definition.Spec.Operations {
 		if operation.Transport != WebSocket {
-			delete(definition.Operations, name)
+			delete(definition.Spec.Operations, name)
 		}
 	}
-	delete(definition.Directions, DecodeResponse)
-	delete(definition.Directions, EncodeResponse)
+	delete(definition.Mapping.Directions, DecodeResponse)
+	delete(definition.Mapping.Directions, EncodeResponse)
 	samples := []Sample{}
-	for _, sample := range definition.Samples {
+	for _, sample := range definition.Mapping.Samples {
 		if sample.Direction == DecodeRequest || sample.Direction == EncodeRequest {
 			samples = append(samples, sample)
 		}
 	}
-	definition.Samples = samples
+	definition.Mapping.Samples = samples
 	ingress := compileSessionDefinition(t, definition)
-	definition.ID, definition.Family = "other-session", "other-session"
+	definition.Spec.ID, definition.Spec.Family = "other-session", "other-session"
 	upstream := compileSessionDefinition(t, definition)
-	report := VerifyBindingCombination(t.Context(), ingress, upstream, definition.Capabilities)
+	report := VerifyBindingCombination(t.Context(), ingress, upstream, definition.Mapping.Capabilities)
 	if !report.Passed {
 		t.Fatalf("session composition failed: %+v", report.Issues)
 	}
-	binding := Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: definition.Capabilities, Transports: []Transport{WebSocket}}
+	binding := Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: definition.Mapping.Capabilities, Transports: []Transport{WebSocket}}
 	if err := IssuesError(CheckBinding(binding, upstream)); err != nil {
 		t.Fatal(err)
 	}
 	if err := IssuesError(CheckIngressBinding(binding, upstream)); err != nil {
 		t.Fatal(err)
 	}
-	op := definition.Operations["session"]
+	op := definition.Spec.Operations["session"]
 	op.Session.InputMedia = &MediaFormat{Type: "audio", Format: "pcm16"}
-	if err := CheckSessionCompatibility(ingress.Operations()["session"], op); !hasIssueCode(err, UnsupportedCapability) {
+	if err := CheckSessionCompatibility(ingress.Operations()["session"], Operation{Transport: op.Transport, Session: &op.Session.SessionConfig}); !hasIssueCode(err, UnsupportedCapability) {
 		t.Fatalf("undeclared binary bridge: %v", err)
 	}
 	op.Session.InputMedia = nil
 	op.Session.CanGenerateAutomatically = true
-	if err := CheckSessionCompatibility(ingress.Operations()["session"], op); !hasIssueCode(err, UnsupportedCapability) {
+	if err := CheckSessionCompatibility(ingress.Operations()["session"], Operation{Transport: op.Transport, Session: &op.Session.SessionConfig}); !hasIssueCode(err, UnsupportedCapability) {
 		t.Fatalf("unapproved automatic responses: %v", err)
 	}
 }
@@ -291,33 +300,35 @@ func TestSessionDirectionsCanBeIndependentlyImplemented(t *testing.T) {
 	var adapters []*Compiled
 	for _, isIngress := range []bool{true, false} {
 		definition := sessionVerificationDefinition(t)
-		definition.Native.Preserve = false
-		definition.Operations = map[string]Operation{"session": definition.Operations["session"]}
+		definition.Mapping.Native.Preserve = false
+		definition.Spec.Operations = map[string]ProtocolOperationSpec{"session": definition.Spec.Operations["session"]}
+		definition.Mapping.Operations = map[string]ProtocolOperationMapping{"session": {Request: EncodeRequest}}
 		request, client, server := EncodeRequest, EncodeUpstreamEvent, DecodeEvent
-		definition.ID, definition.Family = "session-upstream", "session-upstream"
+		definition.Spec.ID, definition.Spec.Family = "session-upstream", "session-upstream"
 		if isIngress {
 			request, client, server = DecodeRequest, DecodeClientEvent, EncodeEvent
-			definition.ID, definition.Family = "session-ingress", "session-ingress"
+			definition.Spec.ID, definition.Spec.Family = "session-ingress", "session-ingress"
 		}
-		for direction := range definition.Directions {
+		definition.Mapping.Operations["session"] = ProtocolOperationMapping{Request: request}
+		for direction := range definition.Mapping.Directions {
 			if direction != request && direction != client && direction != server {
-				delete(definition.Directions, direction)
+				delete(definition.Mapping.Directions, direction)
 			}
 		}
-		for _, sample := range definition.Samples {
+		for _, sample := range definition.Mapping.Samples {
 			if sample.Direction == request {
-				definition.Samples = []Sample{sample}
+				definition.Mapping.Samples = []Sample{sample}
 				break
 			}
 		}
 		trace := SessionSample{ID: "duplex", Operation: "session", Model: StringValue("m")}
-		for index, step := range definition.SessionSamples[0].Steps {
+		for index, step := range definition.Mapping.SessionSamples[0].Steps {
 			if !((isIngress && eventOrigin(step.Direction) == ClientEvent) || (!isIngress && eventOrigin(step.Direction) == UpstreamEvent)) {
-				step = definition.SessionSamples[1].Steps[index]
+				step = definition.Mapping.SessionSamples[1].Steps[index]
 			}
 			trace.Steps = append(trace.Steps, step)
 		}
-		definition.SessionSamples = []SessionSample{trace}
+		definition.Mapping.SessionSamples = []SessionSample{trace}
 		compiled := compileSessionDefinition(t, definition)
 		if report := Verify(t.Context(), compiled); !report.Passed {
 			t.Fatalf("partial session definition: %+v", report.Issues)

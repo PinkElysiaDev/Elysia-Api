@@ -3,20 +3,19 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
-const scalarOperandCapacity = 2
-
 // This reader has no mutable index or parent state. Only statically selected
 // read/literal predicates use it; their result cannot retain the selected bytes.
 var scalarInputReader = valueReader{isBorrowed: true}
 
 func (plan *compiledOutputPlan) countArrayMembers(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.buildNode(state)
+	source, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -45,7 +44,7 @@ func readPlannedBoolean(output JSONOutput) (bool, error) {
 	return readBoolean(output.value)
 }
 
-func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput, error) {
+func (plan *compiledOutputPlan) buildReadValue(state *evaluation) (plannedOutput, error) {
 	expression := plan.expression
 	root := state.input
 	switch expression.from {
@@ -159,9 +158,11 @@ func (plan *compiledOutputPlan) buildReadValue(state evaluation) (plannedOutput,
 	return plannedLeaf(value), nil
 }
 
-func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, error) {
+func (plan *compiledOutputPlan) buildScalar(state *evaluation) (plannedOutput, error) {
 	if plan.borrowsScalarInput {
-		state.valueReader = &scalarInputReader
+		borrowed := *state
+		borrowed.valueReader = &scalarInputReader
+		state = &borrowed
 	}
 	source, err := plan.source.buildNode(state)
 	if err != nil {
@@ -210,7 +211,7 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 			return plannedOutput{}, fmt.Errorf("%s/values: enum value is unmapped", expression.path)
 		}
 		return plannedLeaf(value), nil
-	case "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control":
+	case "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "matches_charset":
 		text, err := readPlannedString(source.output)
 		if err != nil {
 			return plannedOutput{}, err
@@ -226,6 +227,8 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 			return plannedLeaf(coreBoolean(strings.HasPrefix(text, expression.literalText))), nil
 		case "contains":
 			return plannedLeaf(coreBoolean(strings.Contains(text, expression.literalText))), nil
+		case "matches_charset":
+			return plannedLeaf(coreBoolean(hasOnlyCharacters(text, expression.keys))), nil
 		}
 		prefix := expression.literalText
 		if expression.op == "strip_prefix" && !strings.HasPrefix(text, prefix) {
@@ -236,20 +239,24 @@ func (plan *compiledOutputPlan) buildScalar(state evaluation) (plannedOutput, er
 	panic("uncompiled scalar operation")
 }
 
-func (plan *compiledOutputPlan) buildScalarOperands(state evaluation) (plannedOutput, error) {
+func hasOnlyCharacters(text string, characters []string) bool {
+	for _, character := range text {
+		if _, hasCharacter := slices.BinarySearch(characters, string(character)); !hasCharacter {
+			return false
+		}
+	}
+	return true
+}
+
+func (plan *compiledOutputPlan) buildScalarOperands(state *evaluation) (plannedOutput, error) {
 	if plan.borrowsScalarInput {
-		state.valueReader = &scalarInputReader
+		borrowed := *state
+		borrowed.valueReader = &scalarInputReader
+		state = &borrowed
 	}
-	var operands []plannedOutput
-	var err error
-	if len(plan.items) <= scalarOperandCapacity {
-		var storage [scalarOperandCapacity]plannedOutput
-		operands = storage[:len(plan.items)]
-		err = plan.buildOperandValuesInto(state, operands)
-	} else {
-		operands, err = plan.buildOperandValues(state)
-	}
-	if err != nil {
+	var storage [operandWorkspaceCapacity]plannedOutput
+	operands := selectOperandStorage(storage[:], len(plan.items))
+	if err := plan.buildOperandValuesInto(state, operands); err != nil {
 		return plannedOutput{}, err
 	}
 	if plan.expression.op == "equal" {
@@ -312,7 +319,7 @@ func equalPlannedOutputs(left, right JSONOutput) bool {
 }
 
 func (plan *compiledOutputPlan) buildJSONScalar(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.buildNode(state)
+	source, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -342,7 +349,7 @@ func (plan *compiledOutputPlan) buildJSONScalar(state evaluation) (plannedOutput
 	return plannedLeaf(value), nil
 }
 
-func (plan *compiledOutputPlan) buildJoin(state evaluation) (plannedOutput, error) {
+func (plan *compiledOutputPlan) buildJoin(state *evaluation) (plannedOutput, error) {
 	var result strings.Builder
 	if plan.source != nil {
 		source, err := plan.source.buildNode(state)
@@ -359,8 +366,9 @@ func (plan *compiledOutputPlan) buildJoin(state evaluation) (plannedOutput, erro
 			}
 		}
 	} else {
-		operands, err := plan.buildOperandValues(state)
-		if err != nil {
+		var storage [operandWorkspaceCapacity]plannedOutput
+		operands := selectOperandStorage(storage[:], len(plan.items))
+		if err := plan.buildOperandValuesInto(state, operands); err != nil {
 			return plannedOutput{}, err
 		}
 		for _, operand := range operands {
@@ -385,7 +393,7 @@ func appendJoinedText(result *strings.Builder, output JSONOutput, limit int) err
 }
 
 func (plan *compiledOutputPlan) buildKeyedArray(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.buildNode(state)
+	source, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

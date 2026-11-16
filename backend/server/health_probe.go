@@ -84,7 +84,7 @@ func prepareHealthProbeRequest(ctx context.Context, candidate gatewayCandidate, 
 	if err := protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, candidate.operation.Transport)); err != nil {
 		return nil, err
 	}
-	options.Scope, options.InterleavedThinking = candidate.scope, protocol.OperationInterleavedThinking(candidate.operation)
+	options.Scope, options.InterleavedThinking = candidate.scope, candidate.operation.IsInterleavedThinking
 	body, err := candidate.compiled.EncodeRequest(ctx, request, options)
 	if err != nil {
 		return nil, err

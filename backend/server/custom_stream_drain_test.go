@@ -55,7 +55,7 @@ func TestCustomProtocolStreamHangingAfterFinishCanBeCanceled(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := newTestContext(rec)
 	setTestRequest(c, httptest.NewRequest(http.MethodPost, "/gateway/vendor-cumulative/v2/generate/grp", strings.NewReader(`{"deployment":"grp","turns":[{"actor":"user","segments":[{"text":"hi"}]}],"parameters":{"stream":true}}`)))
-	c.Params = param.Params{{Key: "protocolId", Value: definition.ID}, {Key: "path", Value: "/v2/generate/grp"}}
+	c.Params = param.Params{{Key: "protocolId", Value: definition.Spec.ID}, {Key: "path", Value: "/v2/generate/grp"}}
 	deadline, stop := context.WithTimeout(contextForTest(c), 5*time.Second)
 	defer stop()
 	ctx, cancel := context.WithCancelCause(deadline)
@@ -80,7 +80,7 @@ func TestCustomProtocolStreamEmptyCompletionWithFinishReasonEndToEnd(t *testing.
 	definition := standaloneWireDefinition(t, protocol.SSE)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(w, "data: {\"event\":{\"type\":\"response.finished\",\"response\":{\"schemaVersion\":1,\"content\":[],\"attributes\":{\"finishReason\":\"content_filter\"}}}}\n\n")
+		fmt.Fprint(w, "data: {\"event\":{\"type\":\"response.finished\",\"response\":{\"schemaVersion\":2,\"content\":[],\"attributes\":{\"finishReason\":\"content_filter\"}}}}\n\n")
 	}))
 	defer upstream.Close()
 	s := newTestServer(t, standaloneGroup(t, definition, upstream.URL), definition)

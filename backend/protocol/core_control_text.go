@@ -115,22 +115,16 @@ func (plan *compiledContentLayout) mergeTextChildren(state evaluation, conversio
 			if err := state.advance(); err != nil {
 				return nil, false, err
 			}
-			program := plan.text.metadata[metadata.Name]
-			if program == nil {
+			program, exists := plan.text.metadata[metadata.Name]
+			if !exists {
 				return nil, false, streamIssue(UnsupportedCapability, metadata.Path, "text metadata has no declared aggregation")
 			}
 			local.inputReader = func(pointer []string) (JSONOutput, error) { return readCoreResponseMetadata(metadata, pointer, nil) }
-			value, err := program.build(local)
+			projected, err := program.project(local, metadata)
 			if err != nil {
 				return nil, false, err
 			}
-			if value.output.IsZero() {
-				return nil, false, streamIssue(UnsupportedCapability, metadata.Path, "text aggregation cannot silently omit metadata")
-			}
-			if err := assignCoreValue(value.output, &metadata.Value, state.valueReader); err != nil {
-				return nil, false, err
-			}
-			merged.Metadata = append(merged.Metadata, metadata)
+			merged.Metadata = append(merged.Metadata, projected)
 		}
 		payload.WriteString(part.text)
 		offset += part.length
@@ -148,6 +142,35 @@ func (plan *compiledContentLayout) mergeTextChildren(state evaluation, conversio
 		output = append(output, input[index])
 	}
 	return output, true, nil
+}
+
+func (program compiledTextMetadata) project(state evaluation, metadata ResponseMetadata) (ResponseMetadata, error) {
+	projected := metadata
+	value, err := program.value.evaluate(state)
+	if err != nil {
+		return ResponseMetadata{}, err
+	}
+	if value.IsZero() {
+		return ResponseMetadata{}, streamIssue(UnsupportedCapability, metadata.Path, "text aggregation cannot silently omit metadata")
+	}
+	projected.Value = value
+	if program.references == nil {
+		if !metadata.References.IsZero() {
+			return ResponseMetadata{}, streamIssue(UnsupportedCapability, metadata.Path, "text references require an explicit aggregation")
+		}
+		return projected, nil
+	}
+	projected.References, err = program.references.evaluate(state)
+	if err != nil {
+		return ResponseMetadata{}, err
+	}
+	if !metadata.References.IsZero() && projected.References.IsZero() {
+		return ResponseMetadata{}, streamIssue(UnsupportedCapability, metadata.Path, "text aggregation cannot silently omit references")
+	}
+	if err := validateCoreMetadataValue(projected, metadata.Path); err != nil {
+		return ResponseMetadata{}, err
+	}
+	return projected, nil
 }
 
 func (plan *compiledContentLayout) measureTextParts(state evaluation, input []Node, parts []textLayoutPart, path string) (int, error) {

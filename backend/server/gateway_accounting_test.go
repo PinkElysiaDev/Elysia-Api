@@ -10,7 +10,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 )
 
 func TestProtocolEstimateCountsUnicodeFilesAndToolHistoryOnce(t *testing.T) {
@@ -45,33 +44,24 @@ func TestProtocolEstimateIncludesStructuredReasoningHistory(t *testing.T) {
 	}
 }
 
-func TestHostedToolAccountingDeduplicatesAndHonorsSource(t *testing.T) {
+func TestHostedToolAccountingUsesMappedSnapshots(t *testing.T) {
 	t.Parallel()
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
+	compiled := compileFixturePackage(t, presetPackage(t, protocol.PresetResponsesID))
+	wire := []byte(`{"id":"r","object":"response","model":"m","created_at":1,"status":"completed","output":[{"type":"web_search_call","id":"s1","status":"completed"},{"type":"web_search_call","id":"s2","status":"completed"},{"type":"file_search_call","id":"f1","status":"completed","queries":["q"]}],"usage":{"input_tokens":9,"output_tokens":2}}`)
 	record := &usageRecord{}
-	for _, wire := range []string{
-		`{"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call"}}`,
-		`{"type":"response.output_item.done","output_index":1,"item":{"type":"web_search_call"}}`,
-		`{"type":"response.completed","response":{"output":[{"type":"web_search_call"},{"type":"web_search_call"},{"type":"file_search_call"}]}}`,
-	} {
-		if err := observeLegacyHostedTools(record, compiled, []byte(wire)); err != nil {
+	for range 2 {
+		response, err := compiled.DecodeResponse(t.Context(), wire, protocol.EvaluationContext{})
+		if err != nil {
 			t.Fatal(err)
 		}
+		updateRecordProtocolUsage(record, response.Usage)
 	}
 	if record.BuiltinToolUsage.WebSearchCalls != 2 || record.BuiltinToolUsage.FileSearchCalls != 1 {
 		t.Fatal("snapshots double counted", record.BuiltinToolUsage)
 	}
 	updateRecordProtocolUsage(record, &protocol.Usage{Details: map[string]protocol.Counter{"tools.web_search_calls": {Count: 0, Origin: protocol.ObservedCount}}})
 	if record.BuiltinToolUsage.WebSearchCalls != 0 {
-		t.Fatal("explicit mapped zero did not override native observation")
-	}
-	counter := builtin.NewToolAccounting(1)
-	wire := []byte(`{"output":[{"type":"web_search_call"},{"type":"web_search_call"}]}`)
-	if err := counter.Observe(protocol.Identity{Family: "unrelated"}, wire); err != nil || counter.Count("web_search") != 0 {
-		t.Fatal("type guessed protocol source", err)
-	}
-	if err := counter.Observe(compiled.Identity(), wire); err == nil {
-		t.Fatal("unbounded correlation storage")
+		t.Fatal("observed zero did not replace inferred tool count")
 	}
 }
 
@@ -88,8 +78,11 @@ func TestHostedToolUsagePersistedHTTPAndSSE(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				fmt.Fprint(w, "data: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"r1\",\"model\":\"m\",\"object\":\"response\",\"created_at\":1,\"status\":\"in_progress\",\"output\":[]}}\n\n")
-				fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"web_search_call\",\"id\":\"s1\",\"status\":\"completed\"},\"sequence_number\":1}\n\n")
-				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"sequence_number\":2,\"response\":%s}\n\n", payload)
+				for index, id := range []string{"s1", "s2"} {
+					fmt.Fprintf(w, "data: {\"type\":\"response.output_item.added\",\"output_index\":%d,\"item\":{\"type\":\"web_search_call\",\"id\":%q,\"status\":\"in_progress\"},\"sequence_number\":%d}\n\n", index, id, index*2+1)
+					fmt.Fprintf(w, "data: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"type\":\"web_search_call\",\"id\":%q,\"status\":\"completed\"},\"sequence_number\":%d}\n\n", index, id, index*2+2)
+				}
+				fmt.Fprintf(w, "data: {\"type\":\"response.completed\",\"sequence_number\":5,\"response\":%s}\n\n", payload)
 			}))
 			defer upstream.Close()
 			server := newTestServer(t, presetGroup(t, "custom:openai-responses", upstream.URL))

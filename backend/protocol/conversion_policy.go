@@ -52,18 +52,17 @@ type ConversionUsageSettings struct {
 
 type ConversionRule struct {
 	// Compiled execution hint; never part of an authored policy or its hash.
-	partitionRequest bool
-	preparedOption   *preparedConversionOption
-	ID               string          `json:"id"`
-	Order            int             `json:"order"`
-	Enabled          bool            `json:"enabled"`
-	Phase            ConversionPhase `json:"phase"`
-	Match            ConversionMatch `json:"match"`
-	Action           string          `json:"action"`
-	Path             string          `json:"path,omitempty"`
-	Value            Value           `json:"value,omitzero"`
-	Expression       *Expression     `json:"expression,omitempty"`
-	Reason           string          `json:"reason,omitempty"`
+	preparedOption *preparedConversionOption
+	ID             string          `json:"id"`
+	Order          int             `json:"order"`
+	Enabled        bool            `json:"enabled"`
+	Phase          ConversionPhase `json:"phase"`
+	Match          ConversionMatch `json:"match"`
+	Action         string          `json:"action"`
+	Path           string          `json:"path,omitempty"`
+	Value          Value           `json:"value,omitzero"`
+	Expression     *Expression     `json:"expression,omitempty"`
+	Reason         string          `json:"reason,omitempty"`
 }
 
 type ConversionMatch struct {
@@ -97,11 +96,9 @@ type ConversionContext struct {
 	fieldObservations   map[string]fieldObservation
 	// ResponseWire is trusted delivery metadata, unavailable to mapping JSON.
 	ResponseWire        bool                   `json:"-"`
-	ResponseModel       *ResponseModelOrigin   `json:"responseModel,omitempty"`
 	InterleavedThinking bool                   `json:"interleavedThinking,omitempty"`
 	Delivery            *DeliveryState         `json:"-"`
 	Scope               Scope                  `json:"-"`
-	Recoverable         map[string]bool        `json:"-"`
 	Source              Identity               `json:"source"`
 	Target              Identity               `json:"target"`
 	Model               string                 `json:"model"`
@@ -111,6 +108,8 @@ type ConversionContext struct {
 }
 
 type CompiledConversion struct {
+	sourcePreludes        []ConversionRule
+	preludes              []ConversionRule
 	streamDispositions    map[string]ConversionRule
 	recovery              map[ConversionPhase][]ConversionRule
 	needsFrameUsage       bool
@@ -249,7 +248,19 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if err := action.validate(r); err != nil {
 			return nil, err
 		}
-		if r.Action == "stream_disposition" {
+		if r.Action == "source_prelude" {
+			option, err := compileSourcePreludeOption(r, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "event_prelude" {
+			option, err := compileEventPreludeOption(r, limits)
+			if err != nil {
+				return nil, err
+			}
+			c.options[r.ID] = option
+		} else if r.Action == "stream_disposition" {
 			option, err := compileStreamDispositionOption(r)
 			if err != nil {
 				return nil, err
@@ -293,8 +304,7 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 			c.options[r.ID] = option
 		} else if action.parseOption != nil {
 			c.options[r.ID] = action.parseOption(r.Value)
-		} else if action.codecValue != "" {
-			c.options[r.ID] = parseConversionOption[string](r.Value)
+
 		}
 		if r.Match.NodeKind != "" {
 			if r.Phase == ConversionWire {
@@ -347,6 +357,14 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		if !rule.Enabled {
 			continue
 		}
+		if rule.Action == "source_prelude" {
+			c.sourcePreludes = append(c.sourcePreludes, rule)
+			continue
+		}
+		if rule.Action == "event_prelude" {
+			c.preludes = append(c.preludes, rule)
+			continue
+		}
 		if rule.Action == "stream_disposition" {
 			if c.streamDispositions == nil {
 				c.streamDispositions = make(map[string]ConversionRule)
@@ -367,7 +385,6 @@ func CompileConversion(p ConversionPolicy) (*CompiledConversion, error) {
 		}
 		c.ownedPhases[rule.Phase] = c.ownedPhases[rule.Phase] && state.accepts(rule.Phase, rule)
 	}
-	markRequestPartitions(c.phases[ConversionRequest])
 	compiler.releaseGraph()
 	return c, nil
 }
@@ -433,24 +450,6 @@ func (m ConversionMatch) matchesSemantic(ctx ConversionContext, document any) bo
 
 func (m ConversionMatch) MatchesContext(ctx ConversionContext) bool { return m.matches(ctx, Value{}) }
 
-func (c *CompiledConversion) SignatureProjectionEnabled(phase ConversionPhase, route ConversionContext) bool {
-	if c == nil {
-		return false
-	}
-	if c.HasContinuationRecovery(phase, route) {
-		return true
-	}
-	for _, r := range c.Policy.Rules {
-		match := r.Match
-		match.Present = nil
-		match.Path = ""
-		if r.Enabled && r.Phase == phase && r.Action == "signatures" && match.matches(route, Value{}) {
-			return true
-		}
-	}
-	return false
-}
-
 func (c *CompiledConversion) issue(rule ConversionRule, phase ConversionPhase, ctx ConversionContext, at, reason string, sink *DiagnosticSink, lossy bool) error {
 	return c.issueSeverity(rule, phase, ctx, at, reason, sink, lossy, SeverityWarning)
 }
@@ -462,18 +461,10 @@ func (c *CompiledConversion) issueSeverity(rule ConversionRule, phase Conversion
 	fidelity := "preserved"
 	if lossy {
 		fidelity = "lossy_compatible"
-	} else if rule.Action == "signatures" {
-		fidelity = "recoverable_wrapped"
 	}
 	issue := ConversionIssue{Fidelity: fidelity, Code: ConversionDegraded, Severity: severity, Protocol: ctx.Target, Stage: "conversion." + string(phase), Path: at, Reason: reason, RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Evidence: c.Origins[rule.ID]}
 	if phase == ConversionRequest {
 		issue.Direction = EncodeRequest
-	}
-	if phase == ConversionSourceEvent {
-		issue.Protocol, issue.Direction = ctx.Source, DecodeEvent
-	}
-	if rule.Action == "chat_response_model" {
-		issue.Protocol, issue.Direction = ctx.Source, DecodeResponse
 	}
 	if severity == SeverityError {
 		issue.Code = ConversionRejected
@@ -518,7 +509,6 @@ func (c *CompiledConversion) Wire(ctx context.Context, body []byte, route Conver
 func (c *CompiledConversion) WithVerificationContext(route ConversionContext) *CompiledConversion {
 	route.frameUsage = nil
 	// Observed response fields belong to a single attempt, never a binding proof.
-	route.ResponseModel = nil
 	route.fieldObservations = nil
 	if route.Reasoning != nil {
 		capability := *route.Reasoning
@@ -554,7 +544,7 @@ func (c *CompiledConversion) VerificationRoute(source, target Identity, transpor
 }
 func (c *CompiledConversion) ContextDependent() bool {
 	for _, r := range c.Policy.Rules {
-		if r.Enabled && (r.Action == "reasoning_controls" || r.Action == "provider_signature" || r.Match.Model != "" || r.Match.Operation != "" || r.Match.Transport != "") {
+		if r.Enabled && (r.Action == "model_controls" || r.Action == "provider_signature" || r.Match.Model != "" || r.Match.Operation != "" || r.Match.Transport != "") {
 			return true
 		}
 	}

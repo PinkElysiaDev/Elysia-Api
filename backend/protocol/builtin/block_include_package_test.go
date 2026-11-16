@@ -13,16 +13,17 @@ func TestBlockPackageIncludeDisposition(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			target := compileBuiltinPackage(t, name)
 			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
-			policy := declaredRulePolicy(t, source, target, "responses-include", "strict")
+			policy := p.DefaultConversionPolicy(source, target)
+			policy.Mode = "strict"
 			conversion, err := p.ResolveConversion(policy)
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Parameters: p.Object{"max_output_tokens": testValue(t, "64")},
+			request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Parameters: p.Object{"max_output_tokens": testValue(t, "64"), "wire:openai_responses": testValue(t, `{"include":["reasoning.encrypted_content"]}`)},
 				Content:      []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hi")}}}},
-				ClientOutput: &p.ClientOutput{RawResponsesInclude: testValue(t, `["reasoning.encrypted_content"]`), RequireContinuationState: true, ResponsesStorage: &p.ResponsesStorageIntent{}}}
+				ClientOutput: &p.ClientOutput{RequireContinuationState: true, ResponsesStorage: &p.ResponsesStorageIntent{}}}
 			prepared, err := conversion.Request(t.Context(), request, route, nil)
-			if err != nil || !prepared.ClientOutput.ResponsesIncludeResolved || !prepared.ClientOutput.RequireContinuationState || prepared.ClientOutput.RawResponsesInclude != request.ClientOutput.RawResponsesInclude || request.ClientOutput.ResponsesIncludeResolved {
+			if err != nil || !prepared.ClientOutput.RequireContinuationState || !prepared.Parameters["wire:openai_responses"].IsZero() || request.Parameters["wire:openai_responses"].IsZero() {
 				t.Fatal("include disposition changed source intent or failed to resolve it", prepared, err)
 			}
 			wire, err := target.EncodeRequest(t.Context(), prepared, p.EvaluationContext{ClientOutput: prepared.ClientOutput})
@@ -30,11 +31,19 @@ func TestBlockPackageIncludeDisposition(t *testing.T) {
 				t.Fatal("target leaked a foreign include field", string(wire), err)
 			}
 			unknown := request.Clone()
-			unknown.ClientOutput.RawResponsesInclude = testValue(t, `["future.selector"]`)
-			if _, err := conversion.Request(t.Context(), unknown, route, nil); err == nil {
+			unknown.Parameters["wire:openai_responses"] = testValue(t, `{"include":["future.selector"]}`)
+			projected, err := conversion.Request(t.Context(), unknown, route, nil)
+			if err == nil {
+				_, err = target.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+			}
+			if err == nil {
 				t.Fatal("unknown selector was treated as resolved")
 			}
-			policy.Rules[0].Enabled = false
+			for index := range policy.Rules {
+				if policy.Rules[index].ID == "reasoning-controls" {
+					policy.Rules[index].Enabled = false
+				}
+			}
 			disabled, err := p.ResolveConversion(policy)
 			if err != nil {
 				t.Fatal(err)

@@ -9,7 +9,7 @@ import (
 // gateway latency benchmarks. The same source runs on the preceding revision.
 func BenchmarkProfilingWorkspace(b *testing.B) {
 	b.Run("normalize-event", func(b *testing.B) {
-		event := &Event{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("id"), Delta: StringValue(strings.Repeat("x", 256))}
+		event := &Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("id"), Delta: StringValue(strings.Repeat("x", 256))}
 		limits := DefaultLimits()
 		b.ReportAllocs()
 		for b.Loop() {

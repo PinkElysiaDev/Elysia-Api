@@ -54,7 +54,7 @@ func TestPackageStreamIndexIdentityAndRollback(t *testing.T) {
 			t.Fatal("fixed scalar slots reduced the declared identity capacity", err)
 		}
 	}
-	key := moduleStateKey{compiled: compiled, direction: DecodeEvent}
+	key := executionStateKey{compiled: compiled, direction: DecodeEvent}
 	before := options.State.packageStates[key]
 	_, err := compiled.DecodeEvents(t.Context(), packageStreamFrame(ItemStarted, 3, `,"item_id":"b"`), options)
 	var failure *ConversionError

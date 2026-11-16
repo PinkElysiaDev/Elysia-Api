@@ -73,7 +73,7 @@ func TestGatewayWindowsDisconnectSettlesCanceledCall(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := fmt.Sprintf(`{"model":"group","stream":%t,"messages":[{"role":"user","content":"synthetic cancellation"}]}`, stream)
-			if _, err := fmt.Fprintf(conn, "POST /gateway/%s/chat/completions HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer gateway-test-token\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", protocol.PresetChatCompletionsID, len(body), body); err != nil {
+			if _, err := fmt.Fprintf(conn, "POST /gateway/%s/v1/chat/completions HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer gateway-test-token\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", protocol.PresetChatCompletionsID, len(body), body); err != nil {
 				t.Fatal(err)
 			}
 			if err := awaitDisconnectResult(t, started, "gateway upstream start"); err != nil {

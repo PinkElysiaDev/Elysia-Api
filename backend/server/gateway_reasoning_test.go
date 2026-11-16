@@ -146,6 +146,15 @@ func TestGatewayThinkingGroupNameDoesNotRestrictCandidate(t *testing.T) {
 				if rec.Code != status || upstream.requestCount() != calls {
 					t.Fatalf("effort=%s status=%d calls=%d body=%s", effort, rec.Code, upstream.requestCount(), rec.Body)
 				}
+				if status == http.StatusOK {
+					var response struct {
+						ID      string `json:"id"`
+						Created int64  `json:"created"`
+					}
+					if err := sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &response); err != nil || response.ID != rec.Header().Get("X-Elysia-Request-Id") || response.Created <= 0 {
+						t.Fatal("missing provider identity was not materialized from this operation", response, err)
+					}
+				}
 			}
 		})
 	}
@@ -236,7 +245,10 @@ func TestGatewayThinkingCandidateIsolation(t *testing.T) {
 					upstream, _ := service.Pin(protocol.PresetGeminiID)
 					for _, model := range models {
 						binding := makeProtocolBinding(storage.BindingKey{Kind: "model", SourceID: model.SourceID, ModelID: model.ID}, upstream)
-						cap := protocol.ResolveReasoningCapabilities("gemini", model.ID)
+						cap, err := upstream.ResolveModelReasoning(t.Context(), model.ID, nil)
+						if err != nil {
+							t.Fatal(err)
+						}
 						cap.MaxOutputTokens = 16384
 						if model.ID == a.ID {
 							cap.MaxOutputTokens = 4096

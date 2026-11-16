@@ -66,7 +66,7 @@ func TestDeclaredFrameUsageObservation(t *testing.T) {
 		}
 	}
 	document.Mapping.ConversionDefaults[0].FrameUsage = false
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,7 @@ func TestResponsesSafetyBufferingProjection(t *testing.T) {
 					policy := p.DefaultConversionPolicy(to, from)
 					policy.Mode = mode
 					for i := range policy.Rules {
-						if policy.Rules[i].Action == "response_metadata" {
+						if policy.Rules[i].ID == "response-metadata" || policy.Rules[i].ID == "event-metadata" || policy.Rules[i].ID == "history-response-metadata" {
 							policy.Rules[i].Enabled = enabled
 						}
 					}
@@ -27,7 +27,7 @@ func TestResponsesSafetyBufferingProjection(t *testing.T) {
 					}
 					fields, _ := liveAuditFixture(t, "safety_buffering").ReadObject()
 					fields["safety_buffering"] = testValue(t, raw)
-					frame, err := from.DecodeFrame(t.Context(), object(fields), p.EvaluationContext{State: p.NewEvaluationState()})
+					frame, err := from.DecodeFrame(t.Context(), object(fields), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -38,10 +38,18 @@ func TestResponsesSafetyBufferingProjection(t *testing.T) {
 					frame.Events[0].Response.Attributes = nil
 					frame.Events[0].Response.Usage = &p.Usage{Input: &p.Counter{Count: 2, Origin: p.ObservedCount}, Output: &p.Counter{Count: 0, Origin: p.ObservedCount}}
 					sink := &p.DiagnosticSink{}
-					event, err := conversion.Event(t.Context(), frame.Events[0], p.ConversionContext{}, sink)
+					route, err := conversion.WithFrameUsage(fixtureConversionContext(t, conversion, p.ConversionEvent, frame.Events[0].Source), frame.Events)
+					if err != nil {
+						t.Fatal(err)
+					}
+					event, err := conversion.Event(t.Context(), frame.Events[0], route, sink)
 					var frames []p.Value
 					if err == nil {
-						frames, err = to.EncodeFrames(t.Context(), event, p.EvaluationContext{State: p.NewEvaluationState()})
+						options, consume := bindFixtureOutput(t, to, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
+						frames, err = to.EncodeFrames(t.Context(), event, options.WithConversion(conversion, route))
+						if err == nil {
+							consume(frames)
+						}
 					}
 					wantOK := target == Responses || enabled && raw == "false"
 					if (err == nil) != wantOK {
@@ -84,14 +92,50 @@ func TestResponsesSafetyBufferingTypeAndLocation(t *testing.T) {
 	for _, raw := range []string{`null`, `42`, `"false"`, `{}`, `[]`} {
 		fields, _ := liveAuditFixture(t, "safety_buffering").ReadObject()
 		fields["safety_buffering"] = testValue(t, raw)
-		_, err := from.DecodeFrame(t.Context(), object(fields), p.EvaluationContext{State: p.NewEvaluationState()})
+		_, err := from.DecodeFrame(t.Context(), object(fields), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		if err == nil || !strings.Contains(err.Error(), "/safety_buffering") {
 			t.Fatal(raw, err)
 		}
 	}
-	for _, location := range []string{"response", "event:response.failed", "event:keepalive", "event:response.function_call_arguments.delta"} {
-		if p.MetadataFieldType(Responses, location, "safety_buffering") != "" {
-			t.Fatal(location)
+	response, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","created_at":1,"output":[],"safety_buffering":false}`), fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, metadata := range response.Metadata {
+		if metadata.Name == "safety_buffering" {
+			t.Fatal("response-level extension acquired event semantics", metadata)
+		}
+	}
+	for _, sample := range []struct {
+		prefix []string
+		frame  string
+	}{
+		{nil, `{"type":"response.failed","response":{"id":"r","model":"m","output":[],"status":"failed","error":{"code":"server_error","message":"failed"}},"safety_buffering":false}`},
+		{nil, `{"type":"keepalive","safety_buffering":false}`},
+		{toolStreams[Responses][:2], `{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"r_item_0","delta":"{}","safety_buffering":false}`},
+	} {
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+		t.Cleanup(options.State.Release)
+		for _, raw := range sample.prefix {
+			if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), options); err != nil {
+				t.Fatal(err)
+			}
+		}
+		frame, err := from.DecodeFrame(t.Context(), testValue(t, sample.frame), options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hasUnmapped := false
+		for _, event := range frame.Events {
+			hasUnmapped = hasUnmapped || event.Unmapped != nil
+			for _, metadata := range event.Metadata {
+				if metadata.Name == "safety_buffering" {
+					t.Fatal("unsupported event acquired buffering semantics", sample.frame)
+				}
+			}
+		}
+		if !hasUnmapped {
+			t.Fatal("unknown buffering extension lost its guard", sample.frame)
 		}
 	}
 }
@@ -100,32 +144,47 @@ func TestResponsesSafetyBufferingThroughoutStream(t *testing.T) {
 	raw := responsesPaddedTextFrames()
 	progress := strings.Replace(raw[0], "response.created", "response.in_progress", 1)
 	raw = append([]string{raw[0], progress}, raw[1:]...)
-	for i, body := range raw {
+	names := map[string]bool{"response.created": true, "response.in_progress": true, "response.output_text.delta": true, "response.completed": true}
+	for index, body := range raw {
 		fields, _ := testValue(t, body).ReadObject()
-		if p.MetadataFieldType(Responses, "event:"+strings.Trim(string(fields["type"].Bytes()), "\""), "safety_buffering") != "" {
+		var name string
+		if err := fields["type"].Decode(&name); err != nil {
+			t.Fatal(err)
+		}
+		if names[name] {
 			fields["safety_buffering"] = testValue(t, "false")
 		}
 		delete(fields, "sequence_number")
-		raw[i] = string(object(fields).Bytes())
+		raw[index] = object(fields).JSONString()
 	}
 	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
-		frames := auditConvertFrames(t, Responses, target, raw)
 		count := 0
-		for _, frame := range frames {
-			if strings.Contains(string(frame.Bytes()), "\"safety_buffering\":false") {
+		for _, frame := range auditConvertFrames(t, Responses, target, raw) {
+			if strings.Contains(frame.JSONString(), `"safety_buffering":false`) {
 				count++
 			}
 		}
-		if target == Responses && count < 4 || target != Responses && count != 0 {
-			t.Fatal(target, count)
+		if target == Responses && count < len(names) || target != Responses && count != 0 {
+			t.Fatal("buffering observation changed owner", target, count)
 		}
 	}
-	for _, name := range []string{"response.created", "response.in_progress", "response.output_text.delta", "response.completed"} {
-		for _, value := range []string{"true", "null", "42", "\"false\""} {
-			fields := p.Object{"type": p.StringValue(name), "safety_buffering": testValue(t, value)}
-			_, _, err := (&streamModule{module: module{name: Responses}}).splitFrameMetadata(object(p.Object{"/": object(p.Object{"safety_buffering": fields["safety_buffering"]})}), fields["type"])
-			if value != "true" && err == nil {
-				t.Fatal(name, value)
+	compiled := testCompiled(t, Responses)
+	for _, body := range raw {
+		fields, _ := testValue(t, body).ReadObject()
+		if fields["safety_buffering"].IsZero() {
+			continue
+		}
+		fields["sequence_number"] = testValue(t, "1")
+		if fields["type"].IsString("response.in_progress") {
+			response, _ := fields["response"].ReadObject()
+			response["object"] = p.StringValue("response")
+			fields["response"] = object(response)
+		}
+		for _, value := range []string{"true", "null", "42", `"false"`} {
+			fields["safety_buffering"] = testValue(t, value)
+			err := compiled.ValidateWireOutput(p.EncodeEvent, object(fields))
+			if value == "true" && err != nil || value != "true" && (err == nil || !strings.Contains(err.Error(), "/safety_buffering")) {
+				t.Fatal("buffering type contract changed", fields["type"], value, err)
 			}
 		}
 	}

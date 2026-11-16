@@ -54,7 +54,7 @@ func TestPackageEventPreviewSharesStreamBudget(t *testing.T) {
 				if len(budget.sequences) != 0 || budget.items != options.State.packageStateItems || budget.bytes != options.State.packageStateBytes {
 					t.Fatal("fixture retained wire or replay state after return")
 				}
-				compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+				compiler, _ := NewCompiler(DefaultLimits(), nil)
 				service := &Service{compiler: compiler}
 				preview := service.Preview(t.Context(), fixtureValue(t, document).Bytes(), direction, input, true, EvaluationContext{})
 				if capacity == 1 && !hasIssueCode(IssuesError(preview.Issues), LimitExceeded) || capacity == 2 && IssuesError(preview.Issues) != nil {

@@ -88,7 +88,7 @@ func TestIngressErrorMappingPinsBeforeAuthentication(t *testing.T) {
 
 func TestDefaultPackageIngressErrors(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, server)
+	packages := defaultGatewayPackages(t, server)
 	server.config.MaxBodyBytes = 1024
 	if err := server.store.UpsertAPIToken(t.Context(), storage.APIToken{Name: "ingress-fixture", Token: "ingress-test-token", Enabled: true}); err != nil {
 		t.Fatal(err)

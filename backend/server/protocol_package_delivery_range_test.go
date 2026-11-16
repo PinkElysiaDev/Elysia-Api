@@ -16,7 +16,7 @@ import (
 
 func TestPackageGatewayResponseDeliveryRanges(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	compiled := seedGatewayPackages(t, server)["openai-chat"]
+	compiled := defaultGatewayPackages(t, server)["openai-chat"]
 	var calls, start atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
@@ -76,7 +76,7 @@ func TestPackageGatewayResponseDeliveryRanges(t *testing.T) {
 
 func TestPackageGatewayStreamDeliveryRanges(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, server)
+	packages := defaultGatewayPackages(t, server)
 	source, target := packages["openai-responses"], packages["openai-chat"]
 	raw, err := os.ReadFile("../protocol/builtin/testdata/responses-text-ranges.json")
 	if err != nil {

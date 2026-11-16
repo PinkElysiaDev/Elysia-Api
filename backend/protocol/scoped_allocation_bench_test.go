@@ -8,10 +8,11 @@ import (
 // Exercise the unchanged consumer boundary, so this fixture also compiles
 // against a parent with map-backed field tables.
 func BenchmarkScopedFieldReads(b *testing.B) {
-	for _, count := range []int{1, 4, 8, 9, 32, 64} {
+	for _, count := range []int{0, 1, 2, 4, 5, 8, 9, 16, 64} {
 		fields := Object{}
-		paths := make([][]string, count)
-		values := make([]Value, count)
+		paths := make([][]string, max(1, count))
+		values := make([]Value, len(paths))
+		paths[0] = []string{"missing"}
 		for index := range count {
 			key := fmt.Sprintf("f%d", index)
 			paths[index] = []string{key}

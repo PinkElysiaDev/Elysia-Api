@@ -17,7 +17,7 @@ func TestNestedMediaExtensionsPreserveEditsAndRejectCrossProtocol(t *testing.T) 
 	} {
 		t.Run(fixture.source+fixture.target, func(t *testing.T) {
 			source, target := testCompiled(t, fixture.source), testCompiled(t, fixture.target)
-			request, err := source.DecodeRequest(t.Context(), []byte(fixture.body), p.EvaluationContext{})
+			request, err := source.DecodeRequest(t.Context(), []byte(fixture.body), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -36,14 +36,14 @@ func TestNestedMediaExtensionsPreserveEditsAndRejectCrossProtocol(t *testing.T) 
 				media["data"] = p.StringValue("Yg==")
 			}
 			block.Payload = object(media)
-			encoded, err := source.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+			encoded, err := source.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(string(encoded), `"vendor"`) || strings.Contains(string(encoded), "old.png") || strings.Contains(string(encoded), "YQ==") {
 				t.Fatalf("extension or semantic edit lost: %s", encoded)
 			}
-			if _, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{}); err == nil {
+			if _, err := target.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{})); err == nil {
 				t.Fatal("nested extension disappeared across protocol boundary")
 			}
 		})
@@ -52,19 +52,19 @@ func TestNestedMediaExtensionsPreserveEditsAndRejectCrossProtocol(t *testing.T) 
 
 func TestChatToolEnvelopeExtensionSurvivesRename(t *testing.T) {
 	compiled := testCompiled(t, Chat)
-	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","vendor":false,"function":{"name":"old","parameters":{},"inner":9007199254740993}}]}`), p.EvaluationContext{})
+	request, err := compiled.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","vendor":false,"function":{"name":"old","parameters":{},"inner":9007199254740993}}]}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.Tools[0].Name = p.StringValue("new")
-	encoded, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+	encoded, err := compiled.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	fields, _ := testValue(t, string(encoded)).ReadObject()
 	sameJSON(t, fields["tools"].Bytes(), `[{"type":"function","vendor":false,"function":{"name":"new","parameters":{},"inner":9007199254740993}}]`)
 	sink := &p.DiagnosticSink{}
-	if _, err := testCompiled(t, Responses).EncodeRequest(t.Context(), request, p.EvaluationContext{Diagnostics: sink}); err == nil {
+	if _, err := testCompiled(t, Responses).EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{Diagnostics: sink})); err == nil {
 		t.Fatal("unknown cross-protocol tool extension was silently discarded")
 	}
 }

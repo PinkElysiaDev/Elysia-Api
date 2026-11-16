@@ -197,7 +197,7 @@ func FuzzTypedLimitEquivalence(f *testing.F) {
 		if err != nil {
 			return
 		}
-		request := &Request{SchemaVersion: 1, Source: Identity{Family: string(raw)}, Model: value, Content: []Node{{Kind: TextNode, Payload: value, Attributes: Object{string(raw): value}}}, Parameters: Object{"raw": value}, Native: &Native{Value: value}}
+		request := &Request{SchemaVersion: SemanticSchemaVersion, Source: Identity{Family: string(raw)}, Model: value, Content: []Node{{Kind: TextNode, Payload: value, Attributes: Object{string(raw): value}}}, Parameters: Object{"raw": value}, Native: &Native{Value: value}}
 		if flags&1 != 0 {
 			request.Tools = []Tool{{Kind: FunctionTool, Name: value, InputSchema: value}}
 		}
@@ -216,7 +216,7 @@ func FuzzTypedLimitEquivalence(f *testing.F) {
 
 func BenchmarkTypedResourceCheck(b *testing.B) {
 	value := StringValue(strings.Repeat("prefix <>& ", 2048))
-	request := &Request{SchemaVersion: 1, Model: StringValue("m"), Content: []Node{{Kind: TextNode, Payload: value}}, Native: &Native{Value: value}}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("m"), Content: []Node{{Kind: TextNode, Payload: value}}, Native: &Native{Value: value}}
 	for _, mode := range []string{"encoding", "structural"} {
 		b.Run(mode, func(b *testing.B) {
 			b.ReportAllocs()
@@ -243,7 +243,7 @@ func TestGeneratedMeterCurrent(t *testing.T) {
 }
 
 func BenchmarkTypedTraversal(b *testing.B) {
-	request := &Request{SchemaVersion: 1, Model: StringValue("model")}
+	request := &Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("model")}
 	for range 64 {
 		request.Content = append(request.Content, Node{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}})
 	}

@@ -314,7 +314,6 @@ func TestConversionHTTPProcess(t *testing.T) {
 		group.ToolsCapable, group.VisionCapable = &enabled, &enabled
 		if targetID := os.Getenv("ELYSIA_FLAME_TARGET"); targetID != "" {
 			group.Models[0].Platform = "custom:" + targetID
-			group.Models[0].BaseURL = loadBase(group.Models[0].BaseURL, flameMatrixProtocol(t, targetID))
 		}
 		for index := 1; index < candidates; index++ {
 			model := group.Models[0]
@@ -328,7 +327,7 @@ func TestConversionHTTPProcess(t *testing.T) {
 				t.Fatal("isolated continuation master key was not created")
 			}
 		}
-		configureConversionExecution(t, server, []config.ModelGroupConfig{group})
+		defaultGatewayPackages(t, server)
 		// Include production request ownership and logging, not only the router.
 		server.engine.Use(server.requestLifecycle(), server.requestLogging())
 		loggingReview = configureLoggingReviewGateway(t, server)

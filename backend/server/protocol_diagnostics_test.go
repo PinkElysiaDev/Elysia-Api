@@ -35,8 +35,8 @@ func TestAnthropicCopySystemCacheGateway(t *testing.T) {
 						}
 					}))
 					defer provider.Close()
-					definition := presetDefinition(t, "anthropic-messages")
-					definition.ID = "anthropic-messages-copy"
+					definition := presetPackage(t, "anthropic-messages")
+					definition.Spec.ID = "anthropic-messages-copy"
 					groups := presetGroup(t, "custom:anthropic-messages-copy", provider.URL)
 					s := newTestServerWithStore(t, groups, definition)
 					sources, err := s.store.ListSources(t.Context())

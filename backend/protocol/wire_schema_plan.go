@@ -127,24 +127,8 @@ func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *va
 		if err != nil {
 			return false, err
 		}
-		if plan != nil {
-			for _, key := range plan.required {
-				if _, exists := fields[key]; !exists {
-					return false, nil
-				}
-			}
-		}
-		for key, child := range fields {
-			var childPlan *wireSchemaPlan
-			if plan != nil {
-				childPlan = plan.properties[key]
-				if plan.kind == ObjectType && childPlan == nil && !plan.allowUnknown {
-					return false, nil
-				}
-			}
-			if isValid, err := childPlan.accepts(ctx, child, reader, objects); !isValid || err != nil {
-				return isValid, err
-			}
+		if isValid, err := plan.acceptsObjectFields(ctx, fields, reader, objects); !isValid || err != nil {
+			return isValid, err
 		}
 	case ArrayType:
 		var itemPlan *wireSchemaPlan
@@ -172,6 +156,41 @@ func (plan *wireSchemaPlan) accepts(ctx context.Context, value Value, reader *va
 		return false, nil
 	}
 	return true, nil
+}
+
+func (plan *wireSchemaPlan) acceptsObjectFields(ctx context.Context, fields *objectFieldView, reader *valueReader, objects *planObjectReader) (bool, error) {
+	if plan != nil {
+		for _, key := range plan.required {
+			if _, exists := fields.readMember(key); !exists {
+				return false, nil
+			}
+		}
+	}
+	if fields.mapped != nil {
+		for key, child := range fields.mapped {
+			if isValid, err := plan.acceptsObjectField(ctx, key, child, reader, objects); !isValid || err != nil {
+				return isValid, err
+			}
+		}
+	} else {
+		for _, field := range fields.fields {
+			if isValid, err := plan.acceptsObjectField(ctx, field.key, field.value, reader, objects); !isValid || err != nil {
+				return isValid, err
+			}
+		}
+	}
+	return true, nil
+}
+
+func (plan *wireSchemaPlan) acceptsObjectField(ctx context.Context, key string, child Value, reader *valueReader, objects *planObjectReader) (bool, error) {
+	var childPlan *wireSchemaPlan
+	if plan != nil {
+		childPlan = plan.properties[key]
+		if plan.kind == ObjectType && childPlan == nil && !plan.allowUnknown {
+			return false, nil
+		}
+	}
+	return childPlan.accepts(ctx, child, reader, objects)
 }
 
 // Defer rational-number work until an integer or enum constraint needs it.

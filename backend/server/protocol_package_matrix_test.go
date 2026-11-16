@@ -134,7 +134,7 @@ func TestDefaultPackagesGatewayMatrix(t *testing.T) {
 	for _, upstreamName := range gatewayPackageNames {
 		t.Run(upstreamName, func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			packages := seedGatewayPackages(t, server)
+			packages := defaultGatewayPackages(t, server)
 			upstream := packages[upstreamName]
 			jsonReply, streamReply := buildPackageGatewayReply(t, upstream, false), buildPackageGatewayReply(t, upstream, true)
 			var multiRootReply []byte
@@ -385,7 +385,7 @@ func TestPackageChatUsageCollectionRespectsClientPreference(t *testing.T) {
 	for _, collectUsage := range []bool{true, false} {
 		t.Run(fmt.Sprintf("collect=%t", collectUsage), func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			compiled := seedGatewayPackages(t, server)["openai-chat"]
+			compiled := defaultGatewayPackages(t, server)["openai-chat"]
 			stream := buildPackageGatewayReply(t, compiled, true)
 			var calls atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

@@ -19,7 +19,7 @@ func TestPackageGatewayStorageDelivery(t *testing.T) {
 	for _, name := range []string{"openai-responses", "google-generate-content"} {
 		t.Run(name, func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			packages := seedGatewayPackages(t, server)
+			packages := defaultGatewayPackages(t, server)
 			upstream, ingress := packages[name], packages["openai-responses"]
 			isResponses := name == "openai-responses"
 			var calls atomic.Int32
@@ -102,7 +102,7 @@ func TestPackageGatewayStorageDelivery(t *testing.T) {
 
 func TestPackageCollectionRejectsConflictingWireStorage(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	compiled := seedGatewayPackages(t, server)["openai-responses"]
+	compiled := defaultGatewayPackages(t, server)["openai-responses"]
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls.Add(1)

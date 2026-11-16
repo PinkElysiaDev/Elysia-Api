@@ -12,8 +12,8 @@ import (
 )
 
 func TestResponsesToolFidelityHTTPPaths(t *testing.T) {
-	preset := presetDefinition(t, "openai-responses")
-	preset.ID = "independent-tools"
+	preset := presetPackage(t, "openai-responses")
+	preset.Spec.ID = "independent-tools"
 	const requestBody = `{"model":"grp","input":[{"type":"custom_tool_call","call_id":"c1","name":"patch","input":"edit file"},{"type":"custom_tool_call_output","call_id":"c1","output":"done"}],"tools":[{"type":"custom","name":"patch","format":{"type":"text"}},{"type":"mcp","server_label":"docs","server_url":"https://example.invalid/mcp"}]}`
 	for _, platform := range []string{"responses", "custom:openai-responses", "custom:independent-tools"} {
 		for _, isStream := range []bool{false, true} {

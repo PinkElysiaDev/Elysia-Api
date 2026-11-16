@@ -38,7 +38,7 @@ func TestOpenAIChatPassthroughStreamForwardsRawSSE(t *testing.T) {
 		Models: []config.ModelRef{openAIModel("m", upstream.URL)},
 	}
 	s := newTestServerWithStore(t, []config.ModelGroupConfig{group})
-	c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 	s.chatCompletions(contextForTest(c), c)
 	flushTestResponse(c)
 	if rec.Code != http.StatusOK {
@@ -198,8 +198,8 @@ func TestStreamCancellationUsage(t *testing.T) {
 				}
 				if endpoint == "responses" || endpoint == "converted" {
 					platform = "responses"
-					body = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"r1\",\"model\":\"m\",\"object\":\"response\",\"created_at\":1,\"status\":\"in_progress\",\"output\":[]},\"sequence_number\":0}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg1\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]},\"sequence_number\":1}\n\n" + "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]},\"sequence_number\":2,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\",\"sequence_number\":3,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\n"
-					terminal = `data: {"type":"response.output_text.done","output_index":0,"content_index":0,"item_id":"msg1","text":"partial","sequence_number":4}` + "\n\n" + `data: {"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg1","part":{"type":"output_text","text":"partial","annotations":[]},"sequence_number":5}` + "\n\n" + `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial","annotations":[]}],"id":"msg1","status":"completed"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"id":"r1","model":"m","created_at":1,"object":"response"},"sequence_number":7}` + "\n\n"
+					body = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"r1\",\"model\":\"m\",\"object\":\"response\",\"created_at\":1,\"status\":\"in_progress\",\"store\":false,\"output\":[]},\"sequence_number\":0}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg1\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[]},\"sequence_number\":1}\n\n" + "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]},\"sequence_number\":2,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\",\"sequence_number\":3,\"output_index\":0,\"content_index\":0,\"item_id\":\"msg1\"}\n\n"
+					terminal = `data: {"type":"response.output_text.done","output_index":0,"content_index":0,"item_id":"msg1","text":"partial","sequence_number":4}` + "\n\n" + `data: {"type":"response.content_part.done","output_index":0,"content_index":0,"item_id":"msg1","part":{"type":"output_text","text":"partial","annotations":[]},"sequence_number":5}` + "\n\n" + `data: {"type":"response.completed","response":{"status":"completed","store":false,"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"partial","annotations":[]}],"id":"msg1","status":"completed"}],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3},"id":"r1","model":"m","created_at":1,"object":"response"},"sequence_number":7}` + "\n\n"
 					if endpoint == "responses" {
 						marker = "response.completed"
 					}
@@ -222,10 +222,10 @@ func TestStreamCancellationUsage(t *testing.T) {
 				model := openAIModel("actual", upstream.URL)
 				model.Platform = platform
 				s := newTestServerWithStore(t, []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Strategy: "sequential", MaxRetries: 1, Models: []config.ModelRef{model}}})
-				c, rec := chatRequestContext(`{"model":"grp","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+				c, rec := chatRequestContext(`{"model":"grp","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"hi"}]}`)
 				if endpoint == "responses" {
 					rec = httptest.NewRecorder()
-					c, _ = newResponsesContext(rec, `{"model":"grp","stream":true,"input":"hi"}`)
+					c, _ = newResponsesContext(rec, `{"model":"grp","stream":true,"store":false,"input":"hi"}`)
 				}
 				deadline, stop := context.WithTimeout(contextForTest(c), time.Second)
 				defer stop()

@@ -177,7 +177,7 @@ func (s *Server) adminConversionSignatureProbe(ctx context.Context, c *app.Reque
 	args, _ := protocol.ParseValue([]byte(`{}`))
 	result, _ := protocol.ParseValue([]byte(`{"result":"ok"}`))
 	name, id := protocol.StringValue("elysia_signature_probe"), protocol.StringValue("elysia_probe_1")
-	request, err := candidate.compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: protocol.SemanticSchemaVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Identifier()), Content: []protocol.Node{
+	request, err := candidate.compiled.BuildAgentRequest(ctx, protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Source: protocol.AgentIdentity(), Model: protocol.StringValue(model.Identifier()), Content: []protocol.Node{
 		{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("This is a compatibility probe. After the tool result, reply OK. Do not call any tools.")}}},
 		{Kind: protocol.ToolCallNode, CallID: id, Name: name, Input: &protocol.ToolInput{Kind: protocol.JSONInput, Value: args}, Source: &origin, Resources: []protocol.Resource{{Kind: "signature", ID: signature, Scope: candidate.scope}}},
 		{Kind: protocol.ToolResultNode, CallID: id, Name: name, Payload: result, Source: &local},
@@ -186,12 +186,19 @@ func (s *Server) adminConversionSignatureProbe(ctx context.Context, c *app.Reque
 		fail(err)
 		return
 	}
-	if err = protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, protocol.HTTPJSON)); err != nil {
+	// Signature acceptance does not request a change to the model's thinking mode.
+	request.Reasoning = nil
+	options, err := (protocol.EvaluationContext{Scope: candidate.scope}).WithOperation(c.GetString("requestID"), time.Now().Unix())
+	if err != nil {
 		fail(err)
 		return
 	}
-	options, err := (protocol.EvaluationContext{Scope: candidate.scope}).WithOperation(c.GetString("requestID"), time.Now().Unix())
+	request, err = conversion.Request(ctx, request, route.WithOperation(options), nil)
 	if err != nil {
+		fail(err)
+		return
+	}
+	if err = protocol.IssuesError(protocol.CheckRoute(request, candidate.compiled, candidate.binding, candidate.scope, protocol.HTTPJSON)); err != nil {
 		fail(err)
 		return
 	}

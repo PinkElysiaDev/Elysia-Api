@@ -15,9 +15,9 @@ func decodePlannedCore[T any](ctx context.Context, compiled *Compiled, direction
 	}
 	// Contract-decoding errors retain their original unwrapped boundary.
 	var reader *valueReader
-	if compiled.packagePlan != nil {
-		reader = capturedCoreReader(output)
-	}
+
+	reader = capturedCoreReader(output)
+
 	var target *T
 	switch any(target).(type) {
 	case *Request:
@@ -38,9 +38,9 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 	}
 	inputLimits, outputLimits, workLimits := compiled.mappingLimits(ctx, direction)
 	mapping := compiled.mappings[direction]
-	if compiled.packagePlan != nil {
-		options = options.withInputView(input)
-	}
+
+	options = options.withInputView(input)
+
 	if err := options.inputView.checkResources(ctx, input, inputLimits, "mapping_input"); err != nil {
 		return fail(err)
 	}
@@ -52,14 +52,14 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 		return fail(err)
 	}
 	state := evaluation{ctx: ctx, input: input, root: input, context: contextValue, inputView: options.inputView, runtime: bindEvaluationRuntime(compiled, direction, options), streamSlots: options.packageTransaction.values(), streamTransaction: options.packageTransaction, valueReader: options.valueReader, budget: &evaluationBudget{limits: workLimits, stepLimit: compiled.limits.Nodes}}
-	if compiled.packagePlan != nil {
-		state.capture = compiled.newNativeCapture(direction, options)
-		state.objectReader = state.inputView.objectReader()
-		state.valueReader = &state.inputView.owned
-		if err := compiled.preparePackageState(direction, state, inputLimits, options); err != nil {
-			return fail(err)
-		}
+
+	state.capture = compiled.newNativeCapture(direction, options)
+	state.objectReader = state.inputView.objectReader()
+	state.valueReader = &state.inputView.owned
+	if err := compiled.preparePackageState(direction, state, inputLimits, options, nil); err != nil {
+		return fail(err)
 	}
+
 	output, err := mapping.outputPlan.build(state)
 	if err != nil {
 		return fail(err)
@@ -70,11 +70,11 @@ func evaluateCoreOutput(ctx context.Context, compiled *Compiled, direction Direc
 	if err := checkPlannedOutputLimits(output, outputLimits, "mapping_output"); err != nil {
 		return fail(err)
 	}
-	if compiled.packagePlan != nil {
-		if err := compiled.finishPackageCoreOutput(ctx, direction, output.output, state.valueReader); err != nil {
-			return fail(err)
-		}
+
+	if err := compiled.finishPackageCoreOutput(ctx, direction, output.output, state.valueReader); err != nil {
+		return fail(err)
 	}
+
 	if err := options.packageTransaction.stage(state, true); err != nil {
 		return fail(err)
 	}

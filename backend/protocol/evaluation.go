@@ -5,6 +5,7 @@ import "context"
 type evaluation struct {
 	cache                      *semanticCache
 	coreRequest                *Request
+	coreDocument               any
 	ctx                        context.Context
 	input, item, root, context Value
 	budget                     *evaluationBudget
@@ -44,7 +45,7 @@ func bindEvaluationRuntime(compiled *Compiled, direction Direction, options Eval
 	runtime := evaluationRuntime{clientOutput: options.ClientOutput, observedNativeFrame: options.observedNativeFrame, isBound: true, isInterleavedThinking: options.InterleavedThinking, scopeModel: options.Scope.Model, operation: options.operation, emissionOffset: options.emissionOffset}
 	runtime.continuation, runtime.continuationInput = options.continuation, options.continuationInput
 	stream := options.outputStream
-	if stream != nil && compiled.packagePlan != nil && direction == EncodeEvent && stream.direction == EncodeEvent && stream.packageStream != nil &&
+	if stream != nil && direction == EncodeEvent && stream.direction == EncodeEvent && stream.packageStream != nil &&
 		compiled.hash == stream.compiled.hash && compiled.mappings[direction].definitionHash == stream.compiled.mappings[direction].definitionHash && options.Scope == stream.options.Scope {
 		runtime.outputStream = stream.packageStream
 	}
@@ -57,21 +58,6 @@ type evaluationBudget struct {
 	walkNodes           int
 	limits              Limits
 	hasReadOutputStream bool
-}
-
-// A compiled identity leaf uses one step from a fresh positive budget. Keep
-// only its fallible checks, including the expression's original error location.
-func (expression *compiledExpression) checkIdentityAfter(ctx context.Context, bytes int, limits Limits) error {
-	if expression == nil {
-		return nil
-	}
-	if err := ctx.Err(); err != nil {
-		return locateMappingError(expression.path, err)
-	}
-	if bytes > limits.BufferBytes {
-		return locateMappingError(expression.path, resourceFailure("evaluation", "bytes", limits.BufferBytes, bytes))
-	}
-	return nil
 }
 
 func (state *evaluation) advance() error {

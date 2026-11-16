@@ -57,7 +57,7 @@ func TestGatewayFinalizeFailureSettlesOnce(t *testing.T) {
 			setupGatewayModel(t, server, upstream, provider.URL)
 			web := startTestServer(server.engine)
 			defer web.Close()
-			request, _ := http.NewRequest("POST", web.URL+"/gateway/"+protocol.PresetChatCompletionsID+"/chat/completions", strings.NewReader(`{"model":"group","stream":true,"messages":[{"role":"user","content":"synthetic"}]}`))
+			request, _ := http.NewRequest("POST", web.URL+"/gateway/"+protocol.PresetChatCompletionsID+"/v1/chat/completions", strings.NewReader(`{"model":"group","stream":true,"messages":[{"role":"user","content":"synthetic"}]}`))
 			request.Header.Set("Authorization", "Bearer gateway-test-token")
 			request.Header.Set("Content-Type", "application/json")
 			response, err := web.Client().Do(request)

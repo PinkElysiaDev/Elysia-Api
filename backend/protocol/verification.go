@@ -27,9 +27,9 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		coverage[direction], hasLifecycle[direction] = CapabilitySet{}, map[Capability]bool{}
 	}
 	mappingPath, specPath := "", ""
-	if compiled.packagePlan != nil {
-		mappingPath, specPath = "/mapping", "/spec"
-	}
+
+	mappingPath, specPath = "/mapping", "/spec"
+
 	samplesPath := mappingPath + "/samples"
 	for index, sample := range compiled.verificationSamples() {
 		path := fmt.Sprintf("%s/%d", samplesPath, index)
@@ -79,7 +79,7 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 			report.Checks = append(report.Checks, check)
 			continue
 		}
-		if sample.Direction == EncodeResponse && compiled.packagePlan != nil {
+		if sample.Direction == EncodeResponse {
 			// A component can encode a partial envelope. Activation evidence must
 			// also satisfy the explicitly declared final delivery contract.
 			if _, hasFinalDocument := compiled.packagePlan.finalContracts[sample.Direction]; hasFinalDocument {
@@ -157,9 +157,9 @@ func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
 		}
 		path := mappingPath + "/directions/" + string(direction)
 		capabilitiesPath := path + "/capabilities"
-		if compiled.packagePlan != nil {
-			capabilitiesPath = mappingPath + "/capabilities"
-		}
+
+		capabilitiesPath = mappingPath + "/capabilities"
+
 		if !hasSample[direction] {
 			report.Issues = append(report.Issues, verificationIssue(compiled, direction, path, IncompleteCoverage, "implemented direction requires a passing positive fixture", ""))
 		}
@@ -269,7 +269,7 @@ func executeEventFixtureStream(ctx context.Context, compiled *Compiled, sample S
 		}
 	}
 	var wireValidation *WireStreamValidation
-	if sample.Sequence && compiled.packagePlan != nil {
+	if sample.Sequence {
 		var err error
 		wireValidation, err = compiled.newWireStreamValidation(sample.Direction, options.Scope)
 		if err != nil {
@@ -290,15 +290,15 @@ func executeEventFixtureStream(ctx context.Context, compiled *Compiled, sample S
 			return verificationResult{}, err
 		}
 		defer replay.Release()
-		if compiled.packagePlan != nil {
-			budget := options.State.retention.budget
-			if budget == nil {
-				budget = NewStreamBudget(compiled.limits)
-			}
-			if err := budget.Bind(options.State, wireValidation, replay); err != nil {
-				return verificationResult{}, err
-			}
+
+		budget := options.State.retention.budget
+		if budget == nil {
+			budget = NewStreamBudget(compiled.limits)
 		}
+		if err := budget.Bind(options.State, wireValidation, replay); err != nil {
+			return verificationResult{}, err
+		}
+
 	}
 	var events []Event
 	var outputs []Value
@@ -474,7 +474,7 @@ func comparableExpected(compiled *Compiled, sample Sample) (Value, error) {
 }
 
 func checkExpectedCoreVersion(compiled *Compiled, version int) error {
-	if compiled.packagePlan != nil && version != compiled.CoreVersion() {
+	if version != compiled.CoreVersion() {
 		return fmt.Errorf("unsupported semantic schemaVersion %d", version)
 	}
 	return nil
@@ -487,7 +487,7 @@ func capabilityApplies(capability Capability, direction Direction) bool {
 		return false // Task workflows have independent mapping fixtures.
 	case UsageCapability:
 		return !isRequest && direction != DecodeClientEvent && direction != EncodeUpstreamEvent
-	case ReasoningHistoryRetentionCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability, CacheOptionsCapability, CachePrewarmCapability:
+	case OutputConstraintsCapability, ReasoningHistoryRetentionCapability, CacheKeysCapability, CacheRetentionCapability, CacheResourcesCapability, CacheBreakpointsCapability, CacheOptionsCapability, CachePrewarmCapability:
 		return isRequest
 	case SessionsCapability, RealtimeMediaCapability:
 		return isEventDirection(direction)

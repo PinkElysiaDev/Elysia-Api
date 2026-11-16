@@ -35,7 +35,7 @@ func (suite *liveSuite) runCacheGaps(t *testing.T) {
 	available := map[string]bool{}
 	for _, id := range []string{"anthropic-messages", "google-generate-content", "openai-chat-completions", "openai-responses"} {
 		suite.selectTarget(t, id)
-		run.compiled[id] = compileFixtureDefinition(t, presetDefinition(t, id))
+		run.compiled[id] = compileFixturePackage(t, presetPackage(t, id))
 		if report := protocol.Verify(t.Context(), run.compiled[id]); !report.Passed {
 			t.Fatal(report.Issues)
 		}
@@ -50,7 +50,7 @@ func (suite *liveSuite) runCacheGaps(t *testing.T) {
 		available[id] = isAvailable
 		if isAvailable {
 			run.gateways[id] = newLiveGateway(t, suite, run.compiled[id])
-			run.gateways[id].bind(t, run.compiled[id].Definition().Capabilities)
+			run.gateways[id].bind(t, run.compiled[id].DeclaredCapabilities())
 		}
 	}
 	if available["anthropic-messages"] {

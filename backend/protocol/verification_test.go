@@ -16,18 +16,18 @@ func fixtureValue(t *testing.T, value any) Value {
 	return encoded
 }
 
-func textVerificationDefinition(t *testing.T, id string) Definition {
+func textVerificationDefinition(t *testing.T, id string) ProtocolPackage {
 	t.Helper()
 	definition := testDefinition(id, "engine", "history", "functions", "answer")
-	definition.Capabilities = CapabilitySet{TextCapability: true}
-	delete(definition.Directions, DecodeEvent)
-	delete(definition.Directions, EncodeEvent)
-	request := Request{SchemaVersion: 1, Model: StringValue("m"), Content: []Node{{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}}}}
-	response := Response{SchemaVersion: 1, ID: StringValue("r"), Status: StringValue("completed"), Content: []Node{{Kind: MessageNode, Role: StringValue("assistant"), Children: []Node{{Kind: TextNode, Payload: StringValue("answer")}}}}}
+	definition.Mapping.Capabilities = CapabilitySet{TextCapability: true}
+	delete(definition.Mapping.Directions, DecodeEvent)
+	delete(definition.Mapping.Directions, EncodeEvent)
+	request := Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("m"), Content: []Node{{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}}}}
+	response := Response{SchemaVersion: SemanticSchemaVersion, ID: StringValue("r"), Status: StringValue("completed"), Content: []Node{{Kind: MessageNode, Role: StringValue("assistant"), Children: []Node{{Kind: TextNode, Payload: StringValue("answer")}}}}}
 	wireRequest, _ := ParseValue([]byte(`{"engine":"m","history":[{"kind":"message","speaker":"user","parts":[{"kind":"text","payload":"hello"}]}]}`))
 	wireResponse, _ := ParseValue([]byte(`{"request":"r","answer":[{"kind":"message","speaker":"assistant","parts":[{"kind":"text","payload":"answer"}]}]}`))
 	canonicalRequest, canonicalResponse := fixtureValue(t, request), fixtureValue(t, response)
-	definition.Samples = []Sample{
+	definition.Mapping.Samples = []Sample{
 		{ID: "request.decode", Direction: DecodeRequest, Input: wireRequest, Expected: canonicalRequest},
 		{ID: "request.encode", Direction: EncodeRequest, Input: canonicalRequest, Expected: wireRequest},
 		{ID: "response.decode", Direction: DecodeResponse, Input: wireResponse, Expected: canonicalResponse},
@@ -49,7 +49,7 @@ func TestVerifyTextOnlyProtocolAndActivationBinding(t *testing.T) {
 	if len(report.Checks) != 4 || len(report.Covered) != 1 || report.Covered[0] != TextCapability || report.Kind != OfflineVerification {
 		t.Fatalf("wrong evidence: %+v", report)
 	}
-	definition.Version = "changed"
+	definition.Spec.Version = "changed"
 	changed := compileTestDefinition(t, definition)
 	if IssuesError(CanActivate(changed, report)) == nil {
 		t.Fatal("old report authorized a different definition")
@@ -67,9 +67,9 @@ func TestVerifyTextOnlyProtocolAndActivationBinding(t *testing.T) {
 
 func TestVerifyRejectsDeclaredToolsWithoutLifecycle(t *testing.T) {
 	definition := textVerificationDefinition(t, "false-tools")
-	definition.Capabilities[FunctionToolsCapability] = true
-	for index := range definition.Samples {
-		definition.Samples[index].Capabilities = []Capability{FunctionToolsCapability}
+	definition.Mapping.Capabilities[FunctionToolsCapability] = true
+	for index := range definition.Mapping.Samples {
+		definition.Mapping.Samples[index].Capabilities = []Capability{FunctionToolsCapability}
 	}
 	report := Verify(t.Context(), compileTestDefinition(t, definition))
 	if report.Passed || !containsVerificationCode(report, IncompleteCoverage) {
@@ -79,10 +79,10 @@ func TestVerifyRejectsDeclaredToolsWithoutLifecycle(t *testing.T) {
 
 func TestVerifyFindsLossEvenWhenAuthorExpectedIt(t *testing.T) {
 	definition := textVerificationDefinition(t, "lossy")
-	encode := definition.Directions[EncodeRequest]
-	encode.Transform.Fields["history"] = literalExpression([]any{})
-	definition.Directions[EncodeRequest] = encode
-	definition.Samples[1].Expected = fixtureValue(t, map[string]any{"engine": "m", "history": []any{}})
+	encode := definition.Mapping.Directions[EncodeRequest]
+	encode.Program.Fields["history"] = literalExpression([]any{})
+	definition.Mapping.Directions[EncodeRequest] = encode
+	definition.Mapping.Samples[1].Expected = fixtureValue(t, map[string]any{"engine": "m", "history": []any{}})
 	report := Verify(t.Context(), compileTestDefinition(t, definition))
 	if report.Passed || !containsVerificationCode(report, VerificationMismatch) {
 		t.Fatalf("self-consistent deletion passed: %+v", report)
@@ -98,20 +98,21 @@ func TestVerifyFindsLossEvenWhenAuthorExpectedIt(t *testing.T) {
 
 func TestVerifyNegativeSampleCannotReplacePositiveCoverage(t *testing.T) {
 	definition := textVerificationDefinition(t, "negative-only")
-	definition.Samples = []Sample{{ID: "invalid", Direction: DecodeRequest, Input: fixtureValue(t, map[string]any{"history": false}), ExpectedIssue: InvalidInput}}
+	definition.Mapping.Samples = []Sample{{ID: "invalid", Direction: DecodeRequest, Input: fixtureValue(t, map[string]any{"engine": "model", "history": false}), ExpectedIssue: InvalidInput}}
 	report := Verify(t.Context(), compileTestDefinition(t, definition))
 	if report.Passed || !report.Checks[0].Passed || !containsVerificationCode(report, IncompleteCoverage) {
 		t.Fatalf("negative sample authorized capability: %+v", report)
 	}
 }
 
-func addEventVerification(t *testing.T, definition *Definition) {
-	definition.Capabilities[UsageCapability] = true
-	for direction, mapping := range definition.Directions {
+func addEventVerification(t *testing.T, definition *ProtocolPackage) {
+	definition.Mapping.Capabilities[UsageCapability] = true
+	for direction, mapping := range definition.Mapping.Directions {
 		mapping.Capabilities = CapabilitySet{TextCapability: true}
-		definition.Directions[direction] = mapping
+		definition.Mapping.Directions[direction] = mapping
 	}
 	decode := objectExpression(map[string]Expression{
+		"schemaVersion": literalExpression(ProtocolCoreVersion),
 		"type":   readExpression("input", "/event"),
 		"itemId": readExpression("input", "/item"),
 		"item":   readExpression("input", "/node"),
@@ -125,16 +126,16 @@ func addEventVerification(t *testing.T, definition *Definition) {
 		"delta": readExpression("input", "/delta"),
 		"usage": readExpression("input", "/usage"),
 	})
-	definition.Directions[DecodeEvent] = Mapping{Transform: &decode}
-	definition.Directions[EncodeEvent] = Mapping{Transform: &encode}
+	definition.Mapping.Directions[DecodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(DecodeEvent), Document: testDocument(DecodeEvent), Program: decode}
+	definition.Mapping.Directions[EncodeEvent] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeEvent), Document: testDocument(EncodeEvent), Program: encode}
 	events := []Event{
-		{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("i"), Item: &Node{Kind: TextNode}},
-		{SchemaVersion: 1, Type: ItemDelta, ItemID: StringValue("i"), Delta: StringValue("hello")},
-		{SchemaVersion: 1, Type: ResponseFinished},
-		{SchemaVersion: 1, Type: UsageUpdated, Usage: &Usage{Input: &Counter{Count: 100, Origin: ObservedCount}, CacheRead: &Counter{Count: 40, Origin: ObservedCount}, Output: &Counter{Count: 0, Origin: ObservedCount}}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("i"), Item: &Node{Kind: TextNode}},
+		{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: StringValue("i"), Delta: StringValue("hello")},
+		{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished},
+		{SchemaVersion: SemanticSchemaVersion, Type: UsageUpdated, Usage: &Usage{Input: &Counter{Count: 100, Origin: ObservedCount}, CacheRead: &Counter{Count: 40, Origin: ObservedCount}, Output: &Counter{Count: 0, Origin: ObservedCount}}},
 	}
 	wire, _ := ParseValue([]byte(`[{"event":"item.started","item":"i","node":{"kind":"text"}},{"event":"item.delta","item":"i","delta":"hello"},{"event":"response.finished"},{"event":"usage.updated","usage":{"input":{"count":100,"origin":"observed"},"cacheRead":{"count":40,"origin":"observed"},"output":{"count":0,"origin":"observed"}}}]`))
-	definition.Samples = append(definition.Samples,
+	definition.Mapping.Samples = append(definition.Mapping.Samples,
 		Sample{ID: "stream.decode", Direction: DecodeEvent, Sequence: true, Input: wire, Expected: fixtureValue(t, events)},
 		Sample{ID: "stream.encode", Direction: EncodeEvent, Sequence: true, Input: fixtureValue(t, events), Expected: wire},
 	)
@@ -148,11 +149,11 @@ func TestVerifyEventSequenceAndUsageTail(t *testing.T) {
 		t.Fatalf("valid event sequence: %+v", report.Issues)
 	}
 	var frames []Value
-	if err := definition.Samples[4].Input.Decode(&frames); err != nil {
+	if err := definition.Mapping.Samples[4].Input.Decode(&frames); err != nil {
 		t.Fatal(err)
 	}
 	frames = append(frames[:2], frames[3:]...)
-	definition.Samples[4].Input = fixtureValue(t, frames)
+	definition.Mapping.Samples[4].Input = fixtureValue(t, frames)
 	report = Verify(t.Context(), compileTestDefinition(t, definition))
 	if report.Passed || !containsVerificationCode(report, UpstreamContractViolation) {
 		t.Fatalf("missing terminal accepted: %+v", report.Issues)
@@ -162,14 +163,14 @@ func TestVerifyEventSequenceAndUsageTail(t *testing.T) {
 func TestVerifySamplesAndDirectionCapabilityHashes(t *testing.T) {
 	definition := textVerificationDefinition(t, "hashes")
 	first := compileTestDefinition(t, definition)
-	definition.Samples[0].ID = "renamed"
+	definition.Mapping.Samples[0].ID = "renamed"
 	second := compileTestDefinition(t, definition)
 	if first.SamplesHash() == second.SamplesHash() || first.Hash() == second.Hash() {
 		t.Fatal("sample change did not invalidate report binding")
 	}
-	mapping := definition.Directions[EncodeRequest]
+	mapping := definition.Mapping.Directions[EncodeRequest]
 	mapping.Capabilities = CapabilitySet{}
-	definition.Directions[EncodeRequest] = mapping
+	definition.Mapping.Directions[EncodeRequest] = mapping
 	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -219,22 +220,22 @@ func TestVerifyCombinationOfIndependentDefinitions(t *testing.T) {
 	}
 }
 
-func addToolLifecycle(t *testing.T, definition *Definition) {
-	definition.Capabilities[FunctionToolsCapability] = true
+func addToolLifecycle(t *testing.T, definition *ProtocolPackage) {
+	definition.Mapping.Capabilities[FunctionToolsCapability] = true
 	for _, direction := range []Direction{DecodeResponse, EncodeResponse} {
-		mapping := definition.Directions[direction]
+		mapping := definition.Mapping.Directions[direction]
 		mapping.Capabilities = CapabilitySet{TextCapability: true}
-		definition.Directions[direction] = mapping
+		definition.Mapping.Directions[direction] = mapping
 	}
 	arguments := fixtureValue(t, map[string]any{"query": "data"})
 	schema := fixtureValue(t, map[string]any{"type": "object"})
-	request := Request{SchemaVersion: 1, Model: StringValue("m"), Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup"), InputSchema: schema}}, Content: []Node{
+	request := Request{SchemaVersion: SemanticSchemaVersion, Model: StringValue("m"), Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup"), InputSchema: schema}}, Content: []Node{
 		{Kind: MessageNode, Role: StringValue("user"), Children: []Node{{Kind: TextNode, Payload: StringValue("hello")}}},
 		{Kind: ToolCallNode, Name: StringValue("lookup"), CallID: StringValue("c"), Input: &ToolInput{Kind: JSONInput, Value: arguments}},
 		{Kind: ToolResultNode, CallID: StringValue("c"), Payload: StringValue("found")},
 	}}
 	wire, _ := ParseValue([]byte(`{"engine":"m","history":[{"kind":"message","speaker":"user","parts":[{"kind":"text","payload":"hello"}]},{"kind":"tool_call","operation":"lookup","call":"c","input":{"kind":"json","value":{"query":"data"}}},{"kind":"tool_result","call":"c","result":"found"}],"functions":[{"operation":"lookup","schema":{"type":"object"}}]}`))
-	definition.Samples = append(definition.Samples,
+	definition.Mapping.Samples = append(definition.Mapping.Samples,
 		Sample{ID: "tools.decode", Direction: DecodeRequest, Input: wire, Expected: fixtureValue(t, request)},
 		Sample{ID: "tools.encode", Direction: EncodeRequest, Input: fixtureValue(t, request), Expected: wire},
 	)
@@ -263,15 +264,16 @@ func TestVerifyFullToolHistoryAndUnsupportedComposition(t *testing.T) {
 
 func TestVerifyNativeExtensionProbe(t *testing.T) {
 	definition := textVerificationDefinition(t, "native-proof")
-	definition.Native.Preserve = true
-	definition.Capabilities[NativeExtensionsCapability] = true
+	definition.Mapping.Native.Preserve = true
+	definition.Mapping.Capabilities[NativeExtensionsCapability] = true
 	report := Verify(t.Context(), compileTestDefinition(t, definition))
 	if !report.Passed {
 		t.Fatalf("native replay failed probe: %+v", report.Issues)
 	}
-	mapping := definition.Directions[DecodeRequest]
-	mapping.Input = &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"engine": {Type: StringType}, "history": {Type: ArrayType, Items: &ValueSchema{Type: AnyType}}, "functions": {Type: ArrayType, Items: &ValueSchema{Type: AnyType}}}}
-	definition.Directions[DecodeRequest] = mapping
+	definition.Spec.Documents["strict-request"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"engine": {Type: StringType}, "history": {Type: ArrayType, Items: &ValueSchema{Type: AnyType}}, "functions": {Type: ArrayType, Items: &ValueSchema{Type: AnyType}}}}}
+	mapping := definition.Mapping.Directions[DecodeRequest]
+	mapping.Document = "strict-request"
+	definition.Mapping.Directions[DecodeRequest] = mapping
 	report = Verify(t.Context(), compileTestDefinition(t, definition))
 	if report.Passed {
 		t.Fatal("native extension support passed while rejecting extensions")

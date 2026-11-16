@@ -2,6 +2,36 @@ package protocol
 
 import "testing"
 
+func TestCoreControlsExposeWireCompatibility(t *testing.T) {
+	document := textProtocolPackage(t)
+	isSameWire := readExpression("context", "/isSameWire")
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "wire-context", Order: 10, Enabled: true, Phase: ConversionResponse,
+		Steps: []ProtocolControlStep{{Set: map[string]Expression{"/id": {Op: "if", When: &isSameWire,
+			Then: expressionPointer(literalExpression("same")), Otherwise: expressionPointer(literalExpression("different"))}}}}}}
+	compiled := compilePackageForTest(t, document)
+	conversion, err := ResolveConversion(DefaultConversionPolicy(compiled, compiled))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct {
+		name, family, wire string
+		isSameWire         bool
+	}{
+		{"same-wire-other-definition", compiled.identity.Family, compiled.identity.WireVersion, true},
+		{"other-family", "other-family", compiled.identity.WireVersion, false},
+		{"other-version", compiled.identity.Family, "other-version", false},
+		{"unbound-source", "", "", false},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			route := ConversionContext{Target: compiled.identity, Source: Identity{DefinitionID: "other-definition", Family: fixture.family, WireVersion: fixture.wire}}
+			response, err := conversion.Response(t.Context(), &Response{SchemaVersion: ProtocolCoreVersion}, route, nil)
+			if err != nil || response.ID.IsString("same") != fixture.isSameWire || !fixture.isSameWire && !response.ID.IsString("different") {
+				t.Fatal("wire compatibility context confused absent fields or definition identity", response, err)
+			}
+		})
+	}
+}
+
 func TestPackageConversionDefaultReplacement(t *testing.T) {
 	document := textProtocolPackage(t)
 	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "field-default", Order: 10, Enabled: true, Phase: ConversionRequest,
@@ -137,7 +167,7 @@ func TestPackageConversionProgramsRequireExplicitDefaults(t *testing.T) {
 	} {
 		declaration.ID, declaration.Order, declaration.Enabled = "invalid-program", 10, true
 		document.Mapping.ConversionDefaults = []ProtocolConversionDefault{declaration}
-		compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+		compiler, err := NewCompiler(DefaultLimits(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

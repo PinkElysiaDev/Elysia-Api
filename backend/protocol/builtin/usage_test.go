@@ -1,135 +1,188 @@
 package builtin
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	p "github.com/elysia-api/backend/protocol"
 )
 
+func usageResponseBody(name, usage string) string {
+	switch name {
+	case Chat, "openai-chat-completions":
+		return `{"id":"r","model":"m","object":"chat.completion","created":1,"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":` + usage + `}`
+	case Responses, "openai-responses":
+		return `{"id":"r","model":"m","object":"response","status":"completed","output":[],"usage":` + usage + `}`
+	case Anthropic, "anthropic-messages":
+		return `{"id":"r","model":"m","type":"message","role":"assistant","content":[],"stop_reason":"end_turn","usage":` + usage + `}`
+	case Gemini, "google-generate-content":
+		return `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}],"usageMetadata":` + usage + `}`
+	default:
+		panic(fmt.Sprintf("missing usage fixture for %s", name))
+	}
+}
+
+func decodeUsageResponse(t *testing.T, compiled *p.Compiled, raw string) (*p.Usage, error) {
+	t.Helper()
+	response, err := compiled.DecodeResponse(t.Context(), []byte(usageResponseBody(compiled.Identity().DefinitionID, raw)), fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		return nil, err
+	}
+	return response.Usage, nil
+}
+
+func encodeUsageResponse(t *testing.T, compiled *p.Compiled, usage *p.Usage) (p.Value, error) {
+	t.Helper()
+	response, err := compiled.DecodeResponse(t.Context(), []byte(usageResponseBody(compiled.Identity().DefinitionID, `{}`)), fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		return p.Value{}, err
+	}
+	response.Native, response.Usage = nil, usage
+	wire, err := compiled.EncodeResponseValue(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
+	if err != nil {
+		return p.Value{}, err
+	}
+	fields, _ := wire.ReadObject()
+	if compiled.Identity().DefinitionID == "google-generate-content" {
+		return fields["usageMetadata"], nil
+	}
+	return fields["usage"], nil
+}
+
+func usageResponse(t *testing.T, usage *p.Usage) *p.Response {
+	t.Helper()
+	return &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed"),
+		Attributes: p.Object{"created_at": testValue(t, "1")}, Usage: usage,
+		Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hi")}}}}}
+}
+
 func TestUsageDetailsPreserveExtensionsAndRejectUnsupportedCounters(t *testing.T) {
 	compiled := testCompiled(t, Chat)
-	body := `{"id":"r","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":0,"vendor":{"long":9007199254740993}},"billing":null}}`
-	response, err := compiled.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+	body := `{"id":"r","model":"m","object":"chat.completion","created":1,"choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":0,"vendor":{"long":9007199254740993}},"billing":null},"vendor":{"enabled":false}}`
+	response, err := compiled.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Model = p.StringValue("renamed")
-	encoded, err := compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	response.Native = nil
+	response.Usage.Input.Count = 11
+	encoded, err := compiled.EncodeResponseValue(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields, err := testValue(t, string(encoded)).ReadObject()
-	if err != nil {
-		t.Fatal(err)
-	}
+	fields, _ := encoded.ReadObject()
 	usage, _ := fields["usage"].ReadObject()
 	details, _ := usage["prompt_tokens_details"].ReadObject()
 	sameJSON(t, details["vendor"].Bytes(), `{"long":9007199254740993}`)
+	sameJSON(t, fields["vendor"].Bytes(), `{"enabled":false}`)
+	if !fields["model"].IsString("renamed") || usage["prompt_tokens"].JSONString() != "11" {
+		t.Fatal("native remainder replaced current core fields", encoded)
+	}
 	if !usage["billing"].IsNull() || response.Usage.CacheRead == nil || response.Usage.CacheRead.Count != 0 {
 		t.Fatal("missing/null/zero changed", response.Usage)
 	}
-	if _, err := testCompiled(t, Responses).EncodeResponse(t.Context(), response, p.EvaluationContext{}); err == nil {
-		t.Fatal("unknown billing extension crossed wire families")
+	for _, target := range []string{Responses, Anthropic, Gemini} {
+		if _, err := testCompiled(t, target).EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{})); err == nil {
+			t.Fatal("unknown response extension crossed wire families", target)
+		}
 	}
-	frame, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"choices":[],"usage":{"prompt_tokens":10,"prompt_tokens_details":{"vendor":false}}}`), p.EvaluationContext{State: p.NewEvaluationState()})
+	owned := response.Attributes["wire:openai_chat"]
+	response.Attributes["wire:openai_chat"] = testValue(t, `{"model":"collision"}`)
+	if _, err := compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{})); err == nil {
+		t.Fatal("response extension overrode the current model")
+	}
+	response.Attributes["wire:openai_chat"] = owned
+	state := p.NewEvaluationState()
+	defer state.Release()
+	frame, err := compiled.DecodeFrame(t.Context(), testValue(t, `{"choices":[],"usage":{"prompt_tokens":10,"prompt_tokens_details":{"vendor":false}}}`), fixtureOptions(p.EvaluationContext{State: state}))
 	if err != nil || len(frame.Events) != 1 || frame.Events[0].Unmapped == nil {
 		t.Fatal("usage-tail extension was discarded", frame, err)
 	}
-	usageWithTTL := &p.Usage{Input: &p.Counter{Count: 10, Origin: p.ObservedCount}, CacheCreation: &p.Counter{Count: 2, Origin: p.ObservedCount}, Details: map[string]p.Counter{"ephemeral_1h_input_tokens": {Count: 2, Origin: p.ObservedCount}}}
+	response = usageResponse(t, &p.Usage{Input: &p.Counter{Count: 10, Origin: p.ObservedCount}, CacheCreation: &p.Counter{Count: 2, Origin: p.ObservedCount}, Details: map[string]p.Counter{"ephemeral_1h_input_tokens": {Count: 2, Origin: p.ObservedCount}}})
+	if _, err := compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{})); err == nil {
+		t.Fatal("encoder accepted unprojected TTL")
+	}
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(compiled, testCompiled(t, Anthropic)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	sink := &p.DiagnosticSink{}
-	if _, err := (module{name: Chat}).encodeUsage(usageWithTTL, p.EvaluationContext{}); err == nil {
-		t.Fatal("encoder must reject unprojected TTL")
-	}
-	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(testCompiled(t, Chat), testCompiled(t, Anthropic)))
+	response, err = conversion.Response(t.Context(), response, fixtureConversionContext(t, conversion, p.ConversionResponse, testCompiled(t, Anthropic).Identity()), sink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err = conversion.Response(t.Context(), &p.Response{SchemaVersion: 1, Usage: usageWithTTL}, p.ConversionContext{}, sink)
-	if err != nil {
-		t.Fatal(err)
+	encoded, err = compiled.EncodeResponseValue(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
+	if err != nil || !strings.Contains(encoded.JSONString(), `"cache_write_tokens":2`) || strings.Contains(encoded.JSONString(), "ephemeral") {
+		t.Fatal("TTL detail leaked or creation count was lost", encoded, err)
 	}
-	projected, err := (module{name: Chat, family: "openai_chat"}).encodeUsage(response.Usage, p.EvaluationContext{Diagnostics: sink})
-	if err != nil {
-		t.Fatal("cross-protocol TTL bucket must project away, not fail", err)
+	requireUsageOmission(t, sink, "/usage/details/ephemeral_1h_input_tokens")
+}
+
+func requireUsageOmission(t *testing.T, sink *p.DiagnosticSink, path string) {
+	t.Helper()
+	count := 0
+	for _, issue := range sink.Issues() {
+		if issue.Path == path && issue.Severity == p.SeverityWarning {
+			count++
+		}
 	}
-	// The total creation counter survives; only the provider-specific TTL
-	// breakdown is omitted, and the omission is recorded as a warning.
-	projectedFields, err := projected.ReadObject()
-	if err != nil {
-		t.Fatal(err)
-	}
-	projectedDetails, _ := projectedFields["prompt_tokens_details"].ReadObject()
-	if projectedDetails["cache_write_tokens"].IsZero() || strings.Contains(string(projected.Bytes()), "ephemeral") {
-		t.Fatalf("TTL bucket leaked or total creation lost: %s", projected.Bytes())
-	}
-	issues := sink.Issues()
-	if len(issues) != 1 || issues[0].Severity != p.SeverityWarning || issues[0].Path != "/usage/details/ephemeral_1h_input_tokens" {
-		t.Fatalf("omission must be diagnosed once: %+v", issues)
+	if count != 1 {
+		t.Fatal("usage omission must be diagnosed once", path, sink.Issues())
 	}
 }
 
-// Gemini reports cache reads only. The provider's creation total has no target
-// field, so the projection is recorded rather than failing a response the
-// client can otherwise consume.
 func TestUsageGeminiCreationTotalIsProjectedAndDiagnosed(t *testing.T) {
-	gemini := module{name: Gemini, family: "gemini"}
-	usage := &p.Usage{
-		Input:         &p.Counter{Count: 27, Origin: p.ObservedCount},
-		Output:        &p.Counter{Count: 2, Origin: p.ObservedCount},
-		CacheRead:     &p.Counter{Count: 15, Origin: p.ObservedCount},
-		CacheCreation: &p.Counter{Count: 7, Origin: p.ObservedCount},
-		Details:       map[string]p.Counter{},
+	target, source := testCompiled(t, Gemini), testCompiled(t, Anthropic)
+	response := usageResponse(t, &p.Usage{Input: &p.Counter{Count: 27, Origin: p.ObservedCount}, Output: &p.Counter{Count: 2, Origin: p.ObservedCount}, CacheRead: &p.Counter{Count: 15, Origin: p.ObservedCount}, CacheCreation: &p.Counter{Count: 7, Origin: p.ObservedCount}})
+	delete(response.Attributes, "created_at")
+	if _, err := target.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{})); err == nil {
+		t.Fatal("encoder accepted unprojected creation count")
 	}
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(target, source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := fixtureConversionContext(t, conversion, p.ConversionResponse, source.Identity())
 	sink := &p.DiagnosticSink{}
-	if _, err := gemini.encodeUsage(usage, p.EvaluationContext{}); err == nil {
-		t.Fatal("encoder must reject unprojected cache creation")
-	}
-	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(testCompiled(t, Gemini), testCompiled(t, Anthropic)))
+	projected, err := conversion.Response(t.Context(), response, route, sink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := conversion.Response(t.Context(), &p.Response{SchemaVersion: 1, Usage: usage}, p.ConversionContext{}, sink)
+	wire, err := target.EncodeResponseValue(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := gemini.encodeUsage(response.Usage, p.EvaluationContext{Diagnostics: sink})
-	if err != nil {
-		t.Fatal("a creation total Gemini cannot express must project away, not fail", err)
-	}
-	// Total is absent here because this usage carries no total counter; the
-	// creation total is projected away while the read count survives.
-	sameJSON(t, encoded.Bytes(), `{"promptTokenCount":27,"candidatesTokenCount":2,"cachedContentTokenCount":15}`)
-	issues := sink.Issues()
-	if len(issues) != 1 || issues[0].Severity != p.SeverityWarning || issues[0].Path != "/usage/cacheCreation" {
-		t.Fatalf("omission must be diagnosed once: %+v", issues)
-	}
-	// Diagnostic collection does not change the named projection.
-	if _, err := conversion.Response(t.Context(), &p.Response{SchemaVersion: 1, Usage: usage}, p.ConversionContext{}, nil); err != nil {
-		t.Fatalf("nil diagnostics must not change the projection: %v", err)
+	fields, _ := wire.ReadObject()
+	sameJSON(t, fields["usageMetadata"].Bytes(), `{"promptTokenCount":27,"candidatesTokenCount":2,"cachedContentTokenCount":15}`)
+	requireUsageOmission(t, sink, "/usage/cacheCreation")
+	if _, err := conversion.Response(t.Context(), response, route, nil); err != nil {
+		t.Fatal("nil diagnostic sink changed the projection", err)
 	}
 }
 
 func TestUsageMissingBucketAndReasoningNormalization(t *testing.T) {
-	anthropic := module{name: Anthropic, family: "claude"}
-	usage, err := anthropic.decodeUsage(testValue(t, `{"cache_creation":{"ephemeral_1h_input_tokens":9}}`))
+	anthropic := testCompiled(t, Anthropic)
+	response, err := anthropic.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","type":"message","role":"assistant","content":[],"stop_reason":"end_turn","usage":{"cache_creation":{"ephemeral_1h_input_tokens":9}}}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.CacheCreation != nil || usage.Total != nil {
-		t.Fatal("absent creation bucket became an explicit zero", usage)
+	if response.Usage.CacheCreation != nil || response.Usage.Total != nil {
+		t.Fatal("absent creation bucket became an explicit zero", response.Usage)
 	}
-	gemini := module{name: Gemini, family: "gemini"}
-	usage, err = gemini.decodeUsage(testValue(t, `{"promptTokenCount":10,"candidatesTokenCount":2,"thoughtsTokenCount":3,"toolUsePromptTokenCount":7}`))
+	gemini := testCompiled(t, Gemini)
+	response, err = gemini.DecodeResponse(t.Context(), []byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2,"thoughtsTokenCount":3,"toolUsePromptTokenCount":7}}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.Output.Count != 5 || usage.Details["output.reasoning_tokens"].Count != 3 {
-		t.Fatal(usage)
+	if response.Usage.Output.Count != 5 || response.Usage.Details["output.reasoning_tokens"].Count != 3 {
+		t.Fatal("reasoning output was not counted once", response.Usage)
 	}
-	encoded, err := gemini.encodeUsage(usage, p.EvaluationContext{})
+	response.Native = nil
+	wire, err := gemini.EncodeResponseValue(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sameJSON(t, encoded.Bytes(), `{"promptTokenCount":10,"candidatesTokenCount":2,"thoughtsTokenCount":3,"toolUsePromptTokenCount":7,"totalTokenCount":15}`)
+	fields, _ := wire.ReadObject()
+	sameJSON(t, fields["usageMetadata"].Bytes(), `{"promptTokenCount":10,"candidatesTokenCount":2,"thoughtsTokenCount":3,"toolUsePromptTokenCount":7,"totalTokenCount":15}`)
 }

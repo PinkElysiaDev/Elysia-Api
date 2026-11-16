@@ -19,7 +19,7 @@ type continuationInput struct {
 // ExtractContinuations selects reserved carrier locations without editing the
 // input. The returned context keeps original provenance through request decoding.
 func (compiled *Compiled) ExtractContinuations(ctx context.Context, wire Value, options EvaluationContext) (EvaluationContext, []string, error) {
-	if compiled.packagePlan == nil || compiled.packagePlan.continuation == nil || compiled.packagePlan.continuation.extract == nil {
+	if compiled.packagePlan.continuation == nil || compiled.packagePlan.continuation.extract == nil {
 		return options, nil, nil
 	}
 	ctx = withDocumentMetrics(ctx, wire.Len())

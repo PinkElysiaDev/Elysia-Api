@@ -45,7 +45,7 @@ func TestPackagePositionIntervals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	state := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}].primitives
+	state := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}].primitives
 	tracker := state.positions[streamTrackKey{channel: "text", item: "i"}]
 	if len(tracker.spans) != 2 || tracker.length != 1029 || state.positionEnds["text"] != 1031 || state.positionItems != 3 || options.State.packageStateBytes != retainedBytes {
 		t.Fatal("failed update advanced state or contiguous appends grew retained state", tracker, state.positionEnds, state.positionItems)

@@ -24,7 +24,7 @@ func TestAnthropicPackageVisibleReasoningProjection(t *testing.T) {
 	]`).Decode(&events); err != nil {
 		t.Fatal(err)
 	}
-	output := encodeDeclaredTargetStream(t, compiled, events, p.Sample{}, true)
+	output := encodeDeclaredTargetStream(t, compiled, events, p.Sample{})
 	var frames []p.Value
 	if err := output.Decode(&frames); err != nil {
 		t.Fatal(err)

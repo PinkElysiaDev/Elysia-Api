@@ -16,10 +16,14 @@ import (
 )
 
 func liveRequest(t *testing.T, model string, isStream bool) *protocol.Request {
-	return &protocol.Request{SchemaVersion: 1, Model: protocol.StringValue(model), Content: []protocol.Node{
+	request := &protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Model: protocol.StringValue(model), Content: []protocol.Node{
 		{Kind: protocol.MessageNode, Role: protocol.StringValue("system"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("API verification. Reply briefly; do not execute external tools.")}}},
 		{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("Reply with OK.")}}},
 	}, Parameters: protocol.Object{"max_output_tokens": mustProtocolValue(t, fmt.Sprint(liveOutputLimit)), "stream": mustProtocolValue(t, fmt.Sprint(isStream))}}
+	if isStream {
+		request.ClientOutput = &protocol.ClientOutput{IncludeUsage: &isStream, CollectUsage: true}
+	}
+	return request
 }
 
 func (suite *liveSuite) direct(t *testing.T, id string, compiled *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
@@ -59,12 +63,12 @@ func newLiveGateway(t *testing.T, suite *liveSuite, target *protocol.Compiled) *
 	t.Helper()
 	proxy, completed := suite.observer(target)
 	t.Cleanup(proxy.Close)
-	groups := presetGroup(t, "custom:"+target.Identity().DefinitionID, liveBase(proxy.URL, target))
+	groups := presetGroup(t, "custom:"+target.Identity().DefinitionID, proxy.URL)
 	groups[0].MaxRetries = 0
 	groups[0].Models[0].Name = suite.Model
 	groups[0].Models[0].ID = suite.Model
 	groups[0].Models[0].APIKey = "verification-observer-placeholder"
-	server := newTestServerWithStore(t, groups, target.Definition(), verificationEnvelopeDefinition(t))
+	server := newTestServerWithStore(t, groups, compiledPackage(target), verificationEnvelopeDefinition(t))
 	server.protocolTransport.SetTimeout(liveRequestTimeout)
 	group, failure := server.validateModelGroup("grp")
 	if failure != nil {
@@ -129,14 +133,6 @@ func (gateway *liveGateway) stored(t *testing.T) *usageRecord {
 func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.Compiled, request *protocol.Request, isStream bool) (liveCase, *protocol.Response) {
 	t.Helper()
 	result := liveCase{ID: id, Model: gateway.suite.Model, Ingress: ingress.Identity().DefinitionID, Target: gateway.target.Identity().DefinitionID, Revision: gateway.target.Hash(), Stream: isStream, Status: "failed"}
-	if isStream && ingress.Codec(protocol.EncodeRequest) == "openai-chat" {
-		request = request.Clone()
-		output, err := protocol.ParseClientOutput(mustProtocolValue(t, `{"include_usage":true}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		request.ClientOutput = output
-	}
 	body, err := ingress.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: gateway.scope})
 	if err != nil {
 		result.Reason = err.Error()
@@ -147,9 +143,6 @@ func (gateway *liveGateway) request(t *testing.T, id string, ingress *protocol.C
 	if err != nil {
 		result.Reason = err.Error()
 		return result, nil
-	}
-	if ingress.Identity().DefinitionID == "openai-chat-completions" || ingress.Identity().DefinitionID == "openai-responses" {
-		path = "/v1" + path
 	}
 	c, rec := adminProtocolContext("POST", path, string(body))
 	if ingress.Identity().DefinitionID == "google-generate-content" {
@@ -261,14 +254,14 @@ func TestProtocolLive(t *testing.T) {
 		return
 	}
 	if suite.Suite == "gemini-native-tools" {
-		suite.geminiNativeToolControl(t, compileFixtureDefinition(t, presetDefinition(t, "google-generate-content")))
+		suite.geminiNativeToolControl(t, compileFixturePackage(t, presetPackage(t, "google-generate-content")))
 		return
 	}
 	compiled := map[string]*protocol.Compiled{}
 	available := map[string]map[bool]bool{}
 	for _, id := range liveProtocolIDs {
-		definition := presetDefinition(t, id)
-		compiled[id] = compileFixtureDefinition(t, definition)
+		definition := presetPackage(t, id)
+		compiled[id] = compileFixturePackage(t, definition)
 		if report := protocol.Verify(t.Context(), compiled[id]); !report.Passed {
 			t.Fatal("preset offline evidence failed", id, report.Issues)
 		}
@@ -306,8 +299,8 @@ func TestProtocolLive(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				activateGatewayDefinition(t, gateway.server, definition)
-				custom, exists := service.Pin(definition.ID)
+				activateGatewayFixture(t, gateway.server, definition)
+				custom, exists := service.Pin(definition.Spec.ID)
 				if !exists {
 					t.Fatal("cache ingress missing")
 				}
@@ -344,13 +337,13 @@ func TestProtocolLive(t *testing.T) {
 				return
 			}
 			if os.Getenv("ELYSIA_LIVE_SUITE") == "extended" {
-				gateway.bind(t, gateway.target.Definition().Capabilities)
+				gateway.bind(t, gateway.target.DeclaredCapabilities())
 				for _, isStream := range []bool{false, true} {
 					gateway.toolRoundTrip(t, fmt.Sprintf("tools-corrected/%t", isStream), compiled[targetID], isStream)
 				}
-				definition := compiled[targetID].Definition()
-				definition.ID = "verification-copy-" + targetID
-				copied := compileFixtureDefinition(t, definition)
+				definition := compiledPackage(compiled[targetID])
+				definition.Spec.ID = "verification-copy-" + targetID
+				copied := compileFixturePackage(t, definition)
 				copyGateway := newLiveGateway(t, suite, copied)
 				for _, isStream := range []bool{false, true} {
 					result, _ := copyGateway.request(t, fmt.Sprintf("copy/text/%t", isStream), copied, liveRequest(t, "grp", isStream), isStream)
@@ -363,7 +356,7 @@ func TestProtocolLive(t *testing.T) {
 				gateway.cachePairs(t, compiled[targetID])
 				return
 			}
-			gateway.bind(t, gateway.target.Definition().Capabilities)
+			gateway.bind(t, gateway.target.DeclaredCapabilities())
 			for _, sourceID := range liveProtocolIDs {
 				for _, isStream := range []bool{false, true} {
 					if !available[targetID][isStream] {
@@ -395,7 +388,7 @@ func TestProtocolLive(t *testing.T) {
 }
 
 func (gateway *liveGateway) cacheOrderControl(t *testing.T, ingress *protocol.Compiled) {
-	gateway.bind(t, gateway.target.Definition().Capabilities)
+	gateway.bind(t, gateway.target.DeclaredCapabilities())
 	for _, route := range []string{"gateway", "direct"} {
 		request := liveRequest(t, gateway.suite.Model, false)
 		request.Content[0].Children[0].Payload = protocol.StringValue(fmt.Sprintf("Reverse cache control %d %s.\n", gateway.suite.StartedAt.UnixNano(), route) + strings.Repeat("stable alpha beta gamma delta reference information.\n", 2048))
@@ -509,7 +502,7 @@ func (gateway *liveGateway) policyPairs(t *testing.T, ingress *protocol.Compiled
 }
 
 func (gateway *liveGateway) cachePairs(t *testing.T, ingress *protocol.Compiled) {
-	gateway.bind(t, gateway.target.Definition().Capabilities)
+	gateway.bind(t, gateway.target.DeclaredCapabilities())
 	for _, tokens := range []int{4096, 8192, 16384} {
 		observedRead := map[string]bool{}
 		for _, route := range []string{"direct", "gateway"} {

@@ -9,6 +9,8 @@ import (
 func TestChatPackageChoiceMetadataWithoutNative(t *testing.T) {
 	compiled := compileBuiltinPackage(t, "openai-chat")
 	for _, raw := range []string{
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"first"},"finish_reason":"stop","logprobs":null}]}`,
+		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"second"},"finish_reason":"stop","logprobs":{}}]}`,
 		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"","annotations":[],"tool_calls":[{"id":"call","type":"function","function":{"name":"f","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`,
 		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":null,"annotations":null},"finish_reason":"stop"}]}`,
 		`{"id":"r","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"first","annotations":[{"type":"url_citation","url_citation":{"url":"https://example.test","title":"reference","start_index":0,"end_index":5}}]},"finish_reason":"stop"}]}`,

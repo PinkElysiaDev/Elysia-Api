@@ -26,12 +26,12 @@ func assertVisibleThinkingProfiles(t *testing.T, upstream *p.Compiled, reports [
 		if err := sonic.ConfigStd.Unmarshal(data, &restored); err != nil || !restored.VisibleReasoningOnly {
 			t.Fatal("persisted restriction lost", err)
 		}
-		plain := &p.Request{Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("visible")}}}
+		plain := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Content: []p.Node{{Kind: p.ReasoningNode, Payload: p.StringValue("visible")}}}
 		if issues := p.CheckCombinationRequest(plain, restored, upstream.Identity()); len(issues) > 0 {
 			t.Fatal(issues)
 		}
 		for _, form := range []p.ReasoningForm{p.SummaryReasoning, p.StructuredReasoning} {
-			unsupported := &p.Request{Content: []p.Node{{Kind: p.MessageNode, Children: []p.Node{{Kind: p.ReasoningNode, ReasoningForm: form, Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("summary")}}}}}}}
+			unsupported := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Content: []p.Node{{Kind: p.MessageNode, Children: []p.Node{{Kind: p.ReasoningNode, ReasoningForm: form, Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("summary")}}}}}}}
 			if issues := p.CheckCombinationRequest(unsupported, restored, upstream.Identity()); len(issues) != 1 || issues[0].Path != "/content/0/children/0/reasoningForm" {
 				t.Fatal("profile accepted unsupported reasoning", issues)
 			}
@@ -43,7 +43,14 @@ func assertVisibleThinkingProfiles(t *testing.T, upstream *p.Compiled, reports [
 		}
 	}
 	if !found {
-		t.Fatal("visible history blocked", reports)
+		for _, report := range reports {
+			for _, check := range report.Checks {
+				if !check.Passed && !check.Skipped {
+					t.Logf("profile %s: %+v", report.Fidelity, check)
+				}
+			}
+		}
+		t.Fatal("visible history blocked")
 	}
 }
 
@@ -57,7 +64,7 @@ func TestBuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics(t *testing.T) {
 		for _, upstream := range adapters {
 			t.Run(ingress.Identity().DefinitionID+"/"+upstream.Identity().DefinitionID, func(t *testing.T) {
 				t.Parallel()
-				contract := upstream.Definition().Capabilities
+				contract := packageMapping(upstream).Capabilities
 				reports := p.VerifyBindingProfiles(t.Context(), ingress, upstream, contract)
 				assertVisibleThinkingProfiles(t, upstream, reports)
 				if reports[0].IsRestricted || reports[0].BindingHash != p.CapabilityContractHash(contract) {
@@ -89,10 +96,56 @@ func TestBuiltinVerifiedProfilesKeepTextRoutesAndFullDiagnostics(t *testing.T) {
 				if !hasText {
 					t.Fatal("text/usage route blocked by unrelated capabilities", reports)
 				}
-				if ingress.Definition().Capabilities[p.CacheKeysCapability] && contract[p.CacheKeysCapability] && !hasCache {
+				if packageMapping(ingress).Capabilities[p.CacheKeysCapability] && contract[p.CacheKeysCapability] && !hasCache {
 					t.Fatal("joint cache key/retention evidence split into unsupported fragments")
 				}
 			})
 		}
+	}
+}
+
+func TestStrictProfilesKeepJSONSeparateFromStreamLayout(t *testing.T) {
+	ingress, upstream := testCompiled(t, Responses), testCompiled(t, Gemini)
+	policy := p.DefaultConversionPolicy(ingress, upstream)
+	policy.Mode = "strict"
+	policy.Continuation.ClientCarrier = false
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := packageMapping(upstream).Capabilities
+	reports := p.VerifyBindingProfiles(t.Context(), ingress, upstream, contract, conversion)
+	if len(reports) < 2 || reports[0].Passed || reports[0].Transport != "" || reports[0].IsRestricted {
+		t.Fatal("complete contract failure was replaced by a narrower proof")
+	}
+	hasJSON := false
+	hasRejectedStream := false
+	for _, issue := range reports[0].Issues {
+		hasRejectedStream = hasRejectedStream || (issue.RuleID == "event-output-layout" && issue.Fidelity == "rejected")
+	}
+	for _, report := range reports {
+		if !report.Passed {
+			continue
+		}
+		if report.Transport != p.HTTPJSON || !report.IsRestricted || report.BindingHash != p.CapabilityContractHash(contract) || report.PolicyHash != conversion.Hash || report.Capabilities[p.SignaturesCapability] {
+			t.Fatal("JSON proof expanded its transport, state or revision boundary", report)
+		}
+		for _, check := range report.Checks {
+			if check.Passed && check.Direction == p.EncodeEvent {
+				t.Fatal("JSON proof counted a stream fixture")
+			}
+		}
+		encoded, err := sonic.ConfigStd.Marshal(report)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var restored p.CombinationReport
+		if err := sonic.ConfigStd.Unmarshal(encoded, &restored); err != nil || restored.Transport != p.HTTPJSON || !restored.IsRestricted {
+			t.Fatal("persisted transport restriction lost", err)
+		}
+		hasJSON = hasJSON || report.Capabilities[p.TextCapability] && report.Capabilities[p.UsageCapability]
+	}
+	if !hasJSON || !hasRejectedStream {
+		t.Fatal("missing independent JSON proof or original stream rejection")
 	}
 }

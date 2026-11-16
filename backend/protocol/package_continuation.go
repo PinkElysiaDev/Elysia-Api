@@ -102,7 +102,7 @@ func compileContinuationOutput(value *ProtocolContinuationOutput, compiler *expr
 }
 
 func (compiled *Compiled) continuationOutput(direction Direction) *compiledContinuationOutput {
-	if compiled.packagePlan == nil || compiled.packagePlan.continuation == nil {
+	if compiled.packagePlan.continuation == nil {
 		return nil
 	}
 	switch direction {

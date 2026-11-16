@@ -20,13 +20,13 @@ func (compiled *Compiled) preparePackageExecution(direction Direction, state eva
 		execution.reader = requestValueReader(state.input)
 	}
 	state.valueReader = execution.reader
-	if err := compiled.preparePackageState(direction, state, limits, options); err != nil {
+	if err := compiled.preparePackageState(direction, state, limits, options, nil); err != nil {
 		return nil, err
 	}
 	return execution, nil
 }
 
-func (compiled *Compiled) preparePackageState(direction Direction, state evaluation, limits Limits, options EvaluationContext) error {
+func (compiled *Compiled) preparePackageState(direction Direction, state evaluation, limits Limits, options EvaluationContext, provenance *provenanceReadMemo) error {
 	isDecode := isPackageDecodeDirection(direction)
 	if isDecode {
 		if err := compiled.validateWireInputView(state.ctx, direction, state.inputView, limits, compiled.wireContracts[direction]); err != nil {
@@ -53,10 +53,19 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 			return err
 		}
 	}
-	return compiled.checkPackageEffects(direction, state, limits)
+	if direction == EncodeRequest && state.coreRequest == nil {
+		constraint, err := state.readPackageInput([]string{"parameters", "outputConstraint"})
+		if err != nil {
+			return err
+		}
+		if err := validateOutputConstraint(constraint.value); err != nil {
+			return err
+		}
+	}
+	return compiled.checkPackageEffects(direction, state, limits, options.Diagnostics, provenance)
 }
 
-func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluation, limits Limits) error {
+func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluation, limits Limits, sink *DiagnosticSink, provenance *provenanceReadMemo) error {
 	isDecode := isPackageDecodeDirection(direction)
 	var conditions *evaluation
 	for _, effect := range compiled.packagePlan.effects[direction] {
@@ -72,6 +81,19 @@ func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluat
 				conditionState.budget = &evaluationBudget{limits: limits, stepLimit: limits.Nodes}
 				conditions = &conditionState
 			}
+			if isOwnerEffectScope(effect.scope) {
+				if conditions.coreDocument == nil {
+					var err error
+					conditions.coreDocument, err = conditions.readCoreDocument(direction)
+					if err != nil {
+						return err
+					}
+				}
+				if err := compiled.checkOwnerEffect(direction, *conditions, effect, provenance); err != nil {
+					return err
+				}
+				continue
+			}
 			condition, err := effect.when.evaluate(*conditions)
 			if err != nil {
 				return err
@@ -84,13 +106,17 @@ func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluat
 				continue
 			}
 		}
-		if effect.kind == "reject" {
-			failure := compiled.packageEffectError(direction, effect, effect.reason, nil)
+		if effect.kind == "reject" || effect.kind == "warn" {
+			issue := compiled.packageEffectIssue(direction, effect, effect.reason)
 			if diagnostic := effect.diagnostic; diagnostic != nil {
-				issue := &failure.Issues[0]
 				issue.Code, issue.Stage, issue.Suggestion = diagnostic.Code, diagnostic.Stage, diagnostic.Suggestion
 			}
-			return failure
+			if effect.kind == "reject" {
+				return &ConversionError{Issues: []ConversionIssue{issue}}
+			}
+			issue.Path, issue.Severity, issue.Fidelity = effect.path, SeverityWarning, "preserved"
+			sink.Add(issue)
+			continue
 		}
 		pointer := effect.corePointer
 		if isDecode {
@@ -214,9 +240,13 @@ func (compiled *Compiled) checkPackageVersion(direction Direction, output JSONOu
 }
 
 func (compiled *Compiled) packageEffectError(direction Direction, effect compiledSemanticEffect, reason string, cause error) *ConversionError {
+	return &ConversionError{cause: cause, Issues: []ConversionIssue{compiled.packageEffectIssue(direction, effect, reason)}}
+}
+
+func (compiled *Compiled) packageEffectIssue(direction Direction, effect compiledSemanticEffect, reason string) ConversionIssue {
 	path := effect.path
 	if isPackageDecodeDirection(direction) {
 		path = effect.target
 	}
-	return &ConversionError{cause: cause, Issues: []ConversionIssue{{Code: ConversionRejected, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.effects", Path: path, RuleID: effect.id, Reason: reason, Fidelity: "rejected", Evidence: "protocol-mapping"}}}
+	return ConversionIssue{Code: ConversionRejected, Severity: SeverityError, Protocol: compiled.identity, Direction: direction, Stage: "mapping.effects", Path: path, RuleID: effect.id, Reason: reason, Fidelity: "rejected", Evidence: "protocol-mapping"}
 }

@@ -12,8 +12,8 @@ import (
 
 func TestSourceBindingUpdatePersistsInheritedEvidence(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	ingress := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
-	upstream := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-beta"))
+	ingress := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
+	upstream := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-beta"))
 	setupGatewayModel(t, s, upstream, "https://example.test")
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
 	bindings, err := s.store.ListProtocolBindings(t.Context())
@@ -82,8 +82,8 @@ func TestRuntimeRefreshRepairsStalePolicyEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
-	upstream := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-beta"))
+	activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
+	upstream := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-beta"))
 	setupGatewayModel(t, s, upstream, "https://example.test")
 	bindings, err := s.store.ListProtocolBindings(t.Context())
 	if err != nil {

@@ -38,7 +38,7 @@ func TestPackageDraftForeignWireOwners(t *testing.T) {
 						t.Fatal("foreign owner was accepted or failed outside its declared guard", err)
 					}
 					issue := failure.Issues[0]
-					if issue.Code != p.ConversionRejected || issue.Direction != p.EncodeRequest || issue.Stage != "mapping.effects" || issue.Path != "/parameters" || issue.RuleID != "foreign-wire-owner" {
+					if issue.Code != p.ConversionRejected || issue.Direction != p.EncodeRequest || issue.Stage != "mapping.effects" || issue.Path != "/parameters" || issue.RuleID != "unmapped-parameters" {
 						t.Fatal("foreign owner rejection has the wrong declaration", issue)
 					}
 				})
@@ -63,7 +63,7 @@ func TestPackageDraftForeignWireOwners(t *testing.T) {
 				var failure *p.ConversionError
 				if errors.As(err, &failure) {
 					for _, issue := range failure.Issues {
-						if issue.RuleID == "foreign-wire-owner" {
+						if issue.RuleID == "unmapped-parameters" {
 							t.Fatal("guard treated a non-foreign owner as foreign", issue)
 						}
 					}

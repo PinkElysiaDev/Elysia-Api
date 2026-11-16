@@ -16,7 +16,7 @@ func TestModelDiscoveryEditorAgentAndForwardingShareDefinition(t *testing.T) {
 	activateCustomDiscovery(t, s)
 	service, _ := s.protocolService()
 	compiled, _ := service.Pin("vendor-discovery")
-	definition, _ := protocol.EncodeValue(compiled.Definition())
+	definition, _ := protocol.EncodeValue(compiledPackage(compiled))
 	input, _ := protocol.ParseValue([]byte(`{"catalog":[{"key":"custom-id","label":"Custom"}]}`))
 	preview := service.PreviewWorkflow(t.Context(), protocol.PreviewInput{Definition: definition, Mode: "models", Operation: "models", Input: input})
 	if err := protocol.IssuesError(preview.Issues); err != nil {
@@ -86,32 +86,29 @@ func decodeDiscoveryCLIResult(t *testing.T, result CLIResult, target any) {
 
 func activateCustomDiscovery(t *testing.T, s *Server) {
 	t.Helper()
-	definition := loadGatewayDefinition(t, "text-alpha")
-	definition.ID = "vendor-discovery"
-	raw := `{"kind":"models","method":"GET","path":"/api/v1/models","transport":"http_json","auth":{"location":"header","name":"Authorization","prefix":"Bearer "},"models":{"cursorParameter":"cursor","decode":{"transform":{"op":"object","fields":{"models":{"op":"map","source":{"op":"read","path":"/catalog","required":true},"body":{"op":"object","fields":{"id":{"op":"read","from":"item","path":"/key","required":true},"name":{"op":"read","from":"item","path":"/label"}}}},"next":{"op":"read","path":"/next"}}}}}}`
-	value, err := protocol.ParseValue([]byte(raw))
-	if err != nil {
+	definition := loadGatewayFixture(t, "text-alpha")
+	definition.Spec.ID = "vendor-discovery"
+	definition.Spec.Documents["models"] = protocol.WireContractSpec{Schema: &protocol.ValueSchema{Type: protocol.ObjectType, Required: []string{"catalog"}, AllowUnknown: true, Properties: map[string]protocol.ValueSchema{"catalog": {Type: protocol.ArrayType, Items: &protocol.ValueSchema{Type: protocol.ObjectType, Required: []string{"key"}, AllowUnknown: true, Properties: map[string]protocol.ValueSchema{"key": {Type: protocol.StringType}, "label": {Type: protocol.StringType}}}}}}}
+	definition.Spec.Operations["models"] = protocol.ProtocolOperationSpec{Kind: "models", Method: "GET", Path: "/api/v1/models", Transport: protocol.HTTPJSON, Response: "models", Auth: protocol.Credential{Location: "header", Name: "Authorization", Prefix: "Bearer "}, Models: &protocol.ProtocolModelDiscoverySpec{CursorParameter: "cursor"}}
+	var decode protocol.Expression
+	if err := mustProtocolValue(t, `{"op":"object","fields":{"models":{"op":"map","source":{"op":"read","path":"/catalog","required":true},"body":{"op":"object","fields":{"id":{"op":"read","from":"item","path":"/key","required":true},"name":{"op":"read","from":"item","path":"/label"}}}},"next":{"op":"read","path":"/next"}}}`).Decode(&decode); err != nil {
 		t.Fatal(err)
 	}
-	var operation protocol.Operation
-	if err := value.Decode(&operation); err != nil {
-		t.Fatal(err)
-	}
-	definition.Operations["models"] = operation
+	definition.Mapping.Operations["models"] = protocol.ProtocolOperationMapping{DecodeModels: &decode}
 	for _, sample := range []struct{ id, input, expected string }{
 		{"terminal", `{"catalog":[]}`, `{"models":[]}`},
 		{"page", `{"catalog":[{"key":"m-a","label":"Model A"}],"next":"p2"}`, `{"models":[{"id":"m-a","name":"Model A"}],"next":"p2"}`},
 	} {
 		input, _ := protocol.ParseValue([]byte(sample.input))
 		expected, _ := protocol.ParseValue([]byte(sample.expected))
-		definition.ModelSamples = append(definition.ModelSamples, protocol.ModelSample{ID: sample.id, Operation: "models", Input: input, Expected: expected})
+		definition.Mapping.ModelSamples = append(definition.Mapping.ModelSamples, protocol.ModelSample{ID: sample.id, Operation: "models", Input: input, Expected: expected})
 	}
-	activateGatewayDefinition(t, s, definition)
+	activateGatewayFixture(t, s, definition)
 }
 
 func TestValidateSourceProtocolRequiresActiveDiscovery(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
+	activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
 	item := storage.ModelSource{Platform: "custom:text-alpha"}
 	if err := s.validateSourceProtocol(&item); err != nil {
 		t.Fatal(err)
@@ -133,8 +130,8 @@ func TestValidateSourceProtocolRequiresActiveDiscovery(t *testing.T) {
 
 func TestSourceSaveKeepsIndependentModelProtocolOverride(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	alpha := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
-	beta := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-beta"))
+	alpha := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
+	beta := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-beta"))
 	source := storage.ModelSource{ID: "source", Name: "Original", Platform: "custom:" + alpha.Identity().DefinitionID, BaseURL: "https://example.invalid", Enabled: true}
 	if err := s.saveSource(t.Context(), source); err != nil {
 		t.Fatal(err)

@@ -9,7 +9,7 @@ import (
 
 func TestTypedEventConversionBoundaries(t *testing.T) {
 	value, _ := ParseValue([]byte(` { "n": 9007199254740993, "text": "<>&" } `))
-	event := Event{SchemaVersion: 1, Source: Identity{Family: "invalid\xff"}, Type: ItemStarted, Item: &Node{Kind: TextNode, Payload: value, Children: []Node{}, Native: &Native{Value: value}}}
+	event := Event{SchemaVersion: SemanticSchemaVersion, Source: Identity{Family: "invalid\xff"}, Type: ItemStarted, Item: &Node{Kind: TextNode, Payload: value, Children: []Node{}, Native: &Native{Value: value}}}
 	for _, mode := range []string{"normalize", "authored", "limit", "cancel"} {
 		t.Run(mode, func(t *testing.T) {
 			policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "test"}
@@ -46,6 +46,7 @@ func TestTypedEventConversionBoundaries(t *testing.T) {
 			if err := decodeContract(old.Bytes(), &expected); err != nil {
 				t.Fatal(err)
 			}
+			actual.rangeOrigin = nil
 			if !reflect.DeepEqual(expected, actual) {
 				t.Fatalf("normalization differs: %#v / %#v", expected, actual)
 			}

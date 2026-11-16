@@ -22,7 +22,7 @@ func TestNewAPIErrorProjectionMatrix(t *testing.T) {
 						}
 						raw := october14Fixture(t, "new_api_error")
 						statusValue, _ := p.EncodeValue(status)
-						options := p.EvaluationContext{State: p.NewEvaluationState(), Values: p.Object{"httpStatus": statusValue}}
+						options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Values: p.Object{"httpStatus": statusValue}})
 						sink := &p.DiagnosticSink{}
 						var wire []byte
 						var failure p.Value
@@ -40,7 +40,7 @@ func TestNewAPIErrorProjectionMatrix(t *testing.T) {
 							if p.CheckGenerationOutcome(response) == nil {
 								t.Fatal("error envelope became success")
 							}
-							response, err = conversion.Response(t.Context(), response, p.ConversionContext{}, sink)
+							response, err = conversion.Response(t.Context(), response, fixtureConversionContext(t, conversion, p.ConversionResponse, response.Source), sink)
 							if err == nil {
 								wire, err = to.EncodeResponse(t.Context(), response, options)
 							}
@@ -57,12 +57,16 @@ func TestNewAPIErrorProjectionMatrix(t *testing.T) {
 								t.Fatal(frame.Events)
 							}
 							failure = frame.Events[0].Error
-							event, projectErr := conversion.Event(t.Context(), frame.Events[0], p.ConversionContext{}, sink)
+							event, projectErr := conversion.Event(t.Context(), frame.Events[0], fixtureConversionContext(t, conversion, p.ConversionEvent, frame.Events[0].Source), sink)
 							if projectErr != nil {
 								t.Fatal(projectErr)
 							}
+							options, consume := bindFixtureOutput(t, to, options)
 							frames, encodeErr := to.EncodeFrames(t.Context(), event, options)
 							err = encodeErr
+							if err == nil {
+								consume(frames)
+							}
 							for _, output := range frames {
 								wire = append(wire, output.Bytes()...)
 							}
@@ -108,18 +112,18 @@ func TestNewAPIErrorStrictDisabledAndUnknown(t *testing.T) {
 			policy.Mode = mode
 		}
 		for index := range policy.Rules {
-			if mode == "disabled" && policy.Rules[index].Action == "error_metadata" {
+			if mode == "disabled" && (policy.Rules[index].ID == "response-error-details" || policy.Rules[index].ID == "event-error-details") {
 				policy.Rules[index].Enabled = false
 			}
 		}
 		conversion, _ := p.ResolveConversion(policy)
-		response, err := from.DecodeHTTPFailure(t.Context(), 400, october14Fixture(t, "new_api_error").Bytes(), p.EvaluationContext{})
+		response, err := from.DecodeHTTPFailure(t.Context(), 400, october14Fixture(t, "new_api_error").Bytes(), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
-		response, err = conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
+		response, err = conversion.Response(t.Context(), response, fixtureConversionContext(t, conversion, p.ConversionResponse, response.Source), nil)
 		if err == nil {
-			_, err = to.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			_, err = to.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 		}
 		if err == nil {
 			t.Fatal(mode, "lost error structure silently")
@@ -131,12 +135,12 @@ func TestNewAPIErrorStrictDisabledAndUnknown(t *testing.T) {
 		`{"type":"new_api_error","message":"synthetic","param":{}}`,
 		`{"type":"new_api_error","message":"synthetic","code":42}`,
 	} {
-		response, err := from.DecodeHTTPFailure(t.Context(), 400, []byte(`{"error":`+payload+`}`), p.EvaluationContext{})
+		response, err := from.DecodeHTTPFailure(t.Context(), 400, []byte(`{"error":`+payload+`}`), fixtureOptions(p.EvaluationContext{}))
 		if err == nil {
 			conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-			response, err = conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
+			response, err = conversion.Response(t.Context(), response, fixtureConversionContext(t, conversion, p.ConversionResponse, response.Source), nil)
 			if err == nil {
-				_, err = to.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+				_, err = to.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 			}
 		}
 		if err == nil {
@@ -148,7 +152,7 @@ func TestNewAPIErrorStrictDisabledAndUnknown(t *testing.T) {
 func TestNewAPIErrorCodeOverridesWrapperStatus(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Chat)
 	for _, code := range []string{"invalid_api_key", "model_not_found", "gateway_concurrency_limit"} {
-		response, err := compiled.DecodeHTTPFailure(t.Context(), 500, []byte(`{"error":{"type":"new_api_error","code":"`+code+`","param":"field","message":"synthetic"}}`), p.EvaluationContext{})
+		response, err := compiled.DecodeHTTPFailure(t.Context(), 500, []byte(`{"error":{"type":"new_api_error","code":"`+code+`","param":"field","message":"synthetic"}}`), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +169,7 @@ func TestNewAPIErrorKeepsModelParameter(t *testing.T) {
 	raw := []byte(`{"error":{"type":"new_api_error","code":"model_not_found","param":"model","message":"synthetic"}}`)
 	for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
 		to := shippedProjectionProtocol(t, target)
-		response, err := from.DecodeHTTPFailure(t.Context(), 500, raw, p.EvaluationContext{})
+		response, err := from.DecodeHTTPFailure(t.Context(), 500, raw, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,11 +178,11 @@ func TestNewAPIErrorKeepsModelParameter(t *testing.T) {
 			t.Fatal("wrapper parameter was normalized away", response.Error)
 		}
 		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
-		response, err = conversion.Response(t.Context(), response, p.ConversionContext{}, nil)
+		response, err = conversion.Response(t.Context(), response, fixtureConversionContext(t, conversion, p.ConversionResponse, response.Source), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := to.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+		wire, err := to.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}

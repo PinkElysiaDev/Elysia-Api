@@ -50,7 +50,7 @@ func (s *Server) gatewayProtocol(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	path := selection.path
-	if ingress.CoreVersion() == protocol.ProtocolCoreVersion && s.serveModelCatalog(ctx, c, ingress, path) {
+	if s.serveModelCatalog(ctx, c, ingress, path) {
 		return
 	}
 	if operation, exists := gatewaySessionOperation(ingress, string(c.Method()), path); exists {
@@ -194,7 +194,7 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	request := prepared.Clone()
 	// 上行模型串用 API id；Name 是显示名（Gemini displayName 直接拼路径会 404）。
 	request.Model = protocol.StringValue(candidate.model.Identifier())
-	options, err := (protocol.EvaluationContext{InterleavedThinking: protocol.OperationInterleavedThinking(candidate.operation), Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	options, err := (protocol.EvaluationContext{InterleavedThinking: candidate.operation.IsInterleavedThinking, Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}).WithOperation(record.RequestID, record.StartedAt.Unix())
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func (s *Server) forwardGateway(ctx context.Context, c *app.RequestContext, reco
 	if err != nil {
 		return err
 	}
-	responseRoute, err := candidate.conversionContext(plan.ingress, true).WithRequestModelOrigin(plan.ingress, candidate.compiled, wireValue)
+	responseRoute, err := candidate.conversionContext(plan.ingress, true).WithRequestObservations(plan.ingress, candidate.compiled, wireValue)
 	if err != nil {
 		return err
 	}

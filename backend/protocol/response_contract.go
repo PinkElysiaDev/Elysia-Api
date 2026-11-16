@@ -11,7 +11,7 @@ import (
 // Tool input and usage validation share the same rules as request and event paths.
 func CheckResponse(response *Response, target Target, limits Limits) []ConversionIssue {
 	check := capabilityCheck{target: target, limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
-	if response == nil || response.SchemaVersion != target.coreSchemaVersion() {
+	if response == nil || response.SchemaVersion != ProtocolCoreVersion {
 		check.add(InvalidInput, "/schemaVersion", "", "missing response or unsupported semantic version")
 		return check.issues
 	}
@@ -54,7 +54,7 @@ func (check *capabilityCheck) usage(usage *Usage, path string) {
 // lifecycle validation belongs to StreamState, which is unique to a session.
 func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	check := capabilityCheck{target: target, limits: limits, calls: map[string]struct{}{}, results: map[string]struct{}{}}
-	if event.SchemaVersion != target.coreSchemaVersion() {
+	if event.SchemaVersion != ProtocolCoreVersion {
 		check.add(InvalidInput, "/schemaVersion", "", "unsupported semantic event version")
 		return check.issues
 	}
@@ -74,27 +74,13 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		check.add(InvalidInput, "/control", "", "control state requires its isolated event type")
 		return check.issues
 	}
+	if event.Unmapped == nil && len(event.UnmappedPaths) != 0 {
+		check.add(InvalidInput, "/unmappedPaths", "", "source field paths require unmapped wire evidence")
+	}
 	if event.Unmapped != nil {
-		for _, path := range unmappedEventPaths(event.Unmapped) {
+		for _, path := range check.unmappedEventPaths(event) {
 			check.require(NativeExtensionsCapability, path)
 			check.native(event.Unmapped, path)
-		}
-	}
-	if state := event.ResponsesTurnState; state != nil {
-		if event.Type != MetadataUpdated || event.Response != nil || event.Item != nil || event.Usage != nil || !event.Delta.IsZero() || len(event.Metadata) != 0 {
-			check.add(InvalidInput, ResponsesTurnStatePath, "", "turn state must remain isolated from generation data")
-		}
-		if err := ValidateResponsesTurnStateFrame(state.Frame); err != nil {
-			check.add(InvalidInput, ResponsesTurnStatePath, "", err.Error())
-		}
-		if len(state.Frame.Bytes()) > limits.BufferBytes {
-			check.add(LimitExceeded, ResponsesTurnStatePath, "", "turn state exceeds frame limit")
-		}
-		if target.Codec != "responses" || state.Source.Direction != DecodeEvent {
-			check.add(UnsupportedCapability, ResponsesTurnStatePath, "", "target has no Responses turn-state control channel; an explicit conversion rule is required")
-		}
-		if !CheckScope(state.Source.Scope, target.Scope) {
-			check.add(ResourceScopeMismatch, ResponsesTurnStatePath, "", "turn-state scope differs from target")
 		}
 	}
 	if !event.ParentID.IsZero() {
@@ -167,13 +153,6 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	case MetadataUpdated:
 		// Projection may remove all recognized metadata. This remains a no-op,
 		// not an observation of zero tokens and not a native extension escape.
-		if event.SchemaVersion != ProtocolCoreVersion {
-			for _, item := range event.Metadata {
-				if err := ValidateMetadataValue(item.Codec, item.Location, item.Name, item.Value, item.Path); err != nil {
-					check.add(InvalidInput, item.Path, "", err.Error())
-				}
-			}
-		}
 	case OperationFailed:
 		if event.Error.IsZero() || event.Error.IsNull() {
 			check.add(InvalidInput, "/error", "", "failure event requires an error")
@@ -190,7 +169,7 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 		check.add(InvalidInput, "/type", "", fmt.Sprintf("unknown event type %q", event.Type))
 	}
 	for index, metadata := range event.Metadata {
-		check.logprobMetadata(metadata)
+		check.metadataValue(metadata, fmt.Sprintf("/metadata/%d", index))
 		if metadata.Update == "" {
 			continue
 		}
@@ -229,28 +208,20 @@ func CheckEvent(event Event, target Target, limits Limits) []ConversionIssue {
 	return check.issues
 }
 
-// Built-in collectors retain the original container pointer for every unknown
-// field. Opaque custom values keep the semantic path instead of guessing one.
-func unmappedEventPaths(native *Native) []string {
-	if native.Source.Path != "/frame/extensions" {
+func (check *capabilityCheck) unmappedEventPaths(event Event) []string {
+	if len(event.UnmappedPaths) == 0 {
 		return []string{"/unmapped"}
 	}
-	containers, err := native.Value.ReadObject()
-	if err != nil {
-		return []string{"/unmapped"}
+	if len(event.UnmappedPaths) > check.limits.Nodes {
+		check.add(LimitExceeded, "/unmappedPaths", "", "source field path count exceeds the node limit")
+		return nil
 	}
-	var paths []string
-	for container, value := range containers {
-		fields, err := value.ReadObject()
-		if err != nil || !strings.HasPrefix(container, "/") {
-			return []string{"/unmapped"}
+	paths := append([]string(nil), event.UnmappedPaths...)
+	for index, path := range paths {
+		if _, err := parsePointer(path); err != nil || path == "" {
+			check.add(InvalidInput, fmt.Sprintf("/unmappedPaths/%d", index), "", "source field path must be a nonempty JSON pointer")
+			return nil
 		}
-		for name := range fields {
-			paths = append(paths, strings.TrimSuffix(container, "/")+"/"+escapePointer(name))
-		}
-	}
-	if len(paths) == 0 {
-		return []string{"/unmapped"}
 	}
 	sort.Strings(paths)
 	return paths

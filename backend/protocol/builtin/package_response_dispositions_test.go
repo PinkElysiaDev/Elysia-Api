@@ -86,7 +86,7 @@ func TestPackageDeclaredResponseShapeDispositions(t *testing.T) {
 				case "message-status":
 					unprojected.Content[0].Status = p.StringValue("completed")
 				case "wire-owner":
-					unprojected.Attributes["wire:claude"] = testValue(t, `{"vendor":null}`)
+					unprojected.Attributes["wire:openai_responses"] = testValue(t, `{"vendor":null}`)
 				}
 				if _, err := target.EncodeResponse(t.Context(), unprojected, p.EvaluationContext{}); err == nil {
 					t.Fatal("encoding bypassed the required policy", field)

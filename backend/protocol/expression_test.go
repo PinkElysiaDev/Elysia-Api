@@ -83,20 +83,20 @@ func TestExpressionOperationsAndFailureBoundaries(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			definition := testDefinition("operators", "m", "h", "t", "r")
-			definition.Directions[EncodeRequest] = Mapping{Transform: &test.expression}
+			definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: test.expression}
 			compiled := compileTestDefinition(t, definition)
 			input, err := ParseValue([]byte(test.input))
 			if err != nil {
 				t.Fatal(err)
 			}
-			output, issues := compiled.Execute(t.Context(), EncodeRequest, input, EvaluationContext{})
+			output, err := evaluateFixturePlan(t.Context(), compiled, EncodeRequest, input)
 			if test.shouldFail {
-				if IssuesError(issues) == nil {
+				if err == nil {
 					t.Fatal("invalid operation succeeded")
 				}
 				return
 			}
-			if err := IssuesError(issues); err != nil {
+			if err != nil {
 				t.Fatal(err)
 			}
 			expected, _ := ParseValue([]byte(test.expected))
@@ -109,36 +109,98 @@ func TestExpressionOperationsAndFailureBoundaries(t *testing.T) {
 
 func TestCompileChecksNestedOutputSchema(t *testing.T) {
 	definition := testDefinition("typed", "m", "h", "t", "r")
-	definition.Directions[EncodeRequest] = Mapping{Transform: expressionPointer(objectExpression(map[string]Expression{"name": literalExpression(false)})), Output: &ValueSchema{Type: ObjectType, Required: []string{"name"}, Properties: map[string]ValueSchema{"name": {Type: StringType}}}}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	definition.Spec.Documents["test"] = WireContractSpec{Schema: &ValueSchema{Type: ObjectType, Required: []string{"name"}, Properties: map[string]ValueSchema{"name": {Type: StringType}}}}
+	definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: objectExpression(map[string]Expression{"name": literalExpression(false)})}
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	raw, _ := sonic.ConfigStd.Marshal(definition)
 	if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
 		t.Fatal("incompatible nested output compiled")
 	}
 }
 
+func TestExpressionDiscriminatorSchemaCoverage(t *testing.T) {
+	const programPath = "/mapping/discriminator"
+	schema := &ValueSchema{Type: StringType, Enum: []Value{StringValue("first"), StringValue("second")}}
+	exact := parseTestValue(t, "9007199254740993")
+	null := parseTestValue(t, "null")
+	for _, operation := range []string{"choose", "enum"} {
+		for _, fixture := range []struct {
+			name                     string
+			isComplete, hasOtherwise bool
+		}{
+			{"complete", true, false},
+			{"missing", false, false},
+			{"otherwise", false, true},
+		} {
+			t.Run(operation+"/"+fixture.name, func(t *testing.T) {
+				expression := Expression{Op: operation, Source: expressionPointer(readExpression("input", ""))}
+				if operation == "choose" {
+					expression.Cases = map[string]Expression{"first": {Op: "literal", Value: exact}}
+					if fixture.isComplete {
+						expression.Cases["second"] = Expression{Op: "literal", Value: null}
+					}
+				} else {
+					expression.Values = map[string]Value{"first": exact}
+					if fixture.isComplete {
+						expression.Values["second"] = null
+					}
+				}
+				if fixture.hasOtherwise {
+					expression.Otherwise = expressionPointer(literalExpression("fallback"))
+				}
+				compiler := newExpressionCompiler(DefaultLimits(), nil)
+				plan, err := compiler.compilePlan(expression, programPath, expressionScope{input: schema}, 1)
+				if !fixture.isComplete && !fixture.hasOtherwise {
+					if err == nil || err.Error() != programPath+": declared discriminator value has no branch: second" || mappingErrorPath("", err) != programPath {
+						t.Fatal("missing discriminator branch changed its diagnostic", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				compiler.releaseGraph()
+				for _, key := range []string{"first", "second"} {
+					want := exact
+					if key == "second" {
+						want = null
+						if fixture.hasOtherwise {
+							want = StringValue("fallback")
+						}
+					}
+					output, err := plan.evaluate(evaluation{ctx: t.Context(), input: StringValue(key), budget: &evaluationBudget{limits: DefaultLimits()}})
+					if err != nil || output != want {
+						t.Fatal("released discriminator changed its selected value", key, output, err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestExpressionLimitsAndNullSource(t *testing.T) {
 	definition := testDefinition("bounded", "m", "h", "t", "r")
-	definition.Directions[EncodeRequest] = Mapping{Transform: &Expression{Op: "map", Source: expressionPointer(readExpression("input", "")), Body: expressionPointer(literalExpression("size"))}}
+	definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: Expression{Op: "map", Source: expressionPointer(readExpression("input", "")), Body: expressionPointer(literalExpression("size"))}}
 	limits := DefaultLimits()
 	limits.Nodes = 20
-	definition.Limits = &limits
+	definition.Mapping.Limits = &limits
 	// Keep the definition small enough for its intentionally small compile budget.
-	definition.Directions = map[Direction]Mapping{EncodeRequest: definition.Directions[EncodeRequest]}
-	op := definition.Operations["generate"]
+	definition.Mapping.Directions = map[Direction]ProtocolDirectionMapping{EncodeRequest: definition.Mapping.Directions[EncodeRequest]}
+	op := definition.Spec.Operations["generate"]
 	op.Response = ""
-	definition.Operations["generate"] = op
+	definition.Mapping.Operations["generate"] = ProtocolOperationMapping{Request: EncodeRequest}
+	definition.Spec.Operations["generate"] = op
 	compiled := compileTestDefinition(t, definition)
 	input, _ := EncodeValue(make([]int, 21))
 	if _, issues := compiled.Execute(t.Context(), EncodeRequest, input, EvaluationContext{}); IssuesError(issues) == nil {
 		t.Fatal("unbounded evaluation accepted")
 	}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	raw, _ := sonic.ConfigStd.Marshal(definition)
 	var document map[string]any
 	_ = sonic.ConfigStd.Unmarshal(raw, &document)
-	direction := document["directions"].(map[string]any)["encode_request"].(map[string]any)
-	direction["transform"] = map[string]any{"op": "map", "source": nil, "body": map[string]any{"op": "literal", "value": 1}}
+	direction := document["mapping"].(map[string]any)["directions"].(map[string]any)["encode_request"].(map[string]any)
+	direction["program"] = map[string]any{"op": "map", "source": nil, "body": map[string]any{"op": "literal", "value": 1}}
 	raw, _ = sonic.ConfigStd.Marshal(document)
 	if _, issues := compiler.Compile(raw); IssuesError(issues) == nil {
 		t.Fatal("null source accepted")

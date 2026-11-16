@@ -191,7 +191,7 @@ func (transaction *packageStreamTransaction) commitIndexes() ([]map[string]Value
 }
 
 func (plan *compiledOutputPlan) readStreamIndexValues(state evaluation) (plannedOutput, error) {
-	transaction, slot := state.streamTransaction, plan.expression.indexSlot
+	transaction, slot := state.streamTransaction, plan.expression.storageSlot
 	var previous map[string]Value
 	if transaction.previous != nil {
 		previous = transaction.previous.indexes[slot]

@@ -69,7 +69,7 @@ func (state *packageStreamValidation) consumeInputView(ctx context.Context, view
 	state.frameClass = wireFrameOrdinary
 	prior := state.accepted
 	frame := view.value
-	conditions := evaluation{ctx: ctx, input: frame, root: frame, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), streamSlots: state.slots,
+	conditions := evaluation{ctx: ctx, input: frame, root: frame, context: view.context, inputView: view, valueReader: &view.borrowed, objectReader: view.objectReader(), streamSlots: state.slots,
 		budget: &evaluationBudget{limits: state.limits, stepLimit: state.limits.Nodes}}
 	if state.contract.bindingSlots != 0 {
 		conditions.bindings = make([]JSONOutput, state.contract.bindingSlots)
@@ -118,6 +118,9 @@ func (state *packageStreamValidation) checkActionPosition(action compiledPackage
 }
 func (state *packageStreamValidation) consumeAction(ctx context.Context, action compiledPackageStreamEvent, responseID string, read func(streamField) (Value, error), reader *valueReader) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := state.checkClosedNamespaces(ctx, action); err != nil {
 		return err
 	}
 	if action.frameClass != wireFrameOrdinary {

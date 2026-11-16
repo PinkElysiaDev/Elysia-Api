@@ -9,12 +9,7 @@ import (
 // reconciliation and wire edits. Caller intent remains read-only; a successful
 // check never changes the prepared request or grants a new target disposition.
 func (compiled *Compiled) ValidateRequestOutput(ctx context.Context, wire Value, options EvaluationContext) error {
-	if compiled.packagePlan == nil {
-		if err := compiled.CheckRequestBody(ctx, wire); err != nil {
-			return err
-		}
-		return compiled.ValidateWireOutputContext(ctx, EncodeRequest, wire)
-	}
+
 	options = options.withInputView(wire)
 	view := options.inputView
 	limits := compiled.RequestLimits(ctx)

@@ -16,17 +16,20 @@ func (value Value) readObject() (Object, error) {
 }
 
 func (value Value) readObjectWithin(reader *valueReader) (Object, error) {
-	return value.readObjectFieldsWithin(reader, false)
+	return value.scanObjectFields(reader, nil)
 }
 
-// Borrowed field tables are private to an input invocation. Public and adapter
-// reads still own their maps and keys, even when large values share storage.
-func (value Value) readObjectFieldsWithin(reader *valueReader, canBorrowKeys bool) (Object, error) {
+// Public maps own their keys; private builders borrow within the input lifetime.
+// Both paths fold the same decoded keys before consumers inspect the fields.
+func (value Value) scanObjectFields(reader *valueReader, builder *objectFieldBuilder) (Object, error) {
 	raw := strings.TrimSpace(value.raw)
 	if len(raw) == 0 || raw[0] != '{' {
 		return nil, fmt.Errorf("expected JSON object")
 	}
-	fields := Object{}
+	var fields Object
+	if builder == nil {
+		fields = Object{}
+	}
 	for offset := skipJSONSpace(raw, 1); raw[offset] != '}'; {
 		end := jsonStringEnd(raw, offset)
 		key := raw[offset+1 : end-1]
@@ -36,20 +39,29 @@ func (value Value) readObjectFieldsWithin(reader *valueReader, canBorrowKeys boo
 			if err != nil {
 				return nil, err
 			}
-		} else if !canBorrowKeys {
+		} else if builder == nil {
 			key = strings.Clone(key)
 		}
 		offset = skipJSONSpace(raw, skipJSONSpace(raw, end)+1)
 		end = reader.valueEnd(raw, offset)
-		// Retained metadata must not keep an entire large frame alive through a
-		// tiny substring; resource accounting measures the child value's bytes.
-		fields[key] = Value{raw: reader.fragment(raw[offset:end])}
+		// Retained metadata must not keep a large frame alive through a tiny field.
+		member := Value{raw: reader.fragment(raw[offset:end])}
+		if builder == nil {
+			fields[key] = member
+		} else {
+			builder.addField(objectField{key: key, value: member})
+		}
 		offset = skipJSONSpace(raw, end)
 		if raw[offset] == ',' {
 			offset = skipJSONSpace(raw, offset+1)
 		}
 	}
 	return fields, nil
+}
+
+type objectField struct {
+	key   string
+	value Value
 }
 
 func decodeObjectKey(raw string) (string, error) {

@@ -1,11 +1,11 @@
 package protocol
 
-func (plan *compiledOutputPlan) buildBinding(state evaluation) (plannedOutput, error) {
+func (plan *compiledOutputPlan) buildBinding(state *evaluation) (plannedOutput, error) {
 	source, err := plan.source.buildNode(state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
-	slot := plan.expression.bindingSlot
+	slot := plan.expression.storageSlot
 	previous := state.bindings[slot]
 	state.bindings[slot] = source.output
 	var previousLocation nativeLocation

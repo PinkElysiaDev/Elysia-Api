@@ -65,11 +65,6 @@ func normalizeCoreSemantic(value reflect.Value, cache *semanticCache) {
 			normalizeCoreControlState(selected, cache)
 		}
 		return
-	case *ResponsesTurnState:
-		if selected != nil {
-			normalizeCoreResponsesTurnState(selected, cache)
-		}
-		return
 	case *int:
 		return
 	case *Node:
@@ -81,6 +76,9 @@ func normalizeCoreSemantic(value reflect.Value, cache *semanticCache) {
 		if selected != nil {
 			normalizeCoreMedia(selected, cache)
 		}
+		return
+	case []string:
+		normalizeCoreStringSlice(&selected, cache)
 		return
 	case *ToolInput:
 		if selected != nil {
@@ -173,9 +171,6 @@ func normalizeCoreSemantic(value reflect.Value, cache *semanticCache) {
 		return
 	case *ControlState:
 		normalizeCoreControlState(selected, cache)
-		return
-	case *ResponsesTurnState:
-		normalizeCoreResponsesTurnState(selected, cache)
 		return
 	case *Media:
 		normalizeCoreMedia(selected, cache)
@@ -334,11 +329,6 @@ func normalizeCoreEvent(value *Event, cache *semanticCache) {
 	} else {
 		value.Control = *new(*ControlState)
 	}
-	if value.ResponsesTurnState != nil {
-		normalizeCoreResponsesTurnStatePointer(&value.ResponsesTurnState, cache)
-	} else {
-		value.ResponsesTurnState = *new(*ResponsesTurnState)
-	}
 	if len(value.Metadata) != 0 {
 		normalizeCoreResponseMetadataSlice(&value.Metadata, cache)
 	} else {
@@ -426,6 +416,11 @@ func normalizeCoreEvent(value *Event, cache *semanticCache) {
 	} else {
 		value.Unmapped = *new(*Native)
 	}
+	if len(value.UnmappedPaths) != 0 {
+		normalizeCoreStringSlice(&value.UnmappedPaths, cache)
+	} else {
+		value.UnmappedPaths = *new([]string)
+	}
 }
 func normalizeCoreEventPointer(value **Event, cache *semanticCache) {
 	if *value != nil {
@@ -502,11 +497,6 @@ func normalizeCoreControlStatePointer(value **ControlState, cache *semanticCache
 		normalizeCoreControlState(*value, cache)
 	}
 }
-func normalizeCoreResponsesTurnStatePointer(value **ResponsesTurnState, cache *semanticCache) {
-	if *value != nil {
-		normalizeCoreResponsesTurnState(*value, cache)
-	}
-}
 func normalizeCoreEventType(value *EventType, cache *semanticCache) {
 	*value = EventType(normalizeSemanticString(string(*value)))
 }
@@ -521,6 +511,11 @@ func normalizeCoreNodePointer(value **Node, cache *semanticCache) {
 func normalizeCoreMediaPointer(value **Media, cache *semanticCache) {
 	if *value != nil {
 		normalizeCoreMedia(*value, cache)
+	}
+}
+func normalizeCoreStringSlice(value *[]string, cache *semanticCache) {
+	for index := range *value {
+		normalizeCoreString(&(*value)[index], cache)
 	}
 }
 func normalizeCoreNode(value *Node, cache *semanticCache) {
@@ -715,11 +710,6 @@ func normalizeCoreClientOutput(value *ClientOutput, cache *semanticCache) {
 	} else {
 		value.RawStreamOptions = *new(Value)
 	}
-	if !value.RawResponsesInclude.IsZero() {
-		normalizeCoreValue(&value.RawResponsesInclude, cache)
-	} else {
-		value.RawResponsesInclude = *new(Value)
-	}
 	if value.ResponsesStorage != nil {
 		normalizeCoreResponsesStorageIntentPointer(&value.ResponsesStorage, cache)
 	} else {
@@ -727,6 +717,16 @@ func normalizeCoreClientOutput(value *ClientOutput, cache *semanticCache) {
 	}
 }
 func normalizeCoreResponseMetadata(value *ResponseMetadata, cache *semanticCache) {
+	if len(value.Meaning) != 0 {
+		normalizeCoreString(&value.Meaning, cache)
+	} else {
+		value.Meaning = *new(string)
+	}
+	if !value.References.IsZero() {
+		normalizeCoreValue(&value.References, cache)
+	} else {
+		value.References = *new(Value)
+	}
 	normalizeCoreString(&value.Name, cache)
 	normalizeCoreString(&value.Location, cache)
 	normalizeCoreString(&value.Codec, cache)
@@ -740,6 +740,16 @@ func normalizeCoreResponseMetadata(value *ResponseMetadata, cache *semanticCache
 	}
 }
 func normalizeCoreUsage(value *Usage, cache *semanticCache) {
+	if !value.ExecutionSpeed.IsZero() {
+		normalizeCoreValue(&value.ExecutionSpeed, cache)
+	} else {
+		value.ExecutionSpeed = *new(Value)
+	}
+	if !value.Executions.IsZero() {
+		normalizeCoreValue(&value.Executions, cache)
+	} else {
+		value.Executions = *new(Value)
+	}
 	if !value.Attribution.IsZero() {
 		normalizeCoreValue(&value.Attribution, cache)
 	} else {
@@ -784,10 +794,6 @@ func normalizeCoreUsage(value *Usage, cache *semanticCache) {
 func normalizeCoreControlState(value *ControlState, cache *semanticCache) {
 	normalizeCoreString(&value.Kind, cache)
 	normalizeCoreValue(&value.Payload, cache)
-	normalizeCoreProvenance(&value.Source, cache)
-}
-func normalizeCoreResponsesTurnState(value *ResponsesTurnState, cache *semanticCache) {
-	normalizeCoreValue(&value.Frame, cache)
 	normalizeCoreProvenance(&value.Source, cache)
 }
 func normalizeCoreMedia(value *Media, cache *semanticCache) {

@@ -76,10 +76,11 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if record != nil {
 		s.estimateGatewayAttempt(record, request)
 	}
-	options.InterleavedThinking, options.Scope = protocol.OperationInterleavedThinking(candidate.operation), candidate.scope
+	options.InterleavedThinking, options.Scope = candidate.operation.IsInterleavedThinking, candidate.scope
 	options.State, options.Diagnostics = protocol.NewEvaluationState(), &protocol.DiagnosticSink{}
 	options.ClientOutput = request.ClientOutput
-	options = options.WithConversion(candidate.conversion, candidate.conversionContext(candidate.compiled, true).WithOperation(options))
+	route := candidate.conversionContext(candidate.compiled, true).WithOperation(options)
+	options = options.WithConversion(candidate.conversion, route)
 	defer options.State.Release()
 	defer func() {
 		if record != nil {
@@ -139,18 +140,13 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 			return nil, err
 		}
 		if record != nil {
-			if candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
-				if err := observeLegacyHostedTools(record, candidate.compiled, body); err != nil {
-					return nil, err
-				}
-			}
 			updateRecordProtocolUsage(record, result.Usage)
 		}
-		route, err := candidate.conversionContext(candidate.compiled, true).WithOperation(options).WithResponseModelOrigin(candidate.compiled, candidate.compiled, outboundBody, body)
+		route, err := candidate.conversionContext(candidate.compiled, true).WithOperation(options).WithResponseObservations(candidate.compiled, candidate.compiled, outboundBody, body)
 		if err != nil {
 			return nil, err
 		}
-		result, err = candidate.conversion.RepairCollectedResponseModel(ctx, result, route, options.Diagnostics)
+		result, err = candidate.conversion.ProjectCollectedResponse(ctx, result, route, options.Diagnostics)
 		if err != nil {
 			return nil, err
 		}
@@ -165,7 +161,7 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 		return nil, err
 	}
 	defer collector.Release()
-	source, err := newProtocolSourceStream(ctx, candidate, candidate.compiled, candidate.conversionContext(candidate.compiled, true), options, record, func(decoded *protocol.EventFrame, _ protocol.Object) error {
+	source, err := newProtocolSourceStream(ctx, candidate, route, options, record, func(decoded *protocol.EventFrame, _ protocol.Object) error {
 		for _, event := range decoded.Events {
 			if err := candidate.compiled.ValidateEventReferences(ctx, event, options); err != nil {
 				return err
@@ -183,12 +179,10 @@ func (s *Server) collectProtocolGenerationAttempt(ctx context.Context, candidate
 	if err != nil {
 		return nil, err
 	}
-	if candidate.compiled.CoreVersion() == protocol.ProtocolCoreVersion {
-		budget := protocol.NewStreamBudget(limits)
-		if err := budget.Bind(options.State, source.wireValidation, source.replay, collector); err != nil {
-			source.release()
-			return nil, err
-		}
+	budget := protocol.NewStreamBudget(limits)
+	if err := budget.Bind(options.State, source.state, source.wireValidation, source.replay, collector); err != nil {
+		source.release()
+		return nil, err
 	}
 	err = protocol.ReadFrames(ctx, response.Body, candidate.operation, limits.BufferBytes, source.Push)
 	err = source.Finish(err)

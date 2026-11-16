@@ -72,7 +72,6 @@ type retryEvent struct {
 }
 
 type usageRecord struct {
-	hostedTools          *builtin.ToolAccounting
 	IngressRevision      string                     `json:"ingressRevision,omitempty"`
 	UpstreamRevision     string                     `json:"upstreamRevision,omitempty"`
 	ConversionPolicyHash string                     `json:"conversionPolicyHash,omitempty"`

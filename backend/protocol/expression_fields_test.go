@@ -79,7 +79,8 @@ func TestExpressionFieldsCheckGoAuthoredChanges(t *testing.T) {
 
 // Keep the old codec round trip only as a test oracle for field omission rules.
 func encodedExpressionFieldsValid(expression Expression, operation OperationInfo, authored []byte) bool {
-	raw, err := sonic.ConfigStd.Marshal(expression)
+	type plain Expression
+	raw, err := sonic.ConfigStd.Marshal(plain(expression))
 	if err != nil {
 		return false
 	}
@@ -88,6 +89,9 @@ func encodedExpressionFieldsValid(expression Expression, operation OperationInfo
 		return false
 	}
 	var original map[string]json.RawMessage
+	if expression.isCompactRead {
+		authored = raw
+	}
 	if err := sonic.ConfigStd.Unmarshal(authored, &original); err != nil {
 		return false
 	}

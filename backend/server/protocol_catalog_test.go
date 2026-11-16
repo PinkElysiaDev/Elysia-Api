@@ -15,16 +15,16 @@ func TestEnabledProtocolCatalogUsesPinnedRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	compiled, _ := service.Pin("openai-chat-completions")
-	definition := compiled.Definition()
-	definition.Name = "unverified draft"
-	definition.ID = "unactivated-copy"
-	delete(definition.Operations, "models")
-	definition.Agent = nil
+	definition := compiledPackage(compiled)
+	definition.Spec.Name = "unverified draft"
+	definition.Spec.ID = "unactivated-copy"
+	delete(definition.Spec.Operations, "models")
+	definition.Mapping.Agent = nil
 	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = service.SaveDraft(t.Context(), definition.ID, raw, ""); err != nil {
+	if _, _, err = service.SaveDraft(t.Context(), definition.Spec.ID, raw, ""); err != nil {
 		t.Fatal(err)
 	}
 	c, response := adminProtocolContext("GET", "/api/admin/protocols/enabled", "")

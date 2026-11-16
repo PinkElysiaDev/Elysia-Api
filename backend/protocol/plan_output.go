@@ -14,14 +14,13 @@ type compiledOutputPlan struct {
 	borrowsScalarInput     bool
 	hasRecursion           bool
 	expression             *compiledExpression
-	fields                 []outputPlanField
+	collections            *outputPlanCollections
 	items                  []*compiledOutputPlan
 	source                 *compiledOutputPlan
 	body                   *compiledOutputPlan
 	when                   *compiledOutputPlan
 	then                   *compiledOutputPlan
 	otherwise              *compiledOutputPlan
-	cases                  map[string]*compiledOutputPlan
 	bindingSlots           int
 	indexSlots             int
 	rootObjectReads        uint8
@@ -34,6 +33,11 @@ type compiledOutputPlan struct {
 	hasRequestObjectSource bool
 }
 
+type outputPlanCollections struct {
+	fields []outputPlanField
+	cases  map[string]*compiledOutputPlan
+}
+
 type outputPlanField struct {
 	key        string
 	keyBytes   int
@@ -44,11 +48,24 @@ func (plan *compiledOutputPlan) isInputIdentity() bool {
 	return plan != nil && plan.expression.isInputIdentity()
 }
 
-func (plan *compiledOutputPlan) checkIdentityAfter(ctx context.Context, bytes int, limits Limits) error {
-	if plan == nil {
-		return nil
+func newOutputPlan(expression *compiledExpression) *compiledOutputPlan {
+	if expression.op != "object" && expression.op != "choose" {
+		return &compiledOutputPlan{expression: expression}
 	}
-	return plan.expression.checkIdentityAfter(ctx, bytes, limits)
+	storage := &struct {
+		compiledOutputPlan
+		collections outputPlanCollections
+	}{}
+	storage.expression = expression
+	storage.compiledOutputPlan.collections = &storage.collections
+	return &storage.compiledOutputPlan
+}
+
+func (plan *compiledOutputPlan) readCollections() ([]outputPlanField, map[string]*compiledOutputPlan) {
+	if plan.collections == nil {
+		return nil, nil
+	}
+	return plan.collections.fields, plan.collections.cases
 }
 
 func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, bool) {
@@ -58,19 +75,19 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	if expression.outputPlan != nil {
 		return expression.outputPlan, true
 	}
-	plan := &compiledOutputPlan{expression: expression}
+	plan := newOutputPlan(expression)
 	switch expression.op {
 	case "omit", "reject", "literal", "read", "let", "with_input", "with_index", "remember", "recall", "forget", "index_size", "index", "capture_native", "capture_source", "is_carrier", "replay_native", "native_matches", "object", "check_fields", "project", "keys", "array", "map", "walk", "visit", "recur", "flatmap", "filter", "if", "choose",
 		"merge", "merge_deep", "merge_usage", "check_usage", "check_links", "resolve_item", "track_text", "track_array", "track_position", "project_range", "require_disposition", "json_digest", "track_tool", "buffer_text", "buffer_array", "read_delivered_item", "resume_text", "resume_tool", "pointer_join", "index_values", "length", "concat", "join", "sort", "associate", "parse_json", "stringify_json", "split_data_uri",
-		"exists", "present", "type", "is_integer", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs", "utf16_length":
+		"exists", "present", "type", "is_integer", "is_integral", "integer", "not", "enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "matches_charset", "equal", "equal_text", "all", "any", "entries", "from_entries", "group_runs", "utf16_length":
 	default:
 		return nil, false
 	}
 	if expression.op == "let" || expression.op == "read" && expression.from == "binding" {
-		plan.bindingSlots = expression.bindingSlot + 1
+		plan.bindingSlots = expression.storageSlot + 1
 	}
 	if !expression.isStreamIndex && (expression.op == "with_index" || expression.op == "remember" || expression.op == "recall" || expression.op == "forget" || expression.op == "index_size") {
-		plan.indexSlots = expression.indexSlot + 1
+		plan.indexSlots = expression.storageSlot + 1
 	}
 	if expression.op == "read" && len(expression.pointer) != 0 {
 		switch expression.from {
@@ -112,13 +129,13 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 	}
 	if expression.op == "object" {
 		plan.hasCanonicalFields = true
-		for _, key := range expression.keys {
+		for _, key := range expression.fieldKeys {
 			plan.hasCanonicalFields = plan.hasCanonicalFields && utf8.ValidString(key)
 			child, ok := compileOutputPlan(expression.fields[key])
 			if !ok {
 				return nil, false
 			}
-			plan.fields = append(plan.fields, outputPlanField{key, jsonStringBytes(key), child})
+			plan.collections.fields = append(plan.collections.fields, outputPlanField{key, jsonStringBytes(key), child})
 			plan.mergeRequirements(child, true)
 		}
 	}
@@ -131,18 +148,18 @@ func compileOutputPlan(expression *compiledExpression) (*compiledOutputPlan, boo
 		plan.mergeRequirements(child, true)
 	}
 	if len(expression.cases) != 0 {
-		plan.cases = make(map[string]*compiledOutputPlan, len(expression.cases))
+		plan.collections.cases = make(map[string]*compiledOutputPlan, len(expression.cases))
 		for key, branch := range expression.cases {
 			child, ok := compileOutputPlan(branch)
 			if !ok {
 				return nil, false
 			}
-			plan.cases[key] = child
+			plan.collections.cases[key] = child
 			plan.mergeRequirements(child, true)
 		}
 	}
 	switch expression.op {
-	case "exists", "present", "type", "is_integer":
+	case "exists", "present", "type", "is_integer", "is_integral":
 		plan.borrowsScalarInput = canBorrowScalarRead(expression.source)
 	case "equal":
 		if len(expression.items) == 2 {
@@ -215,10 +232,12 @@ func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, er
 			state.capture.bindings = make([]nativeLocation, plan.bindingSlots)
 		}
 	}
-	return plan.buildNode(state)
+	return plan.buildNode(&state)
 }
 
-func (plan *compiledOutputPlan) buildNode(state evaluation) (plannedOutput, error) {
+// Dispatch borrows the current scope; operations that bind a different input,
+// item or reader keep a local copy. Accounting stays at this return boundary.
+func (plan *compiledOutputPlan) buildNode(state *evaluation) (plannedOutput, error) {
 	expression := plan.expression
 	if expression.op == "read" && state.hasOutputReader(expression.from) {
 		return expression.buildReadOutput(state)
@@ -226,7 +245,7 @@ func (plan *compiledOutputPlan) buildNode(state evaluation) (plannedOutput, erro
 	if err := state.advance(); err != nil {
 		return plannedOutput{}, locateMappingError(expression.path, err)
 	}
-	value, err := plan.buildOperation(&state)
+	value, err := plan.buildOperation(state)
 	if err == nil && value.bytes > state.budget.limits.BufferBytes {
 		err = resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, value.bytes)
 		value = plannedOutput{}
@@ -234,8 +253,6 @@ func (plan *compiledOutputPlan) buildNode(state evaluation) (plannedOutput, erro
 	return value, locateMappingError(expression.path, err)
 }
 
-// The common return boundary owns accounting and error location. Dispatch
-// borrows the local scope; nested operations still receive their own scope value.
 func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput, error) {
 	expression := plan.expression
 	switch expression.op {
@@ -244,9 +261,9 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 	case "literal":
 		return plannedLeaf(expression.value), nil
 	case "read":
-		return plan.buildReadValue(*state)
+		return plan.buildReadValue(state)
 	case "let":
-		return plan.buildBinding(*state)
+		return plan.buildBinding(state)
 	case "with_input":
 		return plan.buildInputScope(*state)
 	case "check_usage":
@@ -291,9 +308,9 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 		return plan.forgetValue(*state)
 	case "index_size":
 		if expression.isStreamIndex {
-			return plannedLeaf(coreInteger(int64(state.streamTransaction.indexSize(expression.indexSlot)))), nil
+			return plannedLeaf(coreInteger(int64(state.streamTransaction.indexSize(expression.storageSlot)))), nil
 		}
-		return plannedLeaf(coreInteger(int64(len(state.indexes.frames[expression.indexSlot].values)))), nil
+		return plannedLeaf(coreInteger(int64(len(state.indexes.frames[expression.storageSlot].values)))), nil
 	case "index":
 		return plannedLeaf(coreInteger(int64(state.itemIndex))), nil
 	case "capture_native":
@@ -305,7 +322,7 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 	case "replay_native", "native_matches":
 		return plan.buildNativeTarget(*state)
 	case "object":
-		return plan.buildObject(*state)
+		return plan.buildObject(state)
 	case "reject":
 		return plannedOutput{}, plan.reject(*state)
 	case "check_fields":
@@ -319,29 +336,29 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 	case "from_entries":
 		return plan.buildObjectEntries(*state)
 	case "array":
-		return plan.buildArray(*state)
+		return plan.buildArray(state)
 	case "length":
 		return plan.countArrayMembers(*state)
 	case "merge", "concat":
-		return plan.buildOperands(*state)
+		return plan.buildOperands(state)
 	case "merge_deep":
 		return plan.buildDeepMerge(*state)
 	case "merge_usage":
 		return plan.mergeUsage(*state)
 	case "join":
-		return plan.buildJoin(*state)
+		return plan.buildJoin(state)
 	case "sort", "associate":
 		return plan.buildKeyedArray(*state)
 	case "parse_json", "stringify_json":
 		return plan.buildJSONScalar(*state)
-	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains", "has_control", "utf16_length":
-		return plan.buildScalar(*state)
-	case "type", "is_integer":
-		return plan.buildTypeQuery(*state)
+	case "exists", "present", "not", "enum", "cast", "strip_prefix", "trim_prefix", "split_data_uri", "lower", "quote_string", "has_prefix", "contains", "has_control", "matches_charset", "utf16_length":
+		return plan.buildScalar(state)
+	case "type", "is_integer", "is_integral":
+		return plan.buildTypeQuery(state)
 	case "integer":
-		return plan.buildInteger(*state)
+		return plan.buildInteger(state)
 	case "equal", "all", "any":
-		return plan.buildScalarOperands(*state)
+		return plan.buildScalarOperands(state)
 	case "equal_text":
 		return plan.compareText(*state)
 	case "map", "flatmap":
@@ -355,7 +372,7 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 	case "group_runs":
 		return plan.buildRuns(*state)
 	case "if":
-		condition, err := plan.when.buildNode(*state)
+		condition, err := plan.when.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -370,9 +387,9 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 		if branch == nil {
 			return plannedOutput{}, nil
 		}
-		return branch.buildNode(*state)
+		return branch.buildNode(state)
 	case "choose":
-		discriminator, err := plan.source.buildNode(*state)
+		discriminator, err := plan.source.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
 		}
@@ -380,22 +397,22 @@ func (plan *compiledOutputPlan) buildOperation(state *evaluation) (plannedOutput
 		if err != nil {
 			return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
 		}
-		branch := plan.cases[key]
+		branch := plan.collections.cases[key]
 		if branch == nil {
 			branch = plan.otherwise
 		}
 		if branch == nil {
 			return plannedOutput{}, fmt.Errorf("%s/cases: no branch for discriminator", expression.path)
 		}
-		return branch.buildNode(*state)
+		return branch.buildNode(state)
 	}
 	panic("uncompiled output operation")
 }
 
-func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, error) {
-	node := &jsonOutputNode{object: true, hasCanonicalKeys: plan.hasCanonicalFields, hasSortedFields: true, fields: make([]jsonOutputField, 0, len(plan.fields))}
+func (plan *compiledOutputPlan) buildObject(state *evaluation) (plannedOutput, error) {
+	node := &jsonOutputNode{object: true, hasCanonicalKeys: plan.hasCanonicalFields, hasSortedFields: true}
 	logicalBytes, encodedBytes := 0, 2
-	for _, field := range plan.fields {
+	for _, field := range plan.collections.fields {
 		value, err := field.expression.buildNode(state)
 		if err != nil {
 			return plannedOutput{}, err
@@ -408,7 +425,9 @@ func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, er
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, logicalBytes)
 		}
 		value = value.normalizeForContainer(state.cache)
-		if len(node.fields) != 0 {
+		if len(node.fields) == 0 {
+			node.fields = make([]jsonOutputField, 0, len(plan.collections.fields))
+		} else {
 			encodedBytes++
 		}
 		encodedBytes += field.keyBytes + 1 + value.bytes
@@ -418,7 +437,7 @@ func (plan *compiledOutputPlan) buildObject(state evaluation) (plannedOutput, er
 	return plannedOutput{JSONOutput{node: node}, encodedBytes}, nil
 }
 
-func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, error) {
+func (plan *compiledOutputPlan) buildArray(state *evaluation) (plannedOutput, error) {
 	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(plan.items))}
 	logicalBytes, encodedBytes := 0, 2
 	for _, item := range plan.items {
@@ -441,7 +460,7 @@ func (plan *compiledOutputPlan) buildArray(state evaluation) (plannedOutput, err
 }
 
 func (plan *compiledOutputPlan) buildIteration(state evaluation) (plannedOutput, error) {
-	source, err := plan.source.buildNode(state)
+	source, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -457,7 +476,10 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 	if err != nil {
 		return plannedOutput{}, fmt.Errorf("%s/source: %w", expression.path, err)
 	}
-	node := &jsonOutputNode{items: make([]JSONOutput, 0, len(items))}
+	node := &jsonOutputNode{}
+	if expression.op != "flatmap" {
+		node.items = make([]JSONOutput, 0, len(items))
+	}
 	logicalBytes, encodedBytes := 0, 2
 	isWalk := expression.op == "walk" || expression.op == "recur"
 	shouldCapture := body.needsItemCapture(state.capture, state.walkBody)
@@ -486,7 +508,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 			*itemReader = planObjectReader{root: spanIdentity(item.value.raw), parent: state.objectReader}
 			child.objectReader = itemReader
 		}
-		value, err := body.buildNode(child)
+		value, err := body.buildNode(&child)
 		itemReader.releaseItem(err)
 		if err != nil {
 			return plannedOutput{}, err
@@ -497,6 +519,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 		if expression.op == "flatmap" {
 			if value.output.node != nil && !value.output.node.object {
 				if len(value.output.node.items) != 0 {
+					reservePlannedItems(node, len(items))
 					encodedBytes += value.bytes - 2
 					if len(node.items) != 0 {
 						encodedBytes++
@@ -510,6 +533,9 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 				values, err := value.output.value.readArrayWithin(reader)
 				if err != nil {
 					return plannedOutput{}, err
+				}
+				if len(values) != 0 {
+					reservePlannedItems(node, len(items))
 				}
 				for _, element := range values {
 					encodedBytes += appendPlannedItem(node, plannedOutput{JSONLeaf(element), element.Len()}, state.cache)
@@ -536,6 +562,12 @@ func (value plannedOutput) normalizeForContainer(cache *semanticCache) plannedOu
 		value.bytes = value.output.value.Len()
 	}
 	return value
+}
+
+func reservePlannedItems(node *jsonOutputNode, capacity int) {
+	if node.items == nil {
+		node.items = make([]JSONOutput, 0, capacity)
+	}
 }
 
 func appendPlannedItem(node *jsonOutputNode, value plannedOutput, cache *semanticCache) int {

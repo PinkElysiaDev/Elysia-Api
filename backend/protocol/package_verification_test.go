@@ -60,8 +60,8 @@ func TestPackageVerificationUsesRuntimeAndBindsEvidence(t *testing.T) {
 			t.Fatal("invalid package evidence authorized activation", alteration)
 		}
 	}
-	if _, err := DecodeRequestContract(document.Mapping.Samples[1].Input.Bytes()); err == nil {
-		t.Fatal("public legacy request parser silently accepted core2")
+	if _, err := DecodeRequestContract(document.Mapping.Samples[1].Input.Bytes()); err != nil {
+		t.Fatal("public request parser rejected the central core contract", err)
 	}
 }
 
@@ -189,10 +189,10 @@ func TestPackageExpectedEventVersions(t *testing.T) {
 		change func([]Event)
 	}{
 		{"valid", nil},
-		{"legacy-first-event", func(events []Event) { events[0].SchemaVersion = SemanticSchemaVersion }},
-		{"legacy-later-event", func(events []Event) { events[1].SchemaVersion = SemanticSchemaVersion }},
+		{"legacy-first-event", func(events []Event) { events[0].SchemaVersion = 1 }},
+		{"legacy-later-event", func(events []Event) { events[1].SchemaVersion = 1 }},
 		{"zero-event-version", func(events []Event) { events[0].SchemaVersion = 0 }},
-		{"legacy-nested-response", func(events []Event) { events[0].Response.SchemaVersion = SemanticSchemaVersion }},
+		{"legacy-nested-response", func(events []Event) { events[0].Response.SchemaVersion = 1 }},
 		{"zero-nested-request", func(events []Event) { events[1].Request.SchemaVersion = 0 }},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {

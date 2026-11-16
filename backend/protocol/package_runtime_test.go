@@ -37,7 +37,7 @@ func TestPackageRuntimeRoundTrip(t *testing.T) {
 	}
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {
 		mapping := compiled.mappings[direction]
-		if mapping.module != nil || (!mapping.hasCoreInputPlan && !mapping.hasCoreOutputPlan) {
+		if !mapping.hasCoreInputPlan && !mapping.hasCoreOutputPlan {
 			t.Fatal("package runtime selected an intermediate semantic JSON boundary", direction)
 		}
 	}
@@ -47,10 +47,10 @@ func TestPackageRuntimeRoundTrip(t *testing.T) {
 	if issues := CheckResponse(response, bindingTarget(compiled, Binding{Capabilities: compiled.Capabilities(EncodeResponse)}, EncodeResponse, options.Scope), DefaultLimits()); len(issues) != 0 {
 		t.Fatal("binding target lost its core version", issues)
 	}
-	if issues := CheckRequest(request, Target{Capabilities: compiled.Capabilities(EncodeRequest)}, DefaultLimits()); len(issues) != 1 || issues[0].Path != "/schemaVersion" {
-		t.Fatal("an unbound legacy target accepted core2", issues)
+	if issues := CheckRequest(request, Target{Capabilities: compiled.Capabilities(EncodeRequest)}, DefaultLimits()); len(issues) != 0 {
+		t.Fatal("core2 target rejected current semantic contract", issues)
 	}
-	request.SchemaVersion, response.SchemaVersion = SemanticSchemaVersion, SemanticSchemaVersion
+	request.SchemaVersion, response.SchemaVersion = 1, 1
 	_, err = compiled.EncodeRequest(t.Context(), request, options)
 	assertPackageRuntimeIssue(t, err, InvalidInput, "/schemaVersion")
 	_, err = compiled.EncodeResponse(t.Context(), response, options)

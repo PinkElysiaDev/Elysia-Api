@@ -20,7 +20,11 @@ func TestInputScopeKeepsEnclosingFieldOwner(t *testing.T) {
 		if _, err := plan.evaluate(state); err != nil {
 			t.Fatal(err)
 		}
-		if view.objects.root != spanIdentity(input.raw) || view.objects.fields["a"].raw != `"one"` {
+		if view.objects.root != spanIdentity(input.raw) || view.objects.fields == nil {
+			t.Fatal("nested scope released its parent")
+		}
+		selected, err := view.objects.readOwnedMember(input, "a")
+		if err != nil || selected.raw != `"one"` {
 			t.Fatal("nested scope released its parent")
 		}
 	}

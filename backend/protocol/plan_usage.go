@@ -10,7 +10,7 @@ func (failure *declaredCheckError) Error() string { return failure.err.Error() }
 func (failure *declaredCheckError) Unwrap() error { return failure.err }
 
 func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, error) {
-	value, err := plan.source.buildNode(state)
+	value, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -22,8 +22,7 @@ func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, err
 		return plannedOutput{}, err
 	}
 	if err := ValidateUsageArithmetic(usage); err != nil {
-		// The legacy validator reports stream attribution even for JSON. Its
-		// code, core location and cause remain valid; this invocation owns stage.
+		// Preserve the canonical diagnostic while attributing this invocation.
 		var failure *ConversionError
 		if errors.As(err, &failure) {
 			issues := append([]ConversionIssue(nil), failure.Issues...)
@@ -40,7 +39,7 @@ func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, err
 }
 
 func (plan *compiledOutputPlan) mergeUsage(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(state)
+	operands, err := plan.buildOperandValues(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

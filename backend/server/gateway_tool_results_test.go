@@ -53,7 +53,7 @@ func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 				policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "media-policy", Mode: mode, Rules: []protocol.ConversionRule{}}
 				if order == "reject" {
 					present := true
-					policy.Rules = append(policy.Rules, protocol.ConversionRule{ID: "operator-reject", Order: 1, Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Match: protocol.ConversionMatch{Path: "/parameters/anthropic_metadata/user_id", Present: &present}, Reason: "operator policy"})
+					policy.Rules = append(policy.Rules, protocol.ConversionRule{ID: "operator-reject", Order: 1, Enabled: true, Phase: protocol.ConversionRequest, Action: "reject", Match: protocol.ConversionMatch{Path: "/parameters/user", Present: &present}, Reason: "operator policy"})
 				}
 				bindings, err := s.store.ListProtocolBindings(t.Context())
 				if err != nil {
@@ -90,7 +90,7 @@ func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 				} else if rec.Code != 200 || calls != 1 {
 					t.Fatal(rec.Code, calls, rec.Body)
 				}
-				if order == "unsupported" && !strings.Contains(rec.Body.String(), "plain text blocks") {
+				if order == "unsupported" && !strings.Contains(rec.Body.String(), "conversion_rejected at /content/1/children/0/children:") {
 					t.Fatal("missing target diagnostic", rec.Body)
 				}
 				if order == "reject" && !strings.Contains(rec.Body.String(), "operator policy") {

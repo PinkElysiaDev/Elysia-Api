@@ -8,7 +8,7 @@ func (collector *ResponseCollector) setResponse(response Response, isSnapshot bo
 	// The schema and compiled protocol identity are fixed shared slots, not
 	// dynamic response state. Meter semantic structure with its existing shape
 	// limits, then apply the original byte budget to the retained fields.
-	header.SchemaVersion, header.Source = collector.replay.target.coreSchemaVersion(), collector.replay.target.Protocol
+	header.SchemaVersion, header.Source = ProtocolCoreVersion, collector.replay.target.Protocol
 	size, err := measureSemanticValue(&header, semanticLimits(collector.replay.limits))
 	if err != nil {
 		return err

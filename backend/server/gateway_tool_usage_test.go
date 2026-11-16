@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,6 +19,8 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			const ledger = `{"image_gen":{"input_tokens":7,"output_tokens":5,"total_tokens":12,"input_tokens_details":{"image_tokens":4,"text_tokens":3},"output_tokens_details":{"image_tokens":5,"text_tokens":0}},"web_search":{"num_requests":2}}`
 			const item = `{"type":"message","id":"msg","role":"assistant","status":"completed","content":[{"type":"output_text","text":"OK","annotations":[]}]}`
 			const attribution = `{"items":{"msg":{"input_tokens":2,"output_tokens":1,"content":[{"input_tokens":2,"output_tokens":1}]}},"request_fields":{"instructions":{"input_tokens":1,"cached_tokens":0}}}`
+			const coreAttribution = `{"items":{"msg":{"input":2,"output":1,"content":[{"input":2,"output":1}]}},"requestFields":{"instructions":{"input":1,"cacheRead":0}}}`
+			const coreBilling = `{"basis":"cache-allocation","billed":1,"observed":3,"policyRevision":2,"ruleId":"test-rule"}`
 			const billing = `{"basis":"disclosed_billing_allocation","billed_cached_tokens":1,"observed_cached_tokens":3,"policy_revision":2,"rule_id":"test-rule"}`
 			const response = `{"object":"response","id":"r","model":"m","created_at":1,"service_tier":"default","status":"completed","output":[` + item + `],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4,"input_tokens_details":{"cached_tokens":1},"attribution":` + attribution + `,"linapi_cache_billing":` + billing + `},"tool_usage":` + ledger + `}`
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,10 +71,10 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 			if u == nil || u.Input.Count != 3 || u.Output.Count != 1 || u.Total.Count != 4 || len(u.Details) != 8 || u.Details["tools.image_generation.total_tokens"].Count != 12 || saved.BuiltinToolUsage.WebSearchCalls != 2 {
 				t.Fatalf("original ledger lost or model totals contaminated: %+v %+v", u, saved.BuiltinToolUsage)
 			}
-			if string(u.Attribution.Bytes()) != attribution {
-				t.Fatalf("attribution lost from persisted raw accounting: %s", u.Attribution.Bytes())
+			if !isAccountingEqual(t, u.Attribution, coreAttribution) {
+				t.Fatalf("attribution lost from persisted core accounting: %s", u.Attribution.Bytes())
 			}
-			if string(u.CacheBilling.Bytes()) != billing || u.CacheRead.Count != 1 {
+			if !isAccountingEqual(t, u.CacheBilling, coreBilling) || u.CacheRead.Count != 1 {
 				t.Fatalf("disclosed billing replaced observed usage or was lost: %+v", u)
 			}
 			attributionIssue := false
@@ -98,13 +101,10 @@ func TestResponsesSeparateToolLedgerPersistedAcrossClientProjection(t *testing.T
 
 func TestReportedToolCountSurvivesFramesWithoutUsage(t *testing.T) {
 	t.Parallel()
-	compiled := compileFixtureDefinition(t, presetDefinition(t, "openai-responses"))
 	for _, counter := range []protocol.Counter{{Count: 0, Origin: protocol.ObservedCount}, {Count: 2, Origin: protocol.ObservedCount}, {Count: 1, Origin: protocol.InferredCount}} {
 		r := &usageRecord{Usage: usageTokenUsage{Estimated: true, EstimatedTokens: 17}, UsageSource: "protocol_estimate"}
 		updateRecordProtocolUsage(r, &protocol.Usage{Details: map[string]protocol.Counter{"tools.web_search_calls": counter}})
-		if err := observeLegacyHostedTools(r, compiled, []byte(`{"type":"response.in_progress","response":{"id":"r"}}`)); err != nil {
-			t.Fatal(err)
-		}
+		updateRecordProtocolUsage(r, nil)
 		if r.BuiltinToolUsage.WebSearchCalls != int(counter.Count) || !r.Usage.Estimated || r.Usage.EstimatedTokens != 17 || r.Usage.TotalTokens != nil || r.UsageSource != "protocol_estimate" {
 			t.Fatal("tool-only usage changed model accounting", r.BuiltinToolUsage, r.Usage, r.UsageSource)
 		}
@@ -113,4 +113,16 @@ func TestReportedToolCountSurvivesFramesWithoutUsage(t *testing.T) {
 			t.Fatal("late model usage did not replace its estimate independently", r.BuiltinToolUsage, r.Usage, r.UsageSource)
 		}
 	}
+}
+
+func isAccountingEqual(t *testing.T, actual protocol.Value, expected string) bool {
+	t.Helper()
+	var actualFields, expectedFields any
+	if err := actual.Decode(&actualFields); err != nil {
+		t.Fatal(err)
+	}
+	if err := mustProtocolValue(t, expected).Decode(&expectedFields); err != nil {
+		t.Fatal(err)
+	}
+	return reflect.DeepEqual(actualFields, expectedFields)
 }

@@ -37,8 +37,8 @@ func TestGatewayAuditFailureDetailsReachAllClients(t *testing.T) {
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	for _, ingress := range []struct{ id, path, body string }{
-		{protocol.PresetChatCompletionsID, "/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v}`},
-		{protocol.PresetResponsesID, "/responses", `{"model":"group","input":"hi","store":false,"stream":%v}`},
+		{protocol.PresetChatCompletionsID, "/v1/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v}`},
+		{protocol.PresetResponsesID, "/v1/responses", `{"model":"group","input":"hi","store":false,"stream":%v}`},
 		{protocol.PresetAnthropicID, "/v1/messages", `{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":%v}`},
 		{protocol.PresetGeminiID, "/v1beta/models/group:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`},
 	} {
@@ -64,7 +64,13 @@ func TestGatewayAuditFailureDetailsReachAllClients(t *testing.T) {
 			if calls.Load() != before+1 || !strings.Contains(out.Body.String(), want) || strings.Contains(out.Body.String(), "unsupported_capability") {
 				t.Fatal(ingress.id, stream, calls.Load()-before, out.Code, out.Body.String())
 			}
-			if stream && out.Result().Trailer.Get(gatewayStreamErrorTrailer) == "" || !stream && out.Code != 400 {
+			expectedStatus := http.StatusBadRequest
+			expectedTrailer := ""
+			if stream {
+				expectedStatus = http.StatusOK
+				expectedTrailer = "protocol_stream_error"
+			}
+			if out.Code != expectedStatus || out.Result().Trailer.Get(gatewayStreamErrorTrailer) != expectedTrailer {
 				t.Fatal(out.Code, out.Header())
 			}
 			records := latestUsageRecords(t, s)
@@ -106,8 +112,8 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	for _, ingress := range []struct{ id, path, body string }{
-		{protocol.PresetChatCompletionsID, "/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v}`},
-		{protocol.PresetResponsesID, "/responses", `{"model":"group","input":"hi","store":false,"stream":%v}`},
+		{protocol.PresetChatCompletionsID, "/v1/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v}`},
+		{protocol.PresetResponsesID, "/v1/responses", `{"model":"group","input":"hi","store":false,"stream":%v}`},
 		{protocol.PresetAnthropicID, "/v1/messages", `{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":%v}`},
 		{protocol.PresetGeminiID, "/v1beta/models/group:generateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`},
 	} {
@@ -155,7 +161,7 @@ func TestHTTP524GatewayAndAgentPreserveObservedFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		candidate := gatewayCandidate{compiled: upstream, operation: operation, operationName: name, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []protocol.Transport{operation.Transport}}}
+		candidate := gatewayCandidate{compiled: upstream, operation: operation, operationName: name, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.DeclaredCapabilities(), Transports: []protocol.Transport{operation.Transport}}}
 		record := &usageRecord{RequestID: "fixture-execution", StartedAt: time.Now()}
 		before := calls.Load()
 		result, err := s.collectProtocolGeneration(t.Context(), candidate, request, record, nil)

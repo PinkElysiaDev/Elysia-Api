@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-func TestChatHistoryJoinsOnlyAdjacentPlainVisibleThinking(t *testing.T) {
+func TestChatHistoryDeclaresVisibleThinkingMerge(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Chat)
 	raw := `{"contents":[{"role":"user","parts":[{"text":"hi"}]},{"role":"model","parts":[{"thought":true,"text":"one "},{"thought":true,"text":"two"},{"text":"answer"}]},{"role":"user","parts":[{"text":"continue"}]}]}`
-	r, err := from.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	r, err := from.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.Model = p.StringValue("m")
 	route := p.ConversionContext{Source: from.Identity(), Target: to.Identity()}
-	for _, mode := range []string{"compatible", "strict", "disabled", "scoped", "interleaved", "summary"} {
+	for _, mode := range []string{"compatible", "strict", "disabled", "scoped", "interleaved", "interleaved-strict", "summary"} {
 		t.Run(mode, func(t *testing.T) {
 			policy := p.DefaultConversionPolicy(from, to)
 			input := r.Clone()
@@ -23,15 +23,18 @@ func TestChatHistoryJoinsOnlyAdjacentPlainVisibleThinking(t *testing.T) {
 				policy.Mode = "strict"
 			case "disabled":
 				for i := range policy.Rules {
-					if policy.Rules[i].Action == "chat_history" {
+					if policy.Rules[i].ID == "assistant-history" || policy.Rules[i].ID == "history-text" || policy.Rules[i].ID == "tool-result-history" {
 						policy.Rules[i].Enabled = false
 					}
 				}
 			case "scoped":
 				input.Content[1].Children[1].Attributes = p.Object{"unmapped": p.StringValue("independent-item")}
-			case "interleaved":
+			case "interleaved", "interleaved-strict":
 				a := input.Content[1].Children
 				a[1], a[2] = a[2], a[1]
+				if mode == "interleaved-strict" {
+					policy.Mode = "strict"
+				}
 			case "summary":
 				input.Content[1].Children[1].ReasoningForm = p.SummaryReasoning
 			}
@@ -40,12 +43,12 @@ func TestChatHistoryJoinsOnlyAdjacentPlainVisibleThinking(t *testing.T) {
 			projected, err := c.Request(t.Context(), input, route, sink)
 			if err == nil {
 				var wire []byte
-				wire, err = to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+				wire, err = to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				if err == nil {
 					err = to.ValidateWireOutput(p.EncodeRequest, testValue(t, string(wire)))
 				}
 			}
-			if mode != "compatible" {
+			if mode != "compatible" && mode != "interleaved" {
 				if err == nil {
 					t.Fatal("unsafe join accepted")
 				}
@@ -60,16 +63,16 @@ func TestChatHistoryJoinsOnlyAdjacentPlainVisibleThinking(t *testing.T) {
 			}
 			found := false
 			for _, issue := range sink.Issues() {
-				found = found || (issue.RuleID == "chat-assistant-history" && issue.Severity == p.SeverityWarning && issue.PolicyHash == c.Hash)
+				found = found || (issue.RuleID == "history-text" && issue.Severity == p.SeverityWarning && issue.PolicyHash == c.Hash)
 			}
 			if !found {
 				t.Fatal("block loss not diagnosed")
 			}
-			wire, err := to.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+			wire, err := to.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			decoded, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{})
+			decoded, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}

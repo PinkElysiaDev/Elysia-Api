@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,6 +23,7 @@ import (
 func TestGatewayAuditTextMatrix(t *testing.T) {
 	t.Parallel()
 	ids := []string{protocol.PresetChatCompletionsID, protocol.PresetResponsesID, protocol.PresetAnthropicID, protocol.PresetGeminiID}
+	bufferedEvents := []string{"response.created", "response.in_progress", "response.output_text.delta", "response.completed"}
 	for _, upstreamID := range ids {
 		t.Run(upstreamID, func(t *testing.T) {
 			t.Parallel()
@@ -35,9 +37,9 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 				calls++
 				wanted := "text-decode-response"
 				if streaming {
-					wanted = "stream-text-decode"
+					wanted = "declared-stream-text-decode"
 				}
-				for _, sample := range upstream.Definition().Samples {
+				for _, sample := range compiledPackage(upstream).Mapping.Samples {
 					if sample.ID != wanted {
 						continue
 					}
@@ -74,7 +76,7 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 							var kind string
 							_ = body["type"].Decode(&kind)
 							body["sequence_number"], _ = protocol.EncodeValue(frameIndex)
-							if protocol.MetadataFieldType("responses", "event:"+kind, "safety_buffering") != "" {
+							if slices.Contains(bufferedEvents, kind) {
 								body["safety_buffering"], _ = protocol.ParseValue([]byte("false"))
 							}
 							if body["type"] == protocol.StringValue("response.output_item.done") {
@@ -120,14 +122,14 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 						path, body := "", ""
 						switch ingressID {
 						case protocol.PresetChatCompletionsID:
-							path = "/chat/completions"
+							path = "/v1/chat/completions"
 							body = fmt.Sprintf(`{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":%v,"stream_options":{"include_usage":true}}`, stream)
 						case protocol.PresetResponsesID:
-							path = "/responses"
+							path = "/v1/responses"
 							body = fmt.Sprintf(`{"model":"group","input":"hi","max_output_tokens":32,"store":false,"stream":%v}`, stream)
 						case protocol.PresetAnthropicID:
 							path = "/v1/messages"
-							body = fmt.Sprintf(`{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"max_tokens":32,"stream":%v}`, stream)
+							body = fmt.Sprintf(`{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":%v}`, stream)
 						case protocol.PresetGeminiID:
 							path = "/v1beta/models/group:generateContent"
 							if stream {
@@ -152,14 +154,22 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 								if !stream {
 									_ = sonic.ConfigStd.Unmarshal(rec.Body.Bytes(), &response)
 								} else {
+									progressCount := 0
 									for _, line := range strings.Split(rec.Body.String(), "\n") {
 										if strings.HasPrefix(line, "data: {") {
 											var event protocol.Object
 											_ = sonic.ConfigStd.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event)
+											if event["type"].IsString("response.in_progress") {
+												progressCount++
+												checkAuditResponsesProgress(t, event["response"])
+											}
 											if event["type"] == protocol.StringValue("response.completed") {
 												response, _ = event["response"].ReadObject()
 											}
 										}
+									}
+									if progressCount != 1 {
+										t.Fatal("progress snapshot was lost or duplicated", progressCount)
 									}
 								}
 								var output, parts []protocol.Value
@@ -281,6 +291,19 @@ func TestGatewayAuditTextMatrix(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func checkAuditResponsesProgress(t *testing.T, value protocol.Value) {
+	t.Helper()
+	response, err := value.ReadObject()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The provider sent a complete starting snapshot; progress must retain it.
+	if !response["id"].IsString("r") || !response["model"].IsString("m") || response["created_at"].JSONString() != "1" ||
+		!response["object"].IsString("response") || !response["status"].IsString("in_progress") || response["output"].JSONString() != "[]" {
+		t.Fatal("progress response lost its supplied snapshot", value.JSONString())
 	}
 }
 

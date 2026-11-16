@@ -6,19 +6,15 @@ import (
 )
 
 func TestPrivateStreamUsageMatchesSnapshotMerging(t *testing.T) {
-	conversion, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "usage-ownership", Rules: []ConversionRule{{ID: "envelope", Enabled: true, Phase: ConversionEvent, Action: "anthropic_usage_envelope"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, owner := range []string{"replay", "delivery"} {
+	for _, owner := range []string{"replay"} {
 		t.Run(owner, func(t *testing.T) {
 			input := &Usage{Input: &Counter{Count: 7, Origin: ObservedCount}}
 			events := []Event{
-				{Type: ResponseStarted, Response: &Response{SchemaVersion: 1, Usage: input}},
+				{Type: ResponseStarted, Response: &Response{SchemaVersion: SemanticSchemaVersion, Usage: input}},
 				{Type: MetadataUpdated},
-				{Type: MetadataUpdated, Response: &Response{SchemaVersion: 1}},
+				{Type: MetadataUpdated, Response: &Response{SchemaVersion: SemanticSchemaVersion}},
 				{Type: UsageUpdated, Usage: &Usage{Output: &Counter{Count: 0, Origin: ObservedCount}, CacheRead: &Counter{Count: 0, Origin: ObservedCount}}},
-				{Type: MetadataUpdated, Usage: &Usage{}, Response: &Response{SchemaVersion: 1, Usage: &Usage{Details: map[string]Counter{"output.reasoning_tokens": {Count: 0, Origin: ObservedCount}}}}},
+				{Type: MetadataUpdated, Usage: &Usage{}, Response: &Response{SchemaVersion: SemanticSchemaVersion, Usage: &Usage{Details: map[string]Counter{"output.reasoning_tokens": {Count: 0, Origin: ObservedCount}}}}},
 				{Type: ResponseFinished},
 				{Type: UsageUpdated, Usage: &Usage{Total: &Counter{Count: 7, Origin: ObservedCount}, CacheCreation: &Counter{Count: 0, Origin: ObservedCount}}},
 			}
@@ -26,7 +22,6 @@ func TestPrivateStreamUsageMatchesSnapshotMerging(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			delivery := NewConversionEventState(conversion, ConversionContext{Model: "chosen"})
 			var expected, actual *Usage
 			for index, event := range events {
 				event.SchemaVersion = SemanticSchemaVersion
@@ -37,13 +32,8 @@ func TestPrivateStreamUsageMatchesSnapshotMerging(t *testing.T) {
 				if event.Response != nil {
 					expected = MergeUsage(expected, event.Response.Usage)
 				}
-				if owner == "replay" {
-					_, err = replay.Consume(event)
-					actual = replay.usage
-				} else {
-					_, err = delivery.Push(event)
-					actual = delivery.usage
-				}
+				_, err = replay.Consume(event)
+				actual = replay.usage
 				if err != nil || !reflect.DeepEqual(actual, expected) {
 					t.Fatalf("event %d: usage=%+v, want %+v, error=%v", index, actual, expected, err)
 				}
@@ -64,8 +54,6 @@ func TestPrivateStreamUsageMatchesSnapshotMerging(t *testing.T) {
 				if replay.Usage().Input.Count != 7 {
 					t.Fatal("published usage aliases private state")
 				}
-			} else if err := delivery.Finish(); err != nil {
-				t.Fatal(err)
 			}
 		})
 	}

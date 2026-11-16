@@ -61,7 +61,7 @@ type packageStreamTransaction struct {
 	trackedBytes                   int
 	toolCallBytes                  int
 	owner                          *EvaluationState
-	key                            moduleStateKey
+	key                            executionStateKey
 	plan                           *compiledPackageState
 	scope                          Scope
 	previous                       *packageStreamState
@@ -132,16 +132,13 @@ func compilePackageStateSlots(declarations map[string]ProtocolWireStateSlot, ind
 }
 
 func (compiled *Compiled) beginPackageTransaction(direction Direction, options EvaluationContext) (EvaluationContext, *packageStreamTransaction, error) {
-	if compiled.packagePlan == nil {
-		options.packageTransaction = nil
-		return options, nil, nil
-	}
+
 	plan := compiled.mappings[direction].streamState
 	if plan == nil {
 		options.packageTransaction = nil
 		return options, nil, nil
 	}
-	key := moduleStateKey{compiled: compiled, direction: direction}
+	key := executionStateKey{compiled: compiled, direction: direction}
 	if active := options.packageTransaction; active != nil && active.key == key {
 		if active.scope != options.Scope {
 			return options, nil, streamIssue(ResourceScopeMismatch, "/state", "event state belongs to another stream scope")
@@ -158,8 +155,8 @@ func (compiled *Compiled) beginPackageTransaction(direction Direction, options E
 	if previous != nil && previous.scope != options.Scope {
 		return options, nil, streamIssue(ResourceScopeMismatch, "/state", "event state belongs to another stream scope")
 	}
-	if previous == nil && len(options.State.packageStates)+len(options.State.modules)+len(options.State.initialized) >= compiled.limits.StateItems {
-		return options, nil, resourceFailure("stream", "state_instances", compiled.limits.StateItems, len(options.State.packageStates)+len(options.State.modules)+len(options.State.initialized)+1)
+	if previous == nil && len(options.State.packageStates) >= compiled.limits.StateItems {
+		return options, nil, resourceFailure("stream", "state_instances", compiled.limits.StateItems, len(options.State.packageStates)+1)
 	}
 	transaction := &packageStreamTransaction{owner: options.State, key: key, plan: plan, scope: options.Scope, previous: previous, conversion: options.conversion, diagnostics: options.Diagnostics}
 	if previous != nil {
@@ -339,7 +336,7 @@ func (transaction *packageStreamTransaction) finish(err error) {
 		return
 	}
 	if transaction.owner.packageStates == nil {
-		transaction.owner.packageStates = make(map[moduleStateKey]*packageStreamState)
+		transaction.owner.packageStates = make(map[executionStateKey]*packageStreamState)
 	}
 	if transaction.previous != nil {
 		transaction.owner.packageStateBytes -= transaction.previous.bytes
@@ -372,7 +369,7 @@ func (transaction *packageStreamTransaction) finish(err error) {
 	transaction.next = nil
 }
 
-func (state *EvaluationState) releasePackageState(key moduleStateKey) {
+func (state *EvaluationState) releasePackageState(key executionStateKey) {
 	if previous := state.packageStates[key]; previous != nil {
 		state.packageStateItems -= previous.items
 		state.packageStateBytes -= previous.bytes

@@ -1,10 +1,72 @@
 package protocol
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 )
+
+func TestWireConstraintCallConditionsKeepCallerScope(t *testing.T) {
+	compiler := newExpressionCompiler(DefaultLimits(), nil)
+	compiler.constraints = newWireConstraintCompiler(map[string][]WireAssertion{
+		"named": {{Path: "/name", Schema: &ValueSchema{Type: StringType}, Reason: "name is required"}},
+	})
+	root := &ValueSchema{Type: ObjectType, AllowUnknown: true}
+	gate := &Expression{Op: "read", Path: "/active"}
+	checks, err := compileWireAssertions([]WireAssertion{{Ref: "named", Path: "/first", When: gate}, {Ref: "named", Path: "/second", When: &Expression{Op: "not", Source: gate}}}, "/checks", root, root, compiler, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if &checks[0].group[0] != &checks[1].group[0] {
+		t.Fatal("call conditions duplicated the immutable constraint")
+	}
+	schema, err := compileWireSchemaPlan(root, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator := &specWireValidator{schema: schema, assertions: checks, limits: DefaultLimits()}
+	for _, sample := range []struct{ body, path string }{
+		{`{"active":false,"first":false,"second":{"name":"valid","active":true}}`, ""},
+		{`{"active":true,"first":{"name":"valid","active":false}}`, ""},
+		{`{"active":true,"first":{"name":42}}`, "/first/name"},
+		{`{"active":false,"second":{"name":42}}`, "/second/name"},
+	} {
+		err := validator.ValidateWireOutput(DecodeResponse, parseTestValue(t, sample.body))
+		if sample.path == "" {
+			if err != nil {
+				t.Fatal("inactive constraint read or validated its selection", err)
+			}
+			continue
+		}
+		var failure *ConversionError
+		if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Path != sample.path || failure.Issues[0].Code != UpstreamContractViolation {
+			t.Fatal("active constraint lost its source boundary", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := validator.validate(ctx, DecodeResponse, parseTestValue(t, `{"active":false}`), DefaultLimits()); !errors.Is(err, context.Canceled) {
+		t.Fatal("a call condition bypassed cancellation", err)
+	}
+}
+
+func TestWireConstraintCallConditionsBindDocumentIdentity(t *testing.T) {
+	document := textProtocolPackage(t)
+	document.Spec.Expressions = map[string]Expression{"gate": literalExpression(true)}
+	document.Spec.Constraints = map[string][]WireAssertion{"named": {{Path: "/name", Schema: &ValueSchema{Type: StringType}, Reason: "name is required"}}}
+	contract := WireContractSpec{Schema: &ValueSchema{Type: ObjectType, AllowUnknown: true}, Assertions: []WireAssertion{{Ref: "named", When: &Expression{Op: "ref", Ref: "gate"}}}}
+	document.Spec.Documents["provider-response"] = contract
+	before := compilePackageForTest(t, document)
+	document.Spec.Expressions["gate"] = literalExpression(false)
+	after := compilePackageForTest(t, document)
+	for _, direction := range []Direction{DecodeRequest, EncodeRequest, DecodeResponse, EncodeResponse} {
+		isChanged := before.mappings[direction].definitionHash != after.mappings[direction].definitionHash
+		if isChanged != (direction == DecodeResponse) {
+			t.Fatal("conditional constraint omitted its predicate from document identity", direction)
+		}
+	}
+}
 
 func TestWireConstraintSharesChecksAndKeepsSourcePaths(t *testing.T) {
 	item := &ValueSchema{Type: ObjectType, AllowUnknown: true}

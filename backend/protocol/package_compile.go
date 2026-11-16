@@ -2,12 +2,14 @@ package protocol
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 )
 
 type compiledPackagePlan struct {
+	verificationScopes   []compiledVerificationScope
 	continuation         *compiledContinuation
 	coreVersion          int
 	dslVersion           int
@@ -21,6 +23,7 @@ type compiledPackagePlan struct {
 	taskContracts        map[string]map[string]packageTaskContracts
 	finalContracts       map[Direction]compiledWireContract
 	modelPolicy          *compiledModelPolicy
+	headerControls       *compiledHeaderControls
 	conversionDefaults   []ConversionRule
 	fieldObservations    map[string]compiledFieldObservation
 }
@@ -112,7 +115,7 @@ func (compiler *Compiler) checkPackagePrograms(document ProtocolPackage, compile
 			return definitionIssues(compiled.identity, pathPrefix+"/"+string(direction)+"/program", fmt.Errorf("program requires a compiled output plan"))
 		}
 		for index, effect := range compiled.packagePlan.effects[direction] {
-			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "aggregate" && !isRequestProjectionScope(effect.scope) {
+			if effect.kind != "emit" && effect.kind != "reject" && effect.kind != "warn" && effect.kind != "aggregate" && !isRequestProjectionScope(effect.scope) {
 				path := fmt.Sprintf("%s/%s/effects/%d/kind", pathPrefix, direction, index)
 				return definitionIssues(compiled.identity, path, fmt.Errorf("semantic effect %q is not executable in this runtime", effect.kind))
 			}
@@ -153,12 +156,10 @@ func (compiler *Compiler) checkPackagePrograms(document ProtocolPackage, compile
 	return nil
 }
 
-// Package returns an independent spec/mapping document. Legacy definitions return false.
+// Package returns an independent copy of the compiled spec/mapping document.
 func (compiled *Compiled) Package() (ProtocolPackage, bool) {
 	var document ProtocolPackage
-	if compiled.packagePlan == nil {
-		return document, false
-	}
+
 	_ = compiled.definition.Decode(&document)
 	return document, true
 }
@@ -177,16 +178,22 @@ func (compiled *Compiled) bindPackageIdentity(document ProtocolPackage) error {
 		return err
 	}
 	compiled.hash = hashValue(identity)
+	scopeHashes := make([]string, 0, len(compiled.packagePlan.verificationScopes))
+	for _, scope := range compiled.packagePlan.verificationScopes {
+		scopeHashes = append(scopeHashes, scope.hash)
+	}
 	samples, err := EncodeValue(struct {
-		CoreVersion       int                   `json:"coreVersion"`
-		DSLVersion        int                   `json:"dslVersion"`
-		Samples           []Sample              `json:"samples"`
-		ModelSamples      []ModelSample         `json:"modelSamples,omitempty"`
-		TokenCountSamples []Sample              `json:"tokenCountSamples,omitempty"`
-		TaskSamples       []TaskSample          `json:"taskSamples,omitempty"`
-		Agent             *ProtocolAgentMapping `json:"agent,omitempty"`
-		SessionSamples    []SessionSample       `json:"sessionSamples,omitempty"`
-	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TokenCountSamples, document.Mapping.TaskSamples, document.Mapping.Agent, document.Mapping.SessionSamples})
+		CoreVersion             int                         `json:"coreVersion"`
+		DSLVersion              int                         `json:"dslVersion"`
+		Samples                 []Sample                    `json:"samples"`
+		ModelSamples            []ModelSample               `json:"modelSamples,omitempty"`
+		TokenCountSamples       []Sample                    `json:"tokenCountSamples,omitempty"`
+		TaskSamples             []TaskSample                `json:"taskSamples,omitempty"`
+		Agent                   *ProtocolAgentMapping       `json:"agent,omitempty"`
+		SessionSamples          []SessionSample             `json:"sessionSamples,omitempty"`
+		VerificationScopes      []ProtocolVerificationScope `json:"verificationScopes,omitempty"`
+		VerificationScopeHashes []string                    `json:"verificationScopeHashes,omitempty"`
+	}{document.Mapping.CoreVersion, document.Mapping.DSLVersion, document.Mapping.Samples, document.Mapping.ModelSamples, document.Mapping.TokenCountSamples, document.Mapping.TaskSamples, document.Mapping.Agent, document.Mapping.SessionSamples, document.Mapping.VerificationScopes, scopeHashes})
 	if err != nil {
 		return err
 	}
@@ -218,14 +225,18 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 	references := map[string]Expression{}
 	compiler.mappingReferences = references
 	defer func() { compiler.mappingReferences = nil }()
+	failureObservation, err := compileFailureObservation(mapping.FailureObservation, direction, path, compiler)
+	if err != nil {
+		return compiledMapping{}, nil, err
+	}
 	var nativeWhen *compiledOutputPlan
 	if mapping.NativeWhen != nil {
 		if mapping.NativeReplay != "original_frame" {
 			return compiledMapping{}, nil, fmt.Errorf("%s/nativeWhen: requires original_frame replay", path)
 		}
-		// Replay selection can read caller preferences and whether this encoder
-		// has rendered earlier events. It cannot change state or delivery facts.
-		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true, canReadClientOutput: true, canReadEncodingState: true}, 1)
+		// Replay selection observes caller preferences, prior encoding and
+		// committed output. It cannot change state or delivery facts.
+		predicate, err := compiler.compilePlan(*mapping.NativeWhen, path+"/nativeWhen", expressionScope{input: wire.Schema, root: wire.Schema, isWireContract: true, canReadClientOutput: true, canReadEncodingState: true, canReadOutputStream: true}, 1)
 		if err != nil {
 			return compiledMapping{}, nil, err
 		}
@@ -352,7 +363,7 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 		}
 		seen[effect.ID] = true
 		switch effect.Kind {
-		case "emit", "aggregate", "reject":
+		case "emit", "aggregate", "reject", "warn":
 		case "default", "drop":
 			if isDecode {
 				return compiledMapping{}, nil, fmt.Errorf("%s/kind: decode programs cannot default or drop input semantics", at)
@@ -360,10 +371,10 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 		default:
 			return compiledMapping{}, nil, fmt.Errorf("%s/kind: unknown semantic effect %q", at, effect.Kind)
 		}
-		if (effect.Kind == "default" || effect.Kind == "drop" || effect.Kind == "reject") && strings.TrimSpace(effect.Reason) == "" {
+		if (effect.Kind == "default" || effect.Kind == "drop" || effect.Kind == "reject" || effect.Kind == "warn") && strings.TrimSpace(effect.Reason) == "" {
 			return compiledMapping{}, nil, fmt.Errorf("%s/reason: semantic disposition requires a reason", at)
 		}
-		if err := validateRequestProjectionEffect(direction, effect); err != nil {
+		if err := validateSemanticEffectScope(direction, effect); err != nil {
 			return compiledMapping{}, nil, fmt.Errorf("%s: %w", at, err)
 		}
 		entry := compiledSemanticEffect{id: effect.ID, kind: effect.Kind, path: effect.Path, target: effect.Target, reason: effect.Reason, scope: effect.Scope, severity: effect.Severity}
@@ -410,6 +421,12 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 		}
 		if effect.When != nil {
 			conditionScope := scope
+			if effect.Scope == metadataScope {
+				conditionScope = expressionScope{coreInput: reflect.TypeFor[ResponseMetadata]()}
+			}
+			if effect.Scope == nodeScope {
+				conditionScope = expressionScope{coreInput: reflect.TypeFor[Node]()}
+			}
 			if isRequestProjectionScope(effect.Scope) {
 				conditionScope = expressionScope{}
 				entry.conditionReferences = map[string]Expression{}
@@ -431,8 +448,8 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 			if !hasPlan {
 				return compiledMapping{}, nil, fmt.Errorf("%s/when: condition requires a compiled output plan", at)
 			}
-			if isRequestProjectionScope(effect.Scope) && !localProjectionCondition(entry.when) {
-				return compiledMapping{}, nil, fmt.Errorf("%s/when: projection conditions may read only their local input or root", at)
+			if (isRequestProjectionScope(effect.Scope) || isOwnerEffectScope(effect.Scope)) && !localProjectionCondition(entry.when) {
+				return compiledMapping{}, nil, fmt.Errorf("%s/when: scoped conditions may read only their local input or root", at)
 			}
 		}
 		effects = append(effects, entry)
@@ -460,6 +477,7 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 		finalCheck:             finalCheck,
 		deliveryRanges:         deliveryRanges,
 		semanticRanges:         semanticRanges,
+		failureObservation:     failureObservation,
 		outputPlan:             plan, definitionHash: hashValue(identity), streamState: streamState, streamFinalizer: finalizer, streamObserver: observer,
 		isEventBatch:      mapping.IsEventBatch,
 		canDeferEvents:    mapping.CanDeferEvents,

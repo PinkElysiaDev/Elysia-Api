@@ -62,10 +62,10 @@ func main() {
 	}{{"Request", reflect.TypeFor[p.Request]()}, {"Response", reflect.TypeFor[p.Response]()}, {"Event", reflect.TypeFor[p.Event]()}} {
 		g.line("func decodeCore%sOutput(output JSONOutput) (*%s,error) { return decodeCoreOutput(output, writeCore%s) }", entry.name, local(entry.typeOf), g.name(entry.typeOf))
 		g.line("func decodeCore%sOutputWithin(output JSONOutput,reader *valueReader) (*%s,error) { return decodeCoreOutputWithin(output, writeCore%s,reader) }", entry.name, local(entry.typeOf), g.name(entry.typeOf))
-		g.line("func readCore%sOutput(value *%s,pointer []string,cache *semanticCache) (JSONOutput,error) {return readCore%s(value,pointer,cache)}", entry.name, local(entry.typeOf), g.name(reflect.PointerTo(entry.typeOf)))
+		g.line("func readCore%sOutput(value *%s,pointer []string,cache *semanticCache) (JSONOutput,error) {return (coreReadContext{cache:cache}).read%s(value,pointer)}", entry.name, local(entry.typeOf), g.name(reflect.PointerTo(entry.typeOf)))
 	}
 	g.line("func decodeCoreEventsOutput(output JSONOutput) ([]Event,error) { value,err:=decodeCoreOutput(output,writeCore%s);if err!=nil{return nil,err};return *value,nil }", g.name(reflect.TypeFor[[]p.Event]()))
-	g.line("func readCoreEventsOutput(value []Event,pointer []string,cache *semanticCache) (JSONOutput,error) {return readCore%s(value,pointer,cache)}", g.name(reflect.TypeFor[[]p.Event]()))
+	g.line("func readCoreEventsOutput(value []Event,pointer []string,cache *semanticCache) (JSONOutput,error) {return (coreReadContext{cache:cache}).read%s(value,pointer)}", g.name(reflect.TypeFor[[]p.Event]()))
 	for index := 0; index < len(g.types); index++ {
 		g.emitWriter(g.name(g.types[index]), g.types[index])
 		g.emitReader(g.name(g.types[index]), g.types[index])
@@ -108,13 +108,13 @@ func (g *generator) emitRequestFieldReader() {
 		g.line("case %q:return %d", field.key, index+1)
 	}
 	g.line("};return 0}")
-	g.line("func readCoreRequestField(value *Request,field uint8,pointer []string,cache *semanticCache)(JSONOutput,error){switch field {")
+	g.line("func readCoreRequestField(value *Request,field uint8,pointer []string,cache *semanticCache)(JSONOutput,error){reader:=coreReadContext{cache:cache};switch field {")
 	for index, field := range requestFields {
 		g.line("case %d:", index+1)
 		if field.condition != "" {
-			g.line("if %s {return readCore%s(value.%s,pointer,cache)};return JSONOutput{},nil", field.condition, g.name(field.typeOf), field.name)
+			g.line("if %s {return reader.read%s(value.%s,pointer)};return JSONOutput{},nil", field.condition, g.name(field.typeOf), field.name)
 		} else {
-			g.line("return readCore%s(value.%s,pointer,cache)", g.name(field.typeOf), field.name)
+			g.line("return reader.read%s(value.%s,pointer)", g.name(field.typeOf), field.name)
 		}
 	}
 	g.line("};panic(\"uncompiled request field\")}")
@@ -233,15 +233,27 @@ func (g *generator) emitObjectWriter(mapType, writeField string) {
 	g.line("for {field,hasField,err:=fields.next();if err!=nil{return err};if !hasField{break};%s};return nil", writeField)
 }
 
+func isCoreReaderEntry(name string) bool {
+	switch name {
+	case "CacheIntent", "ClientOutput", "Native", "Node", "Object", "Provenance", "Request", "ResponseMetadata", "Tool", "Usage":
+		return true
+	default:
+		return false
+	}
+}
+
 func (g *generator) emitReader(name string, t reflect.Type) {
-	g.line("func readCore%s(value %s,pointer []string,cache *semanticCache)(JSONOutput,error){", name, local(t))
+	if isCoreReaderEntry(name) {
+		g.line("func readCore%s(value %s,pointer []string,cache *semanticCache)(JSONOutput,error){return (coreReadContext{cache:cache}).read%s(value,pointer)}", name, local(t), name)
+	}
+	g.line("func (reader coreReadContext) read%s(value %s,pointer []string)(JSONOutput,error){", name, local(t))
 	if t == reflect.TypeFor[p.Value]() {
-		g.line("return readCoreLeaf(value,pointer,cache)\n}")
+		g.line("return readCoreLeaf(value,pointer,reader.cache)\n}")
 		return
 	}
 	switch t.Kind() {
 	case reflect.Pointer:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};return readCore%s(*value,pointer,cache)", g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};return reader.read%s(*value,pointer)", g.name(t.Elem()))
 	case reflect.String:
 		g.line("return readCoreScalar(StringValue(string(value)),pointer)")
 	case reflect.Bool:
@@ -249,36 +261,70 @@ func (g *generator) emitReader(name string, t reflect.Type) {
 	case reflect.Int, reflect.Int64:
 		g.line("return readCoreScalar(coreInteger(int64(value)),pointer)")
 	case reflect.Slice:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return JSONOutput{},err};return readCore%s(value[index],pointer[1:],cache)};items:=make([]JSONOutput,len(value));for index,child:=range value {output,err:=readCore%s(child,nil,cache);if err!=nil{return JSONOutput{},err};items[index]=output};return finishCoreOutput(&jsonOutputNode{items:items}),nil", g.name(t.Elem()), g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {index,err:=coreArrayIndex(pointer[0],len(value));if err!=nil||index<0{return JSONOutput{},err};return reader.read%s(value[index],pointer[1:])};items:=make([]JSONOutput,len(value));for index,child:=range value {output,err:=reader.read%s(child,nil);if err!=nil{return JSONOutput{},err};items[index]=output};return finishCoreOutput(&jsonOutputNode{items:items}),nil", g.name(t.Elem()), g.name(t.Elem()))
 	case reflect.Map:
-		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {key,ok:=coreMapKey(value,pointer[0]);if !ok{return JSONOutput{},nil};return readCore%s(value[key],pointer[1:],cache)};fields:=make([]jsonOutputField,0,len(value));for _,key:=range sortedKeys(value) {output,err:=readCore%s(value[key],nil,cache);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{key,output})};return finishCoreOutput(&jsonOutputNode{object:true,fields:fields}),nil", g.name(t.Elem()), g.name(t.Elem()))
+		g.line("if value==nil{return readCoreScalar(Value{raw:\"null\"},pointer)};if len(pointer)!=0 {key,ok:=coreMapKey(value,pointer[0]);if !ok{return JSONOutput{},nil};return reader.read%s(value[key],pointer[1:])};fields:=make([]jsonOutputField,0,len(value));for _,key:=range sortedKeys(value) {output,err:=reader.read%s(value[key],nil);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{key,output})};return finishCoreOutput(&jsonOutputNode{object:true,fields:fields}),nil", g.name(t.Elem()), g.name(t.Elem()))
 	case reflect.Struct:
-		g.line("if len(pointer)!=0 {switch pointer[0] {")
-		for _, field := range fields(t) {
-			if field.condition == "" {
-				g.line("case %q:return readCore%s(value.%s,pointer[1:],cache)", field.key, g.name(field.typeOf), field.name)
-			} else {
-				g.line("case %q:if %s {return readCore%s(value.%s,pointer[1:],cache)};return JSONOutput{},nil", field.key, field.condition, g.name(field.typeOf), field.name)
-			}
-		}
-		g.line("default:return JSONOutput{},nil\n}};fields:=make([]jsonOutputField,0,%d)", len(fields(t)))
-		if len(fields(t)) != 0 {
-			g.line("var output JSONOutput;var err error")
-		}
-		for _, field := range fields(t) {
-			if field.condition != "" {
-				g.line("if %s {", field.condition)
-			}
-			g.line("output,err=readCore%s(value.%s,nil,cache);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{%q,output})", g.name(field.typeOf), field.name, field.key)
-			if field.condition != "" {
-				g.line("}")
-			}
-		}
-		g.line("return finishCoreOutput(&jsonOutputNode{object:true,hasCanonicalKeys:true,fields:fields}),nil")
+		g.emitStructReader(t)
 	default:
 		panic("unsupported core type: " + t.String())
 	}
 	g.line("}")
+}
+
+func (g *generator) emitStructReader(t reflect.Type) {
+	selected := fields(t)
+	g.line("if len(pointer)!=0 {switch pointer[0] {")
+	for _, field := range selected {
+		if field.condition == "" {
+			g.line("case %q:return reader.read%s(value.%s,pointer[1:])", field.key, g.name(field.typeOf), field.name)
+		} else {
+			g.line("case %q:if %s {return reader.read%s(value.%s,pointer[1:])};return JSONOutput{},nil", field.key, field.condition, g.name(field.typeOf), field.name)
+		}
+	}
+	g.line("default:return JSONOutput{},nil\n}}")
+	if t == reflect.TypeFor[p.Provenance]() {
+		g.line("if reader.provenance!=nil {if output,hasOutput:=reader.provenance.readProvenance(value);hasOutput{return output,nil}}")
+	}
+	g.emitFieldCapacity(selected)
+	if len(selected) != 0 {
+		g.line("var output JSONOutput;var err error")
+	}
+	for _, field := range selected {
+		if field.condition != "" {
+			g.line("if %s {", field.condition)
+		}
+		g.line("output,err=reader.read%s(value.%s,nil);if err!=nil{return JSONOutput{},err};fields=append(fields,jsonOutputField{%q,output})", g.name(field.typeOf), field.name, field.key)
+		if field.condition != "" {
+			g.line("}")
+		}
+	}
+	if t == reflect.TypeFor[p.Provenance]() {
+		g.line("result:=finishCoreOutput(&jsonOutputNode{object:true,hasCanonicalKeys:true,fields:fields});if reader.provenance!=nil {reader.provenance.retainProvenance(value,result)};return result,nil")
+	} else {
+		g.line("return finishCoreOutput(&jsonOutputNode{object:true,hasCanonicalKeys:true,fields:fields}),nil")
+	}
+}
+
+// Sparse Core objects reserve only fields that survive their JSON omission rules.
+func (g *generator) emitFieldCapacity(selected []field) {
+	required := 0
+	for _, field := range selected {
+		if field.condition == "" {
+			required++
+		}
+	}
+	if required == len(selected) {
+		g.line("fields:=make([]jsonOutputField,0,%d)", required)
+		return
+	}
+	g.line("fieldCount:=%d", required)
+	for _, field := range selected {
+		if field.condition != "" {
+			g.line("if %s {fieldCount++}", field.condition)
+		}
+	}
+	g.line("fields:=make([]jsonOutputField,0,fieldCount)")
 }
 
 // Object selectors stop at opaque Values. Their field conditions come from the

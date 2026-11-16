@@ -23,7 +23,7 @@ func TestNativeUsageUsesPinnedProtocolAndPreservesPresence(t *testing.T) {
 		{"gemini", "google-generate-content", `{"candidates":[],"usageMetadata":{"promptTokenCount":10,"toolUsePromptTokenCount":5,"candidatesTokenCount":20,"thoughtsTokenCount":7,"totalTokenCount":37,"cachedContentTokenCount":3}}`, intPtr(10), intPtr(27), intPtr(37), intPtr(3)},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			compiled := compileFixtureDefinition(t, presetDefinition(t, fixture.id))
+			compiled := compileFixturePackage(t, presetPackage(t, fixture.id))
 			response, err := compiled.DecodeResponse(t.Context(), []byte(fixture.body), protocol.EvaluationContext{})
 			if err != nil {
 				t.Fatal(err)

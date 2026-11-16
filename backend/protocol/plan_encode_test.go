@@ -32,7 +32,7 @@ func TestPlannedCoreEncodingMatchesJSONBoundary(t *testing.T) {
 				expression = expressionPointer(objectExpression(map[string]Expression{"type": readExpression("input", "/type"), "text": readExpression("input", "/delta")}))
 			}
 			if expression != nil {
-				definition.Directions[document.direction] = Mapping{Transform: expression}
+				definition.Mapping.Directions[document.direction] = ProtocolDirectionMapping{Effects: generationFixtureEffects(document.direction), Document: testDocument(document.direction), Program: *expression}
 			}
 			compiled := compileTestDefinition(t, definition)
 			for _, limit := range []Limits{DefaultLimits(), {Depth: 1, Nodes: 1000, BufferBytes: 1000}, {Depth: 64, Nodes: 20, BufferBytes: 1000}, {Depth: 64, Nodes: 1000, BufferBytes: 10}} {
@@ -105,7 +105,7 @@ func TestPlannedCoreReadsShareLargeValuesAndDetachSmallResults(t *testing.T) {
 				program = Expression{Op: "let", Name: "node", Source: expressionPointer(readExpression("input", "/content/0")), Body: &Expression{Op: "if", When: &Expression{Op: "exists", Source: &read}, Then: &read}}
 			}
 			definition := testDefinition("planned-read-ownership", "m", "h", "t", "r")
-			definition.Directions[EncodeRequest] = Mapping{Transform: &program}
+			definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: program}
 			compiled := compileTestDefinition(t, definition)
 			output, err := encodePlannedCore(t.Context(), compiled, EncodeRequest, request, EvaluationContext{})
 			if err != nil {
@@ -134,7 +134,7 @@ func TestPlannedCoreConstructedParentDetachesRootSelection(t *testing.T) {
 		}
 		program := Expression{Op: "let", Name: "selected", Source: &source, Body: &body}
 		definition := testDefinition("constructed-parent", "m", "h", "t", "r")
-		definition.Directions[EncodeRequest] = Mapping{Transform: &program}
+		definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: program}
 		compiled := compileTestDefinition(t, definition)
 		parent := compiled.mappings[EncodeRequest].outputPlan.source
 		if isIteration {
@@ -155,7 +155,7 @@ func TestPlannedCoreReadKeepsAncestorThresholdAcrossBindings(t *testing.T) {
 		Op: "let", Name: "child", Source: expressionPointer(bindingTestRead("parent", "/child")), Body: expressionPointer(bindingTestRead("child", "/fragment")),
 	}}
 	definition := testDefinition("ancestor-ownership", "m", "h", "t", "r")
-	definition.Directions[EncodeRequest] = Mapping{Transform: &program}
+	definition.Mapping.Directions[EncodeRequest] = ProtocolDirectionMapping{Effects: generationFixtureEffects(EncodeRequest), Document: testDocument(EncodeRequest), Program: program}
 	compiled := compileTestDefinition(t, definition)
 	output, err := encodePlannedCore(t.Context(), compiled, EncodeRequest, &Request{SchemaVersion: SemanticSchemaVersion}, EvaluationContext{})
 	original := compiled.mappings[EncodeRequest].outputPlan.source.expression.value
@@ -172,7 +172,7 @@ func TestPlannedCoreReadKeepsAncestorThresholdAcrossBindings(t *testing.T) {
 
 func BenchmarkPlannedCoreEncoding(b *testing.B) {
 	definition := testDefinition("planned-bench", "m", "h", "t", "r")
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	value, _ := EncodeValue(definition)
 	compiled, issues := compiler.Compile(value.Bytes())
 	if err := IssuesError(issues); err != nil {

@@ -10,15 +10,14 @@ import (
 )
 
 func TestSourceUsagePublishesOnlyNewCounters(t *testing.T) {
-	upstream := compileFixtureDefinition(t, presetDefinition(t, p.PresetAnthropicID))
-	candidate := gatewayCandidate{compiled: upstream, binding: p.Binding{Capabilities: upstream.Definition().Capabilities}}
-	route := p.ConversionContext{Source: upstream.Identity(), Target: upstream.Identity(), Transport: p.SSE}
+	upstream := compileFixturePackage(t, presetPackage(t, p.PresetAnthropicID))
+	candidate := gatewayCandidate{compiled: upstream, binding: p.Binding{Capabilities: upstream.DeclaredCapabilities()}}
 	for _, ending := range []string{"complete", "cancel", "provider-error"} {
 		t.Run(ending, func(t *testing.T) {
 			record, reference := &usageRecord{}, &usageRecord{}
 			var expected *p.Usage
 			consumed := 0
-			source, err := newProtocolSourceStream(t.Context(), candidate, upstream, route, p.EvaluationContext{State: p.NewEvaluationState()}, record, func(frame *p.EventFrame, _ p.Object) error {
+			source, err := newProtocolSourceStream(t.Context(), candidate, candidate.conversionContext(candidate.compiled, true), p.EvaluationContext{State: p.NewEvaluationState()}, record, func(frame *p.EventFrame, _ p.Object) error {
 				for _, event := range frame.Events {
 					// The former source path merged/published on every accepted
 					// event, including content with no new counters.

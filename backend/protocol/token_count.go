@@ -142,9 +142,7 @@ func (compiled *Compiled) compileTokenCountRequest(document ProtocolPackage, nam
 // TokenCountRequestProtocol returns the immutable request programs for one
 // counting operation. Its identity belongs to the same pinned package revision.
 func (compiled *Compiled) TokenCountRequestProtocol(operation string) (*Compiled, bool) {
-	if compiled.packagePlan == nil {
-		return nil, false
-	}
+
 	count := compiled.packagePlan.tokenCounts[operation]
 	if count == nil {
 		return nil, false
@@ -153,11 +151,11 @@ func (compiled *Compiled) TokenCountRequestProtocol(operation string) (*Compiled
 }
 
 func (compiled *Compiled) tokenCounting(operation string) (*compiledTokenCounting, error) {
-	if compiled.packagePlan != nil {
-		if count := compiled.packagePlan.tokenCounts[operation]; count != nil {
-			return count, nil
-		}
+
+	if count := compiled.packagePlan.tokenCounts[operation]; count != nil {
+		return count, nil
 	}
+
 	return nil, operationMetadataError("/operations/"+escapePointer(operation), "operation has no declared token counter")
 }
 

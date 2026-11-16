@@ -2,7 +2,8 @@ package protocol
 
 import (
 	"bytes"
-	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,11 +41,38 @@ func schemaInstance(t *testing.T, value any) any {
 	return instance
 }
 
-func TestSchemaCatalogRootsAndStrictDefinition(t *testing.T) {
+func schemaPackageFixture(t *testing.T) ProtocolPackage {
+	t.Helper()
+	document := ProtocolPackage{SchemaVersion: ProtocolPackageSchemaVersion}
+	for _, source := range []struct {
+		name   string
+		target any
+	}{{"spec", &document.Spec}, {"mapping", &document.Mapping}} {
+		raw, err := os.ReadFile(filepath.Join("testdata", "packages", "text-alpha", source.name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sonic.ConfigStd.Unmarshal(raw, source.target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return document
+}
+
+func TestSchemaCatalogRootsAndStrictPackage(t *testing.T) {
 	t.Parallel()
 	catalog := DescribeSchema()
+	contract := schemaInstance(t, catalog).(map[string]any)
+	for _, key := range []string{"modules", "definitionSchema"} {
+		if _, exists := contract[key]; exists {
+			t.Fatalf("retired authoring contract remains advertised: %s", key)
+		}
+	}
+	if catalog.SchemaVersion != ProtocolPackageSchemaVersion {
+		t.Fatal("catalog advertises a retired configuration version")
+	}
 	for name, schema := range map[string]map[string]any{
-		"definition": catalog.Definition, "binding": catalog.Binding,
+		"binding": catalog.Binding,
 		"package": catalog.Package, "spec": catalog.Spec, "mapping": catalog.Mapping,
 		"conversion": catalog.Conversion["policy"].(map[string]any),
 	} {
@@ -56,10 +84,10 @@ func TestSchemaCatalogRootsAndStrictDefinition(t *testing.T) {
 			resolveCatalogSchema(t, map[string]any{"$ref": root["$ref"], "$defs": catalog.Semantic["$defs"], "$schema": catalog.Semantic["$schema"]})
 		})
 	}
-	resolved := resolveCatalogSchema(t, catalog.Definition)
-	instance := schemaInstance(t, testDefinition("schema", "model", "messages", "tools", "reply")).(map[string]any)
+	resolved := resolveCatalogSchema(t, catalog.Package)
+	instance := schemaInstance(t, schemaPackageFixture(t)).(map[string]any)
 	if err := resolved.Validate(instance); err != nil {
-		t.Fatalf("real recursive definition rejected: %v", err)
+		t.Fatalf("real recursive package rejected: %v", err)
 	}
 	instance["surprise"] = true
 	if err := resolved.Validate(instance); err == nil {
@@ -78,7 +106,7 @@ func TestSchemaValuePresenceAndRecursiveReferences(t *testing.T) {
 	resolveType := func(root map[string]any, name string) *validator.Schema {
 		return resolveCatalogSchema(t, map[string]any{"$ref": "#/$defs/" + name, "$defs": root["$defs"]})
 	}
-	expression := resolveType(catalog.Definition, "Expression")
+	expression := resolveType(catalog.Mapping, "Expression")
 	for _, value := range []any{nil, false, 0, "", []any{nil, false}, map[string]any{"n": 9007199254740993123}} {
 		if err := expression.Validate(map[string]any{"op": "literal", "value": schemaInstance(t, value)}); err != nil {
 			t.Fatalf("arbitrary JSON restricted: %v", err)
@@ -93,7 +121,7 @@ func TestSchemaValuePresenceAndRecursiveReferences(t *testing.T) {
 	if err := expression.Validate(map[string]any{"op": "if", "then": map[string]any{"op": "literal", "typo": 1}}); err == nil {
 		t.Fatal("unknown recursive field accepted")
 	}
-	capabilities := resolveType(catalog.Definition, "CapabilitySet")
+	capabilities := resolveType(catalog.Mapping, "CapabilitySet")
 	if err := capabilities.Validate(map[string]any{"text": false}); err != nil {
 		t.Fatal(err)
 	}
@@ -119,15 +147,14 @@ func TestSchemaValuePresenceAndRecursiveReferences(t *testing.T) {
 func TestSchemaCatalogFreshResults(t *testing.T) {
 	t.Parallel()
 	first := DescribeSchema()
-	first.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] = true
+	first.Package["$defs"].(map[string]any)["ProtocolPackage"].(map[string]any)["additionalProperties"] = true
 	first.Semantic["$defs"].(map[string]any)["Request"] = nil
 	first.Binding["$defs"].(map[string]any)["Binding"] = nil
-	first.Package["$defs"].(map[string]any)["ProtocolPackage"] = nil
 	first.Spec["$defs"].(map[string]any)["ProtocolSpec"] = nil
 	first.Mapping["$defs"].(map[string]any)["ProtocolMapping"] = nil
 	first.Conversion["policy"].(map[string]any)["$defs"].(map[string]any)["ConversionPolicy"] = nil
 	second := DescribeSchema()
-	if second.Definition["$defs"].(map[string]any)["Definition"].(map[string]any)["additionalProperties"] != false ||
+	if second.Package["$defs"].(map[string]any)["ProtocolPackage"].(map[string]any)["additionalProperties"] != false ||
 		second.Semantic["$defs"].(map[string]any)["Request"] == nil ||
 		second.Binding["$defs"].(map[string]any)["Binding"] == nil ||
 		second.Package["$defs"].(map[string]any)["ProtocolPackage"] == nil ||
@@ -156,42 +183,32 @@ func TestSchemaCatalogKeepsCompilerStateIndependent(t *testing.T) {
 	t.Parallel()
 	limits := DefaultLimits()
 	limits.BufferBytes /= 2
-	first, err := NewCompiler(limits, []Module{schemaCatalogModule{}}, []string{"synthetic.schema.feature"})
+	first, err := NewCompiler(limits, []string{"synthetic.schema.feature"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewCompiler(DefaultLimits(), nil, nil)
+	second, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	catalog := first.Schema()
-	if catalog.Limits != limits || len(catalog.Modules) != 1 {
+	if catalog.Limits != limits || !strings.Contains(strings.Join(catalog.EngineFeatures, ","), "synthetic.schema.feature") {
 		t.Fatal("compiler state was not applied to catalog")
 	}
-	catalog.Modules[0].Directions[0] = EncodeResponse
 	catalog.EngineFeatures[0] = "changed"
 	catalog.Semantic["$defs"].(map[string]any)["Request"] = nil
 	fresh := first.Schema()
-	if fresh.Modules[0].Directions[0] != DecodeRequest || fresh.EngineFeatures[0] == "changed" || fresh.Semantic["$defs"].(map[string]any)["Request"] == nil {
+	if fresh.EngineFeatures[0] == "changed" || fresh.Semantic["$defs"].(map[string]any)["Request"] == nil {
 		t.Fatal("returned state mutated the compiler's next catalog")
 	}
 	other := second.Schema()
-	if other.Limits != DefaultLimits() || len(other.Modules) != 0 || strings.Contains(strings.Join(other.EngineFeatures, ","), "synthetic.schema.feature") {
-		t.Fatal("catalog retained another compiler's modules, features or limits")
+	if other.Limits != DefaultLimits() || strings.Contains(strings.Join(other.EngineFeatures, ","), "synthetic.schema.feature") {
+		t.Fatal("catalog retained another compiler's features or limits")
 	}
-}
-
-type schemaCatalogModule struct{}
-
-func (schemaCatalogModule) Name() string            { return "schema-catalog-test" }
-func (schemaCatalogModule) Directions() []Direction { return []Direction{DecodeRequest} }
-func (schemaCatalogModule) Convert(context.Context, Direction, Value, EvaluationContext) (Value, error) {
-	return Value{}, nil
 }
 
 // Retain the pre-cache reflection path to compare both Go types and wire bytes.
 func describeUncachedSchema() SchemaCatalog {
-	root := reflectUncachedSchema(reflect.TypeFor[Definition]())
 	binding := reflectUncachedSchema(reflect.TypeFor[Binding]())
 	definitions := make(map[string]any)
 	semantic := map[string]any{"$schema": jsonschema.Version, "$defs": definitions}
@@ -211,7 +228,7 @@ func describeUncachedSchema() SchemaCatalog {
 	}
 	conversionSchema := reflectUncachedSchema(reflect.TypeFor[ConversionPolicy]())
 	actionSchemas, actionNames := conversionActionSchemas()
-	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: DefinitionSchemaVersion, PackageVersion: ProtocolPackageSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Definition: root, Package: reflectUncachedSchema(reflect.TypeFor[ProtocolPackage]()), Spec: reflectUncachedSchema(reflect.TypeFor[ProtocolSpec]()), Mapping: reflectUncachedSchema(reflect.TypeFor[ProtocolMapping]()), Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
+	return SchemaCatalog{Conversion: map[string]any{"actionSchemas": actionSchemas, "policy": conversionSchema, "phases": conversionPhases(), "actions": actionNames}, SchemaVersion: ProtocolPackageSchemaVersion, PackageVersion: ProtocolPackageSchemaVersion, CompilerVersion: CompilerVersion, Directions: DirectionCatalog(), Transports: TransportCatalog(), OperationKinds: OperationKindCatalog(), Capabilities: CapabilityCatalog(), Events: EventCatalog(), Diagnostics: DiagnosticCatalog(), Operations: ExpressionCatalog(), Package: reflectUncachedSchema(reflect.TypeFor[ProtocolPackage]()), Spec: reflectUncachedSchema(reflect.TypeFor[ProtocolSpec]()), Mapping: reflectUncachedSchema(reflect.TypeFor[ProtocolMapping]()), Semantic: semantic, Binding: binding, Limits: DefaultLimits()}
 }
 
 func reflectUncachedSchema(kind reflect.Type) map[string]any {

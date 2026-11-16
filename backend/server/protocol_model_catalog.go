@@ -42,18 +42,12 @@ func (s *Server) serveModelCatalog(ctx context.Context, c *app.RequestContext, c
 	return false
 }
 
-// This version selection is temporary until the production defaults retire the
-// legacy handlers. A selected package never falls back after an encoding error.
-func (s *Server) servePackageModelCatalog(ctx context.Context, c *app.RequestContext) bool {
+func (s *Server) servePublicModelCatalog(ctx context.Context, c *app.RequestContext) {
 	selection, ok := s.requireIngress(c)
 	if !ok {
-		return true
-	}
-	if selection.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
-		return false
+		return
 	}
 	if !s.serveModelCatalog(ctx, c, selection.compiled, selection.path) {
 		s.writeIngressError(ctx, c, &builtin.GatewayError{Class: builtin.ErrorClassInvalidRequest, Status: http.StatusNotFound, Message: "protocol has no matching client catalog operation"})
 	}
-	return true
 }

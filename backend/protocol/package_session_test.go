@@ -3,8 +3,6 @@ package protocol
 import (
 	"bytes"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -13,20 +11,6 @@ func TestSessionPackagesPreserveExistingTraces(t *testing.T) {
 	for _, name := range []string{"session-alpha", "session-beta"} {
 		t.Run(name, func(t *testing.T) {
 			compiler, document, compiled := loadTransportPackage(t, "sessions", name, featureWebSocketTransport)
-			legacyRaw, err := os.ReadFile(filepath.Join("testdata", name+".json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var definition Definition
-			if err := decodeContract(legacyRaw, &definition); err != nil {
-				t.Fatal(err)
-			}
-			legacy := compileSessionDefinition(t, definition)
-			for _, sample := range definition.SessionSamples {
-				if _, err := executeSessionSample(t.Context(), legacy, sample); err != nil {
-					t.Fatal("legacy trace is not a valid reference", err)
-				}
-			}
 			if report := Verify(t.Context(), compiled); !report.Passed {
 				t.Fatal(report.Issues)
 			}
@@ -107,7 +91,7 @@ func TestSessionPackageRequiresCompleteLanesAndEvidence(t *testing.T) {
 			}
 		})
 	}
-	withoutTransport, _ := NewCompiler(DefaultLimits(), nil, nil)
+	withoutTransport, _ := NewCompiler(DefaultLimits(), nil)
 	if _, issues := withoutTransport.CompilePackage(fixtureValue(t, original).Bytes()); len(issues) == 0 {
 		t.Fatal("uninstalled transport became available")
 	}

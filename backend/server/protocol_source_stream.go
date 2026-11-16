@@ -26,20 +26,18 @@ func (candidate gatewayCandidate) sourceEventTarget() protocol.Target {
 	return target
 }
 
-func newProtocolSourceStream(ctx context.Context, candidate gatewayCandidate, target *protocol.Compiled, route protocol.ConversionContext, options protocol.EvaluationContext, record *usageRecord, consume func(*protocol.EventFrame, protocol.Object) error) (*protocolSourceStream, error) {
-	var wireValidation *protocol.WireStreamValidation
-	if candidate.compiled.CoreVersion() == protocol.ProtocolCoreVersion {
-		var err error
-		wireValidation, err = candidate.compiled.NewWireInputStreamValidation(candidate.scope)
-		if err != nil {
-			return nil, err
-		}
-	}
-	replay, err := protocol.NewEventReplay(candidate.sourceEventTarget(), candidate.compiled.ResourceLimits())
+func newProtocolSourceStream(ctx context.Context, candidate gatewayCandidate, route protocol.ConversionContext, options protocol.EvaluationContext, record *usageRecord, consume func(*protocol.EventFrame, protocol.Object) error) (*protocolSourceStream, error) {
+	wireValidation, err := candidate.compiled.NewWireInputStreamValidation(candidate.scope)
 	if err != nil {
 		return nil, err
 	}
-	return &protocolSourceStream{ctx: ctx, candidate: candidate, record: record, options: options, consume: consume, replay: replay, wireValidation: wireValidation, state: protocol.NewSourceEventState(candidate.conversion, route, candidate.compiled, target, options.Diagnostics)}, nil
+	replay, err := protocol.NewEventReplay(candidate.sourceEventTarget(), candidate.compiled.ResourceLimits())
+	if err != nil {
+		wireValidation.Release()
+		return nil, err
+	}
+	state := protocol.NewSourceEventState(candidate.conversion, route, candidate.compiled, options.Diagnostics)
+	return &protocolSourceStream{ctx: ctx, candidate: candidate, record: record, options: options, consume: consume, state: state, replay: replay, wireValidation: wireValidation}, nil
 }
 
 func (source *protocolSourceStream) Push(value protocol.Value, metadata protocol.Object) error {
@@ -50,30 +48,23 @@ func (source *protocolSourceStream) Push(value protocol.Value, metadata protocol
 	if err != nil {
 		return err
 	}
+	return source.consumeFrames(frames)
+}
+
+func (source *protocolSourceStream) consumeFrames(frames []protocol.SourceFrame) error {
 	for _, frame := range frames {
-		if err := source.decode(frame); err != nil {
+		if err := source.consumeFrame(frame); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
+func (source *protocolSourceStream) consumeFrame(frame protocol.SourceFrame) error {
 	source.options.Values = frame.Metadata
-	var decoded *protocol.EventFrame
-	var err error
-	if source.wireValidation != nil {
-		decoded, err = source.wireValidation.DecodeFrame(source.ctx, frame.Value, source.options)
-	} else {
-		decoded, err = source.candidate.compiled.DecodeFrame(source.ctx, frame.Value, source.options)
-	}
+	decoded, err := source.wireValidation.DecodeFrame(source.ctx, frame.Value, source.options)
 	if err != nil {
 		return err
-	}
-	if source.record != nil && source.candidate.compiled.CoreVersion() != protocol.ProtocolCoreVersion {
-		if err := observeLegacyHostedTools(source.record, source.candidate.compiled, frame.Value.Bytes()); err != nil {
-			return err
-		}
 	}
 	for _, event := range decoded.Events {
 		if event.Type == protocol.OperationFailed || event.Type == protocol.OperationCancelled {
@@ -108,25 +99,24 @@ func (source *protocolSourceStream) decode(frame protocol.SourceFrame) error {
 
 func (source *protocolSourceStream) Finish(readErr error) error {
 	defer source.release()
-	for _, frame := range source.state.Finish(readErr) {
-		if err := source.decode(frame); err != nil {
-			return err
-		}
+	if readErr == nil {
+		readErr = source.ctx.Err()
 	}
+	frames := source.state.Finish(readErr)
 	if readErr != nil {
 		return protocol.AnnotateResourceError(readErr, source.candidate.compiled.Identity(), protocol.DecodeEvent, "read.event")
 	}
-	if source.wireValidation != nil {
-		if err := source.wireValidation.Finish(); err != nil {
-			return err
-		}
+	if err := source.consumeFrames(frames); err != nil {
+		return err
+	}
+	if err := source.wireValidation.Finish(); err != nil {
+		return err
 	}
 	return source.candidate.compiled.AnnotateSourceEventError(source.replay.Finish())
 }
 
 func (source *protocolSourceStream) release() {
+	source.state.Release()
 	source.replay.Release()
-	if source.wireValidation != nil {
-		source.wireValidation.Release()
-	}
+	source.wireValidation.Release()
 }

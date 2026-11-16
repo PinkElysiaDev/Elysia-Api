@@ -14,7 +14,7 @@ import (
 func TestProtocolHistoryAdminArchiveRestoreAndDelete(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
-	compiled := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
+	compiled := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
 	oldView := s.protocolServiceInst.View()
 	source := storage.ModelSource{ID: "history-source", Name: "History", BaseURL: "https://example.invalid", Platform: "custom:text-alpha", Enabled: true}
 	if err := s.store.UpsertSource(t.Context(), source); err != nil {
@@ -132,11 +132,11 @@ func TestProtocolHistoryRestoreInvalidDraftPreservesEditableCopy(t *testing.T) {
 func TestProtocolHistoryReplacementFailureRollsBackAllReferences(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
-	old := activateGatewayDefinition(t, s, presetDefinition(t, "anthropic-messages"))
-	definition := old.Definition()
-	definition.ID = "tools-custom"
-	old = activateGatewayDefinition(t, s, definition)
-	next := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
+	old := activateGatewayFixture(t, s, presetPackage(t, "anthropic-messages"))
+	definition := compiledPackage(old)
+	definition.Spec.ID = "tools-custom"
+	old = activateGatewayFixture(t, s, definition)
+	next := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
 	for _, id := range []string{"source-a", "source-b"} {
 		if err := s.store.UpsertSource(t.Context(), storage.ModelSource{ID: id, Name: id, Platform: "custom:tools-custom", Enabled: true}); err != nil {
 			t.Fatal(err)
@@ -164,10 +164,10 @@ func TestProtocolHistoryReplacementFailureRollsBackAllReferences(t *testing.T) {
 func TestProtocolHistoryReplacementPreservesReferences(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
-	old := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
-	definition := old.Definition()
-	definition.ID = "replacement-alpha"
-	next := activateGatewayDefinition(t, s, definition)
+	old := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
+	definition := compiledPackage(old)
+	definition.Spec.ID = "replacement-alpha"
+	next := activateGatewayFixture(t, s, definition)
 	source := storage.ModelSource{ID: "s", Name: "s", BaseURL: "https://example.invalid", Platform: "custom:text-alpha", Enabled: true}
 	if err := s.store.UpsertSource(t.Context(), source); err != nil {
 		t.Fatal(err)
@@ -194,7 +194,7 @@ func TestProtocolHistoryReplacementPreservesReferences(t *testing.T) {
 func TestProtocolHistoryModelUnbindAndExplicitRebind(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
-	compiled := activateGatewayDefinition(t, s, loadGatewayDefinition(t, "text-alpha"))
+	compiled := activateGatewayFixture(t, s, loadGatewayFixture(t, "text-alpha"))
 	source := storage.ModelSource{ID: "s", Name: "s", Platform: "custom:text-alpha", Enabled: true}
 	if err := s.store.UpsertSource(t.Context(), source); err != nil {
 		t.Fatal(err)

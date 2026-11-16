@@ -1,0 +1,1219 @@
+{
+  "baseline": "29318400217b2a91afc085373d29ee468fc1cc70",
+  "protocols": {
+    "openai-chat": [
+      {
+        "id": "request-fields",
+        "wire": {
+          "model": "m",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi",
+              "name": "caller"
+            }
+          ],
+          "max_tokens": 64,
+          "temperature": 0.25,
+          "top_p": 0.8,
+          "stop": [
+            "END"
+          ],
+          "stream": true,
+          "parallel_tool_calls": false,
+          "seed": 123,
+          "frequency_penalty": 0,
+          "presence_penalty": 0,
+          "metadata": {
+            "trace": "local"
+          },
+          "store": false,
+          "user": "u",
+          "response_format": {
+            "type": "json_object"
+          },
+          "reasoning_effort": "high",
+          "n": 1,
+          "logprobs": true,
+          "top_logprobs": 2,
+          "logit_bias": {
+            "1": 1
+          },
+          "stream_options": {
+            "include_usage": true,
+            "future": false
+          },
+          "future": {
+            "n": 1e3
+          }
+        },
+        "rawWire": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\",\"name\":\"caller\"}],\"max_tokens\":64,\"temperature\":0.25,\"top_p\":0.8,\"stop\":[\"END\"],\"stream\":true,\"parallel_tool_calls\":false,\"seed\":123,\"frequency_penalty\":0,\"presence_penalty\":0,\"metadata\":{\"trace\":\"local\"},\"store\":false,\"user\":\"u\",\"response_format\":{\"type\":\"json_object\"},\"reasoning_effort\":\"high\",\"n\":1,\"logprobs\":true,\"top_logprobs\":2,\"logit_bias\":{\"1\":1},\"stream_options\":{\"include_usage\":true,\"future\":false},\"future\":{\"n\":1e3}}",
+        "rebuiltWire": {
+          "model": "m",
+          "messages": [
+            {
+              "role": "user",
+              "content": "hi",
+              "name": "caller"
+            }
+          ],
+          "temperature": 0.25,
+          "top_p": 0.8,
+          "stop": [
+            "END"
+          ],
+          "stream": true,
+          "parallel_tool_calls": false,
+          "seed": 123,
+          "frequency_penalty": 0,
+          "presence_penalty": 0,
+          "metadata": {
+            "trace": "local"
+          },
+          "store": false,
+          "user": "u",
+          "response_format": {
+            "type": "json_object"
+          },
+          "reasoning_effort": "high",
+          "n": 1,
+          "logprobs": true,
+          "top_logprobs": 2,
+          "logit_bias": {
+            "1": 1
+          },
+          "stream_options": {
+            "include_usage": true,
+            "future": false
+          },
+          "future": {
+            "n": 1e3
+          },
+          "max_completion_tokens": 64
+        }
+      },
+      {
+        "id": "tool-result-name",
+        "wire": {
+          "model": "m",
+          "messages": [
+            {
+              "role": "assistant",
+              "content": null,
+              "tool_calls": [
+                {
+                  "type": "function",
+                  "id": "c",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{}",
+                    "future": 1
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "tool_call_id": "c",
+              "content": "done"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "future": 1,
+              "function": {
+                "name": "lookup",
+                "description": "search",
+                "parameters": {
+                  "type": "object"
+                },
+                "strict": false,
+                "future": 2
+              }
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"messages\":[{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"type\":\"function\",\"id\":\"c\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{}\",\"future\":1}}]},{\"role\":\"tool\",\"tool_call_id\":\"c\",\"content\":\"done\"}],\"tools\":[{\"type\":\"function\",\"future\":1,\"function\":{\"name\":\"lookup\",\"description\":\"search\",\"parameters\":{\"type\":\"object\"},\"strict\":false,\"future\":2}}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "messages": [
+            {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "type": "function",
+                  "id": "c",
+                  "function": {
+                    "name": "lookup",
+                    "arguments": "{}",
+                    "future": 1
+                  }
+                }
+              ]
+            },
+            {
+              "role": "tool",
+              "tool_call_id": "c",
+              "content": "done",
+              "name": "lookup"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "future": 1,
+              "function": {
+                "name": "lookup",
+                "description": "search",
+                "parameters": {
+                  "type": "object"
+                },
+                "strict": false,
+                "future": 2
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "image-extensions",
+        "wire": {
+          "model": "m",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "https://example.invalid/image.png",
+                    "detail": "high",
+                    "future": 2
+                  },
+                  "future": 1
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://example.invalid/image.png\",\"detail\":\"high\",\"future\":2},\"future\":1}]}]}"
+      },
+      {
+        "id": "usage-details",
+        "wire": {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "hi"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "service_tier": "default",
+          "system_fingerprint": null,
+          "usage": {
+            "prompt_tokens": 9007199254740993,
+            "completion_tokens": 2,
+            "prompt_tokens_details": {
+              "cached_tokens": 15,
+              "text_tokens": 10,
+              "image_tokens": 2,
+              "audio_tokens": 3
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1,
+              "text_tokens": 1,
+              "image_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          }
+        },
+        "response": true,
+        "rawWire": "{\"id\":\"r\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":\"stop\"}],\"service_tier\":\"default\",\"system_fingerprint\":null,\"usage\":{\"prompt_tokens\":9007199254740993,\"completion_tokens\":2,\"prompt_tokens_details\":{\"cached_tokens\":15,\"text_tokens\":10,\"image_tokens\":2,\"audio_tokens\":3},\"completion_tokens_details\":{\"reasoning_tokens\":1,\"text_tokens\":1,\"image_tokens\":0,\"audio_tokens\":0,\"accepted_prediction_tokens\":0,\"rejected_prediction_tokens\":0}}}",
+        "rebuiltWire": {
+          "id": "r",
+          "model": "m",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "hi"
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "service_tier": "default",
+          "system_fingerprint": null,
+          "usage": {
+            "prompt_tokens": 9007199254740993,
+            "completion_tokens": 2,
+            "prompt_tokens_details": {
+              "cached_tokens": 15,
+              "text_tokens": 10,
+              "image_tokens": 2,
+              "audio_tokens": 3
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1,
+              "text_tokens": 1,
+              "image_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "total_tokens": 9007199254740995
+          },
+          "created": 1,
+          "object": "chat.completion"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "id": "null-reasoning-history",
+        "wire": {
+          "model": "m",
+          "input": [
+            {
+              "type": "reasoning",
+              "id": "r",
+              "content": null,
+              "summary": [],
+              "encrypted_content": "synthetic-sealed"
+            },
+            {
+              "role": "user",
+              "content": "hi"
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"input\":[{\"type\":\"reasoning\",\"id\":\"r\",\"content\":null,\"summary\":[],\"encrypted_content\":\"synthetic-sealed\"},{\"role\":\"user\",\"content\":\"hi\"}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "input": [
+            {
+              "type": "reasoning",
+              "id": "r",
+              "summary": [],
+              "encrypted_content": "synthetic-sealed"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "hi"
+                }
+              ],
+              "type": "message"
+            }
+          ]
+        }
+      },
+      {
+        "id": "instructions-and-choice",
+        "wire": {
+          "model": "m",
+          "instructions": "system",
+          "input": "hi",
+          "reasoning": {
+            "effort": "high",
+            "summary": "auto"
+          },
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "function",
+            "name": "lookup"
+          }
+        },
+        "rawWire": "{\"model\":\"m\",\"instructions\":\"system\",\"input\":\"hi\",\"reasoning\":{\"effort\":\"high\",\"summary\":\"auto\"},\"tools\":[{\"type\":\"function\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}}],\"tool_choice\":{\"type\":\"function\",\"name\":\"lookup\"}}",
+        "rebuiltWire": {
+          "model": "m",
+          "instructions": "system",
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "hi"
+                }
+              ]
+            }
+          ],
+          "reasoning": {
+            "effort": "high",
+            "summary": "auto"
+          },
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup",
+              "parameters": {
+                "type": "object"
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "function",
+            "name": "lookup"
+          }
+        }
+      },
+      {
+        "id": "root-and-cache",
+        "wire": {
+          "model": "m",
+          "input": "hi",
+          "future": {
+            "count": 9007199254740993,
+            "empty": null
+          },
+          "prompt_cache_options": {
+            "mode": "explicit",
+            "ttl": "30m",
+            "future": {
+              "items": [
+                null,
+                1e2,
+                "value"
+              ]
+            }
+          }
+        },
+        "rawWire": "{\"model\":\"m\",\"input\":\"hi\",\"future\":{\"count\":9007199254740993,\"empty\":null},\"prompt_cache_options\":{\"mode\":\"explicit\",\"ttl\":\"30m\",\"future\":{\"items\":[null,1e2,\"value\"]}}}",
+        "rebuiltWire": {
+          "model": "m",
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "hi"
+                }
+              ]
+            }
+          ],
+          "future": {
+            "count": 9007199254740993,
+            "empty": null
+          },
+          "prompt_cache_options": {
+            "mode": "explicit",
+            "ttl": "30m",
+            "future": {
+              "items": [
+                null,
+                1e2,
+                "value"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "cache-only",
+        "wire": {
+          "model": "m",
+          "input": "hi",
+          "prompt_cache_options": {
+            "future": null
+          }
+        },
+        "rawWire": "{\"model\":\"m\",\"input\":\"hi\",\"prompt_cache_options\":{\"future\":null}}",
+        "rebuiltWire": {
+          "model": "m",
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "hi"
+                }
+              ]
+            }
+          ],
+          "prompt_cache_options": {
+            "future": null
+          }
+        }
+      },
+      {
+        "id": "empty-cache",
+        "wire": {
+          "model": "m",
+          "input": "hi",
+          "prompt_cache_options": {}
+        },
+        "rawWire": "{\"model\":\"m\",\"input\":\"hi\",\"prompt_cache_options\":{}}",
+        "rebuiltWire": {
+          "model": "m",
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "hi"
+                }
+              ]
+            }
+          ],
+          "prompt_cache_options": {}
+        }
+      },
+      {
+        "id": "null-cache",
+        "wire": {
+          "model": "m",
+          "input": "hi",
+          "prompt_cache_options": null
+        },
+        "rawWire": "{\"model\":\"m\",\"input\":\"hi\",\"prompt_cache_options\":null}",
+        "rebuiltWire": {
+          "model": "m",
+          "input": [
+            {
+              "type": "message",
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "hi"
+                }
+              ]
+            }
+          ],
+          "prompt_cache_options": null
+        }
+      }
+    ],
+    "anthropic": [
+      {
+        "id": "cache-null",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "cache_control": null,
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"cache_control\":null,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "max_tokens": 10,
+          "cache_control": null,
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "hello"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "cache-null-ttl",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": null,
+            "future": 1
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":null,\"future\":1},\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "max_tokens": 10,
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": null,
+            "future": 1
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "hello"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "unknown-fields",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "future": {
+            "n": 9007199254740993
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "hello",
+                  "future": {
+                    "items": [
+                      1,
+                      2
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"future\":{\"n\":9007199254740993},\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\",\"future\":{\"items\":[1,2]}}]}]}"
+      },
+      {
+        "id": "opaque-without-type",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "future": {
+                    "n": 1
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":[{\"future\":{\"n\":1}}]}]}"
+      },
+      {
+        "id": "direct-caller",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c",
+                  "name": "lookup",
+                  "input": {},
+                  "caller": {
+                    "type": "direct"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"c\",\"name\":\"lookup\",\"input\":{},\"caller\":{\"type\":\"direct\"}}]}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c",
+                  "name": "lookup",
+                  "input": {}
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "caller-extension",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c",
+                  "name": "lookup",
+                  "input": {},
+                  "caller": {
+                    "type": "direct",
+                    "extra": 1
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"c\",\"name\":\"lookup\",\"input\":{},\"caller\":{\"type\":\"direct\",\"extra\":1}}]}]}"
+      },
+      {
+        "id": "tool-result-content-array",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c",
+                  "name": "lookup",
+                  "input": {
+                    "content": [
+                      {
+                        "type": "opaque-user-data"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "tool_use_id": "c",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "done",
+                      "future": 1
+                    },
+                    {
+                      "type": "image",
+                      "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "AAAA"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"c\",\"name\":\"lookup\",\"input\":{\"content\":[{\"type\":\"opaque-user-data\"}]}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"c\",\"content\":[{\"type\":\"text\",\"text\":\"done\",\"future\":1},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":\"image/png\",\"data\":\"AAAA\"}}]}]}]}"
+      },
+      {
+        "id": "raw-reference-key-before-escaping",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "<",
+                  "name": "lookup",
+                  "input": {}
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "tool_use_id": "<",
+                  "content": "done"
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"<\",\"name\":\"lookup\",\"input\":{}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"\\u003c\",\"content\":\"done\"}]}]}"
+      },
+      {
+        "id": "invalid-caller",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c",
+                  "name": "lookup",
+                  "input": {},
+                  "caller": "invalid"
+                }
+              ]
+            }
+          ]
+        },
+        "rejectPath": "/messages/0/content/0/caller",
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"c\",\"name\":\"lookup\",\"input\":{},\"caller\":\"invalid\"}]}]}"
+      },
+      {
+        "id": "invalid-tool-error",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "c",
+                  "name": "lookup",
+                  "input": {}
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "tool_use_id": "c",
+                  "content": "done",
+                  "is_error": "invalid"
+                }
+              ]
+            }
+          ]
+        },
+        "rejectPath": "/messages/1/content/0/is_error",
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"c\",\"name\":\"lookup\",\"input\":{}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"c\",\"content\":\"done\",\"is_error\":\"invalid\"}]}]}"
+      },
+      {
+        "id": "thinking-controls",
+        "wire": {
+          "model": "m",
+          "max_tokens": 2048,
+          "thinking": {
+            "type": "enabled",
+            "budget_tokens": 1024
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":2048,\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024},\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "max_tokens": 2048,
+          "thinking": {
+            "type": "enabled",
+            "budget_tokens": 1024
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "hello"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "inline-system-without-root-native",
+        "wire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            },
+            {
+              "role": "system",
+              "content": "inline instruction"
+            }
+          ]
+        },
+        "rawWire": "{\"model\":\"m\",\"max_tokens\":10,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"},{\"role\":\"system\",\"content\":\"inline instruction\"}]}",
+        "rebuiltWire": {
+          "model": "m",
+          "max_tokens": 10,
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "hello"
+                }
+              ]
+            },
+            {
+              "role": "system",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "inline instruction"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "gemini": [
+      {
+        "id": "idless-reuse",
+        "wire": {
+          "contents": [
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "id": "explicit",
+                    "name": "other",
+                    "args": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "id": "explicit",
+                    "name": "other",
+                    "response": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "name": "lookup",
+                    "args": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "lookup",
+                    "response": {
+                      "ok": true
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "name": "lookup",
+                    "args": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "lookup",
+                    "response": {}
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "rawWire": "{\"contents\":[{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"explicit\",\"name\":\"other\",\"args\":{}}}]},{\"role\":\"user\",\"parts\":[{\"functionResponse\":{\"id\":\"explicit\",\"name\":\"other\",\"response\":{}}}]},{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"lookup\",\"args\":{}}}]},{\"role\":\"user\",\"parts\":[{\"functionResponse\":{\"name\":\"\\u006cookup\",\"response\":{\"ok\":true}}}]},{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"lookup\",\"args\":{}}}]},{\"role\":\"user\",\"parts\":[{\"functionResponse\":{\"name\":\"lookup\",\"response\":{}}}]}]}",
+        "rebuiltWire": {
+          "contents": [
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "id": "explicit",
+                    "name": "other",
+                    "args": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "id": "explicit",
+                    "name": "other",
+                    "response": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "name": "lookup",
+                    "args": {},
+                    "id": "gemini_call_0"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "lookup",
+                    "response": {
+                      "ok": true
+                    },
+                    "id": "gemini_call_0"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "name": "lookup",
+                    "args": {},
+                    "id": "gemini_call_1"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "lookup",
+                    "response": {},
+                    "id": "gemini_call_1"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "idless-ambiguous",
+        "wire": {
+          "contents": [
+            {
+              "role": "model",
+              "parts": [
+                {
+                  "functionCall": {
+                    "id": "a",
+                    "name": "lookup",
+                    "args": {}
+                  }
+                },
+                {
+                  "functionCall": {
+                    "id": "b",
+                    "name": "lookup",
+                    "args": {}
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "lookup",
+                    "response": {}
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "rejectPath": "/contents/1/parts/0/functionResponse/name",
+        "rawWire": "{\"contents\":[{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"id\":\"a\",\"name\":\"lookup\",\"args\":{}}},{\"functionCall\":{\"id\":\"b\",\"name\":\"lookup\",\"args\":{}}}]},{\"role\":\"user\",\"parts\":[{\"functionResponse\":{\"name\":\"lookup\",\"response\":{}}}]}]}"
+      },
+      {
+        "id": "system-wrapper",
+        "wire": {
+          "systemInstruction": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "prefix"
+              }
+            ],
+            "vendor": {
+              "n": 9007199254740993
+            }
+          },
+          "contents": []
+        },
+        "rawWire": "{\"systemInstruction\":{\"role\":\"user\",\"parts\":[{\"text\":\"prefix\"}],\"vendor\":{\"n\":9007199254740993}},\"contents\":[]}",
+        "rebuiltWire": {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "prefix"
+              }
+            ],
+            "vendor": {
+              "n": 9007199254740993
+            }
+          },
+          "contents": []
+        }
+      },
+      {
+        "id": "response-omitted-role",
+        "wire": {
+          "responseId": "r",
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ]
+        },
+        "response": true,
+        "rawWire": "{\"responseId\":\"r\",\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]},\"finishReason\":\"STOP\"}]}",
+        "rebuiltWire": {
+          "responseId": "r",
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "hi"
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP"
+            }
+          ]
+        }
+      },
+      {
+        "id": "mixed-tool-envelope",
+        "wire": {
+          "contents": [],
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "name": "lookup",
+                  "parameters": {
+                    "type": "object"
+                  }
+                }
+              ],
+              "googleSearch": {}
+            }
+          ]
+        },
+        "rawWire": "{\"contents\":[],\"tools\":[{\"functionDeclarations\":[{\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}}],\"googleSearch\":{}}]}",
+        "rebuiltWire": {
+          "contents": [],
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "name": "lookup",
+                  "parameters": {
+                    "type": "object"
+                  }
+                }
+              ]
+            },
+            {
+              "googleSearch": {}
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

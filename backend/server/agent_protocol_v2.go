@@ -234,9 +234,9 @@ func (tool *protocolV2Tool) Execute(ctx context.Context, tctx CLIContext, raw js
 }
 
 func protocolSchemaResult(schema protocol.SchemaCatalog, section, typeName string) CLIResult {
-	sections := map[string]any{"definition": schema.Definition, "package": schema.Package, "spec": schema.Spec, "mapping": schema.Mapping, "semantic": schema.Semantic, "binding": schema.Binding, "directions": schema.Directions, "capabilities": schema.Capabilities, "operations": schema.Operations, "events": schema.Events, "diagnostics": schema.Diagnostics, "modules": schema.Modules}
+	sections := map[string]any{"package": schema.Package, "spec": schema.Spec, "mapping": schema.Mapping, "semantic": schema.Semantic, "binding": schema.Binding, "directions": schema.Directions, "capabilities": schema.Capabilities, "operations": schema.Operations, "events": schema.Events, "diagnostics": schema.Diagnostics}
 	if section == "" {
-		return CLIResult{OK: true, Summary: "Installed engine contract; request --section and optionally --type for full definitions", Data: map[string]any{"schemaVersion": schema.SchemaVersion, "packageVersion": schema.PackageVersion, "compilerVersion": schema.CompilerVersion, "features": schema.EngineFeatures, "directions": schema.Directions, "capabilities": schema.Capabilities, "transports": schema.Transports, "operationKinds": schema.OperationKinds, "sections": []string{"package", "spec", "mapping", "definition", "semantic", "binding", "directions", "capabilities", "operations", "events", "diagnostics", "modules"}}}
+		return CLIResult{OK: true, Summary: "Installed engine contract; request --section and optionally --type for full definitions", Data: map[string]any{"schemaVersion": schema.SchemaVersion, "packageVersion": schema.PackageVersion, "compilerVersion": schema.CompilerVersion, "features": schema.EngineFeatures, "directions": schema.Directions, "capabilities": schema.Capabilities, "transports": schema.Transports, "operationKinds": schema.OperationKinds, "sections": []string{"package", "spec", "mapping", "semantic", "binding", "directions", "capabilities", "operations", "events", "diagnostics"}}}
 	}
 	value, exists := sections[section]
 	if !exists {

@@ -2,6 +2,8 @@ package protocol
 
 import "context"
 
+type combinationTransportKey struct{}
+
 // CapabilityContractHash binds paired evidence to the operator's complete model
 // contract, including explicit false entries. A narrower profile cannot prove
 // that an edited parent contract was verified.
@@ -18,6 +20,35 @@ func CapabilityContractHash(capabilities CapabilitySet) string {
 // then against the target's expression capabilities. Stateful sessions and jobs
 // require their complete flow contract.
 func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet, policies ...*CompiledConversion) []CombinationReport {
+	reports := verifyBindingProfiles(ctx, ingress, upstream, capabilities, policies...)
+	hasPassing := false
+	for _, report := range reports {
+		hasPassing = hasPassing || report.Passed
+	}
+	if !canProfileHTTP(ingress) || !canProfileHTTP(upstream) {
+		return reports
+	}
+	if !hasPassing && hasJSONGeneration(ingress) && hasJSONGeneration(upstream) {
+		jsonContext := context.WithValue(ctx, combinationTransportKey{}, HTTPJSON)
+		reports = append(reports, verifyBindingProfiles(jsonContext, ingress, upstream, capabilities, policies...)...)
+	}
+	for _, scope := range upstream.packagePlan.verificationScopes {
+		if !supportsScopeCapabilities(capabilities, scope) || !supportsScopeCapabilities(ingress.capabilities, scope) {
+			continue
+		}
+		for _, transport := range scope.transports {
+			if !hasGenerationTransport(ingress, transport) {
+				continue
+			}
+			scopeContext := context.WithValue(ctx, requestScopeVerificationKey{}, scope)
+			scopeContext = context.WithValue(scopeContext, combinationTransportKey{}, transport)
+			reports = append(reports, verifyBindingProfiles(scopeContext, ingress, upstream, capabilities, policies...)...)
+		}
+	}
+	return reports
+}
+
+func verifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, capabilities CapabilitySet, policies ...*CompiledConversion) []CombinationReport {
 	full := VerifyBindingCombination(ctx, ingress, upstream, capabilities, policies...)
 	reports := []CombinationReport{full}
 	if full.Passed || !canProfileHTTP(ingress) || !canProfileHTTP(upstream) {
@@ -26,6 +57,11 @@ func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, cap
 	base := CapabilitySet{}
 	for _, capability := range []Capability{TextCapability, UsageCapability} {
 		if capabilities[capability] && ingress.capabilities[capability] && upstream.capabilities[capability] {
+			base[capability] = true
+		}
+	}
+	if scope, hasScope := ctx.Value(requestScopeVerificationKey{}).(compiledVerificationScope); hasScope {
+		for _, capability := range scope.capabilities {
 			base[capability] = true
 		}
 	}
@@ -84,6 +120,15 @@ func VerifyBindingProfiles(ctx context.Context, ingress, upstream *Compiled, cap
 	// are supported. Keep the failed union and the narrower independent proofs.
 	reports = append(reports, union)
 	return append(reports, profiles...)
+}
+
+func hasJSONGeneration(compiled *Compiled) bool {
+	for _, operation := range compiled.operations {
+		if operation.Kind == "generate" && operation.Transport == HTTPJSON {
+			return true
+		}
+	}
+	return false
 }
 
 func canProfileHTTP(compiled *Compiled) bool {

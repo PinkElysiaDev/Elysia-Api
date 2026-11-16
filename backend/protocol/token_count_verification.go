@@ -34,12 +34,11 @@ func executeTokenCountSample(ctx context.Context, compiled *Compiled, sample Sam
 
 func verifyTokenCountSamples(ctx context.Context, compiled *Compiled, report *VerificationReport) CapabilitySet {
 	capabilities := CapabilitySet{}
-	if compiled.packagePlan == nil || len(compiled.packagePlan.tokenCounts) == 0 {
+	if len(compiled.packagePlan.tokenCounts) == 0 {
 		return capabilities
 	}
-	document, _ := compiled.Package()
 	covered := make(map[string]map[Direction]bool)
-	for index, sample := range document.Mapping.TokenCountSamples {
+	for index, sample := range compiled.verificationTokenCountSamples() {
 		path := fmt.Sprintf("/mapping/tokenCountSamples/%d", index)
 		result, err := executeTokenCountSample(ctx, compiled, sample)
 		expected := sample.Expected

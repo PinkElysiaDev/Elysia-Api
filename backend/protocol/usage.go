@@ -2,6 +2,12 @@ package protocol
 
 import "math"
 
+// CloneUsage owns mutable counters and details without deriving missing totals.
+// Immutable execution snapshots remain shared; replacing a source field is safe.
+func CloneUsage(usage *Usage) *Usage {
+	return cloneCoreUsagePointer(usage)
+}
+
 // MergeUsage merges counter snapshots, never treating an observed zero as an
 // absent value. Inferred totals cannot replace a provider's observed total.
 // The result owns its counters and does not mutate either input.
@@ -13,6 +19,12 @@ func MergeUsage(current, update *Usage) *Usage {
 	for _, source := range []*Usage{current, update} {
 		if source == nil {
 			continue
+		}
+		if !source.ExecutionSpeed.IsZero() {
+			merged.ExecutionSpeed = source.ExecutionSpeed
+		}
+		if !source.Executions.IsZero() {
+			merged.Executions = source.Executions
 		}
 		if !source.Attribution.IsZero() {
 			merged.Attribution = source.Attribution

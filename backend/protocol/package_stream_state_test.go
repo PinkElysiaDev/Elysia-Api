@@ -43,7 +43,7 @@ func TestPackageStreamStateSnapshotAndRollback(t *testing.T) {
 			t.Fatal("response identity was not inherited", events, err)
 		}
 	}
-	key := moduleStateKey{compiled: compiled, direction: DecodeEvent}
+	key := executionStateKey{compiled: compiled, direction: DecodeEvent}
 	retained := options.State.packageStates[key]
 	// Slots compile in name order: count, id, previous. The last slot must see
 	// the preceding count, not the update staged earlier in this same event.
@@ -90,7 +90,7 @@ func TestPackageStreamStateNativeFrameObservation(t *testing.T) {
 			t.Fatal("stateful native observation changed frame bytes", frames, err)
 		}
 	}
-	retained := target.State.packageStates[moduleStateKey{compiled: compiled, direction: EncodeEvent}]
+	retained := target.State.packageStates[executionStateKey{compiled: compiled, direction: EncodeEvent}]
 	if retained == nil || retained.slots[0].raw != "2" {
 		t.Fatal("native replay did not observe the semantic event sequence", retained)
 	}

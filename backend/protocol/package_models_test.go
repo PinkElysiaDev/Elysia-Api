@@ -16,13 +16,13 @@ func discoveryPackage(t *testing.T) ProtocolPackage {
 		Response: "catalog-page", Auth: Credential{Location: "none"}, Models: &ProtocolModelDiscoverySpec{CursorParameter: "cursor"}}
 	document.Mapping.Operations["models"] = ProtocolOperationMapping{DecodeModels: expressionPointer(Expression{Op: "ref", Ref: "catalog-page"})}
 	document.Mapping.Expressions = map[string]Expression{"catalog-page": readExpression("input", "")}
-	document.Mapping.ModelSamples = discoveryDefinition(t).ModelSamples
+	document.Mapping.ModelSamples = discoveryModelSamples(t)
 	return document
 }
 
 func TestPackageModelsUseDeclaredProgramAndEvidence(t *testing.T) {
 	document := discoveryPackage(t)
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,12 +30,12 @@ func TestPackageModelsUseDeclaredProgramAndEvidence(t *testing.T) {
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	legacy := compileTestDefinition(t, discoveryDefinition(t))
 	for _, sample := range document.Mapping.ModelSamples {
 		got, err := compiled.DecodeModelPage(t.Context(), "models", sample.Input)
-		want, legacyErr := legacy.DecodeModelPage(t.Context(), "models", sample.Input)
-		if err != nil || legacyErr != nil || !reflect.DeepEqual(got, want) {
-			t.Fatal("package discovery changed the catalog", got, want, err, legacyErr)
+		var want ModelPage
+		fixtureErr := decodeContract(sample.Expected.Bytes(), &want)
+		if err != nil || fixtureErr != nil || !reflect.DeepEqual(got, want) {
+			t.Fatal("package discovery changed the catalog", got, want, err, fixtureErr)
 		}
 	}
 	report := Verify(t.Context(), compiled)
@@ -53,7 +53,7 @@ func TestPackageModelsUseDeclaredProgramAndEvidence(t *testing.T) {
 		t.Fatal("model evidence accessor exposed mutable fixtures")
 	}
 	operation, _ := compiled.Operation("models")
-	if operation.Request != "" || operation.Response != "" || operation.Models.Decode.Transform != nil {
+	if operation.Request != "" || operation.Response != "" {
 		t.Fatal("package discovery was converted into a legacy executable mapping")
 	}
 	operation.Models.CursorParameter = "changed"
@@ -206,7 +206,7 @@ func TestPackageClientCatalogEvidencePreviewAndFinalContract(t *testing.T) {
 	if report := Verify(t.Context(), compiled); !report.Passed {
 		t.Fatal(report.Issues)
 	}
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

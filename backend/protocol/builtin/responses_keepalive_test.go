@@ -28,12 +28,12 @@ func TestResponsesKeepaliveHasNoGenerationPayload(t *testing.T) {
 
 func TestResponsesKeepaliveDoesNotHidePayloadOrBadSequence(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
-	opts := p.EvaluationContext{State: p.NewEvaluationState()}
+	opts := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"keepalive","sequence_number":2}`), opts)
 	if err != nil || len(frame.Events) != 0 {
 		t.Fatal(frame, err)
 	}
-	encoded, err := from.EncodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState()})
+	encoded, err := from.EncodeFrame(t.Context(), frame, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 	if err != nil || len(encoded) != 1 || encoded[0] != testValue(t, `{"type":"keepalive","sequence_number":2}`) {
 		t.Fatal("native heartbeat changed", encoded, err)
 	}
@@ -41,12 +41,12 @@ func TestResponsesKeepaliveDoesNotHidePayloadOrBadSequence(t *testing.T) {
 		t.Fatal("out-of-order keepalive accepted")
 	}
 	for _, raw := range []string{`{"type":"keepalive","sequence_number":"1"}`, `{"type":"keepalive","sequence_number":null}`} {
-		if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+		if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil {
 			t.Fatal("bad sequence accepted", raw)
 		}
 	}
 	for _, field := range []string{`"delta":"private"`, `"response":{"id":"r"}`, `"vendor":42`, `"service_tier":"default"`} {
-		frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"keepalive",`+field+`}`), p.EvaluationContext{State: p.NewEvaluationState()})
+		frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"keepalive",`+field+`}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		if err != nil {
 			continue
 		}

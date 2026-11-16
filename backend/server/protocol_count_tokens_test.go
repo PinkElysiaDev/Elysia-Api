@@ -44,7 +44,7 @@ func TestCountTokensUpstreamMatrix(t *testing.T) {
 	for _, targetName := range []string{"anthropic", "google-generate-content"} {
 		t.Run(targetName, func(t *testing.T) {
 			s, _ := newProtocolAdminTestServer(t)
-			packages := seedGatewayPackages(t, s)
+			packages := defaultGatewayPackages(t, s)
 			target := packages[targetName]
 			decoder, _ := target.TokenCountRequestProtocol("count_tokens")
 			operation, _ := target.Operation("count_tokens")
@@ -120,7 +120,7 @@ func TestCountTokensUpstreamMatrix(t *testing.T) {
 
 func TestCountTokensFailuresAndPermissions(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, s)
+	packages := defaultGatewayPackages(t, s)
 	var calls atomic.Int32
 	var reply atomic.Value
 	reply.Store(`{"input_tokens":0}`)
@@ -189,7 +189,7 @@ func TestCountTokensFailuresAndPermissions(t *testing.T) {
 
 func TestCountTokensRequiresDeclaredCandidate(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, s)
+	packages := defaultGatewayPackages(t, s)
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
 	defer provider.Close()
@@ -202,7 +202,7 @@ func TestCountTokensRequiresDeclaredCandidate(t *testing.T) {
 
 func TestCountTokensRespectsSourceKeysAndWirePermissions(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, s)
+	packages := defaultGatewayPackages(t, s)
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -255,7 +255,7 @@ func TestCountTokensRespectsSourceKeysAndWirePermissions(t *testing.T) {
 
 func TestCountTokensCancellationReleasesState(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, s)
+	packages := defaultGatewayPackages(t, s)
 	started, canceled := make(chan struct{}), make(chan error, 1)
 	release := make(chan struct{})
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +312,7 @@ func TestCountTokensCancellationReleasesState(t *testing.T) {
 
 func TestCountTokensRetryPinsConversionSnapshot(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, s)
+	packages := defaultGatewayPackages(t, s)
 	started, resume := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

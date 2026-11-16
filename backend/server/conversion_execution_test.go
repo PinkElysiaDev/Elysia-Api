@@ -20,10 +20,10 @@ func conversionExecution(t *testing.T) string {
 	t.Helper()
 	selection := os.Getenv("ELYSIA_CONVERSION_HTTP_EXECUTION")
 	switch selection {
-	case "legacy", "packages", "production":
+	case "production":
 		return selection
 	default:
-		t.Fatal("ELYSIA_CONVERSION_HTTP_EXECUTION must select legacy, packages or production")
+		t.Fatal("ELYSIA_CONVERSION_HTTP_EXECUTION must select production")
 		return ""
 	}
 }
@@ -44,7 +44,7 @@ func conversionPackage(t *testing.T, id string) *protocol.Compiled {
 		}
 		return raw
 	}
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,14 +59,6 @@ type conversionExecutionProof struct {
 	Execution, Commit, Compiler string
 	Packages                    map[string]string
 	Policies                    map[string]string
-}
-
-func configureConversionExecution(t *testing.T, server *Server, groups []config.ModelGroupConfig) {
-	t.Helper()
-	if conversionExecution(t) == "packages" {
-		seedGatewayPackages(t, server)
-		seedRoutingGroups(t, server, groups)
-	}
 }
 
 func conversionExecutionIdentity(t *testing.T, server *Server) *conversionExecutionProof {
@@ -93,8 +85,8 @@ func readConversionExecutionIdentity(ctx context.Context, server *Server, execut
 		}
 		proof.Packages[id] = compiled.Hash()
 		for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest, protocol.DecodeResponse, protocol.EncodeResponse, protocol.DecodeEvent, protocol.EncodeEvent} {
-			if (compiled.Codec(direction) == "") != (proof.Execution != "legacy") {
-				return proof, fmt.Errorf("measurement execution %s does not match active protocol %s/%s (revision %s, codec %q)", execution, id, direction, compiled.Hash(), compiled.Codec(direction))
+			if execution != "production" || compiled.CoreVersion() != protocol.ProtocolCoreVersion || !compiled.Supports(direction) {
+				return proof, fmt.Errorf("measurement execution %s does not match active package %s/%s (revision %s)", execution, id, direction, compiled.Hash())
 			}
 		}
 	}
@@ -144,24 +136,22 @@ func conversionProviderIdentity(t *testing.T) *conversionExecutionProof {
 		Packages: map[string]string{}}
 }
 
-func TestConversionExecutionRejectsReloadDrift(t *testing.T) {
+func TestConversionExecutionPreservesReloadIdentityAndRejectsDrift(t *testing.T) {
 	groups := []config.ModelGroupConfig{{ID: "g", Name: "grp", Enabled: true, Models: []config.ModelRef{{ID: "m", Name: "m", BaseURL: "http://127.0.0.1:1", Platform: "claude", APIKey: "synthetic"}}}}
 	server := newTestServerWithStore(t, groups)
-	seedGatewayPackages(t, server)
-	seedRoutingGroups(t, server, groups)
-	// The collector must reject the real reload that restores shipped codecs,
-	// rather than accepting its stale startup identity as package evidence.
-	before, err := readConversionExecutionIdentity(t.Context(), server, "packages")
+	defaultGatewayPackages(t, server)
+	before, err := readConversionExecutionIdentity(t.Context(), server, "production")
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := checkReloadedConversionExecution(t.Context(), server, before); err != nil {
 		t.Fatal(err)
 	}
 	if err := server.reloadProtocolRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkReloadedConversionExecution(t.Context(), server, before); err == nil || !strings.Contains(err.Error(), "does not match active protocol") {
-		t.Fatalf("reload did not reject the execution switch: %v", err)
+	if err := checkReloadedConversionExecution(t.Context(), server, before); err != nil {
+		t.Fatal(err)
+	}
+	before.Packages[protocol.PresetAnthropicID] = "different-revision"
+	if err := checkReloadedConversionExecution(t.Context(), server, before); err == nil || !strings.Contains(err.Error(), "changed active revisions") {
+		t.Fatalf("reload did not reject revision drift: %v", err)
 	}
 }

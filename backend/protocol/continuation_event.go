@@ -115,9 +115,9 @@ func sameContinuationNode(left, right *Node) bool {
 		return false
 	}
 	if !slices.EqualFunc(a.Metadata, b.Metadata, func(x, y ResponseMetadata) bool {
-		value := equalValues(x.Value, y.Value)
-		x.Value, y.Value = Value{}, Value{}
-		return value && x == y
+		isEqual := equalValues(x.Value, y.Value) && equalValues(x.References, y.References)
+		x.Value, y.Value, x.References, y.References = Value{}, Value{}, Value{}, Value{}
+		return isEqual && x == y
 	}) {
 		return false
 	}

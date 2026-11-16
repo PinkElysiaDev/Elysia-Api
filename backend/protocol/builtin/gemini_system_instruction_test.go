@@ -19,7 +19,7 @@ func TestGeminiSystemInstructionRoleAcrossInstalledCodecs(t *testing.T) {
 			}
 			t.Run(name+"/"+role, func(t *testing.T) {
 				to := shippedProjectionProtocol(t, name)
-				r, err := from.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				r, err := from.DecodeRequest(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -36,11 +36,11 @@ func TestGeminiSystemInstructionRoleAcrossInstalledCodecs(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := to.EncodeRequest(t.Context(), out, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				wire, err := to.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				roundtrip, err := to.DecodeRequest(t.Context(), wire, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+				roundtrip, err := to.DecodeRequest(t.Context(), wire, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -53,7 +53,7 @@ func TestGeminiSystemInstructionRoleAcrossInstalledCodecs(t *testing.T) {
 				if name == Gemini {
 					sameJSON(t, wire, body)
 					out.Content[0].Children[0].Payload = p.StringValue("edited prefix")
-					wire, err = to.EncodeRequest(t.Context(), out, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+					wire, err = to.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -67,63 +67,22 @@ func TestGeminiSystemInstructionRoleAcrossInstalledCodecs(t *testing.T) {
 func TestGeminiSystemInstructionRoleValidationAndExtensions(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Gemini), shippedProjectionProtocol(t, Responses)
 	for _, role := range []string{`42`, `false`, `[]`, `{}`} {
-		_, err := from.DecodeRequest(t.Context(), []byte(`{"systemInstruction":{"role":`+role+`,"parts":[{"text":"prefix"}]},"contents":[{"parts":[{"text":"question"}]}]}`), p.EvaluationContext{})
+		_, err := from.DecodeRequest(t.Context(), []byte(`{"systemInstruction":{"role":`+role+`,"parts":[{"text":"prefix"}]},"contents":[{"parts":[{"text":"question"}]}]}`), fixtureOptions(p.EvaluationContext{}))
 		requireContextIssue(t, err, p.InvalidInput, "/systemInstruction/role")
 	}
 	for _, field := range []string{`,"vendor":null`, `,"cache_control":{"type":"ephemeral"}`} {
 		body := `{"systemInstruction":{"role":"user","parts":[{"text":"prefix"}]` + field + `},"contents":[{"parts":[{"text":"question"}]}]}`
-		r, err := from.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+		r, err := from.DecodeRequest(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := from.EncodeRequest(t.Context(), r, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+		wire, err := from.EncodeRequest(t.Context(), r, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		sameJSON(t, wire, body)
-		if _, err := to.EncodeRequest(t.Context(), r, p.EvaluationContext{Scope: p.Scope{Model: "m"}}); err == nil {
+		if _, err := to.EncodeRequest(t.Context(), r, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}})); err == nil {
 			t.Fatal("unknown system instruction state silently removed")
-		}
-	}
-}
-
-func TestGeminiSystemInstructionOldCustomCombination(t *testing.T) {
-	d := shippedProjectionProtocol(t, Gemini).Definition()
-	d.ID, d.Requires = "old-gemini-system-copy", []string{p.ReasoningControlsFeature}
-	mapping := d.Directions[p.DecodeRequest]
-	mapping.After = &p.Expression{Op: "read", Path: ""}
-	d.Directions[p.DecodeRequest] = mapping
-	d.Samples = append(d.Samples, p.Sample{
-		ID: "sdk-system-role", Direction: p.DecodeRequest, Scope: p.Scope{Model: "m"}, Context: p.Object{"model": p.StringValue("m")},
-		Input:    testValue(t, `{"systemInstruction":{"role":"user","parts":[{"text":"prefix"}]},"contents":[{"role":"user","parts":[{"text":"hello"}]}],"generationConfig":{"maxOutputTokens":32}}`),
-		Expected: testValue(t, `{"schemaVersion":1,"source":{},"model":"m","parameters":{"max_output_tokens":32},"content":[{"kind":"message","role":"system","children":[{"kind":"text","payload":"prefix"}]},{"kind":"message","role":"user","children":[{"kind":"text","payload":"hello"}]}]}`),
-	})
-	compiler, err := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := p.EncodeValue(d)
-	from, issues := compiler.Compile(raw.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	if r := p.Verify(t.Context(), from); !r.Passed {
-		t.Fatal(r.Issues)
-	}
-	for _, name := range []string{Chat, Responses, Anthropic, Gemini} {
-		to := shippedProjectionProtocol(t, name)
-		report := p.VerifyBindingCombination(t.Context(), from, to, p.CapabilitySet{p.TextCapability: true, p.UsageCapability: true})
-		if !report.Passed {
-			t.Fatal(name, report.Issues)
-		}
-		found := false
-		for _, check := range report.Checks {
-			if check.SampleID == "sdk-system-role" && check.Passed {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatal("system role sample was not verified", name, report.Checks)
 		}
 	}
 }

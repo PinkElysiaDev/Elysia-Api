@@ -75,7 +75,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 			ctx, preview := adminProtocolContext("POST", "/api/admin/protocols/conversion-policies/preview", string(previewBody))
 			s.adminConversionPreview(contextForTest(ctx), ctx)
 			flushTestResponse(ctx)
-			rec := perform(protocol.PresetResponsesID, "/responses", raw)
+			rec := perform(protocol.PresetResponsesID, "/v1/responses", raw)
 			if mode == "strict" {
 				if preview.Code != 400 || rec.Code != 400 || calls != 0 {
 					t.Fatal(preview.Code, rec.Code, calls, rec.Body)
@@ -232,7 +232,7 @@ func TestGatewayRequestProjectionPreviewAndRejection(t *testing.T) {
 				`"previous_response_id":"prior"`, `"future":true`, `"prompt_cache_options":{"mode":"explicit"}`, `"prompt_cache_options":{"ttl":"1h"}`, `"prewarm":true`,
 			} {
 				before := calls
-				rec := perform(protocol.PresetResponsesID, "/responses", `{"model":"group","input":"hi","store":false,`+fields+`}`)
+				rec := perform(protocol.PresetResponsesID, "/v1/responses", `{"model":"group","input":"hi","store":false,`+fields+`}`)
 				if rec.Code != 400 || calls != before {
 					t.Fatal("invalid or unmapped input reached upstream", fields, rec.Code, calls-before, rec.Body)
 				}

@@ -6,17 +6,8 @@ import (
 	"reflect"
 )
 
-// RequestBaselineModule opts a stateless typed adapter into request-local replay
-// reuse. Its decoder must be pure (including diagnostics) and its typed result
-// must implement exactly the same semantic contract as Convert.
-type RequestBaselineModule interface {
-	TypedModule
-	RequestBaselineSafe()
-}
-
 // requestEncodingWorkspace owns one immutable parsed baseline, never a set of
-// candidate projections. Pure package plans and supported identity module
-// after-mappings preserve it; a semantic JSON boundary drops it. It is attached
+// candidate projections. Pure package plans preserve it; a semantic JSON boundary drops it. It is attached
 // privately after successful decoding and is never cached globally.
 type requestEncodingWorkspace struct {
 	compiled     *Compiled
@@ -83,7 +74,7 @@ func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Nati
 		if err = ctx.Err(); err == nil {
 			request, err = replay.finishDecodedRequest(ctx, original, cloneRequestSemantic(request), options, &native.Source.Scope)
 		}
-		if err == nil && replay.packagePlan != nil {
+		if err == nil {
 			replay.attachRequestWorkspace(ctx, request, decoded)
 		}
 		err = replay.runtimeError(DecodeRequest, err)
@@ -110,33 +101,11 @@ func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Nati
 // can be reused with identical request, revision, scope, context and budgets.
 // It never authorizes skipping final wire or operation validation.
 func (compiled *Compiled) CanReuseRequestEncoding() bool {
-	if compiled.packagePlan != nil {
-		return compiled.canReusePackageRequest
-	}
-	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
-		mapping := compiled.mappings[direction]
-		if !compiled.hasPureRequestMapping(direction) || mapping.after != nil && !mapping.after.isInputIdentity() {
-			return false
-		}
-	}
-	return true
-}
-
-func (compiled *Compiled) hasPureRequestMapping(direction Direction) bool {
-	mapping := compiled.mappings[direction]
-	if _, ok := mapping.module.(RequestBaselineModule); !ok || mapping.initial != nil {
-		return false
-	}
-	return direction == DecodeRequest && mapping.output == nil || direction == EncodeRequest && mapping.input == nil
+	return compiled.canReusePackageRequest
 }
 
 func (compiled *Compiled) supportsRequestWorkspace() bool {
-	if compiled.packagePlan != nil {
-		return compiled.mappings[DecodeRequest].hasCoreOutputPlan && compiled.mappings[EncodeRequest].hasCoreInputPlan
-	}
-	// Both request boundaries now execute identity checks without a JSON round
-	// trip. Reuse still depends on the exact source, context and effective limits.
-	return compiled.hasTypedRequestMapping(DecodeRequest) && compiled.hasTypedRequestMapping(EncodeRequest)
+	return compiled.mappings[DecodeRequest].hasCoreOutputPlan && compiled.mappings[EncodeRequest].hasCoreInputPlan
 }
 
 func (compiled *Compiled) attachRequestWorkspace(ctx context.Context, request, baseline *Request) {

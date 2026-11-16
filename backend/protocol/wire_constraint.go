@@ -24,7 +24,7 @@ func newWireConstraintCompiler(definitions map[string][]WireAssertion) *wireCons
 }
 
 func (expressions *expressionCompiler) compileWireConstraint(assertion WireAssertion, path string, scope expressionScope, depth int) ([]compiledWireAssertion, error) {
-	if assertion.When != nil || assertion.Schema != nil || assertion.Code != "" ||
+	if assertion.Schema != nil || assertion.Code != "" ||
 		assertion.Reason != "" || assertion.Check != nil || assertion.Each != nil || assertion.ReasonExpression != nil || assertion.Diagnostic != nil {
 		return nil, fmt.Errorf("%s/ref: a constraint call cannot override its declaration", path)
 	}

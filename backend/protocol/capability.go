@@ -7,6 +7,7 @@ type Capability string
 
 const (
 	TextCapability                      Capability = "text"
+	OutputConstraintsCapability         Capability = "output.constraints"
 	FunctionToolsCapability             Capability = "tools.function"
 	FreeTextToolsCapability             Capability = "tools.free_text"
 	ServerToolsCapability               Capability = "tools.server"
@@ -96,15 +97,16 @@ func CheckRequest(request *Request, target Target, limits Limits) []ConversionIs
 		check.add(InvalidDefinition, "", "", err.Error())
 		return check.issues
 	}
-	if request == nil || request.SchemaVersion != target.coreSchemaVersion() {
+	if request == nil || request.SchemaVersion != ProtocolCoreVersion {
 		check.add(InvalidInput, "/schemaVersion", "", "missing request or unsupported semantic contract version")
 		return check.issues
 	}
+	if !request.Parameters["outputConstraint"].IsZero() {
+		check.require(OutputConstraintsCapability, outputConstraintPath)
+	}
 	if request.Reasoning != nil && !request.Reasoning.HistoryRetention.IsZero() {
 		const path = "/reasoning/historyRetention"
-		if request.SchemaVersion != ProtocolCoreVersion {
-			check.add(InvalidInput, path, ReasoningHistoryRetentionCapability, "history retention requires core schemaVersion 2")
-		} else if !request.Reasoning.HistoryRetention.IsString("all") {
+		if !request.Reasoning.HistoryRetention.IsString("all") {
 			check.add(InvalidInput, path, ReasoningHistoryRetentionCapability, "history retention must be all when present")
 		} else {
 			check.require(ReasoningHistoryRetentionCapability, path)
@@ -353,9 +355,7 @@ func (check *capabilityCheck) resources(resources []Resource, path string) {
 		case "file", "file_id":
 			check.require(DocumentsCapability, location)
 		case "audio", "container":
-			if check.target.coreSchemaVersion() != ProtocolCoreVersion {
-				check.add(InvalidInput, location+"/kind", "", "this resource kind requires core schemaVersion 2")
-			} else if resource.Kind == "audio" {
+			if resource.Kind == "audio" {
 				check.require(AudioCapability, location)
 			} else {
 				check.require(ServerToolsCapability, location)
@@ -370,18 +370,17 @@ func (check *capabilityCheck) resources(resources []Resource, path string) {
 
 func (check *capabilityCheck) metadataSnapshot(metadata []ResponseMetadata, path string) {
 	for index, field := range metadata {
-		check.logprobMetadata(field)
+		check.metadataValue(field, fmt.Sprintf("%s/%d", path, index))
 		if field.Update != "" {
 			check.add(InvalidInput, fmt.Sprintf("%s/%d/update", path, index), "", "metadata snapshots cannot carry update instructions")
 		}
 	}
 }
 
-func (check *capabilityCheck) logprobMetadata(field ResponseMetadata) {
-	if check.target.coreSchemaVersion() != ProtocolCoreVersion || field.Name != "logprobs" {
-		return
-	}
-	if err := validateCoreLogprobs(field); err != nil {
-		check.add(InvalidInput, field.Path, "", err.Error())
+func (check *capabilityCheck) metadataValue(field ResponseMetadata, path string) {
+	if err := validateCoreMetadataValue(field, path); err != nil {
+		for _, issue := range err.(*ConversionError).Issues {
+			check.add(issue.Code, issue.Path, issue.Capability, issue.Reason)
+		}
 	}
 }

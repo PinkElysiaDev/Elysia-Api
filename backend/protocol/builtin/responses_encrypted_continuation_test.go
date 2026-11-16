@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ func TestResponsesEncryptedContinuationProjection(t *testing.T) {
 	for _, target := range []string{Chat, Anthropic, Gemini} {
 		t.Run(target, func(t *testing.T) {
 			to := shippedProjectionProtocol(t, target)
-			r, err := from.DecodeResponse(t.Context(), []byte(encryptedReasoningResponse), p.EvaluationContext{Scope: scope})
+			r, err := from.DecodeResponse(t.Context(), []byte(encryptedReasoningResponse), fixtureOptions(p.EvaluationContext{Scope: scope}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -25,17 +26,13 @@ func TestResponsesEncryptedContinuationProjection(t *testing.T) {
 				t.Fatal(err)
 			}
 			route := p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Scope: scope}
-			value, _ := p.EncodeValue(r)
-			route, err = conversion.PreviewRecovery(p.ConversionResponse, value, route)
-			if err != nil {
-				t.Fatal(err)
-			}
+			route = route.WithContinuation(fixtureContinuation(t, to, from.Identity(), scope, r.Content), false)
 			var sink p.DiagnosticSink
 			projected, err := conversion.Response(t.Context(), r, route, &sink)
 			if err != nil {
 				t.Fatal(err)
 			}
-			wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{Scope: scope})
+			wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{Scope: scope}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -47,7 +44,7 @@ func TestResponsesEncryptedContinuationProjection(t *testing.T) {
 			}
 			found := false
 			for _, issue := range sink.Issues() {
-				if issue.RuleID == "response-signatures" && issue.Fidelity == "recoverable_wrapped" && issue.PolicyHash != "" {
+				if issue.RuleID == "response-encrypted-state" && issue.Fidelity == "recoverable_wrapped" && issue.PolicyHash != "" {
 					found = true
 				}
 			}
@@ -61,7 +58,7 @@ func TestResponsesEncryptedContinuationProjection(t *testing.T) {
 func TestResponsesEncryptedContinuationRestoresOnlyAuthenticatedState(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	scope := p.Scope{Provider: "provider", Account: "account", Model: "m"}
-	r, err := from.DecodeResponse(t.Context(), []byte(encryptedReasoningResponse), p.EvaluationContext{Scope: scope})
+	r, err := from.DecodeResponse(t.Context(), []byte(encryptedReasoningResponse), fixtureOptions(p.EvaluationContext{Scope: scope}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,14 +104,14 @@ func TestResponsesEncryptedContinuationRestoresOnlyAuthenticatedState(t *testing
 func TestResponsesEncryptedContinuationPolicyBoundaries(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Anthropic)
 	scope := p.Scope{Provider: "provider", Account: "account", Model: "m"}
-	r, err := from.DecodeResponse(t.Context(), []byte(encryptedReasoningResponse), p.EvaluationContext{Scope: scope})
+	r, err := from.DecodeResponse(t.Context(), []byte(encryptedReasoningResponse), fixtureOptions(p.EvaluationContext{Scope: scope}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	policy := p.DefaultConversionPolicy(to, from)
 	// Isolate state protection from unrelated timestamp/item boundary loss.
 	for i := range policy.Rules {
-		policy.Rules[i].Enabled = policy.Rules[i].ID == "response-signatures"
+		policy.Rules[i].Enabled = policy.Rules[i].ID == "response-encrypted-state"
 	}
 	policy.Mode = "strict"
 	c, err := p.ResolveConversion(policy)
@@ -126,10 +123,7 @@ func TestResponsesEncryptedContinuationPolicyBoundaries(t *testing.T) {
 		t.Fatal("strict mode lost opaque state")
 	}
 	value, _ := p.EncodeValue(r)
-	recovered, err := c.PreviewRecovery(p.ConversionResponse, value, route)
-	if err != nil {
-		t.Fatal(err)
-	}
+	recovered := route.WithContinuation(fixtureContinuation(t, to, from.Identity(), scope, r.Content), false)
 	projected, err := c.Response(t.Context(), r, recovered, nil)
 	if err != nil || len(projected.Content[0].Resources) != 0 {
 		t.Fatal(projected, err)
@@ -137,11 +131,13 @@ func TestResponsesEncryptedContinuationPolicyBoundaries(t *testing.T) {
 	policy.Mode = "compatible"
 	c, _ = p.ResolveConversion(policy)
 	var sink p.DiagnosticSink
-	if _, err := c.Response(t.Context(), r, route, &sink); err != nil {
-		t.Fatal(err)
+	_, err = c.Response(t.Context(), r, route, &sink)
+	var rejected *p.ConversionError
+	if !errors.As(err, &rejected) || len(rejected.Issues) != 1 || rejected.Issues[0].Fidelity != "rejected" || rejected.Issues[0].RuleID != "response-encrypted-state" {
+		t.Fatal("compatible mode lost opaque state without an authenticated carrier", err)
 	}
-	if len(sink.Issues()) != 1 || sink.Issues()[0].Fidelity != "lossy_compatible" {
-		t.Fatal(sink.Issues())
+	if len(sink.Issues()) != 0 {
+		t.Fatal("rejected candidate published partial diagnostics", sink.Issues())
 	}
 	for i := range policy.Rules {
 		policy.Rules[i].Enabled = false
@@ -151,7 +147,7 @@ func TestResponsesEncryptedContinuationPolicyBoundaries(t *testing.T) {
 	if err != nil || len(projected.Content[0].Resources) != 1 {
 		t.Fatal(projected, err)
 	}
-	if _, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{Scope: scope}); err == nil {
+	if _, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{Scope: scope})); err == nil {
 		t.Fatal("disabled rule secretly projected state")
 	}
 	var copy p.Response
@@ -159,7 +155,10 @@ func TestResponsesEncryptedContinuationPolicyBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	copy.Content[0].Resources = []p.Resource{{Kind: "file_id", ID: p.StringValue("file"), Scope: scope}}
-	policy.Rules = []p.ConversionRule{{ID: "opaque-state", Order: 1, Enabled: true, Phase: p.ConversionResponse, Action: "signatures"}}
+	policy = p.DefaultConversionPolicy(to, from)
+	for i := range policy.Rules {
+		policy.Rules[i].Enabled = policy.Rules[i].ID == "response-encrypted-state"
+	}
 	c, _ = p.ResolveConversion(policy)
 	projected, err = c.Response(t.Context(), &copy, route, nil)
 	if err != nil || len(projected.Content[0].Resources) != 1 {

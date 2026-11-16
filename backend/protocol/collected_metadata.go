@@ -11,13 +11,6 @@ type collectedMetadata struct {
 	hasArrayItems bool
 }
 
-func canDeferMetadata(metadata ResponseMetadata) bool {
-	if metadata.Update == "append" {
-		return metadata.Value.IsArray()
-	}
-	return metadata.Name == "logprobs" && ((metadata.Codec == "openai-chat" && metadata.Location == "choice") || (metadata.Codec == "responses" && metadata.Location == "content")) && canDeferLogprobValue(metadata.Value, metadata.Codec)
-}
-
 func metadataPosition(items []ResponseMetadata, metadata ResponseMetadata) int {
 	for index, current := range items {
 		if current.Codec == metadata.Codec && current.Location == metadata.Location && current.Name == metadata.Name {
@@ -32,22 +25,18 @@ func (collector *ResponseCollector) deferMetadataDelta(key string, event Event) 
 		return false, nil
 	}
 	for _, metadata := range event.Metadata {
-		if !canDeferMetadata(metadata) {
+		if metadata.Update != "append" || !metadata.References.IsZero() {
 			return false, nil
 		}
 		position := metadataPosition(collector.item(key).Metadata, metadata)
 		if position >= 0 {
+			if err := checkMetadataAppend(collector.item(key).Metadata[position], metadata); err != nil {
+				return false, err
+			}
 			// A pending batch holds immutable fragments. Its initial snapshot
 			// already passed the same shape check before the batch was created.
-			if pending := collector.pendingMetadata(key, position); pending != nil && len(pending.deltas) != 0 && pending.metadata.Update == metadata.Update {
+			if pending := collector.pendingMetadata(key, position); pending != nil && len(pending.deltas) != 0 {
 				continue
-			}
-			current := collector.item(key).Metadata[position].Value
-			if metadata.Update == "append" && !current.IsArray() {
-				return false, streamIssue(InvalidInput, metadata.Path, "array metadata cannot append to a non-array snapshot")
-			}
-			if metadata.Update == "" && !canDeferLogprobValue(current, metadata.Codec) {
-				return false, nil
 			}
 		}
 	}
@@ -89,17 +78,8 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 		if collector.metadataDeltas == nil {
 			collector.metadataDeltas = make(map[string][]*collectedMetadata)
 		}
-		pending = &collectedMetadata{index: position}
-		if metadata.Update == "append" {
-			pending.hasArrayItems = hasMetadataArrayItems(item.Metadata[position].Value)
-		}
+		pending = &collectedMetadata{index: position, hasArrayItems: hasMetadataArrayItems(item.Metadata[position].Value)}
 		collector.metadataDeltas[key] = append(collector.metadataDeltas[key], pending)
-	}
-	if len(pending.deltas) != 0 && pending.metadata.Update != metadata.Update {
-		// The explicit append contract and legacy probability contract cannot
-		// share a pending batch: either may have a different container shape.
-		collector.materializeItemMetadata(key)
-		return collector.appendMetadataDelta(key, metadata)
 	}
 	previous := item.Metadata[position]
 	if len(pending.deltas) != 0 {
@@ -109,26 +89,15 @@ func (collector *ResponseCollector) appendMetadataDelta(key string, metadata Res
 	if !meter.raw(metadata.Value.raw) {
 		return streamIssue(LimitExceeded, metadata.Path, "metadata delta exceeds the collection limit")
 	}
-	charge := meter.bytes
-	if metadata.Update == "append" {
-		charge -= 2 // The array brackets belong to the existing snapshot.
-		hasItems := hasMetadataArrayItems(metadata.Value)
-		if hasItems && pending.hasArrayItems {
-			charge++
-		}
-		pending.hasArrayItems = pending.hasArrayItems || hasItems
+	charge := meter.bytes - 2 // The array brackets belong to the existing snapshot.
+	hasItems := hasMetadataArrayItems(metadata.Value)
+	if hasItems && pending.hasArrayItems {
+		charge++
 	}
+	pending.hasArrayItems = pending.hasArrayItems || hasItems
 	charge += jsonStringBytes(metadata.Path) + jsonStringBytes(metadata.SourceCodec) - jsonStringBytes(previous.Path) - jsonStringBytes(previous.SourceCodec)
 	if charge > collector.limit-collector.bytes-collector.replay.retainedBytes() {
-		if metadata.Update == "append" {
-			return streamIssue(LimitExceeded, metadata.Path, "appended metadata exceeds the collection limit")
-		}
-		// Legacy fragments retain container syntax until materialization. At
-		// the boundary, charge the merged snapshot so frame count or whitespace
-		// cannot reject content that fits in the same collection budget.
-		collector.materializeMetadata()
-		item.Metadata = MergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata}, true)
-		return collector.accountItemMetadata(key, *item)
+		return streamIssue(LimitExceeded, metadata.Path, "appended metadata exceeds the collection limit")
 	}
 	collector.bytes += charge
 	pending.charged += charge
@@ -147,22 +116,11 @@ func (collector *ResponseCollector) materializeItemMetadata(key string) {
 			continue
 		}
 		metadata := pending.metadata
-		if metadata.Update == "append" {
-			// Shape was checked before these immutable array fragments entered
-			// the batch; EncodeValue only contains already valid JSON values.
-			metadata.Value, _ = mergeArrayDeltas(item.Metadata[pending.index].Value, pending.deltas)
-			metadata.Update = ""
-		} else {
-			previous := item.Metadata[pending.index]
-			metadata.Value = MergeLogprobDeltas(previous.Value, pending.deltas, metadata.Codec)
-			// The merger already returned normalized JSON. Only the value and
-			// diagnostic strings can differ within this metadata identity.
-			charge := metadata.Value.Len() - len(compactValueString(previous.Value.raw))
-			charge += jsonStringBytes(metadata.Path) + jsonStringBytes(metadata.SourceCodec) - jsonStringBytes(previous.Path) - jsonStringBytes(previous.SourceCodec)
-			collector.bytes += charge - pending.charged
-			pending.charged = charge
-		}
-		item.Metadata = MergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata}, false)
+		// Only validated array fragments enter the batch; materialization cannot
+		// introduce a different metadata shape.
+		metadata.Value, _ = mergeArrayDeltas(item.Metadata[pending.index].Value, pending.deltas)
+		metadata.Update = ""
+		item.Metadata = mergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata})
 		// Transfer the already charged fragments to this item's snapshot ledger.
 		// A later metadata replacement recomputes its exact encoded size once.
 		collector.metadata[key] += pending.charged
@@ -184,22 +142,47 @@ func (collector *ResponseCollector) mergeEventMetadata(key string, event Event) 
 		if metadata.Update == "append" {
 			position := metadataPosition(item.Metadata, metadata)
 			if position >= 0 {
-				if !item.Metadata[position].Value.IsArray() {
-					return streamIssue(InvalidInput, metadata.Path, "array metadata cannot append to a non-array snapshot")
-				}
-				value, err := mergeArrayDeltas(item.Metadata[position].Value, []Value{metadata.Value})
+				merged, err := appendMetadata(item.Metadata[position], metadata)
 				if err != nil {
 					return fmt.Errorf("merge item metadata: %w", err)
 				}
-				metadata.Value = value
+				metadata = merged
 			}
 			metadata.Update = ""
-			item.Metadata = MergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata}, false)
-		} else {
-			item.Metadata = MergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata}, event.Type == ItemDelta)
 		}
+		item.Metadata = mergeNodeMetadata(item.Metadata, []ResponseMetadata{metadata})
 	}
 	return nil
+}
+
+func checkMetadataAppend(previous, update ResponseMetadata) error {
+	if previous.Meaning != update.Meaning || previous.References.IsZero() != update.References.IsZero() {
+		return streamIssue(InvalidInput, update.Path, "metadata append cannot change its declared meaning or reference ownership")
+	}
+	if !previous.Value.IsArray() {
+		return streamIssue(InvalidInput, update.Path, "array metadata cannot append to a non-array snapshot")
+	}
+	return nil
+}
+
+func appendMetadata(previous, update ResponseMetadata) (ResponseMetadata, error) {
+	if err := checkMetadataAppend(previous, update); err != nil {
+		return ResponseMetadata{}, err
+	}
+	for _, field := range []struct {
+		previous Value
+		value    *Value
+	}{{previous.Value, &update.Value}, {previous.References, &update.References}} {
+		if field.value.IsZero() {
+			continue
+		}
+		merged, err := mergeArrayDeltas(field.previous, []Value{*field.value})
+		if err != nil {
+			return ResponseMetadata{}, err
+		}
+		*field.value = merged
+	}
+	return update, nil
 }
 
 func hasMetadataArrayItems(value Value) bool {

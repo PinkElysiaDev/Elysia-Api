@@ -47,7 +47,7 @@ func TestRuntimeRefreshRejectsStaleGraphAndRollsBackWrites(t *testing.T) {
 
 func protocolUpgradeFixture(t *testing.T, store *Store) ProtocolUpgrade {
 	t.Helper()
-	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil, nil)
+	compiler, err := protocol.NewCompiler(protocol.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,8 @@ func protocolUpgradeFixture(t *testing.T, store *Store) ProtocolUpgrade {
 	if err := protocol.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	value, err := protocol.EncodeValue(compiled.Definition())
+	document, _ := compiled.Package()
+	value, err := protocol.EncodeValue(document)
 	if err != nil {
 		t.Fatal(err)
 	}

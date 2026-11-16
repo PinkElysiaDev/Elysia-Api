@@ -266,13 +266,6 @@ func (suite *liveSuite) record(t *testing.T, result liveCase) {
 	t.Logf("%s: %s (%s)", result.ID, result.Status, result.Reason)
 }
 
-func liveBase(origin string, compiled *protocol.Compiled) string {
-	if path := compiled.Operations()["generate"].Path; path == "/chat/completions" || path == "/responses" {
-		return origin + "/v1"
-	}
-	return origin
-}
-
 func liveOperation(compiled *protocol.Compiled, isStream bool) protocol.Operation {
 	name := "generate"
 	if isStream {
@@ -285,7 +278,7 @@ func liveOperation(compiled *protocol.Compiled, isStream bool) protocol.Operatio
 // before sending and never follows redirects or retries generation requests.
 func (suite *liveSuite) exchange(ctx context.Context, compiled *protocol.Compiled, body []byte, isStream bool, writer http.ResponseWriter) liveWireEvidence {
 	operation := liveOperation(compiled, isStream)
-	return suite.exchangeOperation(ctx, liveBase(suite.Origin, compiled), operation, body, isStream, writer, false)
+	return suite.exchangeOperation(ctx, suite.Origin, operation, body, isStream, writer, false)
 }
 
 func (suite *liveSuite) exchangeOperation(ctx context.Context, base string, operation protocol.Operation, body []byte, isStream bool, writer http.ResponseWriter, isCleanup bool) liveWireEvidence {

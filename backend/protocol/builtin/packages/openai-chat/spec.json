@@ -3,7 +3,7 @@
   "version": "2.2.7",
   "family": "openai_chat",
   "wireVersion": "v2",
-  "name": "OpenAI Chat migration draft (not enabled)",
+  "name": "OpenAI Chat Completions",
   "operations": {
     "generate": {
       "kind": "generate",
@@ -146,11 +146,49 @@
           "each": [
             {
               "ref": "message-continuations"
+            },
+            {
+              "ref": "message-content"
             }
           ]
         },
         {
           "ref": "request-tracking"
+        },
+        {
+          "path": "/messages",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "path": "/messages"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "array"
+              }
+            ]
+          },
+          "schema": {
+            "type": "array"
+          },
+          "each": [
+            {
+              "path": "/annotations",
+              "ref": "annotation-list"
+            }
+          ],
+          "reason": "citation owner requires an array"
+        },
+        {
+          "ref": "stream-options"
+        },
+        {
+          "ref": "request-output-constraint"
         }
       ]
     },
@@ -181,6 +219,9 @@
         },
         {
           "ref": "request-tracking"
+        },
+        {
+          "ref": "request-output-constraint"
         }
       ]
     },
@@ -303,6 +344,10 @@
             },
             {
               "ref": "response-annotations"
+            },
+            {
+              "ref": "message-content",
+              "path": "/message"
             }
           ]
         }
@@ -728,6 +773,10 @@
             },
             {
               "ref": "response-annotations"
+            },
+            {
+              "ref": "message-content",
+              "path": "/message"
             }
           ],
           "when": {
@@ -1799,13 +1848,7 @@
               },
               "each": [
                 {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "citation must be an object"
+                  "ref": "url-citation"
                 }
               ]
             }
@@ -3251,7 +3294,28 @@
                 "source": {
                   "op": "read",
                   "from": "input",
+                  "path": "/choices/0"
+                }
+              },
+              "diagnostic": {
+                "code": "conversion_rejected",
+                "stage": "wire.output",
+                "path": "/choices"
+              }
+            },
+            {
+              "action": "state_update",
+              "when": {
+                "op": "exists",
+                "source": {
+                  "op": "read",
                   "path": "/choices/0/delta/role"
+                }
+              },
+              "updates": {
+                "hasAssistantRole": {
+                  "op": "literal",
+                  "value": true
                 }
               }
             },
@@ -3478,6 +3542,27 @@
                   ]
                 },
                 {
+                  "action": "assert",
+                  "when": {
+                    "op": "present",
+                    "source": {
+                      "op": "read",
+                      "path": "/finish_reason"
+                    }
+                  },
+                  "assertions": [
+                    {
+                      "path": "/delta/role",
+                      "check": {
+                        "op": "read",
+                        "from": "state",
+                        "path": "/hasAssistantRole"
+                      },
+                      "reason": "a completed choice requires an observed assistant role"
+                    }
+                  ]
+                },
+                {
                   "action": "stream_finish",
                   "when": {
                     "op": "present",
@@ -3616,6 +3701,14 @@
               "afterTerminal": true
             }
           ]
+        },
+        "state": {
+          "hasAssistantRole": {
+            "schema": {
+              "type": "boolean"
+            },
+            "initial": false
+          }
         }
       },
       "assertions": [
@@ -4083,13 +4176,7 @@
               },
               "each": [
                 {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "invalid_input",
-                  "reason": "citation must be an object"
+                  "ref": "url-citation"
                 }
               ]
             }
@@ -4838,7 +4925,7 @@
                       "items": [
                         {
                           "op": "literal",
-                          "value": 9223372036854776000
+                          "value": 9223372036854775807
                         },
                         {
                           "op": "read",
@@ -5370,7 +5457,7 @@
                           "items": [
                             {
                               "op": "literal",
-                              "value": 9223372036854776000
+                              "value": 9223372036854775807
                             },
                             {
                               "op": "read",
@@ -5755,57 +5842,14 @@
                 "op": "literal",
                 "value": false
               }
+            },
+            {
+              "ref": "message-content"
             }
           ]
         },
         {
-          "path": "/stream_options",
-          "when": {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/stream_options"
-            }
-          },
-          "schema": {
-            "type": "object",
-            "nullable": true,
-            "allowUnknown": true
-          },
-          "code": "invalid_input",
-          "reason": "stream options must be an object or null; include_usage must be a boolean"
-        },
-        {
-          "path": "/stream_options/include_usage",
-          "when": {
-            "op": "if",
-            "when": {
-              "op": "present",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/stream_options"
-              }
-            },
-            "then": {
-              "op": "exists",
-              "source": {
-                "op": "read",
-                "from": "input",
-                "path": "/stream_options/include_usage"
-              }
-            },
-            "otherwise": {
-              "op": "literal",
-              "value": false
-            }
-          },
-          "schema": {
-            "type": "boolean"
-          },
-          "code": "invalid_input",
-          "reason": "stream options must be an object or null; include_usage must be a boolean"
+          "ref": "stream-options"
         },
         {
           "path": "/max_tokens",
@@ -5861,6 +5905,35 @@
         },
         {
           "ref": "request-tracking"
+        },
+        {
+          "path": "/messages",
+          "when": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "type",
+                "source": {
+                  "op": "read",
+                  "path": "/messages"
+                }
+              },
+              {
+                "op": "literal",
+                "value": "array"
+              }
+            ]
+          },
+          "schema": {
+            "type": "array"
+          },
+          "each": [
+            {
+              "path": "/annotations",
+              "ref": "annotation-list"
+            }
+          ],
+          "reason": "citation owner requires an array"
         }
       ]
     }
@@ -6397,14 +6470,396 @@
         "reason": "message annotations must be an array or null",
         "each": [
           {
-            "path": "",
-            "schema": {
-              "type": "object",
-              "allowUnknown": true
-            },
-            "reason": "annotation must be an object"
+            "ref": "url-citation"
           }
         ]
+      }
+    ],
+    "message-content": [
+      {
+        "path": "/refusal",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/refusal"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "refusal must be a string or null"
+      },
+      {
+        "path": "/tool_calls",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/tool_calls"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "allowUnknown": true
+          }
+        },
+        "reason": "complete tool indexes must match their array positions",
+        "check": {
+          "op": "let",
+          "name": "invalid-indexes",
+          "source": {
+            "op": "filter",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "when": {
+              "op": "all",
+              "items": [
+                {
+                  "op": "exists",
+                  "source": {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/index"
+                  }
+                },
+                {
+                  "op": "not",
+                  "source": {
+                    "op": "all",
+                    "items": [
+                      {
+                        "op": "is_integer",
+                        "source": {
+                          "op": "read",
+                          "from": "item",
+                          "path": "/index"
+                        }
+                      },
+                      {
+                        "op": "equal",
+                        "items": [
+                          {
+                            "op": "read",
+                            "from": "item",
+                            "path": "/index"
+                          },
+                          {
+                            "op": "index"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "body": {
+            "op": "not",
+            "source": {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "invalid-indexes",
+                "path": "/0"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "url-citation": [
+      {
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "citation must be an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read"
+          }
+        }
+      },
+      {
+        "path": "/url_citation",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "path": "/type"
+            },
+            {
+              "op": "literal",
+              "value": "url_citation"
+            }
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "required": [
+            "url",
+            "title",
+            "start_index",
+            "end_index"
+          ],
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "start_index": {
+              "type": "integer"
+            },
+            "end_index": {
+              "type": "integer"
+            }
+          },
+          "allowUnknown": true
+        },
+        "check": {
+          "op": "all",
+          "items": [
+            {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "path": "/start_index"
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "path": "/end_index"
+                },
+                {
+                  "op": "read",
+                  "path": "/start_index"
+                }
+              ]
+            }
+          ]
+        },
+        "reason": "URL citation requires text fields and an ordered nonnegative range"
+      }
+    ],
+    "annotation-list": [
+      {
+        "schema": {
+          "type": "array"
+        },
+        "each": [
+          {
+            "ref": "url-citation"
+          }
+        ],
+        "reason": "annotations require an array",
+        "when": {
+          "op": "present",
+          "source": {
+            "op": "read"
+          }
+        }
+      }
+    ],
+    "stream-options": [
+      {
+        "path": "/stream_options",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/stream_options"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "nullable": true,
+          "allowUnknown": true
+        },
+        "reason": "stream options must be an object or null; include_usage must be a boolean"
+      },
+      {
+        "path": "/stream_options/include_usage",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/stream_options"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": "/stream_options/include_usage"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "boolean"
+        },
+        "reason": "stream options must be an object or null; include_usage must be a boolean"
+      }
+    ],
+    "request-output-constraint": [
+      {
+        "path": "/response_format",
+        "schema": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "text",
+                "json_object",
+                "json_schema"
+              ]
+            }
+          },
+          "allowUnknown": true
+        },
+        "reason": "output format requires a recognized typed object",
+        "code": "invalid_input",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/response_format"
+          }
+        }
+      },
+      {
+        "path": "/response_format/json_schema",
+        "schema": {
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "schema": {
+              "type": "object",
+              "allowUnknown": true,
+              "nullable": true
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string",
+              "nullable": true
+            },
+            "strict": {
+              "type": "boolean",
+              "nullable": true
+            }
+          },
+          "allowUnknown": true
+        },
+        "reason": "schema format requires its declared members",
+        "code": "invalid_input",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/response_format/type"
+            },
+            {
+              "op": "literal",
+              "value": "json_schema"
+            }
+          ]
+        }
+      },
+      {
+        "path": "/response_format/json_schema/name",
+        "check": {
+          "op": "all",
+          "items": [
+            {
+              "op": "matches_charset",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              "value": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+            },
+            {
+              "op": "integer",
+              "operation": "lte",
+              "items": [
+                {
+                  "op": "utf16_length",
+                  "source": {
+                    "op": "read",
+                    "from": "input",
+                    "path": ""
+                  }
+                },
+                {
+                  "op": "literal",
+                  "value": 64
+                }
+              ]
+            }
+          ]
+        },
+        "reason": "output format name must use ASCII letters, digits, underscores or dashes and at most 64 characters",
+        "code": "invalid_input",
+        "when": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "read",
+              "from": "input",
+              "path": "/response_format/type"
+            },
+            {
+              "op": "literal",
+              "value": "json_schema"
+            }
+          ]
+        }
       }
     ]
   }

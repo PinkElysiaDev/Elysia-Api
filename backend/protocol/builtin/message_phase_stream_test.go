@@ -65,9 +65,10 @@ func TestResponsesMessagePhaseStreamOwnership(t *testing.T) {
 		for _, phases := range [][]string{{`"commentary"`, `"final_answer"`, `null`}, {`null`, ``, `"final_answer"`}} {
 			t.Run(timing+strings.Join(phases, "/"), func(t *testing.T) {
 				compiled := shippedProjectionProtocol(t, Responses)
-				decode := p.EvaluationContext{State: p.NewEvaluationState()}
-				encode := p.EvaluationContext{State: p.NewEvaluationState()}
-				collector, err := p.NewResponseCollector(p.Target{Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, p.DefaultLimits())
+				decode := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+				encode := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+				encode, consume := bindFixtureOutput(t, compiled, encode)
+				collector, err := p.NewResponseCollector(compiled.Target(p.EncodeEvent, p.Scope{}), p.DefaultLimits())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -86,12 +87,14 @@ func TestResponsesMessagePhaseStreamOwnership(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					consume(frames)
 					rendered = append(rendered, frames...)
 				}
 				end, err := compiled.FinishEvents(t.Context(), encode)
 				if err != nil {
 					t.Fatal(err)
 				}
+				consume(end)
 				rendered = append(rendered, end...)
 				response, err := collector.Finish()
 				if err != nil {
@@ -208,7 +211,7 @@ func TestResponsesMessagePhaseAndTextCannotChangeAfterCompletion(t *testing.T) {
 			last = string(object(frame).Bytes())
 		}
 		frames[len(frames)-1] = testValue(t, last)
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		for i, frame := range frames {
 			_, err := c.DecodeFrame(t.Context(), frame, options)
 			if i == len(frames)-1 {
@@ -224,8 +227,12 @@ func TestResponsesMessagePhaseAndTextCannotChangeAfterCompletion(t *testing.T) {
 
 func TestResponsesMessagePhaseNativeFramesRemainUnchanged(t *testing.T) {
 	c := shippedProjectionProtocol(t, Responses)
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
-	for _, value := range phaseStreamFrames(t, "done", []string{`"commentary"`, `"final_answer"`, `null`}) {
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	options, consume := bindFixtureOutput(t, c, options)
+	for index, value := range phaseStreamFrames(t, "done", []string{`"commentary"`, `"final_answer"`, `null`}) {
+		fields, _ := value.ReadObject()
+		fields["sequence_number"], _ = p.EncodeValue(index)
+		value = object(fields)
 		frame, err := c.DecodeFrame(t.Context(), value, options)
 		if err != nil {
 			t.Fatal(err)
@@ -234,6 +241,7 @@ func TestResponsesMessagePhaseNativeFramesRemainUnchanged(t *testing.T) {
 		if err != nil || len(wire) != 1 {
 			t.Fatal(err, wire)
 		}
+		consume(wire)
 		sameJSON(t, wire[0].Bytes(), string(value.Bytes()))
 	}
 }
@@ -250,7 +258,7 @@ func TestResponsesMessagePhaseStreamProjectionModes(t *testing.T) {
 				}
 				if mode == "disabled" {
 					for i := range policy.Rules {
-						if policy.Rules[i].Action == "response_metadata" {
+						if policy.Rules[i].ID == "response-metadata" || policy.Rules[i].ID == "event-metadata" || policy.Rules[i].ID == "history-response-metadata" {
 							policy.Rules[i].Enabled = false
 						}
 					}
@@ -259,8 +267,11 @@ func TestResponsesMessagePhaseStreamProjectionModes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				meta := p.ResponseMetadata{Codec: Responses, SourceCodec: Responses, Location: "message", Name: "phase", Path: "/output/0/phase", Value: testValue(t, value)}
-				event := p.Event{SchemaVersion: p.SemanticSchemaVersion, Type: p.ItemStarted, ItemID: p.StringValue("part"), Item: &p.Node{Kind: p.TextNode, Payload: p.StringValue("OK"), Metadata: []p.ResponseMetadata{meta}}}
+				response, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","output":[{"type":"message","role":"assistant","phase":`+value+`,"content":[{"type":"output_text","text":"OK"}]}]}`), fixtureOptions(p.EvaluationContext{}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				event := p.Event{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemStarted, ItemID: p.StringValue("part"), Item: &response.Content[0]}
 				sink := &p.DiagnosticSink{}
 				projected, err := conversion.Event(t.Context(), event, conversion.VerificationRoute(from.Identity(), to.Identity(), p.SSE), sink)
 				if mode == "strict" && value != "null" {
@@ -272,7 +283,14 @@ func TestResponsesMessagePhaseStreamProjectionModes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = to.EncodeFrames(t.Context(), projected, p.EvaluationContext{State: p.NewEvaluationState()})
+				if mode != "disabled" {
+					if len(projected.Item.Metadata) != 0 {
+						t.Fatal("projected phase metadata remained on target", projected.Item.Metadata)
+					}
+				} else {
+					options, _ := bindFixtureOutput(t, to, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
+					_, err = to.EncodeFrames(t.Context(), projected, options)
+				}
 				if mode == "disabled" {
 					if err == nil || !strings.Contains(err.Error(), "/phase") {
 						t.Fatal("disabled stream rule still omitted phase", target, err)

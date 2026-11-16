@@ -1,5 +1,7 @@
 # OpenAI Responses 请求与响应声明迁移草案
 
+本文是 dev.78 起的历史草案记录，下文范围与缺口指各段记录时的状态。当前同名 Spec／Mapping 已作为 package4／DSL2／Core2 默认源加载，包含 JSON 与 SSE。现行说明见[默认协议源](README.md)和[三分契约](../../../../docs/protocol-three-part-contract.md)；下列差分结果与未完成项保持原始结论。
+
 `openai-responses/spec.json` 与 `openai-responses/mapping.json` 是独立的 v3 Spec/Mapping 候选，参照当前 Responses 2.2.8、dev.78 实现。只包含请求解码、请求编码、JSON 响应解码与编码；不包含 SSE，也没有加入生产加载、embed 或激活样例。测试编译器不安装旧 codec 模块。
 
 ## 当前声明范围

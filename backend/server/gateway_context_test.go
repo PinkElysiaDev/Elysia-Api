@@ -46,12 +46,12 @@ func TestGatewayResponsesContextBoundaries(t *testing.T) {
 		{`"previous_response_id":42`, "/previous_response_id", "invalid_input"},
 		{`"truncation":42`, "/truncation", "invalid_input"},
 		{`"truncation":"future"`, "/truncation", "invalid_input"},
-		{`"truncation":"auto"`, "/truncation", "conversion_rejected"},
-		{`"truncation":"disabled"`, "/truncation", "conversion_rejected"},
-		{`"truncation":null`, "/truncation", "conversion_rejected"},
+		{`"truncation":"auto"`, "/parameters/contextTruncation", "conversion_rejected"},
+		{`"truncation":"disabled"`, "/parameters/contextTruncation", "conversion_rejected"},
+		{`"truncation":null`, "/parameters/contextTruncation", "conversion_rejected"},
 	} {
 		for _, stream := range []bool{false, true} {
-			req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(fmt.Sprintf(`{"model":"group","input":"hi","store":false,"stream":%v,%s}`, stream, tc.field)))
+			req := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":"group","input":"hi","store":false,"stream":%v,%s}`, stream, tc.field)))
 			req.Header.Set("Authorization", "Bearer gateway-test-token")
 			before := calls
 			rec := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestGatewayResponsesContextBoundaries(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, issue := range record.ConversionIssues {
-					if issue.Code == protocol.ConversionNormalized && issue.RuleID == "responses-context" && issue.Path == "/previous_response_id" && issue.PolicyHash != "" {
+					if issue.Code == protocol.ConversionNormalized && issue.RuleID == "reasoning-controls" && issue.Path == "/parameters/wire:openai_responses/previous_response_id" && issue.PolicyHash != "" {
 						found = true
 					}
 				}

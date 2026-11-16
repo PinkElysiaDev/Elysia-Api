@@ -24,12 +24,16 @@ func newSourceRefreshTestServer(t *testing.T) *Server {
 		s.lifecycleCancel()
 		s.sourceRefreshJobs().wait()
 	})
-	definition := loadGatewayDefinition(t, "text-alpha")
-	definition.ID, definition.Name = "refresh-jobs", "refresh-jobs"
-	catalog := presetDefinition(t, "openai-chat-completions")
-	definition.Operations["models"] = catalog.Operations["models"]
-	definition.ModelSamples = catalog.ModelSamples
-	activateGatewayDefinition(t, s, definition)
+	definition := loadGatewayFixture(t, "text-alpha")
+	definition.Spec.ID, definition.Spec.Name = "refresh-jobs", "refresh-jobs"
+	catalog := presetPackage(t, "openai-chat-completions")
+	operation := catalog.Spec.Operations["models"]
+	definition.Spec.Operations["models"] = operation
+	definition.Spec.Documents[operation.Response] = catalog.Spec.Documents[operation.Response]
+	definition.Spec.Documents[operation.Models.ClientDocument] = catalog.Spec.Documents[operation.Models.ClientDocument]
+	definition.Mapping.Operations["models"] = catalog.Mapping.Operations["models"]
+	definition.Mapping.ModelSamples = catalog.Mapping.ModelSamples
+	activateGatewayFixture(t, s, definition)
 	// Discovery retains its production context budget. The fixture's generic
 	// HTTP timeout must not cancel the explicitly gated request first.
 	s.protocolTransport.SetTimeout(0)

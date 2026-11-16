@@ -39,7 +39,7 @@ func TestResponsesStorageConversion(t *testing.T) {
 					return
 				}
 				if mode == "strict" && value != "false" {
-					if err == nil || !strings.Contains(err.Error(), "/store") {
+					if err == nil || !strings.Contains(err.Error(), "/clientOutput/responsesStorage") {
 						t.Fatal(err)
 					}
 					return
@@ -51,7 +51,7 @@ func TestResponsesStorageConversion(t *testing.T) {
 				if err != nil || strings.Contains(string(wire), "store") {
 					t.Fatal(string(wire), err)
 				}
-				if req.ClientOutput.ResponsesStorage.Effective || req.ClientOutput.ResponsesStorage.Requested != (value != "false") {
+				if req.ClientOutput.ResponsesStorage.Effective || req.ClientOutput.ResponsesStorage.Requested != (value == "" || value == "true") {
 					t.Fatal(req.ClientOutput)
 				}
 				if (len(sink.Issues()) > 0) != (value != "false") {
@@ -66,7 +66,7 @@ func TestResponsesStorageConversion(t *testing.T) {
 			t.Fatal(err)
 		}
 		c, _ := p.ResolveConversion(p.DefaultConversionPolicy(from, from))
-		req, err = c.Request(t.Context(), req, p.ConversionContext{}, nil)
+		req, err = c.Request(t.Context(), req, fixtureConversionContext(t, c, p.ConversionRequest, req.Source), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,100 +82,26 @@ func TestResponsesStorageConversion(t *testing.T) {
 	for _, reject := range []bool{false, true} {
 		policy := p.DefaultConversionPolicy(from, to)
 		for i := range policy.Rules {
-			if policy.Rules[i].Action == "responses_storage" {
+			if policy.Rules[i].ID == "responses-storage" {
 				if reject {
-					policy.Rules[i].Value = testValue(t, `{"sourceCodec":"responses","targetCodec":"gemini","onUnsupported":"reject"}`)
+					policy.Rules[i] = p.ConversionRule{ID: "responses-storage", Enabled: true, Phase: p.ConversionRequest, Action: "reject", Path: "/clientOutput/responsesStorage", Reason: "fixture rejects response retrieval storage"}
 				} else {
 					policy.Rules[i].Enabled = false
 				}
 			}
 		}
-		c, _ := p.ResolveConversion(policy)
+		c, err := p.ResolveConversion(policy)
+		if err != nil {
+			t.Fatal(err)
+		}
 		req, _ := from.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hello","store":true}`), p.EvaluationContext{})
-		req, err := c.Request(t.Context(), req, p.ConversionContext{}, nil)
+		req, err = c.Request(t.Context(), req, fixtureConversionContext(t, c, p.ConversionRequest, req.Source), nil)
 		if err == nil {
 			_, err = to.EncodeRequest(t.Context(), req, p.EvaluationContext{})
 		}
 		if err == nil {
 			t.Fatal("storage override ignored")
 		}
-	}
-}
-
-func TestEnvelopeDefaultsUseInstalledMappings(t *testing.T) {
-	ingress, upstream := testCompiled(t, Anthropic), testCompiled(t, Gemini)
-	d := upstream.Definition()
-	d.ID, d.Family, d.WireVersion = "old-mixed-copy", ingress.Identity().Family, ingress.Identity().WireVersion
-	d.Requires = nil
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	raw, _ := p.EncodeValue(d)
-	mixed, issues := compiler.Compile(raw.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(ingress, mixed))
-	route := p.ConversionContext{Source: mixed.Identity(), Target: ingress.Identity()}
-	if !c.HasAnthropicEnvelope(p.ConversionEvent, route) {
-		t.Fatal("family label suppressed installed codec projection")
-	}
-	native, _ := p.ResolveConversion(p.DefaultConversionPolicy(ingress, ingress))
-	if native.HasAnthropicEnvelope(p.ConversionEvent, route) {
-		t.Fatal("native replay rewritten")
-	}
-	policy := p.DefaultConversionPolicy(ingress, mixed)
-	for i := range policy.Rules {
-		if policy.Rules[i].Action == "anthropic_usage_envelope" {
-			policy.Rules[i].Enabled = false
-		}
-	}
-	c, _ = p.ResolveConversion(policy)
-	out, err := c.Response(t.Context(), &p.Response{SchemaVersion: 1, ID: p.StringValue("r"), Model: p.StringValue("m"), Content: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}, route, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire, err := ingress.EncodeResponse(t.Context(), out, p.EvaluationContext{})
-	if err == nil {
-		err = ingress.ValidateWireOutput(p.EncodeResponse, testValue(t, string(wire)))
-	}
-	if err == nil {
-		t.Fatal("disabled envelope was silently repaired")
-	}
-}
-
-func TestStrictEnvelopeEvidenceRequiresPositiveFixtures(t *testing.T) {
-	ingress, upstream := shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, Gemini)
-	policy := p.DefaultConversionPolicy(ingress, upstream)
-	policy.Mode = "strict"
-	c, _ := p.ResolveConversion(policy)
-	contract := p.CapabilitySet{p.TextCapability: true, p.UsageCapability: true}
-	report := p.VerifyBindingCombination(t.Context(), ingress, upstream, contract, c)
-	if !report.Passed {
-		t.Fatal(report.Issues)
-	}
-	negative := false
-	for _, check := range report.Checks {
-		if check.SampleID == "stream-text-decode" {
-			negative = check.Rejected && !check.Passed && len(check.Capabilities) == 0
-		}
-	}
-	if !negative {
-		t.Fatal("conditional rejection counted as positive evidence", report.Checks)
-	}
-	d := upstream.Definition()
-	for i, sample := range d.Samples {
-		if sample.ID == "stream-text-initial-usage-decode" {
-			d.Samples = append(d.Samples[:i], d.Samples[i+1:]...)
-			break
-		}
-	}
-	raw, _ := p.EncodeValue(d)
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	upstream, issues := compiler.Compile(raw.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	if report = p.VerifyBindingCombination(t.Context(), ingress, upstream, contract, c); report.Passed {
-		t.Fatal("negative evidence replaced positive stream coverage")
 	}
 }
 
@@ -202,6 +128,89 @@ func TestPackageStrictShapeRequiresPositiveEvidence(t *testing.T) {
 	}
 }
 
+func TestEnvelopeDefaultsUseInstalledMappings(t *testing.T) {
+	ingress, upstream := testCompiled(t, Anthropic), testCompiled(t, Gemini)
+	document, _ := upstream.Package()
+	document.Spec.ID, document.Spec.Family, document.Spec.WireVersion = "mixed-copy", ingress.Identity().Family, ingress.Identity().WireVersion
+	mixed, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	for _, isEnabled := range []bool{true, false} {
+		policy := declaredRulePolicy(t, ingress, mixed, "response-anthropic-usage-envelope", "compatible")
+		policy.Rules[0].Enabled = isEnabled
+		conversion, err := p.ResolveConversion(policy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := usageProjectionResponse(nil)
+		response.Source = mixed.Identity()
+		result, err := conversion.Response(t.Context(), response, p.ConversionContext{Source: mixed.Identity(), Target: ingress.Identity()}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := ingress.EncodeResponse(t.Context(), result, fixtureOptions(p.EvaluationContext{}))
+		if err == nil {
+			err = ingress.ValidateWireOutput(p.EncodeResponse, testValue(t, string(wire)))
+		}
+		if (err == nil) != isEnabled {
+			t.Fatal("family label or encoder bypassed the declared envelope", isEnabled, err)
+		}
+		if isEnabled && (result.Usage.Input.Origin != p.PlaceholderCount || result.Usage.Output.Origin != p.PlaceholderCount) {
+			t.Fatal("placeholder lost its declared origin", result.Usage)
+		}
+	}
+}
+
+func TestStrictEnvelopeEvidenceRequiresPositiveFixtures(t *testing.T) {
+	ingress, upstream := testCompiled(t, Anthropic), testCompiled(t, Gemini)
+	policy := p.DefaultConversionPolicy(ingress, upstream)
+	policy.Mode = "strict"
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract := p.CapabilitySet{p.TextCapability: true, p.UsageCapability: true}
+	report := p.VerifyBindingCombination(t.Context(), ingress, upstream, contract, conversion)
+	if !report.Passed {
+		t.Fatal(report.Issues)
+	}
+	hasRejection := false
+	for _, check := range report.Checks {
+		if check.SampleID == "declared-stream-text-decode" {
+			hasRejection = check.Rejected && !check.Passed && len(check.Capabilities) == 0
+		}
+	}
+	if !hasRejection {
+		t.Fatal("conditional rejection counted as positive evidence", report.Checks)
+	}
+	document, _ := upstream.Package()
+	remaining := document.Mapping.Samples[:0]
+	removed := 0
+	for _, sample := range document.Mapping.Samples {
+		if sample.ID == "declared-stream-metered-text-decode" {
+			removed++
+			continue
+		}
+		remaining = append(remaining, sample)
+	}
+	if removed != 1 {
+		t.Fatal("positive stream fixture missing")
+	}
+	document.Mapping.Samples = remaining
+	withoutPositive, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	conversion, err = p.ResolveConversion(p.DefaultConversionPolicy(ingress, withoutPositive), p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "strict-proof", Mode: "strict"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report := p.VerifyBindingCombination(t.Context(), ingress, withoutPositive, contract, conversion); report.Passed {
+		t.Fatal("negative evidence replaced positive stream coverage")
+	}
+}
+
 func TestAnthropicUsageEnvelopeProjection(t *testing.T) {
 	from, to := testCompiled(t, Gemini), testCompiled(t, Anthropic)
 	for _, mode := range []string{"compatible", "strict"} {
@@ -216,8 +225,9 @@ func TestAnthropicUsageEnvelopeProjection(t *testing.T) {
 				policy.Mode = mode
 				c, _ := p.ResolveConversion(policy)
 				sink := &p.DiagnosticSink{}
-				response := &p.Response{SchemaVersion: 1, Content: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}, Usage: usage, Attributes: p.Object{"finishReason": p.StringValue("stop")}}
-				result, err := c.Response(t.Context(), response, p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Model: "m"}, sink)
+				response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}}, Usage: usage, Attributes: p.Object{"finishReason": p.StringValue("stop")}}
+				route := fixtureConversionContext(t, c, p.ConversionResponse, from.Identity())
+				result, err := c.Response(t.Context(), response, route, sink)
 				complete := usage != nil && usage.Input != nil && usage.Output != nil
 				if mode == "strict" && !complete {
 					if err == nil {
@@ -228,7 +238,7 @@ func TestAnthropicUsageEnvelopeProjection(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := to.EncodeResponse(t.Context(), result, p.EvaluationContext{})
+				wire, err := to.EncodeResponse(t.Context(), result, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -283,8 +293,8 @@ func TestFinalWirePolicyCannotEraseAnthropicUsage(t *testing.T) {
 
 func TestProviderCannotMintPlaceholderAccounting(t *testing.T) {
 	upstream := testCompiled(t, Gemini)
-	response := &p.Response{SchemaVersion: 1, Usage: &p.Usage{Input: &p.Counter{Origin: p.PlaceholderCount}}}
-	issues := p.CheckModelResponse(response, upstream, p.Binding{Capabilities: upstream.Definition().Capabilities}, p.Scope{})
+	response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, Usage: &p.Usage{Input: &p.Counter{Origin: p.PlaceholderCount}}}
+	issues := p.CheckModelResponse(response, upstream, p.Binding{Capabilities: packageMapping(upstream).Capabilities}, p.Scope{})
 	if err := p.IssuesError(issues); err == nil || !strings.Contains(err.Error(), "upstream_contract_violation at /usage/input") {
 		t.Fatal(issues)
 	}
@@ -317,16 +327,16 @@ func TestStoreDecisionTable(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					request.Parameters["max_output_tokens"], _ = p.EncodeValue(8192)
-					unknown := source == Chat && (raw == "" || raw == "null")
-					on := raw == "true" || (source == Responses && (raw == "" || raw == "null"))
+					setRequestParameter(request, "max_output_tokens", testValue(t, "8192"))
+					unknown := (source == Chat || source == Responses) && raw == "null"
+					on := raw == "true" || source == Responses && raw == ""
 					lossy := source != target && (unknown || on)
 					for _, mode := range []string{"compatible", "strict"} {
 						policy := p.DefaultConversionPolicy(from, to)
 						policy.Mode = mode
 						c, _ := p.ResolveConversion(policy)
 						sink := &p.DiagnosticSink{}
-						converted, err := c.Request(t.Context(), request, p.ConversionContext{}, sink)
+						converted, err := c.Request(t.Context(), request, fixtureConversionContext(t, c, p.ConversionRequest, request.Source), sink)
 						if mode == "strict" && lossy {
 							var failure *p.ConversionError
 							if !errors.As(err, &failure) || !failure.CandidateOnly {
@@ -361,7 +371,11 @@ func TestStoreDecisionTable(t *testing.T) {
 						}
 						warnings := false
 						for _, issue := range sink.Issues() {
-							warnings = warnings || issue.Path == "/store"
+							expectedPath := "/clientOutput/responsesStorage"
+							if target == Chat || target == Responses {
+								expectedPath = "/store"
+							}
+							warnings = warnings || issue.RuleID == "responses-storage" && issue.Path == expectedPath
 						}
 						if warnings != lossy {
 							t.Fatal(sink.Issues())

@@ -17,7 +17,7 @@ type ProtocolModelPolicy struct {
 	Checks []ProtocolControlStep `json:"checks,omitempty"`
 	// RenderChecks guards target representation after core validity is known.
 	RenderChecks []ProtocolControlStep `json:"renderChecks,omitempty"`
-	// Normalize consumes source aliases before target capability selection.
+	// Normalize applies source-owned dispositions before target capability selection.
 	Normalize []ProtocolControlStep `json:"normalize,omitempty"`
 	// NormalizeChecks validates only intent produced by Normalize.
 	NormalizeChecks []ProtocolControlStep `json:"normalizeChecks,omitempty"`
@@ -101,8 +101,8 @@ func (model *compiledModelPolicy) collectProfiles(plan *compiledOutputPlan) erro
 		}
 		return model.collectProfiles(plan.otherwise)
 	case "choose":
-		for _, name := range sortedKeys(plan.cases) {
-			if err := model.collectProfiles(plan.cases[name]); err != nil {
+		for _, name := range sortedKeys(plan.collections.cases) {
+			if err := model.collectProfiles(plan.collections.cases[name]); err != nil {
 				return err
 			}
 		}
@@ -129,13 +129,7 @@ func (compiled *Compiled) ResolveModelReasoning(ctx context.Context, model strin
 	if err := ctx.Err(); err != nil {
 		return ReasoningCapabilities{}, err
 	}
-	if compiled.packagePlan == nil && bound == nil {
-		return ResolveReasoningCapabilities(compiled.Codec(EncodeRequest), model), nil
-	}
-	var policy *compiledModelPolicy
-	if compiled.packagePlan != nil {
-		policy = compiled.packagePlan.modelPolicy
-	}
+	policy := compiled.packagePlan.modelPolicy
 	return policy.resolveReasoning(ctx, model, bound, compiled.limits)
 }
 

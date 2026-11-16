@@ -156,3 +156,57 @@ func TestSemanticOwnershipCopiesNativeContainers(t *testing.T) {
 		t.Fatal("semantic clone changed ownership")
 	}
 }
+
+func TestContinuationDigestFragmentBoundaries(t *testing.T) {
+	for _, fixture := range []struct {
+		children  int
+		fragments int
+	}{{3, 52}, {4, 64}, {5, 76}} {
+		for _, bytes := range []int{valueHashChunkBytes - 1, valueHashChunkBytes, valueHashChunkBytes + 1} {
+			t.Run(fmt.Sprintf("children-%d/bytes-%d", fixture.children, bytes), func(t *testing.T) {
+				node := makeContinuationDigestFixture(t, fixture.children, bytes)
+				before, err := EncodeValue(node)
+				if err != nil || before.Len() != bytes || !hasLargeContinuationPayload(&node) {
+					t.Fatal("digest fixture missed its byte boundary or projected path", err, before.Len())
+				}
+				want := originalContinuationDigest(node)
+				if got := ContinuationNodeDigest(node); got != want {
+					t.Fatal("authenticated bytes changed at a fragment or hash boundary", got, want)
+				}
+				after, err := EncodeValue(node)
+				if err != nil || before != after {
+					t.Fatal("digest mutated its input", err)
+				}
+				cache := &semanticCache{limits: DefaultLimits()}
+				output, err := readCoreNode(node, nil, cache)
+				if err != nil {
+					t.Fatal(err)
+				}
+				retainContinuationLeaves(cache)
+				parts := jsonOutputParts{cache: cache}
+				if err := parts.prepare(t.Context(), output); err != nil {
+					t.Fatal(err)
+				}
+				ctx := &jsonOutputCheckContext{Context: t.Context()}
+				encoded, err := parts.encode(ctx)
+				if err != nil || encoded != before || parts.bytes != bytes || ctx.checks != fixture.fragments+1 {
+					t.Fatal("fixture missed its independently encoded bytes or fragment boundary", err, ctx.checks)
+				}
+			})
+		}
+	}
+}
+
+func makeContinuationDigestFixture(t testing.TB, children, bytes int) Node {
+	t.Helper()
+	node := Node{Kind: ToolResultNode, CallID: StringValue("call"), Children: make([]Node, children)}
+	for index := range node.Children {
+		node.Children[index] = Node{Kind: TextNode, Payload: StringValue("")}
+	}
+	encoded, err := EncodeValue(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node.Children[0].Payload = StringValue(strings.Repeat("A", bytes-encoded.Len()))
+	return node
+}

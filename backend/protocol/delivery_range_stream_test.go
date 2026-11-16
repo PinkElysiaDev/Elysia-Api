@@ -58,7 +58,7 @@ func TestDeliveryStreamRequiresFinalLifecycle(t *testing.T) {
 	contract := document.Spec.Documents["client-event"]
 	contract.Stream = nil
 	document.Spec.Documents["client-event"] = contract
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	_, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
 	if err := IssuesError(issues); err == nil || !strings.Contains(err.Error(), "deliveryRanges") {
 		t.Fatal("delivery declarations accepted an unconnected lifecycle", issues)
@@ -231,7 +231,7 @@ func TestDeliveryStreamCombinationAndWirePreview(t *testing.T) {
 		packageStreamFrame(ItemFinished, 3, `,"item_id":"t","ranges":[{"key":"t","id":"citation","start":1,"end":2,"path":"/ranges/0"}]`),
 		packageStreamFrame(ResponseFinished, 4, ""),
 	}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	service := &Service{compiler: compiler}
 	service.snapshot.Store(&registrySnapshot{entries: map[string]*Compiled{compiled.Identity().DefinitionID: compiled}})
 	for _, text := range []string{"abc", "axc"} {

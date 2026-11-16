@@ -13,7 +13,9 @@ func TestChatEmptyTextDeltasDoNotCreateHistoryItems(t *testing.T) {
 		`{"id":"r","model":"m","created":1,"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call1","type":"function","function":{"name":"echo","arguments":"{}"}}]},"finish_reason":null}]}`,
 		`{"id":"r","model":"m","created":1,"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":""},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`,
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	defer options.State.Release()
+	options, consume := bindFixtureOutput(t, chat, options)
 	starts := map[p.NodeKind]int{}
 	for _, raw := range frames {
 		frame, err := chat.DecodeFrame(t.Context(), testValue(t, raw), options)
@@ -33,6 +35,7 @@ func TestChatEmptyTextDeltasDoNotCreateHistoryItems(t *testing.T) {
 			t.Fatal("native frame count changed", len(wire))
 		}
 		sameJSON(t, wire[0].Bytes(), raw)
+		consume(wire)
 	}
 	if starts[p.TextNode] != 0 || starts[p.ReasoningNode] != 1 || starts[p.ToolCallNode] != 1 {
 		t.Fatal("empty deltas minted phantom history", starts)

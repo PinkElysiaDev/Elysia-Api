@@ -1,0 +1,46 @@
+{
+  "id": "cached-text",
+  "name": "Standalone text and cache example",
+  "version": "1",
+  "family": "cached-text",
+  "wireVersion": "1",
+  "operations": {
+    "generate": {
+      "kind": "generate",
+      "method": "POST",
+      "path": "/generate",
+      "transport": "http_json",
+      "request": "encode_request",
+      "response": "decode_response",
+      "auth": {
+        "location": "none"
+      }
+    }
+  },
+  "documents": {
+    "decode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_request": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "decode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    },
+    "encode_response": {
+      "schema": {
+        "type": "object",
+        "allowUnknown": true
+      }
+    }
+  }
+}

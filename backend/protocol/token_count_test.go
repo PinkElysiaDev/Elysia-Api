@@ -47,7 +47,7 @@ func TestTokenCountingEvidenceAndPreview(t *testing.T) {
 	if _, ok := compiled.TokenCountRequestProtocol("generate"); ok {
 		t.Fatal("generation became an implicit count operation")
 	}
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,9 @@ func TestTokenCountingRejectsInvalidContracts(t *testing.T) {
 			op.Transport = SSE
 			d.Spec.Operations["count"] = op
 		}},
-		{"missing-encoder", func(d *ProtocolPackage) { delete(d.Mapping.Operations["count"].CountTokens.Request, EncodeRequest) }},
+		{"missing-encoder", func(d *ProtocolPackage) {
+			delete(d.Mapping.Operations["count"].CountTokens.Request, EncodeRequest)
+		}},
 		{"wrong-kind", func(d *ProtocolPackage) {
 			op := d.Spec.Operations["count"]
 			op.Kind = "generate"
@@ -145,7 +147,7 @@ func TestTokenCountingRejectsInvalidContracts(t *testing.T) {
 		t.Run(fixture.name, func(t *testing.T) {
 			document := tokenCountingPackage(t)
 			fixture.edit(&document)
-			compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, err := NewCompiler(DefaultLimits(), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

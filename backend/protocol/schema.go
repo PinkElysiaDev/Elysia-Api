@@ -22,9 +22,7 @@ type SchemaCatalog struct {
 	Events          []EventType     `json:"events"`
 	Diagnostics     []IssueCode     `json:"diagnostics"`
 	EngineFeatures  []string        `json:"engineFeatures"`
-	Modules         []ModuleSpec    `json:"modules"`
 	Operations      []OperationInfo `json:"mappingOperations"`
-	Definition      map[string]any  `json:"definitionSchema"`
 	Package         map[string]any  `json:"packageSchema"`
 	Spec            map[string]any  `json:"specSchema"`
 	Mapping         map[string]any  `json:"mappingSchema"`
@@ -33,14 +31,7 @@ type SchemaCatalog struct {
 	Limits          Limits          `json:"limits"`
 }
 
-// ModuleSpec advertises implemented directions, not merely known vendor names.
-type ModuleSpec struct {
-	Name       string      `json:"name"`
-	Directions []Direction `json:"directions"`
-}
-
 type schemaTemplates struct {
-	definition      []byte
 	packageDocument []byte
 	spec            []byte
 	mapping         []byte
@@ -52,21 +43,17 @@ type schemaTemplates struct {
 // Only fixed Go contracts are shared. Every caller decodes its own mutable maps.
 var loadSchemaTemplates = sync.OnceValue(buildSchemaTemplates)
 
-// Schema combines the language schema with this compiler's installed modules.
+// Schema combines the package language with this compiler's features and limits.
 func (compiler *Compiler) Schema() SchemaCatalog {
 	catalog := DescribeSchema()
 	catalog.Limits = compiler.limits
 	catalog.EngineFeatures = sortedKeys(compiler.features)
-	for _, name := range sortedKeys(compiler.modules) {
-		catalog.Modules = append(catalog.Modules, ModuleSpec{Name: name, Directions: append([]Direction(nil), compiler.modules[name].Directions()...)})
-	}
 	return catalog
 }
 
 // DescribeSchema returns fresh schema/catalog objects without registry state.
 func DescribeSchema() SchemaCatalog {
 	templates := loadSchemaTemplates()
-	root := decodeSchemaTemplate(templates.definition)
 	binding := decodeSchemaTemplate(templates.binding)
 	// semanticSchema is a catalog of named roots, not a single object schema.
 	// Keep its existing envelope and shared local-reference namespace.
@@ -88,7 +75,7 @@ func DescribeSchema() SchemaCatalog {
 			"actionSchemas": actionSchemas, "policy": conversionSchema,
 			"phases": conversionPhases(), "actions": actionNames,
 		},
-		SchemaVersion:   DefinitionSchemaVersion,
+		SchemaVersion:   ProtocolPackageSchemaVersion,
 		PackageVersion:  ProtocolPackageSchemaVersion,
 		CompilerVersion: CompilerVersion,
 		Directions:      DirectionCatalog(),
@@ -98,7 +85,6 @@ func DescribeSchema() SchemaCatalog {
 		Events:          EventCatalog(),
 		Diagnostics:     DiagnosticCatalog(),
 		Operations:      ExpressionCatalog(),
-		Definition:      root,
 		Package:         decodeSchemaTemplate(templates.packageDocument),
 		Spec:            decodeSchemaTemplate(templates.spec),
 		Mapping:         decodeSchemaTemplate(templates.mapping),
@@ -110,7 +96,6 @@ func DescribeSchema() SchemaCatalog {
 
 func buildSchemaTemplates() schemaTemplates {
 	templates := schemaTemplates{
-		definition:      encodeSchemaTemplate(reflect.TypeFor[Definition]()),
 		packageDocument: encodeSchemaTemplate(reflect.TypeFor[ProtocolPackage]()),
 		spec:            encodeSchemaTemplate(reflect.TypeFor[ProtocolSpec]()),
 		mapping:         encodeSchemaTemplate(reflect.TypeFor[ProtocolMapping]()),

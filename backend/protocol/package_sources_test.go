@@ -8,7 +8,7 @@ import (
 
 func TestCompileSourcesSharesPackageIdentityAndEvidence(t *testing.T) {
 	document := verifiedTextPackage(t, "source-pair")
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestCompileSourcesSharesPackageIdentityAndEvidence(t *testing.T) {
 func TestCompileSourcesRejectsInvalidDocuments(t *testing.T) {
 	document := textProtocolPackage(t)
 	spec, mapping := fixtureValue(t, document.Spec).JSONString(), fixtureValue(t, document.Mapping).JSONString()
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,8 @@ func TestCompileSourcesRejectsInvalidDocuments(t *testing.T) {
 		{"spec-unknown", strings.Replace(spec, "{", `{"unknown":true,`, 1), mapping, "/spec"},
 		{"spec-trailing", spec + " {}", mapping, "/spec"},
 		{"mapping-unknown", spec, strings.Replace(mapping, `"program":`, `"module":"responses","program":`, 1), "/mapping"},
+		{"retired-after", spec, strings.Replace(mapping, `"program":`, `"after":{"op":"read"},"program":`, 1), "/mapping"},
+		{"retired-transform", spec, strings.Replace(mapping, `"program":`, `"transform":{"op":"read"},"program":`, 1), "/mapping"},
 		{"mapping-trailing", spec, mapping + " {}", "/mapping"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -110,7 +112,7 @@ func TestCompileSourcesEnforcesWholePackageLimits(t *testing.T) {
 			if err := checkValueLimits(mapping, limited); err != nil {
 				t.Fatal("fixture mapping must fit by itself", err)
 			}
-			compiler, err := NewCompiler(limited, nil, nil)
+			compiler, err := NewCompiler(limited, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +130,7 @@ func TestCompileSourcesEnforcesWholePackageLimits(t *testing.T) {
 	t.Run("individual-bytes", func(t *testing.T) {
 		limited := limits
 		limited.BufferBytes = whole.Len()
-		compiler, err := NewCompiler(limited, nil, nil)
+		compiler, err := NewCompiler(limited, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -13,3 +13,6 @@
 *.pdf -text
 *.woff -text
 *.woff2 -text
+
+# SSE events end with a blank line, including the final event in a fixture.
+*.sse whitespace=-blank-at-eof

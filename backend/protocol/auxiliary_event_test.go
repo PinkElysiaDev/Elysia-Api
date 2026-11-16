@@ -1,6 +1,50 @@
 package protocol
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+func TestAuxiliaryFrameRespectsIndependentConsumerLimits(t *testing.T) {
+	compiled := compilePackageForTest(t, auxiliaryProtocolPackage(t))
+	event, _ := decodeAuxiliaryFixture(t, compiled)
+	for _, metric := range []string{"exact", "bytes", "nodes", "depth"} {
+		t.Run(metric, func(t *testing.T) {
+			limits := DefaultLimits()
+			limits.BufferBytes, limits.Nodes, limits.Depth = event.Native.Value.Len(), 13, 2
+			switch metric {
+			case "bytes":
+				limits.BufferBytes--
+			case "nodes":
+				limits.Nodes--
+			case "depth":
+				limits.Depth--
+			}
+			collector, err := NewResponseCollector(compiled.Target(EncodeEvent, Scope{}), limits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer collector.Release()
+			if _, _, err := collector.Consume(Event{SchemaVersion: ProtocolCoreVersion, Type: ResponseStarted, ResponseID: event.ResponseID}); err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = collector.Consume(event)
+			if metric == "exact" {
+				if err != nil {
+					t.Fatal("exact source frame budget was rejected", err)
+				}
+				return
+			}
+			var failure *ResourceLimitError
+			if !errors.As(err, &failure) || failure.Metric != metric || failure.Observed <= failure.Limit {
+				t.Fatal("source receipt bypassed a smaller consumer budget", metric, err)
+			}
+			if collector.replay.sequence.count != 0 {
+				t.Fatal("rejected frame advanced consumer sequence")
+			}
+		})
+	}
+}
 
 func auxiliaryProtocolPackage(t *testing.T) ProtocolPackage {
 	t.Helper()
@@ -114,6 +158,9 @@ func TestPackageAuxiliaryDisposition(t *testing.T) {
 	}
 	if event.Native == nil || event.auxiliary == nil {
 		t.Fatal("projection changed source ownership")
+	}
+	if frames, err := target.EncodeFrames(t.Context(), result, EvaluationContext{}); err != nil || len(frames) != 0 {
+		t.Fatal("direct encoding emitted a frame for omitted auxiliary data", frames, err)
 	}
 	document.Mapping.Directions[EncodeEvent].Program.Fields["extension"] = literalExpression(true)
 	changed := compilePackageForTest(t, document)

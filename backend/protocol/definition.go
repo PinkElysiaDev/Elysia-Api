@@ -1,11 +1,7 @@
 package protocol
 
-// DefinitionSchemaVersion versions the configuration language independently
-// from both provider revisions and the semantic model.
-const DefinitionSchemaVersion = 2
-
 // CompilerVersion binds verification evidence to execution semantics.
-const CompilerVersion = "2.0.0-dev.148"
+const CompilerVersion = "2.0.0-dev.172"
 
 // Preset protocol identifiers. Presets ship with the engine, are read-only for
 // authoring, and are refreshed to the shipped revision on every startup;
@@ -38,55 +34,6 @@ const (
 	WebSocket Transport = "websocket"
 )
 
-// Definition is a strictly decoded, versioned gateway protocol. Extensions are
-// inert metadata. There are no script, executable or implicit passthrough keys.
-type Definition struct {
-	SchemaVersion  int                   `json:"schemaVersion"`
-	ID             string                `json:"id"`
-	Name           string                `json:"name"`
-	Version        string                `json:"version"`
-	Family         string                `json:"family"`
-	WireVersion    string                `json:"wireVersion"`
-	Requires       []string              `json:"requires,omitempty"`
-	Capabilities   CapabilitySet         `json:"capabilities"`
-	Directions     map[Direction]Mapping `json:"directions"`
-	Operations     map[string]Operation  `json:"operations"`
-	Expressions    map[string]Expression `json:"expressions,omitempty"`
-	Native         NativePolicy          `json:"native"`
-	Limits         *Limits               `json:"limits,omitempty"`
-	Samples        []Sample              `json:"samples"`
-	TaskSamples    []TaskSample          `json:"taskSamples,omitempty"`
-	ModelSamples   []ModelSample         `json:"modelSamples,omitempty"`
-	Agent          *AgentConfig          `json:"agent,omitempty"`
-	SessionSamples []SessionSample       `json:"sessionSamples,omitempty"`
-	Extensions     Object                `json:"extensions,omitempty"`
-}
-
-// Mapping implements one direction. Module selects a registered built-in
-// adapter; Transform is independently authored and is never mechanically
-// inverted to implement another direction.
-type Mapping struct {
-	Capabilities CapabilitySet `json:"capabilities,omitzero"`
-	Module       string        `json:"module,omitempty"`
-	After        *Expression   `json:"after,omitempty"`
-	// Initial declares the prefix emitted once before the first nonempty
-	// decoded event frame, for providers whose stream omits an item-start frame.
-	Initial      *Expression  `json:"initial,omitempty"`
-	Transform    *Expression  `json:"transform,omitempty"`
-	Input        *ValueSchema `json:"input,omitempty"`
-	Output       *ValueSchema `json:"output,omitempty"`
-	Rules        []EventRule  `json:"rules,omitempty"`
-	UnknownEvent string       `json:"unknownEvent,omitempty"`
-	FrameBatch   bool         `json:"frameBatch,omitempty"`
-}
-
-// EventRule maps a matching wire frame to one event or an ordered event array.
-// Cumulative semantics are expressed as item.snapshot, not arbitrary code.
-type EventRule struct {
-	When Expression `json:"when"`
-	Emit Expression `json:"emit"`
-}
-
 // NativePolicy controls native replay. A family name alone never authorizes
 // cross-account resources, signatures or unregistered semantic capabilities.
 type NativePolicy struct {
@@ -99,19 +46,22 @@ type NativePolicy struct {
 // Operation declares a relative endpoint and independently selected mappings.
 // The gateway supplies credentials and authorization outside this definition.
 type Operation struct {
-	Kind      string            `json:"kind"`
-	Method    string            `json:"method"`
-	Path      string            `json:"path"`
-	Transport Transport         `json:"transport"`
-	Request   Direction         `json:"request,omitempty"`
-	Response  Direction         `json:"response,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	Query     map[string]string `json:"query,omitempty"`
-	Auth      Credential        `json:"auth"`
-	Framing   *Framing          `json:"framing,omitempty"`
-	Task      *TaskFlow         `json:"task,omitempty"`
-	Session   *SessionConfig    `json:"session,omitempty"`
-	Models    *ModelDiscovery   `json:"models,omitempty"`
+	// IsInterleavedThinking is derived from this operation's declared headers by
+	// Mapping.headerControls, never inferred from a protocol name by the host.
+	IsInterleavedThinking bool              `json:"-"`
+	Kind                  string            `json:"kind"`
+	Method                string            `json:"method"`
+	Path                  string            `json:"path"`
+	Transport             Transport         `json:"transport"`
+	Request               Direction         `json:"request,omitempty"`
+	Response              Direction         `json:"response,omitempty"`
+	Headers               map[string]string `json:"headers,omitempty"`
+	Query                 map[string]string `json:"query,omitempty"`
+	Auth                  Credential        `json:"auth"`
+	Framing               *Framing          `json:"framing,omitempty"`
+	Task                  *TaskFlow         `json:"task,omitempty"`
+	Session               *SessionConfig    `json:"session,omitempty"`
+	Models                *ModelDiscovery   `json:"models,omitempty"`
 	// Input constrains this operation's wire body independently of the shared
 	// decoder, which may also serve inspection or token counting.
 	Input *ValueSchema `json:"input,omitempty"`
@@ -139,13 +89,10 @@ type Framing struct {
 // TaskFlow links separately declared submit/status/result/cancel operations.
 // Uncertain submission behavior is owned by the transport, not expressions.
 type TaskFlow struct {
-	Status            string  `json:"status"`
-	Result            string  `json:"result"`
-	Cancel            string  `json:"cancel,omitempty"`
-	IdempotencyHeader string  `json:"idempotencyHeader,omitempty"`
-	Decode            Mapping `json:"decode"`
-	Encode            Mapping `json:"encode"`
-	Control           Mapping `json:"control"`
+	Status            string `json:"status"`
+	Result            string `json:"result"`
+	Cancel            string `json:"cancel,omitempty"`
+	IdempotencyHeader string `json:"idempotencyHeader,omitempty"`
 }
 
 // TaskSample asserts status, receipt or control conversion for a linked flow.
@@ -193,11 +140,6 @@ type SessionStep struct {
 	Expected  Value     `json:"expected"`
 }
 
-// Identity returns the wire identity associated with this definition revision.
-func (definition Definition) Identity() Identity {
-	return Identity{Family: definition.Family, WireVersion: definition.WireVersion, DefinitionID: definition.ID, Revision: definition.Version}
-}
-
 // JSONType describes statically checkable expression and wire field types.
 type JSONType string
 
@@ -227,34 +169,35 @@ type ValueSchema struct {
 // Expression is a finite, typed mapping tree. Per-operation field validation
 // rejects unrelated keys; loops only traverse a bounded input array.
 type Expression struct {
-	present     expressionFieldMask
-	unknownKeys []string
-	Op          string                   `json:"op"`
-	Operation   string                   `json:"operation,omitempty"`
-	Name        string                   `json:"name,omitempty"`
-	Namespace   string                   `json:"namespace,omitempty"`
-	KeyMode     string                   `json:"keyMode,omitempty"`
-	From        string                   `json:"from,omitempty"`
-	Path        string                   `json:"path,omitempty"`
-	Value       Value                    `json:"value,omitzero"`
-	Fields      map[string]Expression    `json:"fields,omitempty"`
-	Items       []Expression             `json:"items,omitempty"`
-	Source      *Expression              `json:"source,omitempty"`
-	Body        *Expression              `json:"body,omitempty"`
-	When        *Expression              `json:"when,omitempty"`
-	Then        *Expression              `json:"then,omitempty"`
-	Otherwise   *Expression              `json:"otherwise,omitempty"`
-	Cases       map[string]Expression    `json:"cases,omitempty"`
-	Values      map[string]Value         `json:"values,omitempty"`
-	To          JSONType                 `json:"to,omitempty"`
-	Key         string                   `json:"key,omitempty"`
-	Keys        []string                 `json:"keys,omitzero"`
-	Prefixes    []string                 `json:"prefixes,omitzero"`
-	Policy      string                   `json:"policy,omitempty"`
-	OnConflict  *MergeConflictDiagnostic `json:"onConflict,omitempty"`
-	OnUnknown   *ObjectFieldDiagnostic   `json:"onUnknown,omitempty"`
-	Diagnostic  *RejectDiagnostic        `json:"diagnostic,omitempty"`
-	Reason      string                   `json:"reason,omitempty"`
-	Ref         string                   `json:"ref,omitempty"`
-	Required    bool                     `json:"required,omitempty"`
+	present       expressionFieldMask
+	unknownKeys   []string
+	isCompactRead bool
+	Op            string                   `json:"op"`
+	Operation     string                   `json:"operation,omitempty"`
+	Name          string                   `json:"name,omitempty"`
+	Namespace     string                   `json:"namespace,omitempty"`
+	KeyMode       string                   `json:"keyMode,omitempty"`
+	From          string                   `json:"from,omitempty"`
+	Path          string                   `json:"path,omitempty"`
+	Value         Value                    `json:"value,omitzero"`
+	Fields        map[string]Expression    `json:"fields,omitempty"`
+	Items         []Expression             `json:"items,omitempty"`
+	Source        *Expression              `json:"source,omitempty"`
+	Body          *Expression              `json:"body,omitempty"`
+	When          *Expression              `json:"when,omitempty"`
+	Then          *Expression              `json:"then,omitempty"`
+	Otherwise     *Expression              `json:"otherwise,omitempty"`
+	Cases         map[string]Expression    `json:"cases,omitempty"`
+	Values        map[string]Value         `json:"values,omitempty"`
+	To            JSONType                 `json:"to,omitempty"`
+	Key           string                   `json:"key,omitempty"`
+	Keys          []string                 `json:"keys,omitzero"`
+	Prefixes      []string                 `json:"prefixes,omitzero"`
+	Policy        string                   `json:"policy,omitempty"`
+	OnConflict    *MergeConflictDiagnostic `json:"onConflict,omitempty"`
+	OnUnknown     *ObjectFieldDiagnostic   `json:"onUnknown,omitempty"`
+	Diagnostic    *RejectDiagnostic        `json:"diagnostic,omitempty"`
+	Reason        string                   `json:"reason,omitempty"`
+	Ref           string                   `json:"ref,omitempty"`
+	Required      bool                     `json:"required,omitempty"`
 }

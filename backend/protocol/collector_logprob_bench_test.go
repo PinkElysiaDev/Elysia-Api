@@ -14,8 +14,8 @@ func BenchmarkAlgorithmCollectorLogprobs(b *testing.B) {
 	}
 	for _, frames := range []int{128, 512, 2048} {
 		b.Run(fmt.Sprint(frames), func(b *testing.B) {
-			start := Event{SchemaVersion: 1, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}}
-			delta := Event{SchemaVersion: 1, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue("x"), Metadata: []ResponseMetadata{{Codec: "openai-chat", Location: "choice", Name: "logprobs", Value: probabilities}}}
+			start := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemStarted, ItemID: StringValue("text"), Item: &Node{Kind: TextNode}}
+			delta := Event{SchemaVersion: SemanticSchemaVersion, Type: ItemDelta, ItemID: start.ItemID, Delta: StringValue("x"), Metadata: []ResponseMetadata{{Codec: "openai-chat", Location: "choice", Name: "logprobs", Value: probabilities}}}
 			b.ReportAllocs()
 			for b.Loop() {
 				collector, err := NewResponseCollector(replayTarget(), DefaultLimits())
@@ -30,7 +30,7 @@ func BenchmarkAlgorithmCollectorLogprobs(b *testing.B) {
 						b.Fatal(err)
 					}
 				}
-				for _, event := range []Event{{SchemaVersion: 1, Type: ItemFinished, ItemID: start.ItemID}, {SchemaVersion: 1, Type: ResponseFinished}} {
+				for _, event := range []Event{{SchemaVersion: SemanticSchemaVersion, Type: ItemFinished, ItemID: start.ItemID}, {SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished}} {
 					if _, _, err := collector.Consume(event); err != nil {
 						b.Fatal(err)
 					}

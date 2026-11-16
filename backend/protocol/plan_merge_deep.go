@@ -19,7 +19,7 @@ type deepObjectMerge struct {
 }
 
 func (plan *compiledOutputPlan) buildDeepMerge(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(state)
+	operands, err := plan.buildOperandValues(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}

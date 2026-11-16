@@ -8,6 +8,8 @@ import (
 
 const cacheBillingFixture = `{"basis":"disclosed_billing_allocation","billed_cached_tokens":1,"observed_cached_tokens":3,"policy_revision":2,"rule_id":"test-rule"}`
 
+const canonicalCacheBillingFixture = `{"basis":"cache-allocation","billed":1,"observed":3,"policyRevision":2,"ruleId":"test-rule"}`
+
 func TestResponsesCacheBillingPreservedSeparatelyAndProjected(t *testing.T) {
 	from := shippedProjectionProtocol(t, Responses)
 	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
@@ -17,24 +19,24 @@ func TestResponsesCacheBillingPreservedSeparatelyAndProjected(t *testing.T) {
 				policy := p.DefaultConversionPolicy(to, from)
 				policy.Mode = mode
 				for i := range policy.Rules {
-					if policy.Rules[i].Action == "usage_projection" {
+					if policy.Rules[i].ID == "response-usage-projection" || policy.Rules[i].ID == "event-usage-projection" {
 						policy.Rules[i].Enabled = enabled
 					}
 				}
 				c, _ := p.ResolveConversion(policy)
-				r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":3,"output_tokens":1,"input_tokens_details":{"cached_tokens":1},"linapi_cache_billing":`+cacheBillingFixture+`}}`), p.EvaluationContext{})
+				r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],"usage":{"input_tokens":3,"output_tokens":1,"input_tokens_details":{"cached_tokens":1},"linapi_cache_billing":`+cacheBillingFixture+`}}`), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				if r.Usage.CacheRead.Count != 1 || r.Usage.Total.Count != 4 || !equivalentJSON(r.Usage.CacheBilling, testValue(t, cacheBillingFixture)) {
+				if r.Usage.CacheRead.Count != 1 || r.Usage.Total.Count != 4 || !equivalentJSON(r.Usage.CacheBilling, testValue(t, canonicalCacheBillingFixture)) {
 					t.Fatal(r.Usage)
 				}
 				sink := &p.DiagnosticSink{}
-				projected, err := c.Response(t.Context(), r, p.ConversionContext{}, sink)
+				projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), sink)
 				var wire []byte
 				if err == nil {
 					projected.Native = nil
-					wire, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+					wire, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				}
 				wantOK := target == Responses || enabled && mode == "compatible"
 				if (err == nil) != wantOK {
@@ -84,15 +86,19 @@ func TestResponsesCacheBillingPreservedSeparatelyAndProjected(t *testing.T) {
 }
 
 func TestCacheBillingDoesNotGeneralizeUnknownVendorLedger(t *testing.T) {
+	compiled := shippedProjectionProtocol(t, Responses)
 	for _, raw := range []string{`42`, `{"billed_cached_tokens":null}`, `{"observed_cached_tokens":-1}`, `{"policy_revision":1.5}`, `{"rule_id":false}`} {
-		if _, err := p.ParseCacheBilling(testValue(t, raw)); err == nil {
-			t.Fatal(raw)
-		}
+		assertInvalidResponsesLedger(t, compiled, "linapi_cache_billing", raw)
 	}
 	for _, raw := range []string{`{"billing":null}`, `{"basis":"new-policy"}`, strings.Replace(cacheBillingFixture, `"test-rule"`, `"test-rule","vendor":42`, 1)} {
-		known, err := p.ParseCacheBilling(testValue(t, raw))
-		if err != nil || known {
-			t.Fatal("unknown shape consumed", raw, err)
+		response, err := compiled.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","output":[],"usage":{"linapi_cache_billing":`+raw+`}}`), fixtureOptions(p.EvaluationContext{}))
+		if err != nil || response.Usage != nil && !response.Usage.CacheBilling.IsZero() {
+			t.Fatal("unknown source billing acquired canonical semantics", raw, err)
+		}
+		response.Native = nil
+		wire, err := compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
+		if err != nil || !strings.Contains(string(wire), raw) {
+			t.Fatal("unknown source billing did not survive own reconstruction", string(wire), err)
 		}
 	}
 	for _, raw := range []string{`null`, `{}`} {

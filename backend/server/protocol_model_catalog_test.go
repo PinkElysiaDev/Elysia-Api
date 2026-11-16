@@ -40,7 +40,7 @@ func clientCatalogRequest(t *testing.T, server *Server, path string) *httptest.R
 
 func TestPackageClientCatalogPublicAndGateway(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	packages := seedGatewayPackages(t, server)
+	packages := defaultGatewayPackages(t, server)
 	seedClientCatalogGroups(t, server)
 	server.setupRoutes()
 	for _, fixture := range []struct{ name, path string }{

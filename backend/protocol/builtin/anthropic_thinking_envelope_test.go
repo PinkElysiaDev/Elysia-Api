@@ -9,7 +9,7 @@ import (
 
 func TestAnthropicUnsignedThinkingEnvelope(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Chat), shippedProjectionProtocol(t, Anthropic)
-	r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"visible thought","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`), p.EvaluationContext{})
+	r, err := from.DecodeResponse(t.Context(), []byte(`{"id":"r","model":"m","choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"visible thought","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,14 +18,14 @@ func TestAnthropicUnsignedThinkingEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+	wire, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(wire), `"signature":""`) {
 		t.Fatal("required signature field missing", string(wire))
 	}
-	back, err := to.DecodeResponse(t.Context(), wire, p.EvaluationContext{})
+	back, err := to.DecodeResponse(t.Context(), wire, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestAnthropicUnsignedThinkingEnvelope(t *testing.T) {
 	if err := to.ValidateWireOutput(p.EncodeResponse, testValue(t, bad)); err == nil {
 		t.Fatal("invalid signature type accepted")
 	}
-	native, err := to.EncodeResponse(t.Context(), back, p.EvaluationContext{})
+	native, err := to.EncodeResponse(t.Context(), back, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}

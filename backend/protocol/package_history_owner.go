@@ -56,12 +56,12 @@ func (proof *historyOwnerProof) field(program *compiledExpression, scope *histor
 	}
 	switch program.op {
 	case "let":
-		binding := historyOwnerBinding{slot: program.bindingSlot, source: program.source, sourceScope: scope, parent: scope}
+		binding := historyOwnerBinding{slot: program.storageSlot, source: program.source, sourceScope: scope, parent: scope}
 		return proof.field(program.body, &binding, output, goal, hasCase, isRecognized)
 	case "read":
 		if program.from == "binding" {
 			for binding := scope; binding != nil; binding = binding.parent {
-				if binding.slot == program.bindingSlot {
+				if binding.slot == program.storageSlot {
 					path := append(slices.Clone(program.pointer), output...)
 					return proof.field(binding.source, binding.sourceScope, path, goal, hasCase, isRecognized)
 				}
@@ -140,7 +140,7 @@ func omitsEmptyHistoryParent(program *compiledExpression) bool {
 	otherwise := program.otherwise
 	return isEmptyHistoryObject(right) && left.op == "read" && left.from == "binding" && !left.isRequired &&
 		otherwise.op == "read" && otherwise.from == "binding" && !otherwise.isRequired &&
-		left.bindingSlot == otherwise.bindingSlot && slices.Equal(left.pointer, otherwise.pointer)
+		left.storageSlot == otherwise.storageSlot && slices.Equal(left.pointer, otherwise.pointer)
 }
 
 func isEmptyHistoryObject(program *compiledExpression) bool {

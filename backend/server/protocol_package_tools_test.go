@@ -18,7 +18,7 @@ func TestPackageGatewayToolResultDisposition(t *testing.T) {
 	for _, name := range []string{"openai-chat", "openai-responses", "google-generate-content", "anthropic"} {
 		t.Run(name, func(t *testing.T) {
 			server, _ := newProtocolAdminTestServer(t)
-			packages := seedGatewayPackages(t, server)
+			packages := defaultGatewayPackages(t, server)
 			ingress, upstream := packages["anthropic"], packages[name]
 			if name == "anthropic" {
 				ingress = packages["google-generate-content"]

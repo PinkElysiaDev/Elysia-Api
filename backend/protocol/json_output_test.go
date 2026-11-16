@@ -136,3 +136,155 @@ func BenchmarkNestedJSONOutput(b *testing.B) {
 		}
 	}
 }
+
+func TestJSONOutputFragmentWorkspaceBoundaries(t *testing.T) {
+	for _, count := range []int{0, 1, 63, 64, 65, 129} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			var parts jsonOutputParts
+			var expected strings.Builder
+			for index := range count {
+				fragment := strings.Repeat("界", index%3)
+				if err := parts.add(fragment); err != nil {
+					t.Fatal(err)
+				}
+				expected.WriteString(fragment)
+			}
+			ctx := &jsonOutputCheckContext{Context: t.Context()}
+			encoded, err := parts.encode(ctx)
+			if err != nil || encoded.raw != expected.String() || parts.bytes != expected.Len() || ctx.checks != count+1 {
+				t.Fatal("fragment order, empty fragments or cancellation checks changed", err, ctx.checks)
+			}
+			if err := parts.add("later"); err != nil {
+				t.Fatal(err)
+			}
+			if encoded.raw != expected.String() {
+				t.Fatal("encoded bytes alias the mutable workspace")
+			}
+		})
+	}
+	var parts jsonOutputParts
+	parts.bytes = int(^uint(0)>>1) - 1
+	if err := parts.add("x"); err != nil {
+		t.Fatal("last representable byte rejected", err)
+	}
+	if err := parts.add(""); err != nil {
+		t.Fatal("empty fragment rejected at integer capacity", err)
+	}
+	if err := parts.add("x"); err == nil || err.Error() != "JSON output exceeds integer capacity" || parts.bytes != int(^uint(0)>>1) {
+		t.Fatal("integer capacity failure changed", err, parts.bytes)
+	}
+}
+
+func TestJSONOutputFragmentBoundaryOwnership(t *testing.T) {
+	for _, fixture := range []struct {
+		items        int
+		isFirstEmpty bool
+	}{{31, false}, {31, true}, {32, false}, {128, false}} {
+		plan, values := jsonOutputArrayFixture(fixture.items, fixture.isFirstEmpty)
+		want, err := EncodeValue(values)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := plan.Encode(t.Context())
+		if err != nil || got != want {
+			t.Fatal("fragment boundary differs from the value encoder", fixture, got, want, err)
+		}
+		for _, pair := range [][2]JSONOutput{{plan, JSONLeaf(want)}, {JSONLeaf(want), plan}, {plan, plan}} {
+			isEqual, err := equalJSONOutputBytes(t.Context(), pair[0], pair[1])
+			if err != nil || !isEqual {
+				t.Fatal("different fragment boundaries changed byte equality", fixture, err)
+			}
+		}
+		changed := parseTestValue(t, strings.Replace(want.raw, "1", "2", 1))
+		isEqual, err := equalJSONOutputBytes(t.Context(), plan, JSONLeaf(changed))
+		if err != nil || isEqual {
+			t.Fatal("equal-size differing output compared equal", fixture, err)
+		}
+	}
+	payload := StringValue(strings.Repeat("A", 2<<20))
+	plan := JSONArray([]JSONOutput{JSONLeaf(payload)})
+	encoded, err := plan.Encode(t.Context())
+	if err != nil || sharesValueStorage(payload, encoded) {
+		t.Fatal("container output did not own its final bytes", err)
+	}
+	selected, err := readValuePointer(encoded, []string{"0"})
+	if err != nil || selected != payload {
+		t.Fatal("owned output lost its large leaf", err)
+	}
+}
+
+func TestJSONOutputFragmentCancellationBoundaries(t *testing.T) {
+	for _, fixture := range []struct {
+		name             string
+		items            int
+		isFirstEmpty     bool
+		encodeChecks     int
+		comparisonChecks int
+	}{{"63 fragments", 31, false, 97, 99}, {"64 fragments", 31, true, 98, 100}, {"65 fragments", 32, false, 100, 102}} {
+		plan, values := jsonOutputArrayFixture(fixture.items, fixture.isFirstEmpty)
+		wire, err := EncodeValue(values)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(fixture.name, func(t *testing.T) {
+			checkJSONOutputCancellation(t, fixture.encodeChecks, func(ctx context.Context) error {
+				_, err := plan.Encode(ctx)
+				return err
+			})
+			checkJSONOutputCancellation(t, fixture.comparisonChecks, func(ctx context.Context) error {
+				_, err := equalJSONOutputBytes(ctx, plan, JSONLeaf(wire))
+				return err
+			})
+		})
+	}
+	plan := JSONObject(map[string]JSONOutput{"": JSONLeaf(Value{raw: "1"})})
+	checkJSONOutputCancellation(t, 10, func(ctx context.Context) error {
+		_, err := plan.Encode(ctx)
+		return err
+	})
+	checkJSONOutputCancellation(t, 14, func(ctx context.Context) error {
+		_, err := equalJSONOutputBytes(ctx, plan, plan)
+		return err
+	})
+}
+
+type jsonOutputCheckContext struct {
+	context.Context
+	checks   int
+	cancelAt int
+}
+
+func (ctx *jsonOutputCheckContext) Err() error {
+	ctx.checks++
+	if ctx.cancelAt != 0 && ctx.checks >= ctx.cancelAt {
+		return context.Canceled
+	}
+	return ctx.Context.Err()
+}
+
+func checkJSONOutputCancellation(t *testing.T, checks int, run func(context.Context) error) {
+	t.Helper()
+	ctx := &jsonOutputCheckContext{Context: t.Context()}
+	if err := run(ctx); err != nil || ctx.checks != checks {
+		t.Fatal("successful context-check sequence changed", err, ctx.checks, checks)
+	}
+	for cancelAt := 1; cancelAt <= checks; cancelAt++ {
+		ctx := &jsonOutputCheckContext{Context: t.Context(), cancelAt: cancelAt}
+		if err := run(ctx); !errors.Is(err, context.Canceled) || ctx.checks != cancelAt {
+			t.Fatal("cancellation boundary changed", cancelAt, ctx.checks, err)
+		}
+	}
+}
+
+func jsonOutputArrayFixture(count int, isFirstEmpty bool) (JSONOutput, []Value) {
+	items, values := make([]JSONOutput, count), make([]Value, count)
+	for index := range count {
+		values[index] = Value{raw: "1"}
+		items[index] = JSONLeaf(values[index])
+	}
+	if isFirstEmpty {
+		values[0] = Value{raw: "[]"}
+		items[0] = JSONArray([]JSONOutput{})
+	}
+	return JSONArray(items), values
+}

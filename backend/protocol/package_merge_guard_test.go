@@ -43,6 +43,9 @@ func TestGuardedDeepMergePreservesWholeOwnerOnlyWhenApplicable(t *testing.T) {
 	for _, operand := range []Expression{
 		objectExpression(map[string]Expression{"other": literalExpression(1)}),
 		{Op: "project", Source: expressionPointer(readExpression("input", "/parameters/extension")), Keys: []string{"model"}, Policy: "exclude"},
+		{Op: "project", Source: expressionPointer(readExpression("input", "/parameters/extension")), Keys: []string{"other"}, Policy: "exclude"},
+		{Op: "project", Source: expressionPointer(readExpression("input", "/parameters/extension")), Keys: []string{"model"}, Policy: "include"},
+		{Op: "project", Source: expressionPointer(readExpression("input", "/parameters/other")), Keys: []string{"other"}, Policy: "include"},
 		{Op: "if", When: &Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/parameters/extension"))}, Then: expressionPointer(readExpression("input", "/parameters/extension")), Otherwise: expressionPointer(objectExpression(nil))},
 	} {
 		document := guardedMergeTestPackage(t)
@@ -58,6 +61,12 @@ func TestGuardedDeepMergeRejectsUnprovedAbsence(t *testing.T) {
 	}{
 		{"wrong-owner-path", func(document *ProtocolPackage) {
 			document.Mapping.Directions[EncodeRequest].Effects[0].When.Items[1] = mergeAbsentCondition("/parameters/other/model")
+		}},
+		{"projected-wrong-owner", func(document *ProtocolPackage) {
+			document.Mapping.Directions[EncodeRequest].Program.Items[1] = Expression{Op: "project", Source: expressionPointer(readExpression("input", "/parameters/other")), Keys: []string{"model"}, Policy: "include"}
+		}},
+		{"project-keeps-unguarded-owner", func(document *ProtocolPackage) {
+			document.Mapping.Directions[EncodeRequest].Program.Items[1] = Expression{Op: "project", Source: expressionPointer(readExpression("input", "/parameters/other")), Keys: []string{"other"}, Policy: "exclude"}
 		}},
 		{"not-present-allows-null", func(document *ProtocolPackage) {
 			document.Mapping.Directions[EncodeRequest].Effects[0].When.Items[1].Source.Op = "present"
@@ -95,7 +104,7 @@ func TestGuardedDeepMergeRejectsUnprovedAbsence(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			document := guardedMergeTestPackage(t)
 			test.change(&document)
-			compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, _ := NewCompiler(DefaultLimits(), nil)
 			compiled, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
 			if err := IssuesError(issues); compiled != nil || err == nil || !strings.Contains(err.Error(), "provable read") {
 				t.Fatal("unproved absence compiled", compiled, issues)

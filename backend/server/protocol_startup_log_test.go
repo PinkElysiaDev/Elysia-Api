@@ -132,7 +132,7 @@ func TestProtocolStartupEvidenceLogsAndRestartIdempotence(t *testing.T) {
 
 func TestProtocolActivationMissingReportRemainsBadRequest(t *testing.T) {
 	server, path := newProtocolAdminTestServer(t)
-	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-alpha"))
+	compiled := activateGatewayFixture(t, server, loadGatewayFixture(t, "text-alpha"))
 	db := recoveryDB(t, path)
 	recoveryExec(t, db, `DELETE FROM protocol_verification_reports WHERE protocol_id=?`, "text-alpha")
 	server.setupProtocolRevisionRoutes(server.engine.Group("/api/admin"))

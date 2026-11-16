@@ -13,17 +13,17 @@ func TestRepeatedProviderErrorClassification(t *testing.T) {
 			from := shippedProjectionProtocol(t, source)
 			for _, typ := range []string{"invalid_request_error", "rate_limit_error", "api_error"} {
 				body := `{"error":{"type":"` + typ + `","message":"synthetic rejection","param":null,"code":"` + typ + `"}}`
-				r, err := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+				r, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
 				for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
-					wire, err := shippedProjectionProtocol(t, target).EncodeResponse(t.Context(), r, p.EvaluationContext{})
+					wire, err := shippedProjectionProtocol(t, target).EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 					if err != nil || !strings.Contains(string(wire), "synthetic rejection") {
 						t.Fatal(target, string(wire), err)
 					}
 				}
-				native, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+				native, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -32,15 +32,19 @@ func TestRepeatedProviderErrorClassification(t *testing.T) {
 				if source != Chat {
 					frameBody = `{"type":"error",` + strings.TrimPrefix(body, "{")
 				}
-				frame, err := from.DecodeFrame(t.Context(), testValue(t, frameBody), p.EvaluationContext{State: p.NewEvaluationState()})
+				frame, err := from.DecodeFrame(t.Context(), testValue(t, frameBody), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 				if err != nil {
 					t.Fatal(err)
 				}
 				for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
-					frames, err := shippedProjectionProtocol(t, target).EncodeFrame(t.Context(), &p.EventFrame{Events: frame.Events}, p.EvaluationContext{State: p.NewEvaluationState()})
+					compiled := shippedProjectionProtocol(t, target)
+					options, consume := bindFixtureOutput(t, compiled, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
+					t.Cleanup(options.State.Release)
+					frames, err := compiled.EncodeFrame(t.Context(), &p.EventFrame{Events: frame.Events}, options)
 					if err != nil || len(frames) != 1 || !strings.Contains(string(frames[0].Bytes()), "synthetic rejection") {
 						t.Fatal(target, frames, err)
 					}
+					consume(frames)
 				}
 			}
 		})
@@ -50,11 +54,11 @@ func TestRepeatedProviderErrorClassification(t *testing.T) {
 func TestUnrecognizedProviderErrorDetailsRemainProtected(t *testing.T) {
 	for _, extra := range []string{`"code":"vendor_detail"`, `"param":"tool_choice"`, `"vendor":null`, `"code":42`} {
 		from, to := shippedProjectionProtocol(t, Chat), shippedProjectionProtocol(t, Anthropic)
-		r, err := from.DecodeResponse(t.Context(), []byte(`{"error":{"type":"invalid_request_error","message":"rejected",`+extra+`}}`), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(`{"error":{"type":"invalid_request_error","message":"rejected",`+extra+`}}`), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			continue
 		}
-		if _, err := to.EncodeResponse(t.Context(), r, p.EvaluationContext{}); err == nil {
+		if _, err := to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{})); err == nil {
 			t.Fatal("provider detail disappeared", extra)
 		}
 	}

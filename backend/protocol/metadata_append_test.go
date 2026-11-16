@@ -49,6 +49,33 @@ func TestCollectorAppendsDeclaredMetadataArrays(t *testing.T) {
 	}
 }
 
+func TestMetadataWithoutAppendReplacesSnapshot(t *testing.T) {
+	for _, codec := range []string{"custom", "openai-chat", "responses"} {
+		t.Run(codec, func(t *testing.T) {
+			collector, err := NewResponseCollector(reasoningCollectionTarget(), DefaultLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			initial := ResponseMetadata{Codec: codec, Location: "content", Name: "logprobs", Value: mustLogprobValue(t, `[{"token":"old","logprob":-1}]`)}
+			start := reasoningCollectionEvent(ItemStarted, "text", "", "", &Node{Kind: TextNode, Metadata: []ResponseMetadata{initial}})
+			if _, _, err := collector.Consume(start); err != nil {
+				t.Fatal(err)
+			}
+			next := initial
+			next.Value = mustLogprobValue(t, `[{"token":"new","logprob":-2}]`)
+			delta := reasoningCollectionEvent(ItemDelta, "text", "", "", nil)
+			delta.Delta, delta.Metadata = StringValue(""), []ResponseMetadata{next}
+			if _, _, err := collector.Consume(delta); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := collector.Partial()
+			if err != nil || len(snapshot.Content) != 1 || len(snapshot.Content[0].Metadata) != 1 || snapshot.Content[0].Metadata[0].Value != next.Value {
+				t.Fatal("undeclared append inferred from codec or field name", snapshot, err)
+			}
+		})
+	}
+}
+
 func TestMetadataAppendRejectsInvalidUse(t *testing.T) {
 	target := reasoningCollectionTarget()
 	valid := ResponseMetadata{Codec: "custom", Location: "item", Name: "values", Value: fixtureValue(t, []int{1}), Update: "append"}

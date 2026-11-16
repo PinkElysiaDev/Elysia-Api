@@ -6,8 +6,8 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// These original fixtures remain in the legacy differential suite. Their
-// complete replacements supply activation evidence without changing that suite.
+// Component fixtures do not prove final delivery. Complete replacements supply
+// activation evidence while the final-contract tests retain the invalid shapes.
 var anthropicComponentResponseSamples = map[string]struct{ replacement, finalPath string }{
 	"tool-encode-response":                        {"completed-tool-encode-response", "/usage"},
 	"reasoning-response-encode":                   {"completed-reasoning-response-encode", "/content/0/signature"},

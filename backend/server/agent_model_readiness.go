@@ -221,6 +221,13 @@ func (s *Server) adminVerifyAgentTools(ctx context.Context, c *app.RequestContex
 		respondProtocolError(ctx, c, err)
 		return
 	}
+	// A tool capability probe leaves the provider's thinking defaults in effect.
+	request.Reasoning = nil
+	request, err = candidate.prepareProbeRequest(ctx, request)
+	if err != nil {
+		respondProtocolError(ctx, c, err)
+		return
+	}
 	response, err := s.collectProtocolGeneration(ctx, candidate, request, record, nil)
 	if err != nil {
 		var upstream *gatewayFailure

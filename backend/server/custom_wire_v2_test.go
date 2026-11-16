@@ -17,108 +17,91 @@ import (
 
 // standaloneWireDefinition uses no built-in shape. Optional settings remain
 // author-controlled and the same definition serves preview and actual HTTP.
-func standaloneWireDefinition(t *testing.T, transport protocol.Transport) protocol.Definition {
+func standaloneWireDefinition(t *testing.T, transport protocol.Transport) protocol.ProtocolPackage {
 	t.Helper()
-	definition := loadGatewayDefinition(t, "text-alpha")
+	const fixtureModel = "preset-model"
+	definition := loadGatewayFixture(t, "text-alpha")
 	if transport != protocol.HTTPJSON {
 		definition = gatewayStreamDefinition(t, "text-alpha", transport, "event")
 	}
-	definition.ID, definition.Family = "vendor-json", "vendor-json"
-	operation := definition.Operations["generate"]
+	definition.Spec.ID, definition.Spec.Family = "vendor-json", "vendor-json"
+	operation := definition.Spec.Operations["generate"]
 	operation.Path = "/v2/generate/{model}"
 	operation.Auth = protocol.Credential{Location: "header", Name: "X-Token"}
 	operation.Headers = map[string]string{"X-Client": "gateway"}
-	definition.Operations["generate"] = operation
+	definition.Spec.Operations["generate"] = operation
 	for _, direction := range []protocol.Direction{protocol.DecodeRequest, protocol.EncodeRequest} {
-		mapping := definition.Directions[direction]
-		mapping.Transform.Fields["parameters"] = protocol.Expression{Op: "read", Path: "/parameters"}
-		definition.Directions[direction] = mapping
+		mapping := definition.Mapping.Directions[direction]
+		mapping.Program.Fields["parameters"] = protocol.Expression{Op: "read", Path: "/parameters"}
+		definition.Mapping.Directions[direction] = mapping
 	}
-	decode := definition.Directions[protocol.DecodeResponse]
-	decode.Transform.Fields["attributes"] = protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"finishReason": {Op: "read", Path: "/finish"}}}
-	definition.Directions[protocol.DecodeResponse] = decode
-	encode := definition.Directions[protocol.EncodeResponse]
-	encode.Transform.Fields["finish"] = protocol.Expression{Op: "read", Path: "/attributes/finishReason"}
-	definition.Directions[protocol.EncodeResponse] = encode
-	for index, sample := range definition.Samples {
-		if sample.Sequence {
-			semantic := sample.Expected
-			if sample.Direction == protocol.EncodeEvent {
-				semantic = sample.Input
-			}
-			var events []protocol.Event
-			if err := semantic.Decode(&events); err != nil {
-				t.Fatal(err)
-			}
-			var wires []protocol.Value
-			for i := range events {
-				event := &events[i]
-				if event.Type == protocol.ResponseFinished {
-					event.Response = &protocol.Response{SchemaVersion: 1, Content: []protocol.Node{}, Attributes: protocol.Object{"finishReason": protocol.StringValue("stop")}}
-				}
-				if event.Usage != nil {
-					// This text protocol has no creation-counter field. The separate
-					// gateway stream fixture retains explicit zero-creation coverage.
-					event.Usage.CacheCreation = nil
-				}
-				fields, _ := mustEncodedProtocolValue(t, event).ReadObject()
-				delete(fields, "schemaVersion")
-				delete(fields, "source")
-				wires = append(wires, mustEncodedProtocolValue(t, protocol.Object{"event": mustEncodedProtocolValue(t, fields)}))
-			}
-			semantic = mustEncodedProtocolValue(t, events)
-			wire := mustEncodedProtocolValue(t, wires)
-			if sample.Direction == protocol.DecodeEvent {
-				sample.Input, sample.Expected = wire, semantic
-			} else {
-				sample.Input, sample.Expected = semantic, wire
-			}
-			definition.Samples[index] = sample
+	addFixtureResponseEnvelope(t, &definition, "deployment", fixtureModel)
+	for index, sample := range definition.Mapping.Samples {
+		if !sample.Sequence {
 			continue
 		}
-		if sample.Direction != protocol.DecodeResponse && sample.Direction != protocol.EncodeResponse {
-			continue
+		semantic := sample.Expected
+		if sample.Direction == protocol.EncodeEvent {
+			semantic = sample.Input
 		}
-		wire, semantic := sample.Input, sample.Expected
-		if sample.Direction == protocol.EncodeResponse {
-			wire, semantic = semantic, wire
+		var events []protocol.Event
+		if err := semantic.Decode(&events); err != nil {
+			t.Fatal(err)
 		}
-		wireFields, _ := wire.ReadObject()
-		wireFields["finish"] = protocol.StringValue("stop")
-		semanticFields, _ := semantic.ReadObject()
-		semanticFields["attributes"] = mustProtocolValue(t, `{"finishReason":"stop"}`)
-		wire = mustEncodedProtocolValue(t, wireFields)
-		semantic = mustEncodedProtocolValue(t, semanticFields)
-		if sample.Direction == protocol.DecodeResponse {
+		started := protocol.Event{SchemaVersion: protocol.ProtocolCoreVersion, Type: protocol.ResponseStarted, ResponseID: protocol.StringValue("r"), Response: &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, ID: protocol.StringValue("r"), Model: protocol.StringValue(fixtureModel), Status: protocol.StringValue("in_progress")}}
+		events = append([]protocol.Event{started}, events...)
+		var wires []protocol.Value
+		for i := range events {
+			event := &events[i]
+			if event.Type == protocol.ResponseFinished {
+				event.Response = &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, ID: protocol.StringValue("r"), Model: protocol.StringValue(fixtureModel), Content: []protocol.Node{}, Attributes: protocol.Object{"finishReason": protocol.StringValue("stop")}}
+			}
+			if event.Item != nil {
+				event.Item.ID = event.ItemID
+			}
+			if event.Usage != nil {
+				// This text protocol has no creation-counter field. The separate
+				// gateway stream fixture retains explicit zero-creation coverage.
+				event.Usage.CacheCreation = nil
+			}
+			fields, _ := mustEncodedProtocolValue(t, event).ReadObject()
+			delete(fields, "schemaVersion")
+			delete(fields, "source")
+			wires = append(wires, mustEncodedProtocolValue(t, protocol.Object{"event": mustEncodedProtocolValue(t, fields)}))
+		}
+		semantic = mustEncodedProtocolValue(t, events)
+		wire := mustEncodedProtocolValue(t, wires)
+		if sample.Direction == protocol.DecodeEvent {
 			sample.Input, sample.Expected = wire, semantic
 		} else {
 			sample.Input, sample.Expected = semantic, wire
 		}
-		definition.Samples[index] = sample
+		definition.Mapping.Samples[index] = sample
 	}
 	if transport != protocol.HTTPJSON {
-		mapping := definition.Directions[protocol.EncodeEvent]
-		fields := mapping.Transform.Fields["event"]
+		mapping := definition.Mapping.Directions[protocol.EncodeEvent]
+		fields := mapping.Program.Fields["event"]
 		fields.Fields["response"] = protocol.Expression{Op: "read", Path: "/response"}
-		mapping.Transform.Fields["event"] = fields
-		definition.Directions[protocol.EncodeEvent] = mapping
+		fields.Fields["responseId"] = protocol.Expression{Op: "read", Path: "/responseId"}
+		mapping.Program.Fields["event"] = fields
+		definition.Mapping.Directions[protocol.EncodeEvent] = mapping
 	}
 	return definition
 }
 
-func standaloneGroup(t *testing.T, definition protocol.Definition, url string) []config.ModelGroupConfig {
+func standaloneGroup(t *testing.T, definition protocol.ProtocolPackage, url string) []config.ModelGroupConfig {
 	t.Helper()
-	groups := presetGroup(t, "custom:"+definition.ID, url)
+	groups := presetGroup(t, "custom:"+definition.Spec.ID, url)
 	groups[0].Models[0].ToolsCapable, groups[0].Models[0].VisionCapable = false, false
 	return groups
 }
 
-func writeFixtureFrames(t *testing.T, writer http.ResponseWriter, definition protocol.Definition) {
+func writeFixtureFrames(t *testing.T, writer http.ResponseWriter, definition protocol.ProtocolPackage) {
 	t.Helper()
-	operation := definition.Operations["generate"]
+	operation := compileFixturePackage(t, definition).Operations()["generate"]
 	writer.Header().Set("Content-Type", protocol.TransportContentType(operation.Transport))
 	var frames []protocol.Value
-	if err := definition.Samples[len(definition.Samples)-2].Input.Decode(&frames); err != nil {
+	if err := definition.Mapping.Samples[len(definition.Mapping.Samples)-2].Input.Decode(&frames); err != nil {
 		t.Error(err)
 		return
 	}
@@ -163,7 +146,7 @@ func TestStandaloneProtocolFourPublicIngresses(t *testing.T) {
 						return
 					}
 					writer.Header().Set("Content-Type", "application/json")
-					fmt.Fprint(writer, `{"requestId":"r","finish":"stop","answer":[{"actor":"assistant","segments":[{"text":"hello"}]}]}`)
+					fmt.Fprint(writer, `{"requestId":"r","deployment":"preset-model","finish":"stop","answer":[{"actor":"assistant","segments":[{"text":"hello"}]}]}`)
 				}))
 				defer provider.Close()
 				server := newTestServer(t, standaloneGroup(t, definition, provider.URL), definition)
@@ -213,7 +196,7 @@ func TestStandaloneProtocolHTTPFailureRetriesOnceAndSettlesOnce(t *testing.T) {
 	}))
 	defer broken.Close()
 	healthy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		fmt.Fprint(writer, `{"requestId":"r","finish":"stop","answer":[{"actor":"assistant","segments":[{"text":"recovered"}]}]}`)
+		fmt.Fprint(writer, `{"requestId":"r","deployment":"preset-model","finish":"stop","answer":[{"actor":"assistant","segments":[{"text":"recovered"}]}]}`)
 	}))
 	defer healthy.Close()
 	groups := standaloneGroup(t, definition, broken.URL)

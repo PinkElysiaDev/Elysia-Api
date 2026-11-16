@@ -8,11 +8,11 @@ import (
 
 func TestGeminiNullFinishReasonKeepsStreamOpen(t *testing.T) {
 	compiled := testCompiled(t, Gemini)
-	replay, err := p.NewEventReplay(p.Target{Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+	replay, err := p.NewEventReplay(compiled.Target(p.EncodeEvent, p.Scope{}), compiled.ResourceLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	for index, raw := range []string{
 		`{"candidates":[{"content":{"role":"model","parts":[{"text":"OK"}]},"finishReason":null,"index":0,"safetyRatings":[]}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":0,"cachedContentTokenCount":0}}`,
 		`{"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP","index":0,"safetyRatings":[]}],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":5,"cachedContentTokenCount":70}}`,

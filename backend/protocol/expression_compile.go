@@ -14,6 +14,7 @@ import (
 type expressionCompileFacts struct {
 	outputPlan                          *compiledOutputPlan
 	fields                              map[string]*compiledExpression
+	fieldKeys                           []string
 	items                               []*compiledExpression
 	source, body, when, then, otherwise *compiledExpression
 	cases                               map[string]*compiledExpression
@@ -29,16 +30,10 @@ type compiledExpression struct {
 	path          string
 	pointer       []string
 	from          string
-	bindingSlot   int
-	stateSlot     int
-	indexSlot     int
+	storageSlot   int
 	isStreamIndex bool
 	value         Value
 	literalText   string
-	keys          []string
-	values        map[string]Value
-	to            JSONType
-	policy        string
 	isRequired    bool
 	requestField  uint8
 }
@@ -46,6 +41,10 @@ type compiledExpression struct {
 // Only operations that use these fields retain the cold metadata. The wrapper
 // shares one allocation with its instruction, without per-node indirection tables.
 type expressionDetails struct {
+	keys            []string
+	values          map[string]Value
+	to              JSONType
+	policy          string
 	trackerName     string
 	streamNamespace string
 	operation       string
@@ -59,7 +58,8 @@ func newCompiledExpression(op string) *compiledExpression {
 	switch op {
 	case "track_tool", "track_text", "track_array", "track_position", "project_range",
 		"buffer_text", "buffer_array", "read_delivered_item", "resume_text", "resume_tool",
-		"reject", "check_fields", "native_matches", "merge_deep", "from_entries", "integer":
+		"reject", "check_fields", "native_matches", "merge_deep", "from_entries", "integer",
+		"project", "enum", "cast", "with_index", "recall", "merge", "check_links", "entries", "matches_charset":
 		storage := &struct {
 			compiledExpression
 			details expressionDetails
@@ -73,24 +73,27 @@ func newCompiledExpression(op string) *compiledExpression {
 }
 
 // isInputIdentity recognizes a compiled leaf, including an expanded reference.
-// Root is deliberately excluded: after keeps root bound to the module's input.
+// Root can refer to a different enclosing value inside a nested expression.
 func (expression *compiledExpression) isInputIdentity() bool {
 	return expression != nil && expression.op == "read" && expression.from == "input" && len(expression.pointer) == 0 && !expression.isRequired
 }
 
 type expressionCompiler struct {
-	compiledExpressions []*compiledExpression
-	compileFacts        []expressionCompileFacts
-	streamDispositions  map[string]bool
-	maximumDepth        int
-	instances           map[referenceContext][]compiledReference
-	limits              Limits
-	nodes               int
-	references          map[string]Expression
-	resolving           map[string]bool
-	used                map[string]bool
-	mappingReferences   map[string]Expression
-	constraints         *wireConstraintCompiler
+	compiledExpressions    []*compiledExpression
+	paths                  map[string]string
+	compileFacts           []expressionCompileFacts
+	streamDispositions     map[string]bool
+	maximumDepth           int
+	instances              map[referenceContext][]compiledReference
+	independentReferences  map[string]bool
+	independentExpressions map[*compiledExpression]bool
+	limits                 Limits
+	nodes                  int
+	references             map[string]Expression
+	resolving              map[string]bool
+	used                   map[string]bool
+	mappingReferences      map[string]Expression
+	constraints            *wireConstraintCompiler
 }
 
 const compileFactsBatch = 64
@@ -109,12 +112,20 @@ func newExpressionCompiler(limits Limits, references map[string]Expression) *exp
 	return &expressionCompiler{limits: limits, references: references, resolving: make(map[string]bool), used: make(map[string]bool)}
 }
 
+func (compiler *expressionCompiler) internPath(path string) string {
+	if existing, hasPath := compiler.paths[path]; hasPath {
+		return existing
+	}
+	if compiler.paths == nil {
+		compiler.paths = make(map[string]string)
+	}
+	compiler.paths[path] = path
+	return path
+}
+
 func releaseExpressionGraphs(expressions []*compiledExpression) {
 	for _, expression := range expressions {
 		expression.expressionCompileFacts = nil
-		if expression.op == "object" {
-			expression.keys = nil // The runtime plan owns its compiled field order.
-		}
 	}
 }
 
@@ -122,6 +133,7 @@ func (compiler *expressionCompiler) releaseGraph() {
 	releaseExpressionGraphs(compiler.compiledExpressions)
 	compiler.compiledExpressions = nil
 	compiler.compileFacts = nil
+	compiler.paths = nil
 }
 
 type expressionScope struct {
@@ -206,8 +218,14 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	}
 	compiled := newCompiledExpression(expression.Op)
 	compiled.expressionCompileFacts = compiler.newCompileFacts(operation.Result)
-	compiled.path, compiled.from, compiled.value = path, expression.From, expression.Value
-	compiled.to, compiled.policy, compiled.isRequired = expression.To, expression.Policy, expression.Required
+	compiled.path, compiled.from, compiled.value = compiler.internPath(path), expression.From, expression.Value
+	compiled.isRequired = expression.Required
+	if expression.To != "" {
+		compiled.to = expression.To
+	}
+	if expression.Policy != "" {
+		compiled.policy = expression.Policy
+	}
 	if expression.Operation != "" {
 		compiled.operation = expression.Operation
 	}
@@ -260,7 +278,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			if !exists {
 				return nil, fmt.Errorf("%s/path: state slot is not declared in this event direction", path)
 			}
-			compiled.stateSlot, schema, coreType = slot.slot, slot.schema, nil
+			compiled.storageSlot, schema, coreType = slot.slot, slot.schema, nil
 			pointer, compiled.pointer = pointer[1:], pointer[1:]
 		case "runtime":
 			isContinuation := scope.canReadContinuation && len(pointer) == 2 && pointer[0] == "continuation" && pointer[1] == "tokens"
@@ -321,7 +339,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			if !exists {
 				return nil, fmt.Errorf("%s/name: binding is not declared in this scope", path)
 			}
-			compiled.bindingSlot, schema = binding.slot, binding.schema
+			compiled.storageSlot, schema = binding.slot, binding.schema
 			coreType = binding.coreType
 			if len(pointer) == 0 {
 				compiled.result = binding.result
@@ -407,7 +425,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if !exists {
 			return nil, fmt.Errorf("%s/name: index_values requires a declared persistent index", path)
 		}
-		compiled.indexSlot, compiled.isStreamIndex = slot, true
+		compiled.storageSlot, compiled.isStreamIndex = slot, true
 	}
 	if compiled.op == "remember" || compiled.op == "recall" || compiled.op == "forget" || compiled.op == "index_size" {
 		slot, exists := scope.indexes[expression.Name]
@@ -424,7 +442,7 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 			}
 			compiled.isStreamIndex = true
 		}
-		compiled.indexSlot = slot
+		compiled.storageSlot = slot
 	}
 	if expression.Source != nil {
 		child, err := compiler.compile(*expression.Source, path+"/source", scope, depth+1)
@@ -451,13 +469,13 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if !definitionIdentifier.MatchString(expression.Name) {
 			return nil, fmt.Errorf("%s/name: expected an index identifier", path)
 		}
-		compiled.indexSlot = scope.indexDepth
+		compiled.storageSlot = scope.indexDepth
 		childScope.indexDepth++
 		childScope.indexes = make(map[string]int, len(scope.indexes)+1)
 		for name, slot := range scope.indexes {
 			childScope.indexes[name] = slot
 		}
-		childScope.indexes[expression.Name] = compiled.indexSlot
+		childScope.indexes[expression.Name] = compiled.storageSlot
 	}
 	if compiled.op == "walk" || compiled.op == "visit" {
 		childScope.isWalk = true
@@ -472,13 +490,13 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 		if !definitionIdentifier.MatchString(expression.Name) {
 			return nil, fmt.Errorf("%s/name: expected a binding identifier", path)
 		}
-		compiled.bindingSlot = scope.bindingDepth
+		compiled.storageSlot = scope.bindingDepth
 		childScope.bindingDepth++
 		childScope.bindings = make(map[string]expressionBinding, len(scope.bindings)+1)
 		for name, binding := range scope.bindings {
 			childScope.bindings[name] = binding
 		}
-		childScope.bindings[expression.Name] = expressionBinding{slot: compiled.bindingSlot, result: compiled.source.result, schema: compiled.source.schema, coreType: compiled.source.coreType}
+		childScope.bindings[expression.Name] = expressionBinding{slot: compiled.storageSlot, result: compiled.source.result, schema: compiled.source.schema, coreType: compiled.source.coreType}
 	}
 	if slices.Contains([]string{"map", "flatmap", "filter", "walk", "group_runs"}, compiled.op) {
 		if !isAssignable(compiled.source.result, ArrayType) {
@@ -516,8 +534,8 @@ func (compiler *expressionCompiler) compile(expression Expression, path string, 
 	if len(expression.Fields) != 0 {
 		compiled.fields = make(map[string]*compiledExpression, len(expression.Fields))
 	}
-	compiled.keys = sortedKeys(expression.Fields)
-	for _, key := range compiled.keys {
+	compiled.fieldKeys = sortedKeys(expression.Fields)
+	for _, key := range compiled.fieldKeys {
 		child, err := compiler.compile(expression.Fields[key], path+"/fields/"+escapePointer(key), scope, depth+1)
 		if err != nil {
 			return nil, err
@@ -698,12 +716,20 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 			return fail(expression.op + " requires a nonempty literal string prefix and a string source")
 		}
 		expression.literalText = prefix
-	case "has_prefix", "contains":
+	case "has_prefix", "contains", "matches_charset":
 		text, err := readString(expression.value)
 		if err != nil || !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " requires a literal string and a string source")
 		}
-		expression.literalText = text
+		if expression.op == "matches_charset" {
+			for _, character := range text {
+				expression.keys = append(expression.keys, string(character))
+			}
+			slices.Sort(expression.keys)
+			expression.keys = slices.Compact(expression.keys)
+		} else {
+			expression.literalText = text
+		}
 	case "lower", "quote_string", "has_control", "utf16_length":
 		if !isAssignable(expression.source.result, StringType) {
 			return fail(expression.op + " source must produce a string")
@@ -722,9 +748,13 @@ func checkCompiledExpression(expression *compiledExpression, source Expression) 
 				if err := value.Decode(&name); err != nil {
 					return fail("discriminator enum must contain strings")
 				}
-				_, hasCase := expression.cases[name]
-				_, hasValue := expression.values[name]
-				if !hasCase && !hasValue {
+				var hasBranch bool
+				if expression.op == "choose" {
+					_, hasBranch = expression.cases[name]
+				} else {
+					_, hasBranch = expression.values[name]
+				}
+				if !hasBranch {
 					return fail("declared discriminator value has no branch: " + name)
 				}
 			}
@@ -945,7 +975,7 @@ func checkExpressionOutput(expression *compiledExpression, schema *ValueSchema, 
 				return fmt.Errorf("%s: required output field %q has no mapping", expression.path, key)
 			}
 		}
-		for _, key := range expression.keys {
+		for _, key := range expression.fieldKeys {
 			property, exists := schema.Properties[key]
 			if !exists {
 				if !schema.AllowUnknown {

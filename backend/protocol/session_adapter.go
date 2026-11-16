@@ -43,12 +43,10 @@ func NewSessionAdapter(ingress, upstream *Compiled, clientOperation, upstreamOpe
 	if err != nil {
 		return nil, err
 	}
-	if ingress.packagePlan != nil && upstream.packagePlan != nil {
-		if err := NewStreamBudget(limits).Bind(options.State, replay); err != nil {
-			options.State.Release()
-			replay.Release()
-			return nil, err
-		}
+	if err := NewStreamBudget(limits).Bind(options.State, replay); err != nil {
+		options.State.Release()
+		replay.Release()
+		return nil, err
 	}
 	return &SessionAdapter{ingress: ingress, upstream: upstream, clientOperation: clientOperation, upstreamOperation: upstreamOperation, binding: binding, options: options, model: model, replay: replay, mediaSequence: map[EventOrigin]int64{}}, nil
 }

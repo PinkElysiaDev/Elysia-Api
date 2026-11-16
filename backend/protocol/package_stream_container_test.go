@@ -68,6 +68,7 @@ func containerStreamContract(t *testing.T, openEntities string) *compiledPackage
 			"delta":         {{Action: "entity_append", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text")}},
 			"seal":          {{Action: "entity_snapshot", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text"), SealPayload: true}},
 			"close-part":    {{Action: "entity_finish", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text"), Properties: field("/properties")}},
+			"close-sealed":  {{Action: "entity_finish", Entity: "text", Key: field("/id"), Parent: field("/parent"), Payload: field("/text"), Properties: field("/properties"), RequireSealedPayload: true}},
 			"verify-part":   {partWithoutOrdinal},
 			"close-message": {{ForEach: "/parts", Actions: []ProtocolStreamActionSpec{part}}, message},
 			"usage":         {{Action: "assert", Assertions: []WireAssertion{{Path: "/total", Schema: &ValueSchema{Type: IntegerType}, Code: UpstreamContractViolation, Reason: "total must be an integer"}}}, {Action: "observe"}},
@@ -149,6 +150,96 @@ func TestPackageStreamContainerSnapshots(t *testing.T) {
 				t.Fatal("accepted a changed or incomplete container")
 			}
 		})
+	}
+}
+
+func TestPackageStreamRequiresDeclaredPayloadSeal(t *testing.T) {
+	start := []string{
+		`{"type":"start","response":"r"}`,
+		`{"type":"message","response":"r","id":"m","wireId":"wire-m","role":"assistant","properties":{}}`,
+		`{"type":"part","response":"r","id":"p","parent":"m","position":0,"text":"hello","properties":{}}`,
+	}
+	state, err := consumeContainerFrames(t, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closePart := Value{raw: `{"type":"close-sealed","response":"r","id":"p","parent":"m","text":"hello","properties":{"changed":true}}`}
+	if err := state.consume(t.Context(), closePart); err == nil || !strings.Contains(err.Error(), "sealed payload") {
+		t.Fatal("completion bypassed the declared text barrier", err)
+	}
+	item := state.entityOrder[1]
+	if item.isFinished || item.sealed || item.properties.JSONString() != "{}" {
+		t.Fatal("rejected completion changed the entity", item)
+	}
+	_, err = consumeContainerFrames(t, append(start,
+		`{"type":"seal","response":"r","id":"p","parent":"m","text":"hello"}`,
+		`{"type":"close-sealed","response":"r","id":"p","parent":"m","text":"hello","properties":{}}`,
+	))
+	if err != nil {
+		t.Fatal("declared seal did not permit completion", err)
+	}
+}
+
+func TestPackageStreamDeclaredNamespaceBoundaries(t *testing.T) {
+	field := func(path string) *ProtocolStreamValueSpec { return &ProtocolStreamValueSpec{Path: path} }
+	spec := ProtocolStreamSpec{
+		Discriminator: "/type", ResponseID: "/response", InheritResponseID: true,
+		Lifecycle:  ProtocolStreamLifecycleSpec{EOF: "require_terminal", OpenEntities: "finish"},
+		Namespaces: map[string]ProtocolStreamNamespaceSpec{"chunk": {KeyType: IntegerType, ContiguousKeys: true, KeyPath: "/index"}},
+		Entities:   map[string]ProtocolStreamEntitySpec{"text": {Namespace: "chunk", Payload: "text"}},
+		Events: map[string]ProtocolStreamEventSpec{
+			"start":   {{Action: "stream_start"}},
+			"text":    {{Action: "entity_start", Entity: "text", Key: field("/index"), Payload: field("/text")}},
+			"close":   {{Action: "entity_finish", Entity: "text", Key: field("/index")}},
+			"barrier": {{Action: "observe", RequireClosed: []string{"chunk"}}},
+			"finish":  {{Action: "stream_finish"}},
+		},
+	}
+	contract, err := compilePackageStreamContract(&spec, "/stream", DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []struct {
+		name, path string
+		frames     []string
+	}{
+		{"gap", "/index", []string{`{"type":"text","index":1,"text":"one"}`, `{"type":"finish"}`}},
+		{"gap-filled", "", []string{`{"type":"text","index":1,"text":"one"}`, `{"type":"text","index":0,"text":"zero"}`, `{"type":"finish"}`}},
+		{"open-barrier", "/type", []string{`{"type":"text","index":0,"text":"zero"}`, `{"type":"barrier"}`}},
+		{"closed-barrier", "", []string{`{"type":"text","index":0,"text":"zero"}`, `{"type":"close","index":0}`, `{"type":"barrier"}`, `{"type":"finish"}`}},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			state, err := newPackageStreamValidation(contract, Target{Direction: DecodeEvent}, DefaultLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, raw := range append([]string{`{"type":"start","response":"r"}`}, fixture.frames...) {
+				if err = state.consume(t.Context(), Value{raw: raw}); err != nil {
+					break
+				}
+			}
+			if fixture.path == "" {
+				if err != nil || state.finish() != nil {
+					t.Fatal("valid namespace lifecycle rejected", err)
+				}
+			} else {
+				var failure *ConversionError
+				if !errors.As(err, &failure) || failure.Issues[0].Path != fixture.path {
+					t.Fatal("namespace boundary was bypassed or misdiagnosed", err)
+				}
+			}
+		})
+	}
+	for _, names := range [][]string{{"missing"}, {"chunk", "chunk"}} {
+		spec.Events["barrier"] = ProtocolStreamEventSpec{{Action: "observe", RequireClosed: names}}
+		if _, err := compilePackageStreamContract(&spec, "/stream", DefaultLimits()); err == nil {
+			t.Fatal("invalid namespace barrier compiled", names)
+		}
+	}
+	spec.Events["barrier"] = ProtocolStreamEventSpec{{Action: "observe", RequireClosed: []string{"chunk"}}}
+	spec.Namespaces["chunk"] = ProtocolStreamNamespaceSpec{KeyType: StringType, ContiguousKeys: true}
+	if _, err := compilePackageStreamContract(&spec, "/stream", DefaultLimits()); err == nil {
+		t.Fatal("string keys acquired an integer sequence constraint")
 	}
 }
 

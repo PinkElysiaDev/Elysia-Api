@@ -19,8 +19,8 @@ import (
 
 func mcpTestProtocolDraft(t *testing.T) string {
 	t.Helper()
-	definition := loadGatewayDefinition(t, "text-alpha")
-	definition.ID = "mcp-draft"
+	definition := loadGatewayFixture(t, "text-alpha")
+	definition.Spec.ID = "mcp-draft"
 	raw, err := sonic.ConfigStd.Marshal(definition)
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func mcpTestProtocolDraft(t *testing.T) string {
 	return "elysia protocol draft '" + string(raw) + "'"
 }
 
-const mcpProtocolSample = `'{"schemaVersion":1,"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}]}'`
+const mcpProtocolSample = `'{"schemaVersion":2,"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}]}'`
 
 func callMCPCLI(t *testing.T, s *Server, args map[string]any) (map[string]any, string) {
 	t.Helper()

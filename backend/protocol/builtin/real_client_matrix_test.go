@@ -30,11 +30,11 @@ const syntheticAnthropicHistory = `{
 // encoding must retain its position and message-level cache boundary.
 func TestAnthropicPreservesInPlaceSystem(t *testing.T) {
 	compiled := testCompiled(t, Anthropic)
-	request, err := compiled.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := compiled.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := compiled.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	wire, err := compiled.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestAnthropicPreservesInPlaceSystem(t *testing.T) {
 func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 	source := testCompiled(t, Anthropic)
 	target := testCompiled(t, Chat)
-	request, err := source.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := source.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink})
+	output, err := target.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink}))
 	if err != nil {
 		// 定位残余的 wire:claude 拒绝来自哪个节点，便于修正剥离点。
 		for index, node := range request.Content {
@@ -80,7 +80,7 @@ func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 	if !sinkHas(sink, "/tools/0/cache") {
 		t.Fatal("expected cache hint omission diagnostic")
 	}
-	recovered, err := target.DecodeRequest(t.Context(), output, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	recovered, err := target.DecodeRequest(t.Context(), output, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +104,11 @@ func TestSyntheticAnthropicToChatConvertsToolResultGroup(t *testing.T) {
 func TestInPlaceSystemToGeminiStaysDiagnosed(t *testing.T) {
 	source := testCompiled(t, Anthropic)
 	target := testCompiled(t, Gemini)
-	request, err := source.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := source.DecodeRequest(t.Context(), testValue(t, syntheticAnthropicHistory).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{Scope: p.Scope{Model: "m"}}); !isUnsupported(err) {
+	if _, err := target.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}})); !isUnsupported(err) {
 		t.Fatalf("gemini must keep the explicit diagnostic, got %v", err)
 	}
 }
@@ -119,7 +119,7 @@ func TestResponsesItemIdentityConvertsCrossFamily(t *testing.T) {
 		{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}],"id":"msg_1","status":"completed"}
 	],"tools":[{"type":"function","name":"f","description":"d","parameters":{"type":"object"},"strict":true}]}`
 	source := testCompiled(t, Responses)
-	request, err := source.DecodeRequest(t.Context(), testValue(t, payload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := source.DecodeRequest(t.Context(), testValue(t, payload).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestResponsesItemIdentityConvertsCrossFamily(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := compiled.EncodeRequest(t.Context(), converted, p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink}); err != nil {
+		if _, err := compiled.EncodeRequest(t.Context(), converted, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}, Diagnostics: sink})); err != nil {
 			t.Fatalf("%s: item identity must convert with a warning, got %v", target, err)
 		}
 		if !sinkHas(sink, "/content/") {
@@ -148,18 +148,18 @@ func TestGeminiObjectToolResultSerializesRoundTrip(t *testing.T) {
 		{"role":"user","parts":[{"functionResponse":{"name":"f","response":{"ok":true}}}]}
 	],"tools":[{"functionDeclarations":[{"name":"f","description":"d","parameters":{"type":"object"}}]}]}`
 	source := testCompiled(t, Gemini)
-	request, err := source.DecodeRequest(t.Context(), testValue(t, payload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	request, err := source.DecodeRequest(t.Context(), testValue(t, payload).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, target := range []string{Chat, Responses, Anthropic} {
 		compiled := testCompiled(t, target)
 		conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, compiled))
-		converted, e := conversion.Request(t.Context(), request, p.ConversionContext{}, nil)
+		converted, e := conversion.Request(t.Context(), request, fixtureConversionContext(t, conversion, p.ConversionRequest, request.Source), nil)
 		if e != nil {
 			t.Fatal(e)
 		}
-		output, err := compiled.EncodeRequest(t.Context(), converted, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+		output, err := compiled.EncodeRequest(t.Context(), converted, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 		if err != nil {
 			t.Fatalf("%s: object tool result must serialize, got %v", target, err)
 		}
@@ -167,57 +167,58 @@ func TestGeminiObjectToolResultSerializesRoundTrip(t *testing.T) {
 			t.Fatalf("%s: serialized payload missing: %s", target, output[:min(400, len(output))])
 		}
 	}
-	// Chat 字符串结果可解析为 JSON 时转回 Gemini 对象；纯文本结果整请求显式拒绝。
-	jsonPayload := `{"messages":[
+	// JSON-looking text remains text inside the declared result envelope.
+	jsonPayload := `{"model":"m","messages":[
 		{"role":"user","content":"run"},
 		{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"f","arguments":"{}"}}]},
 		{"role":"tool","tool_call_id":"c1","content":"{\"ok\":true}"}
 	],"tools":[{"type":"function","function":{"name":"f","description":"d"}}]}`
-	chatRequest, err := testCompiled(t, Chat).DecodeRequest(t.Context(), testValue(t, jsonPayload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	chatRequest, err := testCompiled(t, Chat).DecodeRequest(t.Context(), testValue(t, jsonPayload).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	gemini := testCompiled(t, Gemini)
-	output, err := gemini.EncodeRequest(t.Context(), chatRequest, p.EvaluationContext{Scope: p.Scope{Model: "m"}})
-	if err != nil || !strings.Contains(string(output), `"functionResponse"`) {
-		t.Fatalf("JSON string must convert to a Gemini object response: %v", err)
+	conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(testCompiled(t, Chat), gemini))
+	if err != nil {
+		t.Fatal(err)
 	}
-	plainPayload := `{"messages":[
+	projected, err := conversion.Request(t.Context(), chatRequest, fixtureConversionContext(t, conversion, p.ConversionRequest, chatRequest.Source), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := gemini.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
+	if err != nil || !strings.Contains(string(output), `"response":{"result":"{\"ok\":true}"}`) {
+		t.Fatalf("JSON-looking text must remain text in the declared result envelope: %s %v", output, err)
+	}
+	plainPayload := `{"model":"m","messages":[
 		{"role":"user","content":"run"},
 		{"role":"assistant","tool_calls":[{"id":"c2","type":"function","function":{"name":"f","arguments":"{}"}}]},
 		{"role":"tool","tool_call_id":"c2","content":"plain text"}
 	],"tools":[{"type":"function","function":{"name":"f","description":"d"}}]}`
-	plainRequest, err := testCompiled(t, Chat).DecodeRequest(t.Context(), testValue(t, plainPayload).Bytes(), p.EvaluationContext{Scope: p.Scope{Model: "m"}})
+	plainRequest, err := testCompiled(t, Chat).DecodeRequest(t.Context(), testValue(t, plainPayload).Bytes(), fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := gemini.EncodeRequest(t.Context(), plainRequest, p.EvaluationContext{Scope: p.Scope{Model: "m"}}); !isUnsupported(err) {
-		t.Fatalf("plain-text tool result must stay rejected by Gemini: %v", err)
+	policy := p.DefaultConversionPolicy(testCompiled(t, Chat), gemini)
+	for index := range policy.Rules {
+		if policy.Rules[index].ID == "tool-results" {
+			policy.Rules[index].Enabled = false
+		}
+	}
+	disabled, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unresolved, err := disabled.Request(t.Context(), plainRequest, fixtureConversionContext(t, disabled, p.ConversionRequest, plainRequest.Source), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gemini.EncodeRequest(t.Context(), unresolved, fixtureOptions(p.EvaluationContext{Scope: p.Scope{Model: "m"}})); !isUnsupported(err) || !strings.Contains(err.Error(), "/content") {
+		t.Fatalf("unprojected text result must retain its target rejection: %v", err)
 	}
 }
 
 // Gemini RECITATION/OTHER finish 映射到各目标最近语义。
-func TestGeminiExclusiveFinishReasonsMap(t *testing.T) {
-	cases := []struct{ semantic string }{{"recitation"}, {"other"}}
-	for _, attempt := range cases {
-		for target, expected := range map[string]string{Chat: "", Anthropic: "", Gemini: ""} {
-			value, err := encodeFinishReason(target, p.StringValue(attempt.semantic))
-			if err != nil {
-				t.Fatalf("%s %s: %v", attempt.semantic, target, err)
-			}
-			if value.IsZero() || value.IsNull() {
-				t.Fatalf("%s %s: empty mapping", attempt.semantic, target)
-			}
-			_ = expected
-		}
-	}
-	if value, _ := encodeFinishReason(Chat, p.StringValue("recitation")); string(value.Bytes()) != `"content_filter"` {
-		t.Fatalf("recitation→chat: %s", value.Bytes())
-	}
-	if value, _ := encodeFinishReason(Anthropic, p.StringValue("other")); string(value.Bytes()) != `"end_turn"` {
-		t.Fatalf("other→anthropic: %s", value.Bytes())
-	}
-}
 
 func sinkHas(sink *p.DiagnosticSink, path string) bool {
 	for _, issue := range sink.Issues() {

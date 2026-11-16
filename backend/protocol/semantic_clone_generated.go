@@ -73,7 +73,6 @@ func cloneCoreResponsePointer(value *Response) *Response {
 func cloneCoreEvent(value Event) Event {
 	result := value
 	result.Control = cloneCoreControlStatePointer(value.Control)
-	result.ResponsesTurnState = cloneCoreResponsesTurnStatePointer(value.ResponsesTurnState)
 	result.Metadata = cloneCoreResponseMetadataSlice(value.Metadata)
 	result.Index = cloneCoreIntPointer(value.Index)
 	result.Item = cloneCoreNodePointer(value.Item)
@@ -83,6 +82,7 @@ func cloneCoreEvent(value Event) Event {
 	result.Media = cloneCoreMediaPointer(value.Media)
 	result.Native = cloneCoreNativePointer(value.Native)
 	result.Unmapped = cloneCoreNativePointer(value.Unmapped)
+	result.UnmappedPaths = cloneCoreStringSlice(value.UnmappedPaths)
 	return result
 }
 func cloneCoreEventPointer(value *Event) *Event {
@@ -193,13 +193,6 @@ func cloneCoreControlStatePointer(value *ControlState) *ControlState {
 	result := *value
 	return &result
 }
-func cloneCoreResponsesTurnStatePointer(value *ResponsesTurnState) *ResponsesTurnState {
-	if value == nil {
-		return nil
-	}
-	result := *value
-	return &result
-}
 func cloneCoreIntPointer(value *int) *int {
 	if value == nil {
 		return nil
@@ -220,6 +213,14 @@ func cloneCoreMediaPointer(value *Media) *Media {
 	}
 	result := *value
 	return &result
+}
+func cloneCoreStringSlice(value []string) []string {
+	if value == nil {
+		return nil
+	}
+	result := make([]string, len(value))
+	copy(result, value)
+	return result
 }
 func cloneCoreNode(value Node) Node {
 	result := value

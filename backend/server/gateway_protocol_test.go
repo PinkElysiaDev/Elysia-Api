@@ -19,32 +19,37 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-func loadGatewayDefinition(t *testing.T, name string) protocol.Definition {
+func loadGatewayFixture(t *testing.T, name string) protocol.ProtocolPackage {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "protocol", "testdata", name+".json"))
-	if err != nil {
-		t.Fatal(err)
+	document := protocol.ProtocolPackage{SchemaVersion: protocol.ProtocolPackageSchemaVersion}
+	for _, source := range []struct {
+		name   string
+		target any
+	}{{"spec", &document.Spec}, {"mapping", &document.Mapping}} {
+		raw, err := os.ReadFile(filepath.Join("testdata", "protocols", name, source.name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sonic.ConfigStd.Unmarshal(raw, source.target); err != nil {
+			t.Fatal(err)
+		}
 	}
-	var definition protocol.Definition
-	if err := sonic.ConfigStd.Unmarshal(raw, &definition); err != nil {
-		t.Fatal(err)
-	}
-	return definition
+	return document
 }
 
-func activateGatewayDefinition(t *testing.T, server *Server, definition protocol.Definition) *protocol.Compiled {
+func activateGatewayFixture(t *testing.T, server *Server, document protocol.ProtocolPackage) *protocol.Compiled {
 	t.Helper()
-	return seedGatewayDefinition(t, server, definition, true)
+	return seedGatewayFixture(t, server, document, true)
 }
 
 // Preset batches publish once after all revisions have been persisted.
-func seedGatewayDefinition(t *testing.T, server *Server, definition protocol.Definition, reload bool) *protocol.Compiled {
+func seedGatewayFixture(t *testing.T, server *Server, document protocol.ProtocolPackage, reload bool) *protocol.Compiled {
 	t.Helper()
-	raw, err := sonic.ConfigStd.Marshal(definition)
+	raw, err := sonic.ConfigStd.Marshal(document)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return seedGatewayProtocol(t, server, definition.ID, raw, reload)
+	return seedGatewayProtocol(t, server, document.Spec.ID, raw, reload)
 }
 
 func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, reload bool) *protocol.Compiled {
@@ -169,8 +174,8 @@ func TestGatewayStandaloneProtocolsBidirectionalHTTP(t *testing.T) {
 			if reverse {
 				ingressName, upstreamName = upstreamName, ingressName
 			}
-			ingress := activateGatewayDefinition(t, server, loadGatewayDefinition(t, ingressName))
-			upstream := activateGatewayDefinition(t, server, loadGatewayDefinition(t, upstreamName))
+			ingress := activateGatewayFixture(t, server, loadGatewayFixture(t, ingressName))
+			upstream := activateGatewayFixture(t, server, loadGatewayFixture(t, upstreamName))
 			var calls atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				calls.Add(1)
@@ -184,7 +189,7 @@ func TestGatewayStandaloneProtocolsBidirectionalHTTP(t *testing.T) {
 				if string(semantic.Model.Bytes()) != `"upstream-model"` || string(semantic.Content[0].Children[0].Payload.Bytes()) != `"hello"` {
 					t.Errorf("upstream request: %s", body)
 				}
-				response := &protocol.Response{SchemaVersion: 1, ID: protocol.StringValue("r1"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("world")}}}}}
+				response := &protocol.Response{SchemaVersion: protocol.ProtocolCoreVersion, ID: protocol.StringValue("r1"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("assistant"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("world")}}}}}
 				wire, err := upstream.EncodeResponse(request.Context(), response, protocol.EvaluationContext{})
 				if err != nil {
 					t.Errorf("response: %v", err)
@@ -194,7 +199,7 @@ func TestGatewayStandaloneProtocolsBidirectionalHTTP(t *testing.T) {
 			}))
 			defer provider.Close()
 			setupGatewayModel(t, server, upstream, provider.URL)
-			input := &protocol.Request{SchemaVersion: 1, Model: protocol.StringValue("group"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("hello")}}}}}
+			input := &protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Model: protocol.StringValue("group"), Content: []protocol.Node{{Kind: protocol.MessageNode, Role: protocol.StringValue("user"), Children: []protocol.Node{{Kind: protocol.TextNode, Payload: protocol.StringValue("hello")}}}}}
 			body, err := ingress.EncodeRequest(t.Context(), input, protocol.EvaluationContext{})
 			if err != nil {
 				t.Fatal(err)
@@ -227,8 +232,8 @@ func TestGatewayStandaloneProtocolsBidirectionalHTTP(t *testing.T) {
 func TestGatewayInFlightRevisionAndStaleBinding(t *testing.T) {
 	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
-	definition := loadGatewayDefinition(t, "text-alpha")
-	old := activateGatewayDefinition(t, server, definition)
+	definition := loadGatewayFixture(t, "text-alpha")
+	old := activateGatewayFixture(t, server, definition)
 	entered, release := make(chan struct{}), make(chan struct{})
 	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		close(entered)
@@ -241,8 +246,8 @@ func TestGatewayInFlightRevisionAndStaleBinding(t *testing.T) {
 	result := make(chan *httptest.ResponseRecorder, 1)
 	go func() { result <- gatewayTestRequest(server, "text-alpha", input, "gateway-test-token") }()
 	<-entered
-	definition.Version = "2"
-	activateGatewayDefinition(t, server, definition)
+	definition.Spec.Version = "2"
+	activateGatewayFixture(t, server, definition)
 	close(release)
 	response := <-result
 	if response.Code != 200 || !bytes.Contains(response.Body.Bytes(), []byte("old-version")) {
@@ -257,7 +262,7 @@ func TestGatewayInFlightRevisionAndStaleBinding(t *testing.T) {
 func TestGatewayCanceledRequestDoesNotReachUpstream(t *testing.T) {
 	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
-	compiled := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-alpha"))
+	compiled := activateGatewayFixture(t, server, loadGatewayFixture(t, "text-alpha"))
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)

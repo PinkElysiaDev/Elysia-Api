@@ -1,6 +1,6 @@
 {
   "id": "google-generate-content",
-  "name": "Google Generate-content migration draft (not enabled)",
+  "name": "Gemini GenerateContent",
   "version": "2.1.6",
   "family": "gemini",
   "wireVersion": "v2",
@@ -117,6 +117,9 @@
       "assertions": [
         {
           "ref": "request-input"
+        },
+        {
+          "ref": "request-output-constraint"
         }
       ]
     },
@@ -128,6 +131,9 @@
       "assertions": [
         {
           "ref": "request-safety"
+        },
+        {
+          "ref": "request-output-constraint"
         }
       ]
     },
@@ -139,6 +145,12 @@
       "assertions": [
         {
           "ref": "single-candidate"
+        },
+        {
+          "ref": "usage-modality-counts"
+        },
+        {
+          "ref": "response-creation-time"
         }
       ]
     },
@@ -272,282 +284,7 @@
               },
               "each": [
                 {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  }
-                },
-                {
-                  "path": "/text",
-                  "schema": {
-                    "type": "string"
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "Gemini text must be a string, including explicit empty text",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/text"
-                    }
-                  }
-                },
-                {
-                  "path": "/inlineData",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/inlineData"
-                    }
-                  }
-                },
-                {
-                  "path": "/fileData",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/fileData"
-                    }
-                  }
-                },
-                {
-                  "path": "/functionCall",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/functionCall"
-                    }
-                  }
-                },
-                {
-                  "path": "/functionResponse",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/functionResponse"
-                    }
-                  }
-                },
-                {
-                  "path": "/executableCode",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/executableCode"
-                    }
-                  }
-                },
-                {
-                  "path": "/codeExecutionResult",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires an object",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/codeExecutionResult"
-                    }
-                  }
-                },
-                {
-                  "path": "/thoughtSignature",
-                  "schema": {
-                    "type": "string"
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "wire contract requires a nonempty string",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "check": {
-                    "op": "not",
-                    "source": {
-                      "op": "equal",
-                      "items": [
-                        {
-                          "op": "read",
-                          "from": "input",
-                          "path": ""
-                        },
-                        {
-                          "op": "literal",
-                          "value": ""
-                        }
-                      ]
-                    }
-                  },
-                  "when": {
-                    "op": "exists",
-                    "source": {
-                      "op": "read",
-                      "from": "input",
-                      "path": "/thoughtSignature"
-                    }
-                  }
-                },
-                {
-                  "path": "",
-                  "schema": {
-                    "type": "object",
-                    "allowUnknown": true
-                  },
-                  "code": "conversion_rejected",
-                  "reason": "Gemini part requires data or a thought signature",
-                  "diagnostic": {
-                    "code": "conversion_rejected",
-                    "stage": "wire.output"
-                  },
-                  "check": {
-                    "op": "any",
-                    "items": [
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/text"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/inlineData"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/fileData"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/functionCall"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/functionResponse"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/executableCode"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/codeExecutionResult"
-                        }
-                      },
-                      {
-                        "op": "exists",
-                        "source": {
-                          "op": "read",
-                          "from": "input",
-                          "path": "/thoughtSignature"
-                        }
-                      }
-                    ]
-                  }
+                  "ref": "part-content"
                 }
               ]
             }
@@ -555,6 +292,12 @@
         },
         {
           "ref": "single-candidate"
+        },
+        {
+          "ref": "usage-modality-counts"
+        },
+        {
+          "ref": "response-creation-time"
         }
       ]
     },
@@ -568,7 +311,12 @@
       "schema": {
         "type": "object",
         "allowUnknown": true
-      }
+      },
+      "assertions": [
+        {
+          "ref": "response-creation-time"
+        }
+      ]
     },
     "upstream-request": {
       "schema": {
@@ -846,7 +594,8 @@
                   }
                 },
                 "finishReason": {
-                  "type": "string"
+                  "type": "string",
+                  "nullable": true
                 }
               }
             }
@@ -1302,21 +1051,7 @@
           }
         },
         {
-          "path": "/createTime",
-          "schema": {
-            "type": "string",
-            "nullable": true
-          },
-          "code": "upstream_contract_violation",
-          "reason": "invalid declared stream metadata",
-          "when": {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/createTime"
-            }
-          }
+          "ref": "response-creation-time"
         },
         {
           "path": "/usageMetadata/serviceTier",
@@ -1547,6 +1282,9 @@
               "value": false
             }
           }
+        },
+        {
+          "ref": "usage-modality-counts"
         }
       ],
       "stream": {
@@ -2813,7 +2551,8 @@
                   }
                 },
                 "finishReason": {
-                  "type": "string"
+                  "type": "string",
+                  "nullable": true
                 }
               }
             }
@@ -3269,21 +3008,7 @@
           }
         },
         {
-          "path": "/createTime",
-          "schema": {
-            "type": "string",
-            "nullable": true
-          },
-          "code": "upstream_contract_violation",
-          "reason": "invalid declared stream metadata",
-          "when": {
-            "op": "exists",
-            "source": {
-              "op": "read",
-              "from": "input",
-              "path": "/createTime"
-            }
-          }
+          "ref": "response-creation-time"
         },
         {
           "path": "/usageMetadata/serviceTier",
@@ -3514,6 +3239,44 @@
               "value": false
             }
           }
+        },
+        {
+          "path": "/candidates",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/candidates"
+            }
+          },
+          "each": [
+            {
+              "path": "/content/parts",
+              "when": {
+                "op": "present",
+                "source": {
+                  "op": "read",
+                  "path": "/content/parts"
+                }
+              },
+              "each": [
+                {
+                  "ref": "part-content"
+                }
+              ],
+              "schema": {
+                "type": "array"
+              },
+              "reason": "content parts must be an array"
+            }
+          ],
+          "schema": {
+            "type": "array"
+          },
+          "reason": "candidates must be an array"
+        },
+        {
+          "ref": "usage-modality-counts"
         }
       ],
       "stream": {
@@ -5112,20 +4875,88 @@
       "policy": "unique_group"
     },
     "has-unique-safety-categories": {
-      "op": "let",
-      "name": "categories",
-      "source": {
-        "op": "associate",
-        "source": {
-          "op": "read",
-          "from": "input",
-          "path": ""
-        },
-        "key": "/category"
-      },
+      "op": "with_index",
+      "name": "safety-categories",
+      "keyMode": "raw_json",
+      "policy": "reject",
       "body": {
-        "op": "literal",
-        "value": true
+        "op": "let",
+        "name": "checked-categories",
+        "source": {
+          "op": "map",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": ""
+          },
+          "body": {
+            "op": "if",
+            "when": {
+              "op": "exists",
+              "source": {
+                "op": "recall",
+                "name": "safety-categories",
+                "source": {
+                  "op": "join",
+                  "items": [
+                    {
+                      "op": "read",
+                      "from": "item",
+                      "path": "/category"
+                    }
+                  ]
+                },
+                "policy": "omit"
+              }
+            },
+            "then": {
+              "op": "literal",
+              "value": false
+            },
+            "otherwise": {
+              "op": "remember",
+              "name": "safety-categories",
+              "source": {
+                "op": "join",
+                "items": [
+                  {
+                    "op": "read",
+                    "from": "item",
+                    "path": "/category"
+                  }
+                ]
+              },
+              "body": {
+                "op": "literal",
+                "value": true
+              }
+            }
+          }
+        },
+        "body": {
+          "op": "equal",
+          "items": [
+            {
+              "op": "filter",
+              "source": {
+                "op": "read",
+                "from": "binding",
+                "name": "checked-categories"
+              },
+              "when": {
+                "op": "not",
+                "source": {
+                  "op": "read",
+                  "from": "item"
+                }
+              }
+            },
+            {
+              "op": "literal",
+              "value": []
+            }
+          ]
+        }
       }
     }
   },
@@ -5144,12 +4975,19 @@
         "schema": {
           "type": "array",
           "items": {
-            "type": "object",
-            "allowUnknown": true
+            "type": "any"
           }
         },
         "reason": "safetySettings requires one setting per category",
         "each": [
+          {
+            "path": "",
+            "schema": {
+              "type": "object",
+              "allowUnknown": true
+            },
+            "reason": "each safety setting must be an object"
+          },
           {
             "path": "/category",
             "schema": {
@@ -5522,6 +5360,669 @@
       },
       {
         "ref": "request-safety"
+      },
+      {
+        "path": "/systemInstruction/role",
+        "when": {
+          "op": "if",
+          "when": {
+            "op": "present",
+            "source": {
+              "op": "read",
+              "path": "/systemInstruction"
+            }
+          },
+          "then": {
+            "op": "exists",
+            "source": {
+              "op": "read",
+              "path": "/systemInstruction/role"
+            }
+          },
+          "otherwise": {
+            "op": "literal",
+            "value": false
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "The ignored system instruction role must still have a valid wire type."
+      }
+    ],
+    "part-content": [
+      {
+        "path": "",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "a Gemini part requires content or a thought signature"
+      },
+      {
+        "path": "/text",
+        "schema": {
+          "type": "string"
+        },
+        "reason": "Gemini text must be a string, including explicit empty text",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/text"
+          }
+        }
+      },
+      {
+        "path": "/inlineData",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "wire contract requires an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/inlineData"
+          }
+        }
+      },
+      {
+        "path": "/fileData",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "wire contract requires an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/fileData"
+          }
+        }
+      },
+      {
+        "path": "/functionCall",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "wire contract requires an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/functionCall"
+          }
+        }
+      },
+      {
+        "path": "/functionResponse",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "wire contract requires an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/functionResponse"
+          }
+        }
+      },
+      {
+        "path": "/executableCode",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "wire contract requires an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/executableCode"
+          }
+        }
+      },
+      {
+        "path": "/codeExecutionResult",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "wire contract requires an object",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/codeExecutionResult"
+          }
+        }
+      },
+      {
+        "path": "/thoughtSignature",
+        "schema": {
+          "type": "string"
+        },
+        "reason": "wire contract requires a nonempty string",
+        "check": {
+          "op": "not",
+          "source": {
+            "op": "equal",
+            "items": [
+              {
+                "op": "read",
+                "from": "input",
+                "path": ""
+              },
+              {
+                "op": "literal",
+                "value": ""
+              }
+            ]
+          }
+        },
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/thoughtSignature"
+          }
+        }
+      },
+      {
+        "path": "",
+        "check": {
+          "op": "any",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/text"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/inlineData"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/fileData"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/functionCall"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/functionResponse"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/executableCode"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/codeExecutionResult"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "path": "/thoughtSignature"
+              }
+            }
+          ]
+        },
+        "reason": "a Gemini part requires content or a thought signature"
+      }
+    ],
+    "usage-modality-counts": [
+      {
+        "path": "/usageMetadata/promptTokensDetails",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/usageMetadata/promptTokensDetails"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "modality",
+              "tokenCount"
+            ],
+            "properties": {
+              "modality": {
+                "type": "string"
+              },
+              "tokenCount": {
+                "type": "integer"
+              }
+            },
+            "allowUnknown": true
+          }
+        },
+        "check": {
+          "op": "let",
+          "name": "unique-modalities",
+          "source": {
+            "op": "associate",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "key": "/modality"
+          },
+          "body": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "reason": "Modality counters require unique modality names and integer counts.",
+        "each": [
+          {
+            "path": "/tokenCount",
+            "check": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "reason": "Modality counts cannot be negative."
+          }
+        ]
+      },
+      {
+        "path": "/usageMetadata/candidatesTokensDetails",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/usageMetadata/candidatesTokensDetails"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "modality",
+              "tokenCount"
+            ],
+            "properties": {
+              "modality": {
+                "type": "string"
+              },
+              "tokenCount": {
+                "type": "integer"
+              }
+            },
+            "allowUnknown": true
+          }
+        },
+        "check": {
+          "op": "let",
+          "name": "unique-modalities",
+          "source": {
+            "op": "associate",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "key": "/modality"
+          },
+          "body": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "reason": "Modality counters require unique modality names and integer counts.",
+        "each": [
+          {
+            "path": "/tokenCount",
+            "check": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "reason": "Modality counts cannot be negative."
+          }
+        ]
+      },
+      {
+        "path": "/usageMetadata/cacheTokensDetails",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/usageMetadata/cacheTokensDetails"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "modality",
+              "tokenCount"
+            ],
+            "properties": {
+              "modality": {
+                "type": "string"
+              },
+              "tokenCount": {
+                "type": "integer"
+              }
+            },
+            "allowUnknown": true
+          }
+        },
+        "check": {
+          "op": "let",
+          "name": "unique-modalities",
+          "source": {
+            "op": "associate",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "key": "/modality"
+          },
+          "body": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "reason": "Modality counters require unique modality names and integer counts.",
+        "each": [
+          {
+            "path": "/tokenCount",
+            "check": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "reason": "Modality counts cannot be negative."
+          }
+        ]
+      },
+      {
+        "path": "/usageMetadata/toolUsePromptTokensDetails",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/usageMetadata/toolUsePromptTokensDetails"
+          }
+        },
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "modality",
+              "tokenCount"
+            ],
+            "properties": {
+              "modality": {
+                "type": "string"
+              },
+              "tokenCount": {
+                "type": "integer"
+              }
+            },
+            "allowUnknown": true
+          }
+        },
+        "check": {
+          "op": "let",
+          "name": "unique-modalities",
+          "source": {
+            "op": "associate",
+            "source": {
+              "op": "read",
+              "from": "input",
+              "path": ""
+            },
+            "key": "/modality"
+          },
+          "body": {
+            "op": "literal",
+            "value": true
+          }
+        },
+        "reason": "Modality counters require unique modality names and integer counts.",
+        "each": [
+          {
+            "path": "/tokenCount",
+            "check": {
+              "op": "integer",
+              "operation": "gte",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": ""
+                },
+                {
+                  "op": "literal",
+                  "value": 0
+                }
+              ]
+            },
+            "reason": "Modality counts cannot be negative."
+          }
+        ]
+      },
+      {
+        "path": "/usageMetadata/serviceTier",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/usageMetadata/serviceTier"
+          }
+        },
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "serviceTier must be a string or null."
+      }
+    ],
+    "response-creation-time": [
+      {
+        "path": "/createTime",
+        "schema": {
+          "type": "string",
+          "nullable": true
+        },
+        "reason": "response creation time must be a string or null",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/createTime"
+          }
+        }
+      }
+    ],
+    "request-output-constraint": [
+      {
+        "path": "/generationConfig/responseMimeType",
+        "schema": {
+          "type": "string"
+        },
+        "reason": "response MIME requires a string",
+        "code": "invalid_input",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/generationConfig/responseMimeType"
+          }
+        }
+      },
+      {
+        "path": "/generationConfig/responseJsonSchema",
+        "schema": {
+          "type": "object",
+          "allowUnknown": true
+        },
+        "reason": "JSON Schema requires an object",
+        "code": "invalid_input",
+        "when": {
+          "op": "exists",
+          "source": {
+            "op": "read",
+            "from": "input",
+            "path": "/generationConfig/responseJsonSchema"
+          }
+        }
+      },
+      {
+        "path": "/generationConfig",
+        "when": {
+          "op": "any",
+          "items": [
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/responseJsonSchema"
+              }
+            },
+            {
+              "op": "exists",
+              "source": {
+                "op": "read",
+                "from": "input",
+                "path": "/generationConfig/responseSchema"
+              }
+            }
+          ]
+        },
+        "check": {
+          "op": "all",
+          "items": [
+            {
+              "op": "equal",
+              "items": [
+                {
+                  "op": "read",
+                  "from": "input",
+                  "path": "/responseMimeType"
+                },
+                {
+                  "op": "literal",
+                  "value": "application/json"
+                }
+              ]
+            },
+            {
+              "op": "not",
+              "source": {
+                "op": "all",
+                "items": [
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/responseJsonSchema"
+                    }
+                  },
+                  {
+                    "op": "exists",
+                    "source": {
+                      "op": "read",
+                      "from": "input",
+                      "path": "/responseSchema"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "code": "invalid_input",
+        "reason": "one schema dialect requires JSON MIME and the other schema field must be absent"
       }
     ]
   }

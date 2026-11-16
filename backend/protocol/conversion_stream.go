@@ -10,20 +10,16 @@ import (
 // A response terminator closes implicit nodes; an error never flushes partial
 // arguments as a successfully completed tool call.
 type ConversionEventState struct {
-	retention                            streamReservation
-	conversion                           *CompiledConversion
-	route                                ConversionContext
-	pending                              []Event
-	open                                 map[string]bool
-	bytes                                int
-	openBytes, terminalBytes, usageBytes int
-	Buffered                             bool
-	usage                                *Usage
-	terminal                             *Event
-	id                                   Value
-	model                                Value
-	started                              bool
-	isReleased                           bool
+	retention          streamReservation
+	conversion         *CompiledConversion
+	route              ConversionContext
+	pending            []Event
+	open               map[string]bool
+	bytes              int
+	openBytes          int
+	Buffered           bool
+	isReleased         bool
+	hasResponseStarted bool
 }
 
 func NewConversionEventState(c *CompiledConversion, route ConversionContext) *ConversionEventState {
@@ -31,15 +27,6 @@ func NewConversionEventState(c *CompiledConversion, route ConversionContext) *Co
 		route.Delivery = NewDeliveryState()
 	}
 	return &ConversionEventState{conversion: c, route: route, open: map[string]bool{}}
-}
-
-// Standalone projection helpers accept unversioned events; newly synthesized
-// responses retain core1 for those legacy calls without correcting other versions.
-func eventResponseVersion(version int) int {
-	if version == 0 {
-		return SemanticSchemaVersion
-	}
-	return version
 }
 
 func (s *ConversionEventState) Push(event Event) ([]Event, error) {
@@ -52,130 +39,37 @@ func (s *ConversionEventState) PushContext(ctx context.Context, event Event) (ev
 	if s.isReleased {
 		return nil, streamIssue(InvalidAssociation, "/state", "released conversion events cannot resume")
 	}
+	hasResponseStarted := s.hasResponseStarted
 	defer func() {
+		hasGeneratedPrelude := false
+		if err == nil && len(events) != 0 && s.conversion != nil && len(s.conversion.preludes) != 0 && !hasResponseStarted {
+			count := len(events)
+			events, hasResponseStarted, err = s.conversion.prependResponse(ctx, events, s.route)
+			hasGeneratedPrelude = len(events) > count
+		}
 		if err == nil && s.retention.budget != nil {
 			err = s.commitRetention()
 			if err != nil {
 				events = nil
 			}
 		}
+		if err == nil {
+			s.hasResponseStarted = hasResponseStarted
+			s.Buffered = s.Buffered || hasGeneratedPrelude
+		}
 	}()
 	if s.conversion == nil {
 		return []Event{event}, nil
 	}
-	if s.conversion.hasDeliveryRule(s.route) && !s.started && event.Type != ResponseStarted && (event.Type == ItemStarted || event.Type == ResponseFinished) {
-		start, err := s.PushContext(ctx, Event{SchemaVersion: event.SchemaVersion, Source: event.Source, Type: ResponseStarted, ResponseID: event.ResponseID})
-		if err != nil {
-			return nil, err
-		}
-		s.Buffered = true
-		rest, err := s.PushContext(ctx, event)
-		return append(start, rest...), err
-	}
-	if event.Type == ResponseStarted && s.conversion.hasDeliveryRule(s.route) {
-		s.started = true
-		if event.Response == nil {
-			event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion), ID: event.ResponseID}
-		} else {
-			copy := *event.Response
-			copy.Attributes = copyObject(event.Response.Attributes)
-			event.Response = &copy
-		}
-		if event.Response.ID.IsZero() {
-			event.Response.ID = event.ResponseID
-		}
-		prepareDelivery(event.Response, s.route, s.conversion.deliveryCodec(s.route))
-		s.id, s.model = event.Response.ID, event.Response.Model
-		s.route.Delivery.ID = s.id
-		if created := event.Response.Attributes["created_at"]; !created.IsZero() {
-			s.route.Delivery.Created = created
-		}
-	}
-	if !s.id.IsZero() && s.conversion.hasDeliveryRule(s.route) {
-		event.ResponseID = s.id
-		if event.Response != nil {
-			copy := *event.Response
-			copy.Attributes = copyObject(event.Response.Attributes)
-			copy.ID = s.id
-			copy.Model = s.model
-			if copy.Attributes == nil {
-				copy.Attributes = Object{}
-			}
-			if codec := s.conversion.deliveryCodec(s.route); (codec == "openai-chat" || codec == "responses") && !s.route.Delivery.Created.IsZero() {
-				copy.Attributes["created_at"] = s.route.Delivery.Created
-			}
-			event.Response = &copy
-		}
-	}
-	if s.conversion.HasAnthropicEnvelope(ConversionEvent, s.route) {
-		if event.Usage != nil {
-			s.usage = MergeUsage(s.usage, event.Usage)
-		}
-		if event.Response != nil && event.Response.Usage != nil {
-			s.usage = MergeUsage(s.usage, event.Response.Usage)
-		}
-		if s.retention.budget != nil && (event.Usage != nil || event.Response != nil && event.Response.Usage != nil) {
-			size, err := measureSemanticValue(s.usage, s.conversion.limits)
-			if err != nil {
-				return nil, err
-			}
-			s.usageBytes = size.bytes
-		}
-		if event.Type == ResponseStarted {
-			if event.Response == nil {
-				event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion), ID: event.ResponseID}
-			} else {
-				copy := *event.Response
-				event.Response = &copy
-			}
-			if event.Response.ID.IsZero() {
-				event.Response.ID = event.ResponseID
-			}
-			ensureDeliveryIdentity(event.Response, s.route)
-			s.id, s.model = event.Response.ID, event.Response.Model
-			event.ResponseID = s.id
-			event.Response.Usage = MergeUsage(nil, s.usage)
-		}
-		if !s.id.IsZero() {
-			event.ResponseID = s.id
-			if event.Response != nil {
-				copy := *event.Response
-				copy.ID, copy.Model = s.id, s.model
-				event.Response = &copy
-			}
-		}
-		if event.Type == ResponseFinished {
-			if s.terminal != nil {
-				return nil, streamIssue(InvalidAssociation, "/event", "duplicate terminal")
-			}
-			if s.retention.budget != nil {
-				size, err := measureSemanticValue(&event, semanticLimits(s.conversion.limits))
-				if err != nil {
-					return nil, err
-				}
-				s.terminalBytes = size.bytes
-			}
-			copy := event
-			s.terminal = &copy
-			s.Buffered = true
-			// Close implicit items but retain terminal until usage tail frames arrive.
-			clear(s.open)
-			s.openBytes = 0
-			out := s.pending
-			s.pending, s.bytes = nil, 0
-			return out, nil
-		}
-	}
 	if event.Type == OperationFailed || event.Type == OperationCancelled {
 		// A real failure ends waiting without publishing partial buffered items.
 		clear(s.open)
-		s.openBytes, s.terminalBytes = 0, 0
-		s.pending, s.terminal, s.bytes = nil, nil, 0
+		s.openBytes = 0
+		s.pending, s.bytes = nil, 0
 		return []Event{event}, nil
 	}
 	wait := false
 	if event.Type == ItemStarted && event.Item != nil {
-		wait = !s.conversion.HasContinuationRecovery(ConversionEvent, s.route) && s.conversion.Policy.Mode == "strict" && s.conversion.SignatureProjectionEnabled(ConversionEvent, s.route) && (s.route.Source.Family != s.route.Target.Family || s.route.Source.WireVersion != s.route.Target.WireVersion)
 		value, _ := EncodeValue(event.Item)
 		for _, r := range s.conversion.Policy.Rules {
 			if r.Enabled && r.Phase == ConversionEvent && r.Action == "buffer_node" && (r.Match.NodeKind == "" || r.Match.NodeKind == event.Item.Kind) && r.Match.matches(s.route, value) {
@@ -240,29 +134,6 @@ func (s *ConversionEventState) PushContext(ctx context.Context, event Event) (ev
 	return out, nil
 }
 
-// Drain finalizes client projection after the provider's usage-only tail.
-func (s *ConversionEventState) Drain() ([]Event, error) {
-	if err := s.Finish(); err != nil {
-		return nil, err
-	}
-	if s.terminal == nil {
-		return nil, nil
-	}
-	event := *s.terminal
-	s.terminal = nil
-	s.terminalBytes = 0
-	s.retention.commit(s.retainedItems(), s.retainedBytes())
-	if event.Response == nil {
-		event.Response = &Response{SchemaVersion: eventResponseVersion(event.SchemaVersion)}
-	} else {
-		copy := *event.Response
-		event.Response = &copy
-	}
-	event.Response.Usage = MergeUsage(nil, s.usage)
-	event.Response.ID, event.Response.Model, event.ResponseID = s.id, s.model, s.id
-	return []Event{event}, nil
-}
-
 // DeliveryFrameEvents makes same-frame usage available before message_start.
 // Provider event order and provider accounting remain unchanged.
 func DeliveryFrameEvents(events []Event) []Event {
@@ -298,7 +169,7 @@ func DeliveryFrameEvents(events []Event) []Event {
 			if counts == nil {
 				continue
 			}
-			response := Response{SchemaVersion: eventResponseVersion(copy[i].SchemaVersion)}
+			response := Response{SchemaVersion: copy[i].SchemaVersion}
 			if copy[i].Response != nil {
 				response = *copy[i].Response
 			}
@@ -307,6 +178,12 @@ func DeliveryFrameEvents(events []Event) []Event {
 		}
 	}
 	return copy
+}
+
+// Drain checks that every explicitly buffered node has completed.
+// Wire terminal buffering belongs to the target Mapping's stream state.
+func (s *ConversionEventState) Drain() ([]Event, error) {
+	return nil, s.Finish()
 }
 
 func (s *ConversionEventState) Finish() error {

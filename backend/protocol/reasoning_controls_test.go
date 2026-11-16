@@ -1,14 +1,61 @@
 package protocol
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
+func applyReasoningFixture(conversion *CompiledConversion, ctx context.Context, request *Request, route ConversionContext, sink *DiagnosticSink) (*Request, error) {
+	for _, rule := range conversion.Policy.Rules {
+		if rule.Action != "model_controls" {
+			continue
+		}
+		options, err := readConversionOption[modelControlOptions](conversion, rule)
+		if err != nil {
+			return nil, err
+		}
+		route.Target = options.Target
+		if options.Source != nil {
+			route.Source = options.Source.Source
+		}
+	}
+	return conversion.Request(ctx, request, route, sink)
+}
+
 func reasoningTestConversion(t *testing.T, source, target, mode string) *CompiledConversion {
 	t.Helper()
-	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "reasoning-test", Mode: mode, Rules: []ConversionRule{{ID: "thinking", Enabled: true, Phase: ConversionRequest, Action: "reasoning_controls", Value: controlValue(reasoningOptions{SourceCodec: source, TargetCodec: target})}}})
+	names := map[string]string{"openai-chat": "openai-chat", "responses": "openai-responses", "anthropic": "anthropic", "gemini": "google-generate-content"}
+	load := func(name string) *Compiled {
+		t.Helper()
+		compiler, _ := NewCompiler(DefaultLimits(), nil)
+		spec, err := os.ReadFile(filepath.Join("builtin", "packages", names[name], "spec.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mapping, err := os.ReadFile(filepath.Join("builtin", "packages", names[name], "mapping.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		compiled, issues := compiler.CompileSources(spec, mapping)
+		if err := IssuesError(issues); err != nil {
+			t.Fatal(err)
+		}
+		return compiled
+	}
+	ingress, upstream := load(source), load(target)
+	defaults := DefaultConversionPolicy(ingress, upstream)
+	var rules []ConversionRule
+	for _, rule := range defaults.Rules {
+		if rule.Action == "model_controls" {
+			rule.ID = "thinking"
+			rules = append(rules, rule)
+		}
+	}
+	c, err := CompileConversion(ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "reasoning-test", Mode: mode, Rules: rules})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,12 +65,12 @@ func reasoningTestConversion(t *testing.T, source, target, mode string) *Compile
 func TestReasoningSystemBudgetAndIdempotence(t *testing.T) {
 	for _, hard := range []int64{0, 16384} {
 		t.Run(controlValue(hard).raw, func(t *testing.T) {
-			cap := ResolveReasoningCapabilities("anthropic", "claude-opus-4-5")
+			cap := resolveReasoningFixture(t, "anthropic", "claude-opus-4-5")
 			cap.MaxOutputTokens = hard
-			request := &Request{SchemaVersion: 1, Reasoning: &ReasoningIntent{Mode: "enabled", Budget: controlValue(12000)}}
+			request := &Request{SchemaVersion: SemanticSchemaVersion, Reasoning: &ReasoningIntent{Mode: "enabled", Budget: controlValue(12000)}}
 			route := ConversionContext{Model: "claude-opus-4-5", Reasoning: &cap}
 			c := reasoningTestConversion(t, "gemini", "anthropic", "compatible")
-			converted, err := c.Request(t.Context(), request, route, nil)
+			converted, err := applyReasoningFixture(c, t.Context(), request, route, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -34,7 +81,7 @@ func TestReasoningSystemBudgetAndIdempotence(t *testing.T) {
 			if controlInt(converted.Parameters["max_output_tokens"]) != wantLimit || controlInt(converted.Reasoning.Budget) != wantBudget || !converted.OutputLimitDefault {
 				t.Fatal(converted)
 			}
-			again, err := c.Request(t.Context(), converted, route, nil)
+			again, err := applyReasoningFixture(c, t.Context(), converted, route, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,10 +100,10 @@ func TestReasoningSystemBudgetAndIdempotence(t *testing.T) {
 func TestReasoningInterleavedRequiresModelEndpointAndTools(t *testing.T) {
 	for _, model := range []string{"claude-opus-4-5", "claude-opus-4-6"} {
 		for _, header := range []bool{false, true} {
-			cap := ResolveReasoningCapabilities("anthropic", model)
-			request := &Request{SchemaVersion: 1, Parameters: Object{"max_output_tokens": controlValue(2048)}, Reasoning: &ReasoningIntent{Mode: "enabled", Budget: controlValue(4096), Interleaved: true}, Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup")}}}
+			cap := resolveReasoningFixture(t, "anthropic", model)
+			request := &Request{SchemaVersion: SemanticSchemaVersion, Parameters: Object{"max_output_tokens": controlValue(2048)}, Reasoning: &ReasoningIntent{Mode: "enabled", Budget: controlValue(4096), Interleaved: true}, Tools: []Tool{{Kind: FunctionTool, Name: StringValue("lookup")}}}
 			c := reasoningTestConversion(t, "anthropic", "anthropic", "compatible")
-			converted, err := c.Request(t.Context(), request, ConversionContext{Model: model, Reasoning: &cap, InterleavedThinking: header}, nil)
+			converted, err := applyReasoningFixture(c, t.Context(), request, ConversionContext{Model: model, Reasoning: &cap, InterleavedThinking: header}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -73,7 +120,7 @@ func TestReasoningInterleavedRequiresModelEndpointAndTools(t *testing.T) {
 
 func TestReasoningCapabilityEvidenceInvalidates(t *testing.T) {
 	c := reasoningTestConversion(t, "openai-chat", "gemini", "strict")
-	cap := ResolveReasoningCapabilities("gemini", "gemini-2.5-flash")
+	cap := resolveReasoningFixture(t, "gemini", "gemini-2.5-flash")
 	route := ConversionContext{Model: "gemini-2.5-flash", Reasoning: &cap}
 	snapshot := c.WithVerificationContext(route)
 	first := snapshot.ContextHash()
@@ -90,8 +137,8 @@ func TestReasoningCapabilityEvidenceInvalidates(t *testing.T) {
 }
 
 func TestReasoningCanonicalLegacyConflict(t *testing.T) {
-	request := &Request{Reasoning: &ReasoningIntent{Mode: "enabled", Effort: StringValue("high"), EffortScope: "reasoning"}, Parameters: Object{"reasoning_effort": StringValue("low")}}
-	err := NormalizeReasoningParameters(request, "openai-chat", false)
+	request := &Request{SchemaVersion: ProtocolCoreVersion, Reasoning: &ReasoningIntent{Mode: "enabled", Effort: StringValue("high"), EffortScope: "reasoning"}, Parameters: Object{"reasoning_effort": StringValue("low")}}
+	err := normalizeReasoningFixture(t, request, "openai-chat", false)
 	var failure *ConversionError
 	if !errors.As(err, &failure) || failure.CandidateOnly {
 		t.Fatal(err)
@@ -107,11 +154,11 @@ func TestReasoningModeEffortTargetConstraints(t *testing.T) {
 		{"claude-sonnet-5-5", "between_tools", "high", true}, {"claude-sonnet-5-5", "between_tools", "max", false},
 		{"claude-opus-4-5", "between_tools", "high", false}, {"claude-opus-5-5", "disabled", "low", false},
 	} {
-		request := &Request{Model: StringValue(tc.model), Parameters: Object{"anthropic_thinking": controlValue(Object{"type": StringValue(tc.mode)}), "anthropic_output_config": controlValue(Object{"effort": StringValue(tc.effort)})}}
-		if err := NormalizeReasoningParameters(request, "anthropic", false); err != nil {
+		request := &Request{SchemaVersion: ProtocolCoreVersion, Model: StringValue(tc.model), Reasoning: &ReasoningIntent{Mode: tc.mode, Effort: StringValue(tc.effort), EffortScope: "generation"}}
+		if err := normalizeReasoningFixture(t, request, "anthropic", false); err != nil {
 			t.Fatalf("model group name must not restrict source controls: %v", err)
 		}
-		_, err := reasoningTestConversion(t, "anthropic", "anthropic", "strict").Request(t.Context(), request, ConversionContext{Model: tc.model}, nil)
+		_, err := applyReasoningFixture(reasoningTestConversion(t, "anthropic", "anthropic", "strict"), t.Context(), request, ConversionContext{Model: tc.model}, nil)
 		if (err == nil) != tc.valid {
 			t.Fatal(tc, err)
 		}
@@ -128,12 +175,12 @@ func TestReasoningKnownNonThinkingAgentModels(t *testing.T) {
 	for _, codec := range []string{"openai-chat", "responses"} {
 		for _, model := range []string{"gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o-2024-05-13", "gpt-4o-2024-08-06", "gpt-4o-2024-11-20", "gpt-4o-audio-preview", "gpt-4.1-private"} {
 			t.Run(codec+"/"+model, func(t *testing.T) {
-				req := &Request{SchemaVersion: 1, Source: AgentIdentity(), Reasoning: &ReasoningIntent{Mode: "disabled"}}
+				req := &Request{SchemaVersion: SemanticSchemaVersion, Source: AgentIdentity(), Reasoning: &ReasoningIntent{Mode: "disabled"}}
 				sink := &DiagnosticSink{}
-				out, err := reasoningTestConversion(t, codec, codec, "strict").Request(t.Context(), req, ConversionContext{Model: model}, sink)
+				out, err := applyReasoningFixture(reasoningTestConversion(t, codec, codec, "strict"), t.Context(), req, ConversionContext{Model: model}, sink)
 				if model == "gpt-4o-audio-preview" || model == "gpt-4.1-private" {
 					var failure *ConversionError
-					if ResolveReasoningCapabilities(codec, model).Kind != "unknown" || !errors.As(err, &failure) || !failure.CandidateOnly {
+					if resolveReasoningFixture(t, codec, model).Kind != "unknown" || !errors.As(err, &failure) || !failure.CandidateOnly {
 						t.Fatal("unknown variant must still require confirmed capabilities", out, err)
 					}
 				} else if err != nil || out.Reasoning != nil || len(sink.Issues()) != 0 {
@@ -147,19 +194,19 @@ func TestReasoningKnownNonThinkingAgentModels(t *testing.T) {
 func TestReasoningValidationAfterAuthoredRules(t *testing.T) {
 	c := reasoningTestConversion(t, "openai-chat", "gemini", "compatible")
 	policy := c.Policy
-	policy.Rules = append(policy.Rules, ConversionRule{ID: "late-effort", Order: 99, Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/reasoning/effort", Value: StringValue("max")})
+	policy.Rules = append(policy.Rules, ConversionRule{ID: "late-effort", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/reasoning/effort", Value: StringValue("max")})
 	c, err := CompileConversion(policy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := &Request{SchemaVersion: 1, Reasoning: &ReasoningIntent{Mode: "enabled", Effort: StringValue("high"), EffortScope: "reasoning"}}
-	_, err = c.Request(t.Context(), req, ConversionContext{Model: "gemini-3.8-flash"}, nil)
+	req := &Request{SchemaVersion: SemanticSchemaVersion, Reasoning: &ReasoningIntent{Mode: "enabled", Effort: StringValue("high"), EffortScope: "reasoning"}}
+	_, err = applyReasoningFixture(c, t.Context(), req, ConversionContext{Model: "gemini-3.8-flash"}, nil)
 	var failure *ConversionError
 	if !errors.As(err, &failure) || !failure.CandidateOnly {
 		t.Fatal("late invalid control escaped target validation", err)
 	}
 	req.Reasoning = &ReasoningIntent{Mode: "enabled", Budget: controlValue(4096), Interleaved: true}
-	_, err = reasoningTestConversion(t, "anthropic", "anthropic", "compatible").Request(t.Context(), req, ConversionContext{Model: "claude-sonnet-4-6", InterleavedThinking: true}, nil)
+	_, err = applyReasoningFixture(reasoningTestConversion(t, "anthropic", "anthropic", "compatible"), t.Context(), req, ConversionContext{Model: "claude-sonnet-4-6", InterleavedThinking: true}, nil)
 	if !errors.As(err, &failure) || failure.CandidateOnly {
 		t.Fatal("invalid input must reject globally", err)
 	}
@@ -180,13 +227,13 @@ func TestReasoningOutputLimitAfterAuthoredRules(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				policy.Rules = append(policy.Rules, ConversionRule{ID: "late-output-limit", Order: 99, Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters/max_output_tokens", Value: value})
+				policy.Rules = append(policy.Rules, ConversionRule{ID: "late-output-limit", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "set", Path: "/parameters/max_output_tokens", Value: value})
 				conversion, err := CompileConversion(policy)
 				if err != nil {
 					t.Fatal(err)
 				}
-				request := &Request{SchemaVersion: 1, OutputLimitDefault: systemDefault, Parameters: Object{"max_output_tokens": controlValue(8192)}}
-				converted, err := conversion.Request(t.Context(), request, ConversionContext{Model: "gpt-6.1-sol"}, nil)
+				request := &Request{SchemaVersion: SemanticSchemaVersion, OutputLimitDefault: systemDefault, Parameters: Object{"max_output_tokens": controlValue(8192)}}
+				converted, err := applyReasoningFixture(conversion, t.Context(), request, ConversionContext{Model: "gpt-6.1-sol"}, nil)
 				if tc.valid {
 					if err != nil || converted.Parameters["max_output_tokens"] != value {
 						t.Fatal(converted, err)
@@ -207,14 +254,14 @@ func TestReasoningOutputLimitAfterAuthoredRules(t *testing.T) {
 
 func TestReasoningZeroOutputAndSummaryOnly(t *testing.T) {
 	c := reasoningTestConversion(t, "anthropic", "anthropic", "strict")
-	req := &Request{SchemaVersion: 1, Parameters: Object{"max_output_tokens": controlValue(0)}}
-	out, err := c.Request(t.Context(), req, ConversionContext{Model: "claude-haiku-4-5"}, nil)
+	req := &Request{SchemaVersion: SemanticSchemaVersion, Parameters: Object{"max_output_tokens": controlValue(0)}}
+	out, err := applyReasoningFixture(c, t.Context(), req, ConversionContext{Model: "claude-haiku-4-5"}, nil)
 	if err != nil || controlInt(out.Parameters["max_output_tokens"]) != 0 {
 		t.Fatal(out, err)
 	}
-	req = &Request{SchemaVersion: 1, Reasoning: &ReasoningIntent{Summary: StringValue("auto")}}
+	req = &Request{SchemaVersion: SemanticSchemaVersion, Reasoning: &ReasoningIntent{Summary: StringValue("auto")}}
 	sink := &DiagnosticSink{}
-	out, err = reasoningTestConversion(t, "responses", "anthropic", "compatible").Request(t.Context(), req, ConversionContext{Model: "claude-opus-4-6"}, sink)
+	out, err = applyReasoningFixture(reasoningTestConversion(t, "responses", "anthropic", "compatible"), t.Context(), req, ConversionContext{Model: "claude-opus-4-6"}, sink)
 	if err != nil || out.Reasoning != nil || len(sink.Issues()) == 0 {
 		t.Fatal(out, err, sink.Issues())
 	}
@@ -227,7 +274,7 @@ func TestReasoningExplicitRejectRemainsGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.Request(t.Context(), &Request{SchemaVersion: 1}, ConversionContext{Model: "gemini-3.8-flash"}, nil)
+	_, err = applyReasoningFixture(c, t.Context(), &Request{SchemaVersion: SemanticSchemaVersion}, ConversionContext{Model: "gemini-3.8-flash"}, nil)
 	var failure *ConversionError
 	if !errors.As(err, &failure) || failure.CandidateOnly {
 		t.Fatal(err)
@@ -236,8 +283,8 @@ func TestReasoningExplicitRejectRemainsGlobal(t *testing.T) {
 
 func TestReasoningDisabledOnNonThinkingTargetIsExact(t *testing.T) {
 	cap := &ReasoningCapabilities{Kind: "none"}
-	req := &Request{SchemaVersion: 1, Reasoning: &ReasoningIntent{Mode: "disabled", Effort: StringValue("none"), EffortScope: "reasoning"}}
-	out, err := reasoningTestConversion(t, "openai-chat", "gemini", "strict").Request(t.Context(), req, ConversionContext{Reasoning: cap}, nil)
+	req := &Request{SchemaVersion: SemanticSchemaVersion, Reasoning: &ReasoningIntent{Mode: "disabled", Effort: StringValue("none"), EffortScope: "reasoning"}}
+	out, err := applyReasoningFixture(reasoningTestConversion(t, "openai-chat", "gemini", "strict"), t.Context(), req, ConversionContext{Reasoning: cap}, nil)
 	if err != nil || out.Reasoning != nil {
 		t.Fatal(out, err)
 	}
@@ -246,14 +293,14 @@ func TestReasoningDisabledOnNonThinkingTargetIsExact(t *testing.T) {
 func TestReasoningUnknownModelPreservesWireButDiagnosesAgentIntent(t *testing.T) {
 	for _, mode := range []string{"compatible", "strict"} {
 		for _, thinking := range []string{"enabled", "disabled"} {
-			req := &Request{SchemaVersion: 1, Source: AgentIdentity(), Reasoning: &ReasoningIntent{Mode: thinking}}
+			req := &Request{SchemaVersion: SemanticSchemaVersion, Source: AgentIdentity(), Reasoning: &ReasoningIntent{Mode: thinking}}
 			if thinking == "enabled" {
 				req.Reasoning.Effort = StringValue("high")
 				req.Reasoning.EffortScope = "reasoning"
 			}
 			c := reasoningTestConversion(t, "gemini", "gemini", mode)
 			sink := &DiagnosticSink{}
-			result, err := c.Request(t.Context(), req, ConversionContext{Model: "private-alias"}, sink)
+			result, err := applyReasoningFixture(c, t.Context(), req, ConversionContext{Model: "private-alias"}, sink)
 			if mode == "strict" || thinking == "disabled" {
 				var failure *ConversionError
 				if !errors.As(err, &failure) || !failure.CandidateOnly {
@@ -286,13 +333,13 @@ func TestReasoningHardConstraintsRejectInBothModes(t *testing.T) {
 			{"default-cannot-fit", "anthropic", "claude-opus-4-5", &ReasoningIntent{Mode: "enabled", Budget: controlValue(2048)}, Value{}, &ReasoningCapabilities{Kind: "budget", Manual: true, Disable: true, MinBudget: 1024, MaxOutputTokens: 512}, "/parameters/max_output_tokens"},
 		} {
 			t.Run(mode+"/"+tc.name, func(t *testing.T) {
-				req := &Request{SchemaVersion: 1, Reasoning: tc.reasoning}
+				req := &Request{SchemaVersion: SemanticSchemaVersion, Reasoning: tc.reasoning}
 				if !tc.limit.IsZero() {
 					req.Parameters = Object{"max_output_tokens": tc.limit}
 				}
 				before, _ := EncodeValue(req)
 				c := reasoningTestConversion(t, "openai-chat", tc.target, mode)
-				_, err := c.Request(t.Context(), req, ConversionContext{Model: tc.model, Reasoning: tc.cap}, nil)
+				_, err := applyReasoningFixture(c, t.Context(), req, ConversionContext{Model: tc.model, Reasoning: tc.cap}, nil)
 				var failure *ConversionError
 				if !errors.As(err, &failure) || !failure.CandidateOnly || len(failure.Issues) != 1 {
 					t.Fatalf("expected candidate rejection: %v", err)
@@ -314,10 +361,10 @@ func TestReasoningExplicitLimitPreservedWhileBudgetFits(t *testing.T) {
 	for _, mode := range []string{"compatible", "strict"} {
 		for _, budget := range []int64{1024, 4096} {
 			t.Run(fmt.Sprintf("%s/%d", mode, budget), func(t *testing.T) {
-				req := &Request{SchemaVersion: 1, Parameters: Object{"max_output_tokens": controlValue(2048)}, Reasoning: &ReasoningIntent{Mode: "enabled", Budget: controlValue(budget)}}
+				req := &Request{SchemaVersion: SemanticSchemaVersion, Parameters: Object{"max_output_tokens": controlValue(2048)}, Reasoning: &ReasoningIntent{Mode: "enabled", Budget: controlValue(budget)}}
 				c := reasoningTestConversion(t, "gemini", "anthropic", mode)
 				sink := &DiagnosticSink{}
-				out, err := c.Request(t.Context(), req, ConversionContext{Model: "claude-opus-4-5"}, sink)
+				out, err := applyReasoningFixture(c, t.Context(), req, ConversionContext{Model: "claude-opus-4-5"}, sink)
 				if mode == "strict" && budget >= 2048 {
 					var failure *ConversionError
 					if !errors.As(err, &failure) || !failure.CandidateOnly {
@@ -338,10 +385,64 @@ func TestReasoningExplicitLimitPreservedWhileBudgetFits(t *testing.T) {
 
 func TestReasoningUnknownNativeDisabledPreserved(t *testing.T) {
 	for _, mode := range []string{"compatible", "strict"} {
-		req := &Request{SchemaVersion: 1, Parameters: Object{"gemini_thinking": controlValue(Object{"thinkingBudget": controlValue(0)})}}
-		out, err := reasoningTestConversion(t, "gemini", "gemini", mode).Request(t.Context(), req, ConversionContext{Model: "private-alias"}, nil)
+		req := &Request{SchemaVersion: ProtocolCoreVersion, Reasoning: &ReasoningIntent{Mode: "disabled", Budget: controlValue(0)}}
+		out, err := applyReasoningFixture(reasoningTestConversion(t, "gemini", "gemini", mode), t.Context(), req, ConversionContext{Model: "private-alias"}, nil)
 		if err != nil || out.Reasoning == nil || out.Reasoning.Mode != "disabled" || controlInt(out.Reasoning.Budget) != 0 {
 			t.Fatal(out, err)
 		}
 	}
+}
+
+func reasoningFixtureMapping(t *testing.T, name string) ProtocolMapping {
+	t.Helper()
+	names := map[string]string{"openai-chat": "openai-chat", "responses": "openai-responses", "anthropic": "anthropic", "gemini": "google-generate-content"}
+	raw, err := os.ReadFile(filepath.Join("builtin", "packages", names[name], "mapping.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mapping ProtocolMapping
+	if err := decodeContract(raw, &mapping); err != nil {
+		t.Fatal(err)
+	}
+	return mapping
+}
+
+func resolveReasoningFixture(t *testing.T, name, model string) ReasoningCapabilities {
+	t.Helper()
+	mapping := reasoningFixtureMapping(t, name)
+	compiler := &expressionCompiler{limits: DefaultLimits(), references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
+	policy, err := compileModelPolicy(mapping.ModelPolicy, compiler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := policy.resolveReasoning(t.Context(), model, nil, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func normalizeReasoningFixture(t *testing.T, request *Request, name string, interleaved bool) error {
+	t.Helper()
+	mapping := reasoningFixtureMapping(t, name)
+	compiler := &expressionCompiler{limits: DefaultLimits(), references: mapping.Expressions, resolving: map[string]bool{}, used: map[string]bool{}}
+	normalization := modelNormalizationOptions{Steps: mapping.ModelPolicy.Normalize, Checks: mapping.ModelPolicy.NormalizeChecks}
+	if err := normalization.compile(compiler); err != nil {
+		t.Fatal(err)
+	}
+	execution := &modelControlExecution{limits: DefaultLimits(), bindings: make([]JSONOutput, normalization.bindingSlots)}
+	route := ConversionContext{InterleavedThinking: interleaved}
+	if err := execution.bindContext(request, route, nil); err != nil {
+		return err
+	}
+	if err := execution.apply(t.Context(), &CompiledConversion{}, request, route, nil, normalization.steps, false); err != nil {
+		return err
+	}
+	if err := ValidateReasoningIntent(request.Reasoning); err != nil {
+		return err
+	}
+	if execution.changedReasoning {
+		return execution.apply(t.Context(), &CompiledConversion{}, request, route, nil, normalization.checks, false)
+	}
+	return nil
 }

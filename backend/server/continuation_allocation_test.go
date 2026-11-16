@@ -10,7 +10,7 @@ import (
 )
 
 func continuationHistoryFixture(count int) *protocol.Request {
-	request := &protocol.Request{}
+	request := &protocol.Request{SchemaVersion: protocol.ProtocolCoreVersion, Model: protocol.StringValue("m")}
 	for index := range count {
 		role := "user"
 		if index%2 != 0 {
@@ -39,7 +39,7 @@ func TestContinuationRecoveryEligibility(t *testing.T) {
 		{"carrier", false, false, true, true, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			g := &gatewayContinuation{isPackage: true, settings: protocol.ContinuationSettings{Persist: test.persist}}
+			g := &gatewayContinuation{settings: protocol.ContinuationSettings{Persist: test.persist}}
 			if test.hasSession {
 				g.session = "session"
 			}
@@ -71,6 +71,7 @@ func TestContinuationRecoveryEligibility(t *testing.T) {
 func TestContinuationParentKeepsOriginalHistory(t *testing.T) {
 	codec, _ := protocol.NewContinuationCodec([]byte("isolated-test-key"))
 	g := &gatewayContinuation{codec: codec, settings: protocol.ContinuationSettings{ClientCarrier: true}}
+	bindContinuationFixture(t, g)
 	request := continuationHistoryFixture(8)
 	want := g.historyDigest(request.Content)
 	g.prepareParent(request.Content)
@@ -85,6 +86,7 @@ func BenchmarkContinuationRecovery(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	ingress := compileFixturePackage(b, presetPackage(b, protocol.PresetChatCompletionsID))
 	for _, count := range []int{8, 32, 64, 128} {
 		original := continuationHistoryFixture(count)
 		for _, hasCarrier := range []bool{false, true} {
@@ -100,10 +102,11 @@ func BenchmarkContinuationRecovery(b *testing.B) {
 					}
 					tokens = []string{token}
 				}
+				selected := selectContinuationFixture(b, ingress, original, tokens)
 				server := &Server{}
 				b.ReportAllocs()
 				for b.Loop() {
-					request := original.Clone()
+					request := selected.Clone()
 					g.restored = map[string]bool{}
 					if err := server.restoreGatewayContinuation(b.Context(), g, request, tokens, nil); err != nil {
 						b.Fatal(err)

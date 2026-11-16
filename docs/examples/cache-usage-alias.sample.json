@@ -29,7 +29,7 @@
     "created": 1
   },
   "expected": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "source": {},
     "id": "r",
     "status": "completed",
@@ -47,6 +47,7 @@
     ],
     "attributes": {
       "finishReason": "stop",
+      "created_at": 1,
       "wire:openai_chat": {
         "usage": {
           "provider_metrics": {
@@ -54,8 +55,7 @@
             "keep": "extension"
           }
         }
-      },
-      "created_at": 1
+      }
     },
     "usage": {
       "input": {

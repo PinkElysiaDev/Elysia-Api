@@ -2,12 +2,82 @@ package builtin
 
 import (
 	"context"
-	p "github.com/elysia-api/backend/protocol"
 	"strings"
 	"testing"
+
+	p "github.com/elysia-api/backend/protocol"
 )
 
 const syntheticTurnStateFrame = `{"type":"response.metadata","headers":{"x-codex-turn-state":"synthetic-turn-state"}}`
+
+func TestResponsesTurnStateCustomModulesAndProtectedScope(t *testing.T) {
+	document, _ := testCompiled(t, Responses).Package()
+	document.Spec.ID = "custom-responses-control"
+	source, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "source"}})
+	defer options.State.Release()
+	frame, err := source.DecodeFrame(t.Context(), testValue(t, syntheticTurnStateFrame), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
+		target := testCompiled(t, codec)
+		conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(target, source))
+		if err != nil {
+			t.Fatal(err)
+		}
+		route := conversion.VerificationRoute(source.Identity(), target.Identity(), p.SSE)
+		route.Scope = options.Scope
+		projected, err := conversion.Event(t.Context(), frame.Events[0], route, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: options.Scope})
+		defer output.State.Release()
+		output, consume := bindFixtureOutput(t, target, output)
+		frames, err := target.EncodeFrames(t.Context(), projected, output)
+		if err != nil {
+			t.Fatal(codec, err)
+		}
+		consume(frames)
+	}
+	other := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "other"}})
+	defer other.State.Release()
+	if _, err := source.EncodeFrame(t.Context(), frame, other); err == nil {
+		t.Fatal("state crossed account scope")
+	}
+	oversized := testValue(t, `{"type":"response.metadata","headers":{"x-codex-turn-state":"`+strings.Repeat("s", p.DefaultLimits().BufferBytes)+`"}}`)
+	if _, err := source.DecodeFrame(t.Context(), oversized, options); err == nil {
+		t.Fatal("oversized state accepted")
+	}
+	for _, isMixed := range []bool{false, true} {
+		authored, _ := source.Package()
+		mapping := authored.Mapping.Directions[p.EncodeEvent]
+		if isMixed {
+			other, _ := testCompiled(t, Chat).Package()
+			mapping = other.Mapping.Directions[p.EncodeEvent]
+		} else {
+			mapping.Program = p.Expression{Op: "read"}
+		}
+		authored.Mapping.Directions[p.EncodeEvent] = mapping
+		if compiled, issues := compilePackageDocument(t, authored); compiled != nil || p.IssuesError(issues) == nil {
+			t.Fatal("unproved or foreign stream program bypassed its own Spec/Mapping contract", isMixed)
+		}
+	}
+	for _, path := range []string{"/responsesTurnState/frame/headers/x-codex-turn-state", "/control/value"} {
+		rule := p.ConversionRule{ID: "forge-state", Enabled: true, Phase: p.ConversionEvent, Action: "set", Path: path, Value: p.StringValue("forged")}
+		conversion, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "forge", Rules: []p.ConversionRule{rule}})
+		if err == nil {
+			_, err = conversion.Event(t.Context(), frame.Events[0], p.ConversionContext{}, nil)
+		}
+		if err == nil {
+			t.Fatal("authored mutation minted opaque state", path)
+		}
+	}
+}
 
 func TestResponsesTurnStateCompleteStreams(t *testing.T) {
 	for _, target := range []string{Responses, Chat, Anthropic, Gemini} {
@@ -23,8 +93,8 @@ func TestResponsesTurnStateCompleteStreams(t *testing.T) {
 func TestResponsesTurnStateNativeReplayAndCollection(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Responses)
 	var sample p.Sample
-	for _, candidate := range compiled.Definition().Samples {
-		if candidate.ID == "stream-text-decode" {
+	for _, candidate := range packageMapping(compiled).Samples {
+		if candidate.ID == "declared-stream-text-decode" {
 			sample = candidate
 		}
 	}
@@ -35,12 +105,15 @@ func TestResponsesTurnStateNativeReplayAndCollection(t *testing.T) {
 	control := testValue(t, ` {"headers":{"X-Codex-Turn-State":"synthetic-\u0074urn"},"type":"response.metadata"} `)
 	frames = append([]p.Value{control}, frames...)
 	frames = append(frames[:2], append([]p.Value{control}, frames[2:]...)...)
-	options := p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "a"}}
-	collector, err := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Scope: options.Scope, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "a"}})
+	defer options.State.Release()
+	collector, err := p.NewResponseCollector(compiled.Target(p.EncodeEvent, options.Scope), compiled.ResourceLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
 	validator, _ := compiled.NewWireStreamValidation(options.Scope)
+	defer validator.Release()
+	options = options.WithOutputStream(validator)
 	for _, input := range frames {
 		decoded, err := compiled.DecodeFrame(t.Context(), input, options)
 		if err != nil {
@@ -50,15 +123,19 @@ func TestResponsesTurnStateNativeReplayAndCollection(t *testing.T) {
 			if _, _, err := collector.Consume(event); err != nil {
 				t.Fatal(err)
 			}
-			if event.ResponsesTurnState != nil && (!event.ResponseID.IsZero() || event.Usage != nil || len(event.Metadata) != 0) {
+			if event.Control != nil && (!event.ResponseID.IsZero() || event.Usage != nil || len(event.Metadata) != 0) {
 				t.Fatal("control state entered generation")
 			}
 		}
 		output, err := compiled.EncodeFrame(t.Context(), decoded, options)
 		if err != nil || len(output) != 1 || output[0] != input {
-			t.Fatalf("native frame changed: %v", err)
+			semantic, _ := p.EncodeValue(decoded.Events)
+			t.Fatalf("native frame changed: %v; %s", err, semantic.JSONString())
 		}
 		if err := validator.Consume(t.Context(), output[0]); err != nil {
+			t.Fatal(err)
+		}
+		if err := validator.CommitDelivery(); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,12 +156,12 @@ func TestResponsesTurnStateNativeReplayAndCollection(t *testing.T) {
 
 	// Neither a control-only stream nor an interrupted one completes a response.
 	for _, end := range []error{nil, context.Canceled} {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		frame, err := compiled.DecodeFrame(t.Context(), control, options)
 		if err != nil {
 			t.Fatal(err)
 		}
-		collector, _ := p.NewResponseCollector(p.Target{Codec: Responses, Protocol: compiled.Identity(), Direction: p.EncodeEvent, Capabilities: compiled.Capabilities(p.EncodeEvent)}, compiled.ResourceLimits())
+		collector, _ := p.NewResponseCollector(compiled.Target(p.EncodeEvent, p.Scope{}), compiled.ResourceLimits())
 		for _, event := range frame.Events {
 			if _, _, err := collector.Consume(event); err != nil {
 				t.Fatal(err)
@@ -123,14 +200,20 @@ func TestResponsesTurnStatePolicyAndInvalidBoundaries(t *testing.T) {
 		`{"type":"response.metadata","headers":{"x-codex-turn-state":"s"},"sequence_number":1.1}`,
 		`{"type":"response.metadata","headers":{"x-codex-turn-state":"s"},"sequence_number":"1"}`,
 	} {
-		if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
+		if _, err := from.DecodeFrame(t.Context(), testValue(t, raw), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})); err == nil {
 			t.Fatal("invalid control accepted", raw)
 		}
-		if err := from.ValidateWireOutput(p.EncodeEvent, testValue(t, raw)); err == nil {
+		validation, err := from.NewWireStreamValidation(p.Scope{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = validation.Consume(t.Context(), testValue(t, raw))
+		validation.Release()
+		if err == nil {
 			t.Fatal("invalid after mapping accepted", raw)
 		}
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
+	options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	control := testValue(t, `{"type":"response.metadata","headers":{"x-codex-turn-state":"synthetic-secret"},"sequence_number":9007199254740993}`)
 	frame, err := from.DecodeFrame(t.Context(), control, options)
 	if err != nil {
@@ -148,7 +231,7 @@ func TestResponsesTurnStatePolicyAndInvalidBoundaries(t *testing.T) {
 			}
 			if mode == "disabled" {
 				for i := range policy.Rules {
-					if policy.Rules[i].Action == "responses_turn_state" {
+					if policy.Rules[i].ID == "event-control" {
 						policy.Rules[i].Enabled = false
 					}
 				}
@@ -168,7 +251,7 @@ func TestResponsesTurnStatePolicyAndInvalidBoundaries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, err := to.EncodeFrames(t.Context(), event, p.EvaluationContext{State: p.NewEvaluationState()})
+			out, err := to.EncodeFrames(t.Context(), event, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 			if codec != Responses && mode == "disabled" {
 				if err == nil {
 					t.Fatal("disabled omission accepted")
@@ -179,85 +262,19 @@ func TestResponsesTurnStatePolicyAndInvalidBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			if codec == Responses {
-				if len(out) != 1 || out[0] != control || len(sink.Issues()) != 0 {
+				if len(out) != 1 || len(sink.Issues()) != 0 {
 					t.Fatal("same-wire state changed")
 				}
+				sameJSON(t, out[0].Bytes(), control.JSONString())
 			} else {
-				if len(out) != 0 || event.ResponsesTurnState != nil || len(sink.Issues()) != 1 {
-					t.Fatal("projection emitted control data")
+				if len(out) != 0 || event.Control != nil || len(sink.Issues()) != 1 {
+					t.Fatal("projection emitted control data", codec, mode, out, event.Control, sink.Issues())
 				}
 				issue := sink.Issues()[0]
-				if issue.Code != p.ConversionDegraded || issue.Fidelity != "lossy_compatible" || issue.Path != p.ResponsesTurnStatePath || issue.RuleID != "responses-turn-state" || issue.PolicyHash != conversion.Hash || issue.Protocol != from.Identity() || issue.Direction != p.DecodeEvent || !strings.Contains(issue.Reason, "frame 1") || strings.Contains(issue.Reason, "synthetic-secret") {
+				if issue.Code != p.ConversionDegraded || issue.Fidelity != "lossy_compatible" || issue.Path != "/headers" || issue.RuleID != "event-control" || issue.PolicyHash != conversion.Hash || issue.Protocol != from.Identity() || issue.Direction != p.DecodeEvent || !strings.Contains(issue.Reason, "frame 1") || strings.Contains(issue.Reason, "synthetic-secret") {
 					t.Fatalf("incomplete diagnostic: %+v", issue)
 				}
 			}
 		}
-	}
-}
-
-func TestResponsesTurnStateCustomModulesAndProtectedScope(t *testing.T) {
-	definition := shippedProjectionProtocol(t, Responses).Definition()
-	definition.ID = "old-responses-control-copy"
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	compile := func(d p.Definition) *p.Compiled {
-		t.Helper()
-		raw, _ := p.EncodeValue(d)
-		c, issues := compiler.Compile(raw.Bytes())
-		if c == nil {
-			t.Fatal(issues)
-		}
-		return c
-	}
-	source := compile(definition)
-	frame, err := source.DecodeFrame(t.Context(), testValue(t, syntheticTurnStateFrame), p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "source"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
-		target := shippedProjectionProtocol(t, codec)
-		conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(target, source))
-		if err != nil {
-			t.Fatal(err)
-		}
-		projected, err := conversion.Event(t.Context(), frame.Events[0], conversion.VerificationRoute(source.Identity(), target.Identity(), p.SSE), nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := target.EncodeFrames(t.Context(), projected, p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "source"}}); err != nil {
-			t.Fatal(codec, err)
-		}
-	}
-	if _, err := source.EncodeFrame(t.Context(), frame, p.EvaluationContext{State: p.NewEvaluationState(), Scope: p.Scope{Account: "other"}}); err == nil {
-		t.Fatal("state crossed account scope")
-	}
-	definition.Directions[p.EncodeEvent] = p.Mapping{Transform: &p.Expression{Op: "read"}}
-	handwritten := compile(definition)
-	for _, rule := range p.DefaultConversionPolicy(handwritten, source).Rules {
-		if rule.Action == "responses_turn_state" {
-			t.Fatal("guessed handwritten target")
-		}
-	}
-	// A mixed definition is selected by the actual decode direction.
-	mixed := source.Definition()
-	mixed.Directions[p.EncodeEvent] = shippedProjectionProtocol(t, Chat).Definition().Directions[p.EncodeEvent]
-	mixedSource := compile(mixed)
-	found := false
-	for _, rule := range p.DefaultConversionPolicy(shippedProjectionProtocol(t, Chat), mixedSource).Rules {
-		found = found || rule.Action == "responses_turn_state"
-	}
-	if !found {
-		t.Fatal("mixed source lost decoder-based adaptation")
-	}
-	oversized := testValue(t, `{"type":"response.metadata","headers":{"x-codex-turn-state":"`+strings.Repeat("s", p.DefaultLimits().BufferBytes)+`"}}`)
-	if _, err := source.DecodeFrame(t.Context(), oversized, p.EvaluationContext{State: p.NewEvaluationState()}); err == nil {
-		t.Fatal("oversized state accepted")
-	}
-	rule := p.ConversionRule{ID: "forge-state", Enabled: true, Phase: p.ConversionEvent, Action: "set", Path: "/responsesTurnState/frame/headers/x-codex-turn-state", Value: p.StringValue("forged")}
-	c, err := p.ResolveConversion(p.ConversionPolicy{SchemaVersion: p.ConversionPolicySchemaVersion, ID: "forge", Rules: []p.ConversionRule{rule}})
-	if err == nil {
-		_, err = c.Event(t.Context(), frame.Events[0], p.ConversionContext{}, nil)
-	}
-	if err == nil {
-		t.Fatal("authored mutation minted opaque state")
 	}
 }

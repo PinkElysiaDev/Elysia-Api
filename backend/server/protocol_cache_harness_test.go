@@ -77,11 +77,11 @@ func TestStandardCacheCreationReachesNativeCopiesAndStorage(t *testing.T) {
 					_, _ = io.WriteString(w, strings.ReplaceAll(wire, `"cached_tokens":70`, `"cached_tokens":70,"cache_write_tokens":20`))
 				}))
 				t.Cleanup(provider.Close)
-				definition := presetDefinition(t, fixture.id)
+				definition := presetPackage(t, fixture.id)
 				if copyID {
-					definition.ID = "arbitrary-cache-copy-" + fixture.id
+					definition.Spec.ID = "arbitrary-cache-copy-" + fixture.id
 				}
-				compiled := compileFixtureDefinition(t, definition)
+				compiled := compileFixturePackage(t, definition)
 				directory := t.TempDir()
 				suite := &liveSuite{Model: "m", Origin: provider.URL, Compiler: protocol.CompilerVersion, StartedAt: time.Now(), key: "synthetic-secret", path: filepath.Join(directory, "live.json"), budget: &liveBudget{path: filepath.Join(directory, "budget.json")}, client: provider.Client()}
 				gateway := newLiveGateway(t, suite, compiled)

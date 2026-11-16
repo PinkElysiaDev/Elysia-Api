@@ -17,25 +17,34 @@ import (
 	"github.com/elysia-api/backend/storage"
 )
 
-func gatewayStreamDefinition(t *testing.T, name string, transport protocol.Transport, field string) protocol.Definition {
+func gatewayStreamDefinition(t *testing.T, name string, transport protocol.Transport, field string) protocol.ProtocolPackage {
 	t.Helper()
-	definition := loadGatewayDefinition(t, name)
-	definition.Capabilities[protocol.UsageCapability] = true
-	for direction, mapping := range definition.Directions {
+	definition := loadGatewayFixture(t, name)
+	definition.Mapping.Capabilities[protocol.UsageCapability] = true
+	for direction, mapping := range definition.Mapping.Directions {
 		mapping.Capabilities = protocol.CapabilitySet{protocol.TextCapability: true}
-		definition.Directions[direction] = mapping
+		definition.Mapping.Directions[direction] = mapping
 	}
-	decode := protocol.Expression{Op: "read", From: "input", Path: "/" + field, Required: true}
+	decode := protocol.Expression{Op: "merge", Policy: "last", Items: []protocol.Expression{
+		{Op: "read", From: "input", Path: "/" + field, Required: true},
+		{Op: "object", Fields: map[string]protocol.Expression{
+			"schemaVersion": {Op: "literal", Value: mustProtocolValue(t, "2")},
+			"type":          {Op: "read", Path: "/" + field + "/type", Required: true},
+		}},
+	}}
 	fields := map[string]protocol.Expression{}
 	for _, key := range []string{"type", "itemId", "item", "delta", "usage", "error"} {
 		fields[key] = protocol.Expression{Op: "read", From: "input", Path: "/" + key}
 	}
 	encode := protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{field: {Op: "object", Fields: fields}}}
-	definition.Directions[protocol.DecodeEvent] = protocol.Mapping{Transform: &decode}
-	definition.Directions[protocol.EncodeEvent] = protocol.Mapping{Transform: &encode}
-	operation := definition.Operations["generate"]
+	definition.Spec.Documents["event"] = gatewayEventContract(field)
+	definition.Mapping.Directions[protocol.DecodeEvent] = protocol.ProtocolDirectionMapping{Document: "event", Program: decode, Effects: gatewayEventEffects(field)}
+	definition.Mapping.Directions[protocol.EncodeEvent] = protocol.ProtocolDirectionMapping{Document: "event", Program: encode, Effects: gatewayEventEffects(field)}
+	operation := definition.Spec.Operations["generate"]
 	operation.Transport = transport
-	definition.Operations["generate"] = operation
+	operation.Response = "event"
+	definition.Spec.Operations["generate"] = operation
+	definition.Mapping.Operations["generate"] = protocol.ProtocolOperationMapping{Request: protocol.EncodeRequest, Response: protocol.DecodeEvent}
 	wires, semantics := []protocol.Value{}, []protocol.Value{}
 	for _, raw := range []string{
 		`{"type":"item.started","itemId":"text","item":{"kind":"text","payload":""}}`,
@@ -57,10 +66,32 @@ func gatewayStreamDefinition(t *testing.T, name string, transport protocol.Trans
 	}
 	wireValue, _ := protocol.EncodeValue(wires)
 	semanticValue, _ := protocol.EncodeValue(semantics)
-	definition.Samples = append(definition.Samples,
+	definition.Mapping.Samples = append(definition.Mapping.Samples,
 		protocol.Sample{ID: "events.decode", Direction: protocol.DecodeEvent, Capabilities: []protocol.Capability{protocol.TextCapability, protocol.UsageCapability}, Input: wireValue, Expected: semanticValue, Sequence: true},
 		protocol.Sample{ID: "events.encode", Direction: protocol.EncodeEvent, Capabilities: []protocol.Capability{protocol.TextCapability, protocol.UsageCapability}, Input: semanticValue, Expected: wireValue, Sequence: true})
 	return definition
+}
+
+func gatewayEventEffects(field string) []protocol.ProtocolSemanticEffect {
+	return []protocol.ProtocolSemanticEffect{{ID: "event-type", Kind: "emit", Path: "/type", Target: "/" + field + "/type"}}
+}
+
+func gatewayEventContract(field string) protocol.WireContractSpec {
+	prefix := "/" + field
+	events := map[string]protocol.ProtocolStreamEventSpec{}
+	for _, kind := range []string{"response.started", "item.started", "item.delta", "item.snapshot", "item.finished"} {
+		events[kind] = protocol.ProtocolStreamEventSpec{{Action: "stream_start", Implicit: true}}
+	}
+	events["usage.updated"] = protocol.ProtocolStreamEventSpec{{Action: "observe", AfterTerminal: true}}
+	events["response.finished"] = protocol.ProtocolStreamEventSpec{{Action: "stream_start", Implicit: true}, {Action: "stream_finish"}}
+	events["operation.failed"] = protocol.ProtocolStreamEventSpec{{Action: "stream_start", Implicit: true}, {Action: "stream_fail", Error: prefix + "/error"}}
+	return protocol.WireContractSpec{
+		Schema: &protocol.ValueSchema{Type: protocol.ObjectType, Required: []string{field}, Properties: map[string]protocol.ValueSchema{
+			field: {Type: protocol.ObjectType, Required: []string{"type"}, AllowUnknown: true, Properties: map[string]protocol.ValueSchema{"type": {Type: protocol.StringType}}},
+		}},
+		Stream: &protocol.ProtocolStreamSpec{Discriminator: prefix + "/type", ResponseID: prefix + "/responseId", OptionalResponseID: true,
+			Lifecycle: protocol.ProtocolStreamLifecycleSpec{EOF: "require_terminal", OpenEntities: "reject"}, Events: events},
+	}
 }
 
 func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
@@ -72,9 +103,9 @@ func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
 			if ingressTransport == protocol.SSE {
 				upstreamTransport = protocol.NDJSON
 			}
-			ingress := activateGatewayDefinition(t, server, gatewayStreamDefinition(t, "text-alpha", ingressTransport, "clientEvent"))
+			ingress := activateGatewayFixture(t, server, gatewayStreamDefinition(t, "text-alpha", ingressTransport, "clientEvent"))
 			definition := gatewayStreamDefinition(t, "text-beta", upstreamTransport, "providerEvent")
-			upstream := activateGatewayDefinition(t, server, definition)
+			upstream := activateGatewayFixture(t, server, definition)
 			provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", protocol.TransportContentType(upstreamTransport))
 				if upstreamTransport == protocol.SSE {
@@ -83,13 +114,13 @@ func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
 					fmt.Fprint(writer, "\xef\xbb\xbf: keepalive\r\rid: source-1\r\rretry: 200\r\r")
 				}
 				var frames []protocol.Value
-				definition.Samples[len(definition.Samples)-2].Input.Decode(&frames)
+				definition.Mapping.Samples[len(definition.Mapping.Samples)-2].Input.Decode(&frames)
 				for _, frame := range frames {
 					var err error
 					if upstreamTransport == protocol.SSE {
 						_, err = fmt.Fprintf(writer, "data: %s\r\r", frame.Bytes())
 					} else {
-						err = protocol.WriteFrame(writer, definition.Operations["generate"], frame)
+						err = protocol.WriteFrame(writer, upstream.Operations()["generate"], frame)
 					}
 					if err != nil {
 						t.Error(err)
@@ -104,7 +135,7 @@ func TestGatewaySSEAndNDJSONBridgeDrainsUsageAndPersists(t *testing.T) {
 				t.Fatalf("stream: %d %s", result.Code, result.Body)
 			}
 			var events []protocol.Event
-			err := protocol.ReadFrames(t.Context(), result.Body, ingress.Definition().Operations["generate"], protocol.DefaultLimits().BufferBytes, func(frame protocol.Value, metadata protocol.Object) error {
+			err := protocol.ReadFrames(t.Context(), result.Body, ingress.Operations()["generate"], protocol.DefaultLimits().BufferBytes, func(frame protocol.Value, metadata protocol.Object) error {
 				decoded, err := ingress.DecodeEvents(t.Context(), frame, protocol.EvaluationContext{Values: metadata})
 				events = append(events, decoded...)
 				return err
@@ -135,7 +166,7 @@ func TestGatewayBrokenStreamReportsErrorAndNeverRetries(t *testing.T) {
 	t.Parallel()
 	server, _ := newProtocolAdminTestServer(t)
 	definition := gatewayStreamDefinition(t, "text-alpha", protocol.SSE, "event")
-	compiled := activateGatewayDefinition(t, server, definition)
+	compiled := activateGatewayFixture(t, server, definition)
 	var calls atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls.Add(1)
@@ -214,8 +245,6 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			defer options.State.Release()
 			sourceOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
 			defer sourceOptions.State.Release()
-			wireOptions := protocol.EvaluationContext{State: protocol.NewEvaluationState()}
-			defer wireOptions.State.Release()
 			present := true
 			conversion, err := protocol.CompileConversion(protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "final-sequence", Rules: []protocol.ConversionRule{{
 				ID: "sequence", Enabled: true, Phase: protocol.ConversionWire, Match: protocol.ConversionMatch{Path: "/initial", Present: &present},
@@ -226,7 +255,7 @@ func TestGatewayOutputPositionCommitsAfterFlush(t *testing.T) {
 			}
 			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
 				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.SSE}},
-				candidate: gatewayCandidate{conversion: conversion}, limits: compiled.ResourceLimits(), options: options, finalValidation: validation, wireValidation: wireOptions}
+				candidate: gatewayCandidate{conversion: conversion}, limits: compiled.ResourceLimits(), options: options, finalValidation: validation}
 			raw := mustProtocolValue(t, `{"type":"response.started","responseId":"delivered-id","sequence":0,"initial":true}`)
 			decoded, err := compiled.DecodeFrame(ctx, raw, sourceOptions)
 			if err != nil {
@@ -353,7 +382,7 @@ func TestGatewayCarrierBatchDelivery(t *testing.T) {
 			}
 			stream := &gatewayStream{ctx: ctx, context: c, writer: writer, record: &usageRecord{FirstByteMs: 1},
 				plan:      &gatewayResponsePlan{ingress: compiled, operation: protocol.Operation{Transport: protocol.NDJSON}},
-				candidate: gatewayCandidate{conversion: conversion, continuation: &gatewayContinuation{isPackage: true, binding: binding}},
+				candidate: gatewayCandidate{conversion: conversion, continuation: &gatewayContinuation{binding: binding}},
 				limits:    compiled.ResourceLimits(), options: options, finalValidation: validation}
 			if err := stream.emit(mustProtocolValue(t, `{"type":"response.started","responseId":"r","sequence":0}`)); err != nil {
 				t.Fatal(err)

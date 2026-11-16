@@ -9,13 +9,88 @@ import (
 	p "github.com/elysia-api/backend/protocol"
 )
 
+func TestAnthropicThinkingRetentionProjectionScope(t *testing.T) {
+	source := testCompiled(t, Anthropic)
+	document, _ := source.Package()
+	document.Spec.ID, document.Spec.Family = "custom-history-copy", "custom-family"
+	custom, issues := compilePackageDocument(t, document)
+	if err := p.IssuesError(issues); err != nil {
+		t.Fatal(err)
+	}
+	const raw = `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`
+	for _, sample := range []struct {
+		name, target string
+		source       *p.Compiled
+		isDisabled   bool
+	}{
+		{"native", Anthropic, source, false}, {"chat", Chat, source, false}, {"responses", Responses, source, false},
+		{"disabled", Gemini, source, true}, {"custom-package", Gemini, custom, false},
+	} {
+		t.Run(sample.name, func(t *testing.T) {
+			target := testCompiled(t, sample.target)
+			policy := p.DefaultConversionPolicy(sample.source, target)
+			for index := range policy.Rules {
+				if policy.Rules[index].ID == "request-projection" && sample.isDisabled {
+					policy.Rules[index].Enabled = false
+				}
+			}
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := sample.source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &p.DiagnosticSink{}
+			projected, err := conversion.Request(t.Context(), request, p.ConversionContext{Source: sample.source.Identity(), Target: target.Identity()}, sink)
+			var wire []byte
+			if err == nil {
+				wire, err = target.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+			}
+			if sample.target == Chat || sample.target == Responses || sample.isDisabled {
+				code := p.ConversionRejected
+				if sample.isDisabled {
+					code = p.UnsupportedCapability
+				}
+				requireContextIssue(t, err, code, "/reasoning/historyRetention")
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sample.target == Anthropic {
+				sameJSON(t, wire, raw)
+				if len(sink.Issues()) != 0 {
+					t.Fatal("native retention was projected", sink.Issues())
+				}
+			} else if !sinkHas(sink, "/reasoning/historyRetention") {
+				t.Fatal("custom package normalization lacked history evidence", sink.Issues())
+			}
+		})
+	}
+}
+
+func TestRequestProjectionCombinationReportsInfoLoss(t *testing.T) {
+	report := verifyRequestEvidence(t, testCompiled(t, Responses), testCompiled(t, Gemini), "tracking-hint", `{"model":"m","input":"hi","store":false,"metadata":{"trace":"anonymous"}}`, p.CapabilitySet{p.TextCapability: true, p.UsageCapability: true})
+	if !report.Passed || report.Fidelity != "lossy_compatible" {
+		t.Fatal(report.Fidelity, report.Issues)
+	}
+	for _, issue := range report.Issues {
+		if issue.RuleID == "request-projection" && issue.Severity == p.SeverityInfo && issue.Fidelity == "lossy_compatible" {
+			return
+		}
+	}
+	t.Fatal("info loss was omitted from combination evidence", report.Checks)
+}
+
 func TestRequestHintProjection(t *testing.T) {
 	t.Parallel()
 	for _, target := range []string{Chat, Responses, Anthropic, Gemini} {
 		for _, mode := range []string{"compatible", "strict"} {
 			t.Run(target+"/"+mode, func(t *testing.T) {
 				source, dest := testCompiled(t, Responses), testCompiled(t, target)
-				req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hello","store":false,"prompt_cache_key":"session","prompt_cache_retention":"24h","metadata":{"trace":"opaque"},"user":"user-1"}`), p.EvaluationContext{})
+				req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hello","store":false,"prompt_cache_key":"session","prompt_cache_retention":"24h","metadata":{"trace":"opaque"},"user":"user-1"}`), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -38,14 +113,17 @@ func TestRequestHintProjection(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				wire, err := dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
-				for _, field := range []string{"prompt_cache_key", "prompt_cache_retention", "metadata", "user-1"} {
+				for _, field := range []string{"prompt_cache_key", "prompt_cache_retention", "opaque"} {
 					if strings.Contains(string(wire), field) != mapped {
 						t.Fatalf("%s: %s", field, wire)
 					}
+				}
+				if strings.Contains(string(wire), "user-1") != (mapped || target == Anthropic) {
+					t.Fatal("canonical caller identity changed", string(wire))
 				}
 				count := 0
 				for _, issue := range sink.Issues() {
@@ -57,7 +135,11 @@ func TestRequestHintProjection(t *testing.T) {
 						t.Fatal(issue)
 					}
 				}
-				if !mapped && count != 4 {
+				wantDrops := 4
+				if target == Anthropic {
+					wantDrops = 3
+				}
+				if !mapped && count != wantDrops {
 					t.Fatal("missing hint diagnostics", sink.Issues())
 				}
 				after, _ := p.EncodeValue(req)
@@ -73,7 +155,7 @@ func TestRequestBreakpointsPreservePayloads(t *testing.T) {
 	t.Parallel()
 	raw := `{"model":"m","max_tokens":100,"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"system","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","cache_control":{"type":"ephemeral"},"content":[{"type":"text","text":"question","cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"lookup","input":{"cache_control":{"type":"user-data"}},"cache_control":{"type":"ephemeral"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"result","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"lookup","input_schema":{"type":"object","properties":{"cache_control":{"type":"object"}}},"cache_control":{"type":"ephemeral","ttl":"1h"}}]}`
 	source := testCompiled(t, Anthropic)
-	req, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+	req, err := source.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +177,7 @@ func TestRequestBreakpointsPreservePayloads(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				wire, err := dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -172,7 +254,7 @@ func TestRequestProjectionValidationAndUnknowns(t *testing.T) {
 			if tc.codec == Anthropic {
 				history = `"messages":[{"role":"user","content":"hello"}],"max_tokens":100`
 			}
-			req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m",`+history+`,`+tc.fields+`}`), p.EvaluationContext{})
+			req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m",`+history+`,`+tc.fields+`}`), fixtureOptions(p.EvaluationContext{}))
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("invalid hint accepted at ingress")
@@ -182,13 +264,13 @@ func TestRequestProjectionValidationAndUnknowns(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := source.EncodeRequest(t.Context(), req, p.EvaluationContext{}); err != nil {
+			if _, err := source.EncodeRequest(t.Context(), req, fixtureOptions(p.EvaluationContext{})); err != nil {
 				t.Fatal("native extension rejected", err)
 			}
 			c, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, dest))
 			out, err := c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
 			if err == nil {
-				_, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				_, err = dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 			}
 			if err == nil {
 				t.Fatal("unknown semantics disappeared")
@@ -210,7 +292,7 @@ func TestAnthropicThinkingRetentionProjection(t *testing.T) {
 				t.Fatal(err)
 			}
 			route := p.ConversionContext{Source: source.Identity(), Target: target.Identity()}
-			baseline, err := source.DecodeRequest(t.Context(), []byte(body), p.EvaluationContext{})
+			baseline, err := source.DecodeRequest(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -218,13 +300,13 @@ func TestAnthropicThinkingRetentionProjection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want, err := target.EncodeRequest(t.Context(), baseline, p.EvaluationContext{})
+			want, err := target.EncodeRequest(t.Context(), baseline, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, keep := range []string{`"all"`, `{"type":"all"}`, `"a\u006cl"`} {
 				raw := strings.TrimSuffix(body, "}") + `,"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":` + keep + `}]}}`
-				request, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+				request, err := source.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -234,7 +316,7 @@ func TestAnthropicThinkingRetentionProjection(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := target.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				wire, err := target.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 				if err != nil || !bytes.Equal(wire, want) {
 					t.Fatalf("retention changed Gemini history: %s vs %s: %v", wire, want, err)
 				}
@@ -243,14 +325,14 @@ func TestAnthropicThinkingRetentionProjection(t *testing.T) {
 					t.Fatal("expected one normalization", issues)
 				}
 				issue := issues[0]
-				if issue.Code != p.ConversionNormalized || issue.Severity != p.SeverityInfo || issue.Fidelity != "preserved" || issue.RuleID != "request-projection" || issue.Path != "/wire:claude/context_management" || issue.Direction != p.EncodeRequest || issue.Stage != "conversion.request" || issue.PolicyHash != conversion.Hash || issue.PolicyRevision == "" || issue.Evidence != "engine-default" {
+				if issue.Code != p.ConversionNormalized || issue.Severity != p.SeverityInfo || issue.Fidelity != "preserved" || issue.RuleID != "request-projection" || issue.Path != "/reasoning/historyRetention" || issue.Direction != p.EncodeRequest || issue.Stage != "conversion.request" || issue.PolicyHash != conversion.Hash || issue.PolicyRevision == "" || issue.Evidence != "engine-default" {
 					t.Fatal(issue)
 				}
 				after, _ := p.EncodeValue(request)
 				if before != after {
 					t.Fatal("source request changed")
 				}
-				wire, err = source.EncodeRequest(t.Context(), request, p.EvaluationContext{})
+				wire, err = source.EncodeRequest(t.Context(), request, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -260,73 +342,11 @@ func TestAnthropicThinkingRetentionProjection(t *testing.T) {
 	}
 }
 
-func TestAnthropicThinkingRetentionProjectionScope(t *testing.T) {
-	t.Parallel()
-	source := testCompiled(t, Anthropic)
-	definition := source.Definition()
-	definition.Family = "custom-family"
-	mapping := definition.Directions[p.DecodeRequest]
-	mapping.After = &p.Expression{Op: "read", Path: ""}
-	definition.Directions[p.DecodeRequest] = mapping
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	encoded, _ := p.EncodeValue(definition)
-	custom, issues := compiler.Compile(encoded.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	const raw = `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}}`
-	for _, tc := range []struct {
-		name, target string
-		source       *p.Compiled
-		disabled     bool
-	}{
-		{"native", Anthropic, source, false},
-		{"chat", Chat, source, false},
-		{"responses", Responses, source, false},
-		{"disabled", Gemini, source, true},
-		{"custom-after", Gemini, custom, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			target := testCompiled(t, tc.target)
-			policy := p.DefaultConversionPolicy(tc.source, target)
-			for i := range policy.Rules {
-				if policy.Rules[i].ID == "request-projection" && tc.disabled {
-					policy.Rules[i].Enabled = false
-				}
-			}
-			conversion, err := p.ResolveConversion(policy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			request, err := tc.source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			sink := &p.DiagnosticSink{}
-			request, err = conversion.Request(t.Context(), request, p.ConversionContext{Source: tc.source.Identity(), Target: target.Identity()}, sink)
-			if err != nil {
-				t.Fatal(err)
-			}
-			wire, err := target.EncodeRequest(t.Context(), request, p.EvaluationContext{})
-			if tc.target == Chat || tc.target == Responses || tc.disabled {
-				requireContextIssue(t, err, p.UnsupportedCapability, "/wire:claude/context_management/edits")
-			} else if err != nil {
-				t.Fatal(err)
-			} else if tc.target == Anthropic {
-				sameJSON(t, wire, raw)
-				if len(sink.Issues()) != 0 {
-					t.Fatal("native retention was projected", sink.Issues())
-				}
-			}
-		})
-	}
-}
-
 func TestRequestProjectionEmptyHintsAndToolStrict(t *testing.T) {
 	t.Parallel()
 	for _, fields := range []string{`"prompt_cache_key":null,"prompt_cache_retention":null,"metadata":{},"user":null`, `"metadata":null`} {
 		source, dest := testCompiled(t, Responses), testCompiled(t, Gemini)
-		req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hi","store":false,`+fields+`}`), p.EvaluationContext{})
+		req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hi","store":false,`+fields+`}`), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -338,7 +358,7 @@ func TestRequestProjectionEmptyHintsAndToolStrict(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{}); err != nil {
+		if _, err = dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{})); err != nil {
 			t.Fatal(err)
 		}
 		for _, issue := range sink.Issues() {
@@ -353,7 +373,7 @@ func TestRequestProjectionEmptyHintsAndToolStrict(t *testing.T) {
 func TestRequestProjectionNativeReplayAndCandidateIsolation(t *testing.T) {
 	t.Parallel()
 	source, target := testCompiled(t, Chat), testCompiled(t, Gemini)
-	req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"prompt_cache_key":"key","metadata":{"trace":"value"},"stream_options":{"include_usage":true}}`), p.EvaluationContext{})
+	req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}],"prompt_cache_key":"key","metadata":{"trace":"value"},"stream_options":{"include_usage":true}}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,21 +383,28 @@ func TestRequestProjectionNativeReplayAndCandidateIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Encode back to the source to exercise native reconciliation after omission.
-	wire, err := source.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+	wire, err := source.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []string{"prompt_cache_key", "metadata", "stream_options"} {
+	for _, field := range []string{"prompt_cache_key", "metadata"} {
 		if strings.Contains(string(wire), field) {
 			t.Fatalf("native snapshot resurrected %s: %s", field, wire)
 		}
+	}
+	if !strings.Contains(string(wire), `"stream_options":{"include_usage":true}`) {
+		t.Fatal("caller delivery preference was lost with generation hints", string(wire))
+	}
+	upstream, err := target.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
+	if err != nil || strings.Contains(string(upstream), "stream_options") {
+		t.Fatal("source delivery options escaped into the target request", string(upstream), err)
 	}
 	native, _ := p.ResolveConversion(p.DefaultConversionPolicy(source, source))
 	out, err = native.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: source.Identity()}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err = source.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+	wire, err = source.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 	if err != nil || !strings.Contains(string(wire), "prompt_cache_key") || !strings.Contains(string(wire), "metadata") {
 		t.Fatal("previous candidate contaminated native candidate", string(wire), err)
 	}
@@ -391,13 +418,17 @@ func TestInactiveStreamOptions(t *testing.T) {
 			if foreign {
 				target = testCompiled(t, Gemini)
 			}
-			req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[],"store":false,"stream":false,"stream_options":`+raw+`}`), p.EvaluationContext{})
+			req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","messages":[],"store":false,"stream":false,"stream_options":`+raw+`}`), fixtureOptions(p.EvaluationContext{}))
 			policy := p.DefaultConversionPolicy(source, target)
 			policy.Mode = "strict"
 			c, _ := p.ResolveConversion(policy)
 			sink := &p.DiagnosticSink{}
 			if err == nil {
 				req, err = c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, sink)
+			}
+			var wire []byte
+			if err == nil {
+				wire, err = target.EncodeRequest(t.Context(), req, fixtureOptions(p.EvaluationContext{}))
 			}
 			if strings.Contains(raw, "null}") || (foreign && strings.Contains(raw, "future")) {
 				if err == nil {
@@ -407,10 +438,6 @@ func TestInactiveStreamOptions(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal(raw, err)
-			}
-			wire, err := target.EncodeRequest(t.Context(), req, p.EvaluationContext{})
-			if err != nil {
-				t.Fatal(err)
 			}
 			if strings.Contains(raw, "future") != strings.Contains(string(wire), "future") {
 				t.Fatal(string(wire))
@@ -427,7 +454,7 @@ func TestInactiveStreamOptions(t *testing.T) {
 func TestRequestProjectionNativeOpaqueCacheOwnership(t *testing.T) {
 	t.Parallel()
 	source, dest := testCompiled(t, Anthropic), testCompiled(t, Gemini)
-	req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":[{"type":"future","data":"opaque","cache_control":{"type":"ephemeral"}}]}],"tools":[{"type":"server-tool","name":"lookup","cache_control":{"type":"ephemeral"}}]}`), p.EvaluationContext{})
+	req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":[{"type":"future","data":"opaque","cache_control":{"type":"ephemeral"}}]}],"tools":[{"type":"server-tool","name":"lookup","cache_control":{"type":"ephemeral"}}]}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,14 +463,14 @@ func TestRequestProjectionNativeOpaqueCacheOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := source.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+	wire, err := source.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(wire), "cache_control") || !strings.Contains(string(wire), "opaque") {
 		t.Fatal("native snapshot restored removed hints", string(wire))
 	}
-	if _, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{}); err == nil {
+	if _, err = dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{})); err == nil {
 		t.Fatal("unmapped opaque content accepted")
 	}
 }
@@ -452,7 +479,7 @@ func TestRequestTrackingIdentityMapping(t *testing.T) {
 	t.Parallel()
 	for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
 		source, dest := testCompiled(t, Anthropic), testCompiled(t, codec)
-		req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}],"metadata":{"user_id":"identity"}}`), p.EvaluationContext{})
+		req, err := source.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":100,"messages":[{"role":"user","content":"hi"}],"metadata":{"user_id":"identity"}}`), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -461,7 +488,7 @@ func TestRequestTrackingIdentityMapping(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+		wire, err := dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -472,9 +499,15 @@ func TestRequestTrackingIdentityMapping(t *testing.T) {
 			if !strings.Contains(string(wire), `"user":"identity"`) {
 				t.Fatal(string(wire))
 			}
-			req.Parameters["user"] = p.StringValue("conflict")
-			if _, err := c.Request(t.Context(), req, p.ConversionContext{}, nil); err == nil {
-				t.Fatal("conflicting identity overwritten")
+			edited := req.Clone()
+			edited.Parameters["user"] = p.StringValue("edited")
+			projected, err := c.Request(t.Context(), edited, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, err := dest.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
+			if err != nil || !strings.Contains(string(wire), `"user":"edited"`) || !req.Parameters["user"].IsString("identity") {
+				t.Fatal("canonical identity edit was lost or changed its source", string(wire), err)
 			}
 		}
 	}
@@ -488,97 +521,70 @@ func TestRequestTrackingIdentitySpellings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, fixture := range []struct {
-			name, user, identity string
-			isEqual, isInvalid   bool
-		}{
-			{"same", `"u"`, `"u"`, true, false},
-			{"unicode-escape", `"u"`, `"\u0075"`, true, false},
-			{"html-escape", `"<"`, `"\u003c"`, true, false},
-			{"different", `"u"`, `"other"`, false, false},
-			{"null", `null`, `null`, true, false},
-			{"null-whitespace", " \t\r\nnull \t", `null`, true, false},
-			{"null-string", `null`, `"u"`, false, false},
-			{"null-empty-string", `null`, `""`, false, false},
-			{"null-whitespace-string", " null ", `""`, false, false},
-			{"number", `1`, `1`, true, true},
-			{"number-spelling", `1`, `1.0`, false, true},
-		} {
-			t.Run(codec+"/"+fixture.name, func(t *testing.T) {
-				input := testValue(t, `{"schemaVersion":1,"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}],"parameters":{"user":`+fixture.user+`,"anthropic_metadata":{"user_id":`+fixture.identity+`}}}`)
-				var request p.Request
-				if err := input.Decode(&request); err != nil {
+		for _, raw := range []string{`"u"`, `"\u0075"`, `"<"`, `"\u003c"`, `null`, " \t\r\nnull \t", `""`, `1`, `1.0`} {
+			t.Run(codec+"/"+raw, func(t *testing.T) {
+				request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Source: source.Identity(), Model: p.StringValue("m"), Content: []p.Node{}, Parameters: p.Object{"user": testValue(t, raw)}}
+				input, err := p.EncodeValue(request)
+				if err != nil {
 					t.Fatal(err)
 				}
-				// Direct typed callers can retain outer JSON whitespace that field
-				// extraction from an HTTP body would already have skipped.
-				request.Parameters["user"] = testValue(t, fixture.user)
-				request.Source = source.Identity()
-				check := func(entry string, wire p.Value, err error, canEncode bool, code p.IssueCode, path string) {
+				canEncode := request.Parameters["user"].IsNull() || request.Parameters["user"].IsStringValue()
+				check := func(entry string, wire p.Value, err error) {
 					t.Helper()
 					if canEncode {
 						if err != nil {
-							t.Fatalf("%s rejected the same identity: %v", entry, err)
+							t.Fatal(entry, err)
 						}
 						fields, err := wire.ReadObject()
 						if err != nil {
 							t.Fatal(err)
 						}
-						sameJSON(t, fields["user"].Bytes(), fixture.user)
+						sameJSON(t, fields["user"].Bytes(), raw)
 						return
 					}
 					var failure *p.ConversionError
-					if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != code || failure.Issues[0].Path != path {
-						t.Fatalf("%s changed identity rejection: %v", entry, err)
+					if !errors.As(err, &failure) || len(failure.Issues) != 1 {
+						t.Fatal(entry, "invalid canonical identity was not rejected", err)
+					}
+					issue := failure.Issues[0]
+					isCoreRejection := issue.Code == p.InvalidInput && issue.Path == "/parameters/user"
+					isWireRejection := issue.Code == p.ConversionRejected && issue.Path == "/user"
+					if !isCoreRejection && !isWireRejection {
+						t.Fatal(entry, "invalid canonical identity was not rejected", err)
 					}
 				}
-				public, publicErr := target.EncodeRequestValue(t.Context(), request.Clone(), p.EvaluationContext{})
-				code, path := p.UnsupportedCapability, "/parameters/user"
-				if fixture.isInvalid {
-					code, path = p.InvalidInput, "/parameters/anthropic_metadata/user_id"
+				public, err := target.EncodeRequestValue(t.Context(), request.Clone(), fixtureOptions(p.EvaluationContext{}))
+				check("public", public, err)
+				wire, issues := target.Execute(t.Context(), p.EncodeRequest, input, fixtureOptions(p.EvaluationContext{}))
+				check("raw", wire, p.IssuesError(issues))
+				projected, err := conversion.Request(t.Context(), request.Clone(), p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil)
+				var output p.Value
+				if err == nil {
+					output, err = target.EncodeRequestValue(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 				}
-				check("public", public, publicErr, fixture.isEqual && !fixture.isInvalid, code, path)
-				raw, issues := target.Execute(t.Context(), p.EncodeRequest, input, p.EvaluationContext{})
-				check("raw", raw, p.IssuesError(issues), fixture.isEqual, p.UnsupportedCapability, "/parameters/user")
-				projected, projectionErr := conversion.Request(t.Context(), request.Clone(), p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil)
-				var projectedWire p.Value
-				if projectionErr == nil {
-					projectedWire, projectionErr = target.EncodeRequestValue(t.Context(), projected, p.EvaluationContext{})
-				}
-				check("projection", projectedWire, projectionErr, fixture.isEqual && !fixture.isInvalid, p.InvalidInput, "/parameters/anthropic_metadata/user_id")
+				check("projection", output, err)
 			})
 		}
 	}
 }
 
-func TestRequestProjectionCombinationReportsInfoLoss(t *testing.T) {
-	t.Parallel()
-	source, dest := shippedProjectionProtocol(t, Responses), shippedProjectionProtocol(t, Gemini)
-	d := source.Definition()
-	d.Samples = append(d.Samples, p.Sample{ID: "tracking-hint", Direction: p.DecodeRequest, Scope: p.Scope{Model: "m"}, Context: p.Object{"model": p.StringValue("m")},
-		Input:    testValue(t, `{"model":"m","input":"hi","store":false,"metadata":{"trace":"anonymous"}}`),
-		Expected: testValue(t, `{"schemaVersion":1,"source":{},"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hi"}]}],"parameters":{"store":false,"metadata":{"trace":"anonymous"}}}`)})
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	raw, _ := p.EncodeValue(d)
-	source, issues := compiler.Compile(raw.Bytes())
-	if err := p.IssuesError(issues); err != nil {
-		t.Fatal(err)
-	}
-	if report := p.Verify(t.Context(), source); !report.Passed {
-		t.Fatal(report.Issues)
-	}
-	report := p.VerifyBindingCombination(t.Context(), source, dest, p.CapabilitySet{p.TextCapability: true, p.UsageCapability: true})
-	if !report.Passed || report.Fidelity != "lossy_compatible" {
-		t.Fatal(report.Fidelity, report.Issues)
-	}
-	found := false
-	for _, issue := range report.Issues {
-		if issue.RuleID == "request-projection" && issue.Severity == p.SeverityInfo && issue.Fidelity == "lossy_compatible" {
-			found = true
+func TestRequestRetiredTrackingWrapperCannotOverrideIdentity(t *testing.T) {
+	for _, codec := range []string{Chat, Responses, Anthropic, Gemini} {
+		target := shippedProjectionProtocol(t, codec)
+		for _, raw := range []string{`null`, `{}`, `{"user_id":"u"}`, `{"user_id":"\u0075"}`, `{"user_id":"other"}`, `{"user_id":null}`, `{"user_id":""}`, `{"user_id":1}`, `{"user_id":1.0}`, `{"user_id":"u","future":true}`} {
+			input := testValue(t, `{"schemaVersion":2,"model":"m","content":[],"parameters":{"user":"u","anthropic_metadata":`+raw+`}}`)
+			var request p.Request
+			if err := input.Decode(&request); err != nil {
+				t.Fatal(err)
+			}
+			_, err := target.EncodeRequestValue(t.Context(), &request, fixtureOptions(p.EvaluationContext{}))
+			if err == nil {
+				t.Fatal(codec, "retired wrapper was parsed or discarded", raw)
+			}
+			if _, issues := target.Execute(t.Context(), p.EncodeRequest, input, fixtureOptions(p.EvaluationContext{})); len(issues) == 0 {
+				t.Fatal(codec, "raw entry accepted retired wrapper", raw)
+			}
 		}
-	}
-	if !found {
-		t.Fatal("info loss missing from combination evidence", report.Checks)
 	}
 }
 
@@ -587,7 +593,7 @@ func TestRequestToolErrorAndUnknownMessageState(t *testing.T) {
 	source, dest := testCompiled(t, Anthropic), testCompiled(t, Chat)
 	for _, value := range []string{`true`, `false`, `null`, `"true"`} {
 		raw := `{"model":"m","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"c","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"c","content":"result","is_error":` + value + `}]}]}`
-		req, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+		req, err := source.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 		if value == "null" || value == `"true"` {
 			if err == nil {
 				t.Fatal("invalid error state accepted")
@@ -602,7 +608,7 @@ func TestRequestToolErrorAndUnknownMessageState(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+		wire, err := dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -612,7 +618,7 @@ func TestRequestToolErrorAndUnknownMessageState(t *testing.T) {
 		req.Content[1].Attributes = p.Object{"wire:claude": testValue(t, `{"future":true}`)}
 		out, err = c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
 		if err == nil {
-			_, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+			_, err = dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 		}
 		if err == nil {
 			t.Fatal("unknown message state lost")
@@ -627,7 +633,7 @@ func TestRequestNativeExtensionsRequireCrossProtocolMapping(t *testing.T) {
 		`{"model":"m","messages":[{"role":"user","content":"hi"}],"prompt_cache_options":{"mode":"implicit","future":true}}`,
 	} {
 		source := testCompiled(t, Chat)
-		req, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+		req, err := source.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -637,7 +643,7 @@ func TestRequestNativeExtensionsRequireCrossProtocolMapping(t *testing.T) {
 			out, err := c.Request(t.Context(), req, p.ConversionContext{Source: source.Identity(), Target: dest.Identity()}, nil)
 			var wire []byte
 			if err == nil {
-				wire, err = dest.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+				wire, err = dest.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 			}
 			if codec != Chat {
 				if err == nil {

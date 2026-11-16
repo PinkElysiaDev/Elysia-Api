@@ -29,7 +29,7 @@ func TestNativeReplayRejectsRebuiltScope(t *testing.T) {
 		"source": literalExpression(origin),
 		"value":  readExpression("input", nativePath+"/value"),
 	}))}
-	compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
 	rebuilt, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
 	if err := IssuesError(issues); rebuilt != nil || err == nil || !strings.Contains(err.Error(), "unchanged core Native") {
 		t.Fatal("rebuilding scope authorized a foreign original Native", err)

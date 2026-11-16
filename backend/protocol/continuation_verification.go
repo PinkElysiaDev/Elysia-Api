@@ -2,10 +2,19 @@ package protocol
 
 import (
 	"context"
+	"crypto/rand"
 	"slices"
 	"strconv"
 	"time"
 )
+
+const continuationPreviewKeyBytes = 32
+
+func randBytesForPreview() []byte {
+	key := make([]byte, continuationPreviewKeyBytes)
+	_, _ = rand.Read(key)
+	return key
+}
 
 // prepareContinuationEvidence uses the production seal/open/restore path. The
 // returned binding still requires actual carrier rendering and final validation.
@@ -29,7 +38,7 @@ type continuationEvidence struct {
 }
 
 func newContinuationEvidence(conversion *CompiledConversion, target *Compiled, phase ConversionPhase, route ConversionContext) (*continuationEvidence, error) {
-	if target.packagePlan == nil || conversion == nil || conversion.Policy.Continuation == nil || !conversion.HasContinuationRecovery(phase, route) {
+	if conversion == nil || conversion.Policy.Continuation == nil || !conversion.HasContinuationRecovery(phase, route) {
 		return nil, nil
 	}
 	settings := conversion.Policy.Continuation

@@ -11,20 +11,20 @@ import (
 func TestOperationSchemaIsVerifiedAndImmutable(t *testing.T) {
 	definition := textVerificationDefinition(t, "operation-input")
 	var name string
-	for key := range definition.Operations {
+	for key := range definition.Spec.Operations {
 		name = key
 		break
 	}
-	operation := definition.Operations[name]
+	operation := definition.Spec.Operations[name]
 	operation.Input = &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"engine": {Type: StringType}}, Required: []string{"engine"}, AllowUnknown: true}
-	definition.Operations[name] = operation
+	definition.Spec.Operations[name] = operation
 	compiled := compileTestDefinition(t, definition)
 	if report := Verify(t.Context(), compiled); !report.Passed {
 		t.Fatal(report.Issues)
 	}
 	copy := compiled.Operations()[name]
 	copy.Input.Required[0] = "missing"
-	if err := compiled.CheckOperationInput(t.Context(), name, definition.Samples[0].Input.Bytes()); err != nil {
+	if err := compiled.CheckOperationInput(t.Context(), name, definition.Mapping.Samples[0].Input.Bytes()); err != nil {
 		t.Fatal("operation snapshot mutated", err)
 	}
 	if err := compiled.CheckOperationInput(t.Context(), name, []byte(`{}`)); err == nil {
@@ -35,7 +35,7 @@ func TestOperationSchemaIsVerifiedAndImmutable(t *testing.T) {
 	}
 	operation.Input.Required = []string{"missing"}
 	operation.Input.Properties["missing"] = ValueSchema{Type: StringType}
-	definition.Operations[name] = operation
+	definition.Spec.Operations[name] = operation
 	if report := Verify(t.Context(), compileTestDefinition(t, definition)); report.Passed {
 		t.Fatal("invalid operation bypassed verification")
 	}
@@ -59,15 +59,15 @@ func TestOperationInputRequestBudget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			definition := textVerificationDefinition(t, "operation-budget")
 			var name string
-			for key, operation := range definition.Operations {
+			for key, operation := range definition.Spec.Operations {
 				name = key
 				operation.Input = &ValueSchema{Type: ObjectType, Required: []string{"engine"}, Properties: map[string]ValueSchema{"engine": {Type: StringType}}, AllowUnknown: true}
-				definition.Operations[key] = operation
+				definition.Spec.Operations[key] = operation
 			}
 			if tc.authoredLimit > 0 {
 				limits := DefaultLimits()
 				limits.BufferBytes = tc.authoredLimit
-				definition.Limits = &limits
+				definition.Mapping.Limits = &limits
 			}
 			compiled := compileTestDefinition(t, definition)
 			ctx := t.Context()
@@ -113,8 +113,8 @@ func TestOperationInputRequestBudget(t *testing.T) {
 
 func TestOperationFixtureRejectsUnknownReference(t *testing.T) {
 	definition := textVerificationDefinition(t, "operation-reference")
-	definition.Samples[0].Operation = "missing"
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	definition.Mapping.Samples[0].Operation = "missing"
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,15 +128,15 @@ func TestCombinationChecksTargetOperationInput(t *testing.T) {
 	source := compileTestDefinition(t, textVerificationDefinition(t, "optional-budget"))
 	definition := textVerificationDefinition(t, "required-budget")
 	for _, direction := range []Direction{DecodeRequest, EncodeRequest} {
-		mapping := definition.Directions[direction]
-		mapping.Transform.Fields["parameters"] = Expression{Op: "read", Path: "/parameters"}
-		definition.Directions[direction] = mapping
+		mapping := definition.Mapping.Directions[direction]
+		mapping.Program.Fields["parameters"] = Expression{Op: "read", Path: "/parameters"}
+		definition.Mapping.Directions[direction] = mapping
 	}
-	for name, operation := range definition.Operations {
+	for name, operation := range definition.Spec.Operations {
 		operation.Input = &ValueSchema{Type: ObjectType, AllowUnknown: true, Required: []string{"parameters"}, Properties: map[string]ValueSchema{"parameters": {Type: ObjectType, Required: []string{"budget"}, Properties: map[string]ValueSchema{"budget": {Type: IntegerType}}}}}
-		definition.Operations[name] = operation
+		definition.Spec.Operations[name] = operation
 	}
-	for index, sample := range definition.Samples {
+	for index, sample := range definition.Mapping.Samples {
 		if sample.Direction != DecodeRequest && sample.Direction != EncodeRequest {
 			continue
 		}
@@ -148,7 +148,7 @@ func TestCombinationChecksTargetOperationInput(t *testing.T) {
 			fields["parameters"] = fixtureValue(t, map[string]int{"budget": 10})
 			*value = fixtureValue(t, fields)
 		}
-		definition.Samples[index] = sample
+		definition.Mapping.Samples[index] = sample
 	}
 	target := compileTestDefinition(t, definition)
 	for _, compiled := range []*Compiled{source, target} {

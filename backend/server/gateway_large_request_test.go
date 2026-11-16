@@ -131,7 +131,7 @@ func TestGatewayStructuralLimitsRejectBeforeSending(t *testing.T) {
 	compiled, _ := service.Pin(protocol.PresetChatCompletionsID)
 	setupGatewayModel(t, s, compiled, provider.URL)
 	for _, extra := range []string{"[" + strings.Repeat("0,", 100000) + "0]", strings.Repeat("[", 65) + "0" + strings.Repeat("]", 65)} {
-		req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"x"}],"extra":`+extra+`}`))
+		req := httptest.NewRequest("POST", "/gateway/openai-chat-completions/v1/chat/completions", strings.NewReader(`{"model":"group","messages":[{"role":"user","content":"x"}],"extra":`+extra+`}`))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
 		serveTestHTTP(s.engine, rec, req)
@@ -148,7 +148,7 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	compiled, _ := service.Pin(protocol.PresetChatCompletionsID)
 	body := []byte(`{"model":"m","messages":[{"role":"user","content":"` + strings.Repeat("a", 9<<20) + `"}]}`)
 	input, _ := protocol.ParseValue(body)
-	definition, _ := protocol.EncodeValue(compiled.Definition())
+	definition, _ := protocol.EncodeValue(compiledPackage(compiled))
 	envelope, _ := sonic.ConfigStd.Marshal(protocol.PreviewInput{Definition: definition, Direction: protocol.DecodeRequest, Input: input})
 	ctx, rec := adminProtocolContext("POST", "/api/admin/protocols/preview", string(envelope))
 	s.adminProtocolPreviewV2(contextForTest(ctx), ctx)
@@ -185,7 +185,7 @@ func TestLargeRequestPreviewAndCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.Definition().Capabilities, Transports: []protocol.Transport{protocol.HTTPJSON}}}
+	candidate := gatewayCandidate{compiled: compiled, conversion: conversion, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: protocol.Binding{ProtocolID: compiled.Identity().DefinitionID, RevisionHash: compiled.Hash(), Capabilities: compiled.DeclaredCapabilities(), Transports: []protocol.Transport{protocol.HTTPJSON}}}
 	request, err := compiled.DecodeRequest(t.Context(), body, protocol.EvaluationContext{})
 	if err != nil {
 		t.Fatal(err)

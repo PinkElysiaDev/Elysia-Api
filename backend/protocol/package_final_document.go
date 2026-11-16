@@ -25,10 +25,10 @@ func (compiled *Compiled) bindFinalDocument(direction Direction, mapping Protoco
 }
 
 func (compiled *Compiled) selectFinalWireContract(direction Direction) compiledWireContract {
-	if compiled.packagePlan != nil {
-		if contract, exists := compiled.packagePlan.finalContracts[direction]; exists {
-			return contract
-		}
+
+	if contract, exists := compiled.packagePlan.finalContracts[direction]; exists {
+		return contract
 	}
+
 	return compiled.wireContracts[direction]
 }

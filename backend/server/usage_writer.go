@@ -5,8 +5,10 @@ import (
 	"errors"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/elysia-api/backend/logging"
+	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -17,6 +19,16 @@ const usageQueueCapacity = 1024
 // Payloads count while queued and while the writer persists them. This bounds
 // asynchronous retention, not active request memory or generation concurrency.
 const usageQueuePayloadBytes int64 = 128 << 20
+
+const (
+	protocolUsageBytes   = int(unsafe.Sizeof(protocol.Usage{}))
+	protocolCounterBytes = int(unsafe.Sizeof(protocol.Counter{}))
+	// Reserve spare map slots as well as the retained key and counter headers.
+	protocolDetailEntryBytes = 2 * int(unsafe.Sizeof(struct {
+		name    string
+		counter protocol.Counter
+	}{}))
+)
 
 const (
 	usageBatchCapacity = 64
@@ -267,6 +279,7 @@ func (s *Server) enqueueUsageRecord(record *usageRecord) bool {
 	// 在入队后继续 append（RetryEvents 等）即与 writer goroutine 读取竞争。
 	// downstream 捕获器的内容已在 recordUsage 物化进 DownstreamResponse，置 nil 断开指针别名。
 	copied := *record
+	copied.ProtocolUsage = protocol.CloneUsage(record.ProtocolUsage)
 	if record.Delivery != nil {
 		delivery := *record.Delivery
 		copied.Delivery = &delivery
@@ -305,6 +318,23 @@ func usageRetainedPayloadBytes(record *usageRecord) int64 {
 	}
 	for _, body := range []usageBody{record.IncomingBody, record.OutgoingBody, record.ProviderResponse, record.DownstreamResponse} {
 		add(len(body.Content))
+	}
+	if usage := record.ProtocolUsage; usage != nil {
+		add(protocolUsageBytes)
+		for _, value := range []protocol.Value{usage.ExecutionSpeed, usage.Executions, usage.Attribution, usage.CacheBilling} {
+			add(value.Len())
+		}
+		for _, counter := range []*protocol.Counter{usage.Input, usage.Output, usage.Total, usage.CacheRead, usage.CacheCreation} {
+			if counter != nil {
+				add(protocolCounterBytes)
+				add(len(counter.Origin))
+			}
+		}
+		for name, counter := range usage.Details {
+			add(protocolDetailEntryBytes)
+			add(len(name))
+			add(len(counter.Origin))
+		}
 	}
 	for _, event := range record.pendingStreamEvents {
 		add(len(event))

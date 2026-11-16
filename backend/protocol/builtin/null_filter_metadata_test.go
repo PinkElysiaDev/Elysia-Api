@@ -17,7 +17,7 @@ func TestResponsesNullFiltersUseMetadataRuleInJSONAndSSE(t *testing.T) {
 					policy := p.DefaultConversionPolicy(to, from)
 					policy.Mode = mode
 					for i := range policy.Rules {
-						if policy.Rules[i].Action == "response_metadata" {
+						if policy.Rules[i].ID == "response-metadata" || policy.Rules[i].ID == "event-metadata" || policy.Rules[i].ID == "history-response-metadata" {
 							policy.Rules[i].Enabled = enabled
 						}
 					}
@@ -28,34 +28,40 @@ func TestResponsesNullFiltersUseMetadataRuleInJSONAndSSE(t *testing.T) {
 					// Supply real required counts so a strict failure cannot be
 					// mistaken for the separate Anthropic usage envelope policy.
 					body := `{"id":"r","model":"m","status":"in_progress","output":[],"content_filters":null,"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}`
-					response, err := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+					response, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						t.Fatal(err)
 					}
 					for _, stream := range []bool{false, true} {
 						sink := &p.DiagnosticSink{}
 						if stream {
-							frame, decodeErr := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":`+body+`}`), p.EvaluationContext{State: p.NewEvaluationState()})
+							frame, decodeErr := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":`+body+`}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 							if decodeErr != nil {
 								t.Fatal(decodeErr)
 							}
-							options := p.EvaluationContext{State: p.NewEvaluationState()}
+							route, routeErr := c.WithFrameUsage(fixtureConversionContext(t, c, p.ConversionEvent, from.Identity()), frame.Events)
+							if routeErr != nil {
+								t.Fatal(routeErr)
+							}
+							options, consume := bindFixtureOutput(t, to, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 							for _, event := range frame.Events {
-								projected, e := c.Event(t.Context(), event, p.ConversionContext{}, sink)
+								projected, e := c.Event(t.Context(), event, route, sink)
 								if e != nil {
 									t.Fatal(e)
 								}
-								_, err = to.EncodeFrames(t.Context(), projected, options)
+								var frames []p.Value
+								frames, err = to.EncodeFrames(t.Context(), projected, options.WithConversion(c, route))
 								if err != nil {
 									break
 								}
+								consume(frames)
 							}
 						} else {
-							projected, e := c.Response(t.Context(), response, p.ConversionContext{}, sink)
+							projected, e := c.Response(t.Context(), response, fixtureConversionContext(t, c, p.ConversionResponse, response.Source), sink)
 							if e != nil {
 								t.Fatal(e)
 							}
-							_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+							_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 						}
 						if enabled {
 							if err != nil {
@@ -88,30 +94,35 @@ func TestResponsesNonNullFiltersRemainUnknown(t *testing.T) {
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(to, from))
 	for _, value := range []string{`null`, `{}`, `[]`, `false`, `42`, `{"blocked":true}`} {
 		body := `{"id":"r","model":"m","output":[],"content_filters":` + value + `}`
-		r, err := from.DecodeResponse(t.Context(), []byte(body), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(body), fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
 		r.Native = nil
-		wire, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+		for _, metadata := range r.Metadata {
+			if metadata.Name == "content_filters" && (value != `null` || metadata.Meaning != "empty") {
+				t.Fatal("source mapping expanded null-only recognition", value, metadata)
+			}
+		}
+		wire, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil || !strings.Contains(string(wire), `"content_filters":`+value) {
 			t.Fatalf("native field changed: %s %v", wire, err)
 		}
-		projected, err := c.Response(t.Context(), r, p.ConversionContext{}, nil)
+		projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = to.EncodeResponse(t.Context(), projected, p.EvaluationContext{})
+		_, err = to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 		if (err == nil) != (value == `null`) {
 			t.Fatalf("unexpected projection of %s: %v", value, err)
 		}
-		frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":`+body+`}`), p.EvaluationContext{State: p.NewEvaluationState()})
+		frame, err := from.DecodeFrame(t.Context(), testValue(t, `{"type":"response.created","response":`+body+`}`), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		if err != nil {
 			t.Fatal(err)
 		}
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		for _, event := range frame.Events {
-			projected, e := c.Event(t.Context(), event, p.ConversionContext{}, nil)
+			projected, e := c.Event(t.Context(), event, fixtureConversionContext(t, c, p.ConversionEvent, event.Source), nil)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -123,8 +134,5 @@ func TestResponsesNonNullFiltersRemainUnknown(t *testing.T) {
 		if (err == nil) != (value == `null`) {
 			t.Fatalf("unexpected streaming projection of %s: %v", value, err)
 		}
-	}
-	if err := p.ValidateMetadataValue(Responses, "response", "content_filters", testValue(t, `{}`), "/content_filters"); err == nil {
-		t.Fatal("custom semantic mapping expanded null-only recognition")
 	}
 }

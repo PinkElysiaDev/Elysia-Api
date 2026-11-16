@@ -26,7 +26,7 @@ func TestGatewayUnknownFailedEventNeverReplays(t *testing.T) {
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
 	for _, client := range []struct{ path, body string }{
-		{"/gateway/openai-responses/responses", `{"model":"group","input":"hi","stream":true,"store":false}`},
+		{"/gateway/openai-responses/v1/responses", `{"model":"group","input":"hi","stream":true,"store":false}`},
 		{"/gateway/anthropic-messages/v1/messages", `{"model":"group","messages":[{"role":"user","content":"hi"}],"max_tokens":32,"stream":true}`},
 	} {
 		req := httptest.NewRequest("POST", client.path, strings.NewReader(client.body))

@@ -52,7 +52,7 @@ func TestConversionStrictLoadMatchesContract(t *testing.T) {
 }
 
 func TestConversionStrictLoadRetainsLenientBoundary(t *testing.T) {
-	input := parseTestValue(t, `{"schemaVersion":1,"future":{"body":"`+strings.Repeat("p", coreDirectDecodeBytes+1)+`"}}`)
+	input := parseTestValue(t, `{"schemaVersion":2,"future":{"body":"`+strings.Repeat("p", coreDirectDecodeBytes+1)+`"}}`)
 	state := conversionState{wire: input}
 	if err := state.load(ConversionRequest, false); err != nil || state.isStrict {
 		t.Fatal("lenient context validation became strict", err)

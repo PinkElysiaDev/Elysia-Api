@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/bytedance/sonic"
@@ -30,7 +31,7 @@ func testGatewayGeminiIncludeAndReasoningProjection(t *testing.T, isPackage bool
 				s, _ := newProtocolAdminTestServer(t)
 				var upstream, ingress *protocol.Compiled
 				if isPackage {
-					packages := seedGatewayPackages(t, s)
+					packages := defaultGatewayPackages(t, s)
 					upstream = packages["google-generate-content"]
 					name := map[string]string{"responses": "openai-responses", "messages": "anthropic", "chat": "openai-chat"}[client]
 					ingress = packages[name]
@@ -59,13 +60,13 @@ func testGatewayGeminiIncludeAndReasoningProjection(t *testing.T, isPackage bool
 				}))
 				defer provider.Close()
 				setupGatewayModel(t, s, upstream, provider.URL)
-				path, body := "/gateway/openai-responses/responses", fmt.Sprintf(`{"model":"group","input":"hi","include":["reasoning.encrypted_content"],"stream":%v}`, stream)
+				path, body := "/gateway/openai-responses/v1/responses", fmt.Sprintf(`{"model":"group","input":"hi","include":["reasoning.encrypted_content"],"stream":%v}`, stream)
 				if clientKind == "messages" {
 					path = "/gateway/anthropic-messages/v1/messages"
 					body = fmt.Sprintf(`{"model":"group","max_tokens":100,"messages":[{"role":"user","content":"hi"}],"stream":%v}`, stream)
 				}
 				if clientKind == "chat" {
-					path = "/gateway/openai-chat-completions/chat/completions"
+					path = "/gateway/openai-chat-completions/v1/chat/completions"
 					body = fmt.Sprintf(`{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":%v,"stream_options":{"include_usage":true}}`, stream)
 				}
 				if isPackage {
@@ -113,14 +114,10 @@ func testGatewayGeminiIncludeAndReasoningProjection(t *testing.T, isPackage bool
 					t.Fatal("projection not diagnosed", record.ConversionIssues)
 				}
 				if clientKind == "responses" {
-					found = false
 					for _, issue := range record.ConversionIssues {
-						if issue.Code == protocol.ConversionNormalized && issue.RuleID == "responses-include" && issue.Fidelity == "preserved" && issue.Severity == protocol.SeverityInfo && issue.PolicyHash != "" {
-							found = true
+						if issue.RuleID == "responses-include" {
+							t.Fatal("canonical continuation selection used a retired foreign selector rule", issue)
 						}
-					}
-					if !found {
-						t.Fatal("include normalization not persisted", record.ConversionIssues)
 					}
 				}
 			})
@@ -140,12 +137,18 @@ func TestGatewayInvalidIncludeDoesNotCallUpstream(t *testing.T) {
 	}))
 	defer provider.Close()
 	setupGatewayModel(t, s, upstream, provider.URL)
-	for _, value := range []string{`42`, `[null]`, `["future"]`, `["reasoning.encrypted_content","future"]`} {
-		req := httptest.NewRequest("POST", "/gateway/openai-responses/responses", strings.NewReader(`{"model":"group","input":"hi","include":`+value+`}`))
+	for _, fixture := range []struct{ value, failure string }{
+		{`42`, "invalid_input at /include:"},
+		{`[null]`, "invalid_input at /include/0:"},
+		{`["future"]`, "conversion_rejected at /parameters:"},
+		{`["reasoning.encrypted_content","future"]`, "conversion_rejected at /parameters:"},
+	} {
+		value := fixture.value
+		req := httptest.NewRequest("POST", "/gateway/openai-responses/v1/responses", strings.NewReader(`{"model":"group","input":"hi","include":`+value+`}`))
 		req.Header.Set("Authorization", "Bearer gateway-test-token")
 		rec := httptest.NewRecorder()
 		serveTestHTTP(s.engine, rec, req)
-		if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), "/include") {
+		if rec.Code != 400 || calls != 0 || !strings.Contains(rec.Body.String(), fixture.failure) {
 			t.Fatal(value, rec.Code, calls, rec.Body.String())
 		}
 	}
@@ -176,7 +179,7 @@ func testGatewayIncludeCarrierDeliveryModes(t *testing.T, isPackage bool) {
 				})
 				var upstream, ingress *protocol.Compiled
 				if isPackage {
-					packages := seedGatewayPackages(t, s)
+					packages := defaultGatewayPackages(t, s)
 					upstream, ingress = packages["google-generate-content"], packages["openai-responses"]
 				} else {
 					activateDiscoveryPresets(t, s)
@@ -185,7 +188,9 @@ func testGatewayIncludeCarrierDeliveryModes(t *testing.T, isPackage bool) {
 					ingress, _ = service.Pin(protocol.PresetResponsesID)
 				}
 				service, _ := s.protocolService()
+				var providerCalls atomic.Int32
 				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					providerCalls.Add(1)
 					w.Header().Set("Content-Type", "application/json")
 					signature := ""
 					if signed {
@@ -216,51 +221,26 @@ func testGatewayIncludeCarrierDeliveryModes(t *testing.T, isPackage bool) {
 				req.Header.Set("x-elysia-session-id", "delivery-test")
 				rec := httptest.NewRecorder()
 				serveTestHTTP(s.engine, rec, req)
-				if signed && (strict || isPackage) {
-					path := "/include"
-					if isPackage {
-						path = "/continuation"
-					}
-					if rec.Code != 502 || !strings.Contains(rec.Body.String(), path) {
+				if signed {
+					if rec.Code != 502 || !strings.Contains(rec.Body.String(), "/continuation") {
 						t.Fatal(rec.Code, rec.Body.String())
 					}
-					if isPackage {
-						stats, err := s.store.ContinuationStats(t.Context())
-						if err != nil || stats["records"] != 1 {
-							t.Fatal("test did not exercise successful persistence without client delivery", stats, err)
-						}
+					stats, err := s.store.ContinuationStats(t.Context())
+					if err != nil || stats["records"] != 1 {
+						t.Fatal("test did not exercise successful persistence without client delivery", stats, err)
 					}
 					return
 				}
 				if rec.Code != 200 || strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) {
 					t.Fatal(rec.Code, rec.Body.String())
 				}
-				if signed {
-					stats, err := s.store.ContinuationStats(t.Context())
-					if err != nil || stats["records"] != 1 {
-						t.Fatal(stats, err)
-					}
-					items := latestUsageRecords(t, s)
-					if len(items) != 1 {
-						t.Fatal(items)
-					}
-					data, _, err := s.store.GetUsageRecordJSON(t.Context(), items[0].RequestID)
-					if err != nil {
-						t.Fatal(err)
-					}
-					var record usageRecord
-					_ = sonic.ConfigStd.Unmarshal(data, &record)
-					found, normalized := false, false
-					for _, issue := range record.ConversionIssues {
-						if issue.RuleID == "responses-include" && issue.Code == protocol.ConversionNormalized {
-							normalized = true
-						}
-						if issue.RuleID == "responses-include" && issue.Fidelity == "lossy_compatible" {
-							found = true
-						}
-					}
-					if !found || !normalized {
-						t.Fatal("server persistence incorrectly satisfied client delivery", record.ConversionIssues)
+				if strict {
+					streamRequest := httptest.NewRequest("POST", req.URL.String(), strings.NewReader(`{"model":"group","input":"hello","stream":true,"store":false,"include":["reasoning.encrypted_content"]}`))
+					streamRequest.Header = req.Header.Clone()
+					streamResponse := httptest.NewRecorder()
+					serveTestHTTP(s.engine, streamResponse, streamRequest)
+					if streamResponse.Code != 400 || providerCalls.Load() != 1 {
+						t.Fatal("JSON-only proof authorized a strict stream", streamResponse.Code, providerCalls.Load(), streamResponse.Body.String())
 					}
 				}
 			})

@@ -18,7 +18,7 @@ func TestUsageTotalsRequireBothComponents(t *testing.T) {
 	if overflow.Total != nil {
 		t.Fatal("overflowing total was fabricated", overflow.Total)
 	}
-	issues := CheckResponse(&Response{SchemaVersion: 1, Usage: overflow}, Target{Capabilities: CapabilitySet{UsageCapability: true}}, DefaultLimits())
+	issues := CheckResponse(&Response{SchemaVersion: SemanticSchemaVersion, Usage: overflow}, Target{Capabilities: CapabilitySet{UsageCapability: true}}, DefaultLimits())
 	if IssuesError(issues) == nil {
 		t.Fatal("overflowing upstream usage accepted")
 	}

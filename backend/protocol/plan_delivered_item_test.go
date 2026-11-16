@@ -175,7 +175,7 @@ func TestDeliveredToolResumesJSONAndPlaceholder(t *testing.T) {
 			if item.json.String() != prefix || item.isPlaceholder != (fixture.prefix == "") {
 				t.Fatal("continuation changed the independent wire state")
 			}
-			retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: EncodeEvent}]
+			retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: EncodeEvent}]
 			if retained.primitives.toolBuffered != 0 {
 				t.Fatal("completed argument tracker retained its prefix")
 			}

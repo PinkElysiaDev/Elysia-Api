@@ -16,10 +16,8 @@ import (
 
 func flameMatrixProtocol(t *testing.T, name string) *protocol.Compiled {
 	t.Helper()
-	if conversionExecution(t) != "legacy" {
-		return conversionPackage(t, name)
-	}
-	return compileFixtureDefinition(t, presetDefinition(t, name))
+	conversionExecution(t)
+	return conversionPackage(t, name)
 }
 
 func flameMatrixProvider(t *testing.T, target *protocol.Compiled) http.Handler {
@@ -206,11 +204,8 @@ func flameMatrixRequest(t *testing.T, source *protocol.Compiled, stream bool) (s
 		request.Parameters["stream"] = mustProtocolValue(t, fmt.Sprintf("%t", stream))
 	}
 	if source.Identity().DefinitionID == "openai-chat-completions" && stream {
-		output, err := protocol.ParseClientOutput(mustProtocolValue(t, `{"include_usage":true}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		request.ClientOutput = output
+		includeUsage := true
+		request.ClientOutput = &protocol.ClientOutput{IncludeUsage: &includeUsage, CollectUsage: true}
 	}
 	wire, err := source.EncodeRequest(t.Context(), request, protocol.EvaluationContext{Scope: protocol.Scope{Model: "grp"}})
 	if err != nil {

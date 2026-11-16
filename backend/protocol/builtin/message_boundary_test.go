@@ -25,12 +25,13 @@ func TestResponsesMessageBoundaryInterleavedTool(t *testing.T) {
 		`{"type":"response.completed","response":{"id":"r","model":"m","object":"response","created_at":1,"status":"completed","output":[{"id":"empty","type":"message","role":"assistant","status":"completed","content":[]},{"id":"msg","type":"message","role":"assistant","status":"completed","phase":"final_answer","content":[{"type":"output_text","text":"hi","annotations":[]},{"type":"refusal","refusal":"no"}]},{"id":"tool","type":"function_call","call_id":"call","name":"lookup","status":"completed","arguments":"{}"}]}}`,
 	}
 	c := shippedProjectionProtocol(t, Responses)
-	d, e := p.EvaluationContext{State: p.NewEvaluationState()}, p.EvaluationContext{State: p.NewEvaluationState()}
-	target := p.Target{Protocol: c.Identity(), Direction: p.EncodeEvent, Capabilities: c.Capabilities(p.EncodeEvent)}
+	decodeOptions := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+	encodeOptions, consume := bindFixtureOutput(t, c, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
+	target := c.Target(p.EncodeEvent, p.Scope{})
 	collector, _ := p.NewResponseCollector(target, p.DefaultLimits())
 	var rendered []p.Value
 	for i, body := range frames {
-		frame, err := c.DecodeFrame(t.Context(), testValue(t, body), d)
+		frame, err := c.DecodeFrame(t.Context(), testValue(t, body), decodeOptions)
 		if err != nil {
 			t.Fatal(i, err)
 		}
@@ -39,29 +40,24 @@ func TestResponsesMessageBoundaryInterleavedTool(t *testing.T) {
 				t.Fatal(i, err)
 			}
 		}
-		wire, err := c.EncodeFrame(t.Context(), &p.EventFrame{Events: frame.Events}, e)
+		wire, err := c.EncodeFrame(t.Context(), &p.EventFrame{Events: frame.Events}, encodeOptions)
 		if err != nil {
 			t.Fatal(i, err)
 		}
 		if i == 7 && (len(wire) != 1 || !strings.Contains(string(wire[0].Bytes()), `"delta":"hi"`)) {
 			t.Fatal("text was buffered until parent completion", wire)
 		}
+		consume(wire)
 		rendered = append(rendered, wire...)
 	}
-	tail, err := c.FinishEvents(t.Context(), e)
+	tail, err := c.FinishEvents(t.Context(), encodeOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
+	consume(tail)
 	rendered = append(rendered, tail...)
-	validation, err := c.NewWireStreamValidation(p.Scope{})
-	if err != nil {
-		t.Fatal(err)
-	}
 	added, done, parts := 0, 0, 0
 	for _, wire := range rendered {
-		if err := validation.Consume(t.Context(), wire); err != nil {
-			t.Fatal(string(wire.Bytes()), err)
-		}
 		f, _ := wire.ReadObject()
 		switch f["type"] {
 		case p.StringValue("response.output_item.added"):
@@ -112,7 +108,7 @@ func TestResponsesMessageBoundaryProjectionRules(t *testing.T) {
 				}
 				if mode == "disabled" {
 					for i := range policy.Rules {
-						if policy.Rules[i].Action == "response_shape" {
+						if policy.Rules[i].ID == "response-shape" || policy.Rules[i].ID == "event-shape" {
 							policy.Rules[i].Enabled = false
 						}
 					}
@@ -121,13 +117,20 @@ func TestResponsesMessageBoundaryProjectionRules(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				route := conversion.VerificationRoute(from.Identity(), to.Identity(), p.SSE)
+				decodeOptions := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
+				encodeOptions, consume := bindFixtureOutput(t, to, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
+				route := conversion.VerificationRoute(from.Identity(), to.Identity(), p.SSE).WithOperation(encodeOptions)
+				encodeOptions = encodeOptions.WithConversion(conversion, route)
 				sink := &p.DiagnosticSink{}
-				d, e := p.EvaluationContext{State: p.NewEvaluationState()}, p.EvaluationContext{State: p.NewEvaluationState()}
+				encodeOptions.Diagnostics = sink
 				for _, value := range phaseStreamFrames(t, "done", []string{"", "", ""}) {
-					frame, decodeErr := from.DecodeFrame(t.Context(), value, d)
+					frame, decodeErr := from.DecodeFrame(t.Context(), value, decodeOptions)
 					if decodeErr != nil {
 						t.Fatal(decodeErr)
+					}
+					route, err = conversion.WithFrameUsage(route, frame.Events)
+					if err != nil {
+						t.Fatal(err)
 					}
 					for _, event := range frame.Events {
 						var projected p.Event
@@ -135,10 +138,12 @@ func TestResponsesMessageBoundaryProjectionRules(t *testing.T) {
 						if err != nil {
 							break
 						}
-						_, err = to.EncodeFrame(t.Context(), &p.EventFrame{Events: []p.Event{projected}}, e)
+						var wire []p.Value
+						wire, err = to.EncodeFrame(t.Context(), &p.EventFrame{Events: []p.Event{projected}}, encodeOptions)
 						if err != nil {
 							break
 						}
+						consume(wire)
 					}
 					if err != nil {
 						break
@@ -153,11 +158,17 @@ func TestResponsesMessageBoundaryProjectionRules(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err = to.FinishEvents(t.Context(), e); err != nil {
+				tail, err := to.FinishEvents(t.Context(), encodeOptions)
+				if err != nil {
 					t.Fatal(err)
 				}
-				if name != Responses && !sinkHas(sink, "/parentId") {
-					t.Fatal("boundary loss was not diagnosed")
+				consume(tail)
+				hasBoundaryDiagnostic := sinkHas(sink, "/parentId")
+				for _, issue := range sink.Issues() {
+					hasBoundaryDiagnostic = hasBoundaryDiagnostic || issue.RuleID == "event-layout" && issue.Code == p.ConversionDegraded
+				}
+				if name != Responses && !hasBoundaryDiagnostic {
+					t.Fatal("boundary loss was not diagnosed", sink.Issues())
 				}
 			})
 		}
@@ -175,22 +186,24 @@ func TestResponsesMessageBoundaryIncompleteStatus(t *testing.T) {
 		}
 		started := node
 		node.Status = p.StringValue("incomplete")
-		response := &p.Response{SchemaVersion: 1, ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("incomplete"), Attributes: p.Object{"created_at": testValue(t, `1`), "finishReason": p.StringValue("length")}}
+		response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("incomplete"), Attributes: p.Object{"created_at": testValue(t, `1`), "finishReason": p.StringValue("length")}}
 		events := []p.Event{
-			{SchemaVersion: 1, Type: p.ResponseStarted, Response: &p.Response{SchemaVersion: 1, ID: response.ID, Model: response.Model, Status: p.StringValue("in_progress"), Attributes: p.Object{"created_at": testValue(t, `1`)}}},
-			{SchemaVersion: 1, Type: p.ItemStarted, ItemID: p.StringValue("item"), Item: &started},
-			{SchemaVersion: 1, Type: p.ItemFinished, ItemID: p.StringValue("item"), Item: &node},
-			{SchemaVersion: 1, Type: p.ResponseFinished, Response: response},
+			{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseStarted, Response: &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: response.ID, Model: response.Model, Status: p.StringValue("in_progress"), Attributes: p.Object{"created_at": testValue(t, `1`)}}},
+			{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemStarted, ItemID: p.StringValue("item"), Item: &started},
+			{SchemaVersion: p.ProtocolCoreVersion, Type: p.ItemFinished, ItemID: p.StringValue("item"), Item: &node},
+			{SchemaVersion: p.ProtocolCoreVersion, Type: p.ResponseFinished, Response: response},
 		}
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options, consume := bindFixtureOutput(t, c, fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}))
 		frames, err := c.EncodeFrame(t.Context(), &p.EventFrame{Events: events}, options)
 		if err != nil {
 			t.Fatal(kind, err)
 		}
+		consume(frames)
 		tail, err := c.FinishEvents(t.Context(), options)
 		if err != nil {
 			t.Fatal(kind, err)
 		}
+		consume(tail)
 		frames = append(frames, tail...)
 		for _, frame := range frames {
 			fields, _ := frame.ReadObject()

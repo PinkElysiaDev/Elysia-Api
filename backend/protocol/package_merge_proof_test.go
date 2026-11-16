@@ -68,7 +68,7 @@ func TestDeepMergeEmissionRequiresUnconditionalNonObjectCopy(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			document := deepMergeTestPackage(t)
 			test.change(&document)
-			compiler, _ := NewCompiler(DefaultLimits(), nil, nil)
+			compiler, _ := NewCompiler(DefaultLimits(), nil)
 			compiled, issues := compiler.CompilePackage(fixtureValue(t, document).Bytes())
 			if err := IssuesError(issues); compiled != nil || err == nil || !strings.Contains(err.Error(), test.kind) {
 				t.Fatal("unproved deep merge emit compiled", compiled, issues)

@@ -253,9 +253,6 @@ func (s *Server) adminConversionPreview(ctx context.Context, c *app.RequestConte
 		operation, err = operation.WithOperation(c.GetString("requestID"), time.Now().Unix())
 		route = route.WithOperation(operation)
 	}
-	if err == nil {
-		route, err = policy.PreviewRecovery(input.Phase, input.Input, route)
-	}
 	route.ResponseWire = input.Direction == protocol.EncodeResponse || input.Direction == protocol.EncodeEvent
 	input.Context = route
 	if err != nil {
@@ -265,8 +262,6 @@ func (s *Server) adminConversionPreview(ctx context.Context, c *app.RequestConte
 	sink := &protocol.DiagnosticSink{}
 	var output any
 	switch input.Phase {
-	case protocol.ConversionSourceEvent:
-		output, err = service.PreviewSourceEvents(ctx, policy, input.Context, input.Input, input.Sequence, sink)
 	case protocol.ConversionRequest:
 		var request protocol.Request
 		if err = input.Input.Decode(&request); err == nil {

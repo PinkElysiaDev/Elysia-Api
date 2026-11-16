@@ -20,11 +20,6 @@ func ModalityUsageDetail(name string) (bucket, modality string) {
 	return "", ""
 }
 
-func SupportsModalityUsage(codec, bucket, modality string) bool {
-	return codec == "gemini" || (codec == "openai-chat" || codec == "responses") &&
-		(bucket == "input" || bucket == "output") && (modality == "TEXT" || modality == "IMAGE" || modality == "AUDIO")
-}
-
 func validateModalityUsage(usage *Usage) error {
 	remaining := map[string]int64{}
 	toolInput, hasToolInput := usage.Details["toolUsePromptTokenCount"]

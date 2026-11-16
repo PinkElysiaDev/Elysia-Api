@@ -21,7 +21,7 @@ func (state *evaluation) hasOutputReader(from string) bool {
 
 // Core readers select only the requested field. Container values stay as output
 // plans until a scalar operation or the final wire actually needs JSON bytes.
-func (expression *compiledExpression) readOutput(state evaluation) (JSONOutput, bool, error) {
+func (expression *compiledExpression) readOutput(state *evaluation) (JSONOutput, bool, error) {
 	var output JSONOutput
 	var err error
 	switch {
@@ -35,9 +35,9 @@ func (expression *compiledExpression) readOutput(state evaluation) (JSONOutput, 
 	case expression.from == "item" && state.itemOutput != nil:
 		output, err = readOutputPointerWithObjectReader(*state.itemOutput, expression.pointer, state.valueReader, state.objectReader)
 	case expression.from == "binding":
-		output, err = readOutputPointerWithObjectReader(state.bindings[expression.bindingSlot], expression.pointer, state.valueReader, state.objectReader)
+		output, err = readOutputPointerWithObjectReader(state.bindings[expression.storageSlot], expression.pointer, state.valueReader, state.objectReader)
 	case expression.from == "state":
-		output, err = readOutputPointerWithObjectReader(JSONLeaf(state.streamSlots[expression.stateSlot]), expression.pointer, state.valueReader, state.objectReader)
+		output, err = readOutputPointerWithObjectReader(JSONLeaf(state.streamSlots[expression.storageSlot]), expression.pointer, state.valueReader, state.objectReader)
 	default:
 		return JSONOutput{}, false, nil
 	}
@@ -50,7 +50,7 @@ func (expression *compiledExpression) readOutput(state evaluation) (JSONOutput, 
 	return output, true, nil
 }
 
-func (expression *compiledExpression) buildReadOutput(state evaluation) (value plannedOutput, err error) {
+func (expression *compiledExpression) buildReadOutput(state *evaluation) (value plannedOutput, err error) {
 	defer func() { err = locateMappingError(expression.path, err) }()
 	if err := state.advance(); err != nil {
 		return plannedOutput{}, err

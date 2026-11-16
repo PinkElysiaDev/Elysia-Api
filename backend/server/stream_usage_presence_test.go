@@ -16,8 +16,8 @@ import (
 func TestStreamUsageTailZeroReachesClientAndStorage(t *testing.T) {
 	t.Parallel()
 	const platform = "custom:usage-tail-copy"
-	preset := presetDefinition(t, "anthropic-messages")
-	preset.ID = "usage-tail-copy"
+	preset := presetPackage(t, "anthropic-messages")
+	preset.Spec.ID = "usage-tail-copy"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":90,\"cache_creation_input_tokens\":20}}}\n\n"+"data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"+"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n"+"data: {\"type\":\"content_block_stop\",\"index\":0}\n\n"+"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n"+"data: {\"type\":\"message_delta\",\"usage\":{\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":0}}\n\n"+"data: {\"type\":\"message_stop\"}\n\n")

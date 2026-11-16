@@ -19,15 +19,16 @@ type referenceContext struct {
 }
 
 type compiledReference struct {
-	expansionDepth int
-	expression     *compiledExpression
-	dependencies   []string
-	bindings       map[string]expressionBinding
-	stateSlots     map[string]expressionBinding
-	indexes        map[string]int
-	streamIndexes  map[string]int
-	trackers       map[string]bool
-	namespaces     map[string]int
+	isScopeIndependent bool
+	expansionDepth     int
+	expression         *compiledExpression
+	dependencies       []string
+	bindings           map[string]expressionBinding
+	stateSlots         map[string]expressionBinding
+	indexes            map[string]int
+	streamIndexes      map[string]int
+	trackers           map[string]bool
+	namespaces         map[string]int
 }
 
 func referenceKey(name string, scope expressionScope) referenceContext {
@@ -45,6 +46,9 @@ func referenceKey(name string, scope expressionScope) referenceContext {
 }
 
 func (reference compiledReference) matches(scope expressionScope) bool {
+	if reference.isScopeIndependent {
+		return true
+	}
 	return maps.Equal(reference.bindings, scope.bindings) && maps.Equal(reference.stateSlots, scope.stateSlots) &&
 		maps.Equal(reference.indexes, scope.indexes) && maps.Equal(reference.streamIndexes, scope.streamIndexes) &&
 		maps.Equal(reference.trackers, scope.trackerChannels) && maps.Equal(reference.namespaces, scope.outputNamespaces)
@@ -55,13 +59,70 @@ func captureReferenceScope(scope expressionScope) compiledReference {
 		streamIndexes: scope.streamIndexes, trackers: maps.Clone(scope.trackerChannels), namespaces: scope.outputNamespaces}
 }
 
+func (compiler *expressionCompiler) buildReferenceKey(name string, scope expressionScope) referenceContext {
+	key := referenceKey(name, scope)
+	if compiler.independentReferences[name] {
+		key.bindingDepth, key.indexDepth = 0, 0
+	}
+	return key
+}
+
+// Eligibility follows the already validated graph. Unknown or stateful operations
+// retain the complete lexical context; no new permission is granted by sharing.
+func (compiler *expressionCompiler) isScopeIndependent(expression *compiledExpression) bool {
+	if expression == nil {
+		return true
+	}
+	if independent, exists := compiler.independentExpressions[expression]; exists {
+		return independent
+	}
+	if compiler.independentExpressions == nil {
+		compiler.independentExpressions = make(map[*compiledExpression]bool)
+	}
+	compiler.independentExpressions[expression] = false
+	switch expression.op {
+	case "read":
+		if expression.from != "input" && expression.from != "root" && expression.from != "item" && expression.from != "context" {
+			return false
+		}
+	case "omit", "literal", "object", "array", "if", "choose", "project", "keys", "length", "concat", "join", "sort",
+		"parse_json", "stringify_json", "split_data_uri", "exists", "present", "type", "is_integer", "is_integral", "integer", "not",
+		"enum", "cast", "strip_prefix", "trim_prefix", "lower", "quote_string", "has_prefix", "contains", "has_control", "matches_charset",
+		"equal", "equal_text", "all", "any", "entries", "utf16_length":
+	default:
+		return false
+	}
+	for _, child := range []*compiledExpression{expression.source, expression.body, expression.when, expression.then, expression.otherwise} {
+		if !compiler.isScopeIndependent(child) {
+			return false
+		}
+	}
+	for _, child := range expression.fields {
+		if !compiler.isScopeIndependent(child) {
+			return false
+		}
+	}
+	for _, child := range expression.items {
+		if !compiler.isScopeIndependent(child) {
+			return false
+		}
+	}
+	for _, child := range expression.cases {
+		if !compiler.isScopeIndependent(child) {
+			return false
+		}
+	}
+	compiler.independentExpressions[expression] = true
+	return true
+}
+
 func (compiler *expressionCompiler) compileReference(name, path string, scope expressionScope, depth int) (*compiledExpression, error) {
 	definition, exists := compiler.references[name]
 	if !exists || compiler.resolving[name] {
 		return nil, fmt.Errorf("%s/ref: unknown or recursive expression %q", path, name)
 	}
 	compiler.used[name] = true
-	key := referenceKey(name, scope)
+	key := compiler.buildReferenceKey(name, scope)
 	for _, reference := range compiler.instances[key] {
 		if !reference.matches(scope) {
 			continue
@@ -90,6 +151,12 @@ func (compiler *expressionCompiler) compileReference(name, path string, scope ex
 	}
 	reference := captureReferenceScope(scope)
 	reference.expression, reference.expansionDepth, reference.dependencies = compiled, expansionDepth, sortedKeys(dependencies)
+	reference.isScopeIndependent = compiler.isScopeIndependent(compiled)
+	if compiler.independentReferences == nil {
+		compiler.independentReferences = make(map[string]bool)
+	}
+	compiler.independentReferences[name] = reference.isScopeIndependent
+	key = compiler.buildReferenceKey(name, scope)
 	if compiler.instances == nil {
 		compiler.instances = make(map[referenceContext][]compiledReference)
 	}

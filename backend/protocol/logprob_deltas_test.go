@@ -5,37 +5,31 @@ import (
 	"testing"
 )
 
-func TestBatchedLogprobsPreserveSequentialBytes(t *testing.T) {
-	for _, codec := range []string{"openai-chat", "responses", "custom"} {
-		spellings := []string{"null", `[]`, `[1e0,9007199254740993]`, `[ {"token":"<>&","token":"second","bytes":[1]} ]`, `{"content":null}`, `{"content":[],"refusal":[]}`, `{"content":[1],"content":[2],"unknown":[]}`, `{"content":[1e0],"refusal":["<>&"]}`, `{"content":"unsupported"}`, `"unsupported"`}
-		values := make([]Value, len(spellings))
-		for index, raw := range spellings {
-			var err error
-			values[index], err = ParseValue([]byte(raw))
-			if err != nil {
-				t.Fatal(err)
-			}
+func TestMetadataArrayMergePreservesValues(t *testing.T) {
+	initial := mustLogprobValue(t, `[1e0,9007199254740993]`)
+	deltas := []Value{mustLogprobValue(t, `[]`), mustLogprobValue(t, `[ {"token":"<>&","token":"second","bytes":[1]} ]`)}
+	before, _ := EncodeValue(deltas)
+	merged, err := mergeArrayDeltas(initial, deltas)
+	if err != nil || merged.JSONString() != `[1e0,9007199254740993,{"token":"\u003c\u003e\u0026","token":"second","bytes":[1]}]` {
+		t.Fatal("array merge changed numeric precision or token bytes", merged.JSONString(), err)
+	}
+	after, _ := EncodeValue(deltas)
+	if before != after || initial.JSONString() != `[1e0,9007199254740993]` {
+		t.Fatal("array merge changed caller-owned values")
+	}
+	for _, raw := range []string{`"invalid"`, `{}`, `3`} {
+		invalid := mustLogprobValue(t, raw)
+		if _, err := mergeArrayDeltas(invalid, deltas); err == nil {
+			t.Fatal("non-array initial snapshot accepted", raw)
 		}
-		values = append(values, Value{})
-		for initialIndex, initial := range values {
-			for firstIndex, first := range values {
-				for secondIndex, second := range values {
-					expected := appendLogprobValues(appendLogprobValues(initial, first, codec), second, codec)
-					actual := MergeLogprobDeltas(initial, []Value{first, second}, codec)
-					if actual != expected {
-						t.Fatalf("%s/%d/%d/%d: got %s, want %s", codec, initialIndex, firstIndex, secondIndex, actual.JSONString(), expected.JSONString())
-					}
-				}
-			}
-			if actual := MergeLogprobDeltas(initial, nil, codec); actual != initial {
-				t.Fatal("empty delta batch changed the original spelling")
-			}
+		if _, err := mergeArrayDeltas(initial, []Value{invalid}); err == nil {
+			t.Fatal("non-array delta accepted", raw)
 		}
 	}
 }
 
 func TestCollectorDeferredLogprobsMatchImmediateObservation(t *testing.T) {
-	for _, codec := range []string{"openai-chat", "responses"} {
+	for _, codec := range []string{"custom-a", "custom-b"} {
 		for _, bufferBytes := range []int{128, 512, 4096} {
 			for _, stateItems := range []int{2, 4096} {
 				t.Run(fmt.Sprintf("%s/%d/%d", codec, bufferBytes, stateItems), func(t *testing.T) {
@@ -47,32 +41,25 @@ func TestCollectorDeferredLogprobsMatchImmediateObservation(t *testing.T) {
 					}
 					reference, _ := NewResponseCollector(replayTarget(), limits)
 					metadata := func(value string, ordinal int) ResponseMetadata {
-						location := "content"
-						if codec == "openai-chat" {
-							location = "choice"
-							if value != "null" {
-								value = `{"content":` + value + `}`
-							}
-						}
-						return ResponseMetadata{Codec: codec, Location: location, Name: "logprobs", Path: fmt.Sprintf("/probabilities/%d", ordinal), Value: mustLogprobValue(t, value)}
+						return ResponseMetadata{Codec: codec, Location: "content", Name: "logprobs", Path: fmt.Sprintf("/probabilities/%d", ordinal), Value: mustLogprobValue(t, value)}
 					}
-					events := []Event{messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode, Metadata: []ResponseMetadata{metadata("null", 0)}})}
+					events := []Event{messageEvent(ItemStarted, "t", "", &Node{Kind: TextNode, Metadata: []ResponseMetadata{metadata("[]", 0)}})}
 					for index := range 12 {
 						event := messageEvent(ItemDelta, "t", "", nil)
 						event.Delta = StringValue("x")
 						event.Metadata = []ResponseMetadata{metadata(`[ {"token":"<>&","logprob":-1e-1,"bytes":[60,62,38],"top_logprobs":[]} ]`, index+1)}
+						event.Metadata[0].Update = "append"
 						events = append(events, event)
 					}
-					events = append(events, messageEvent(ItemFinished, "t", "", &Node{Kind: TextNode, Payload: StringValue("xxxxxxxxxxxx")}), Event{SchemaVersion: 1, Type: ResponseFinished})
+					events = append(events, messageEvent(ItemFinished, "t", "", &Node{Kind: TextNode, Payload: StringValue("xxxxxxxxxxxx")}), Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished})
 					before, _ := EncodeValue(events)
 					hasDeferred := false
 					for index, event := range events {
 						kind, text, err := actual.Consume(event)
 						hasDeferred = hasDeferred || actual.metadataItems > 0
 						wantKind, wantText, wantErr := reference.Consume(event)
-						// Materializing each accepted update reproduces the old
-						// eager boundary; the pure merger is checked against the
-						// unchanged pairwise implementation above.
+						// Observation frequency must not change the collected
+						// values, resource limits or failure location.
 						reference.materializeMetadata()
 						if kind != wantKind || text != wantText || fmt.Sprint(err) != fmt.Sprint(wantErr) {
 							t.Fatalf("event %d: (%s,%q,%v) != (%s,%q,%v)", index, kind, text, err, wantKind, wantText, wantErr)
@@ -136,6 +123,7 @@ func TestCollectorLogprobSnapshotsAndItemIsolation(t *testing.T) {
 					event := messageEvent(ItemDelta, key, "", nil)
 					event.Delta = StringValue("x")
 					next := metadata
+					next.Update = "append"
 					next.Path = fmt.Sprintf("/%s/%d", key, index)
 					next.Value = mustLogprobValue(t, `[{"token":"x","logprob":-0.25,"bytes":[120]}]`)
 					event.Metadata = []ResponseMetadata{next}
@@ -159,9 +147,9 @@ func TestCollectorLogprobSnapshotsAndItemIsolation(t *testing.T) {
 					consume(messageEvent(ItemFinished, key, "", nil))
 				}
 				snapshot, _ := reference.Partial()
-				consume(Event{SchemaVersion: 1, Type: ResponseFinished, Response: &Response{SchemaVersion: 1, Content: snapshot.Content}})
+				consume(Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseFinished, Response: &Response{SchemaVersion: SemanticSchemaVersion, Content: snapshot.Content}})
 			case "cancel":
-				consume(Event{SchemaVersion: 1, Type: OperationCancelled})
+				consume(Event{SchemaVersion: SemanticSchemaVersion, Type: OperationCancelled})
 			}
 			output, err := actual.Finish()
 			expected, wantErr := reference.Finish()

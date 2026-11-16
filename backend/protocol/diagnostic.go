@@ -163,6 +163,7 @@ type VerificationReport struct {
 
 // VerificationCheck records reproducible sample evidence without payloads.
 type VerificationCheck struct {
+	Path         string       `json:"path,omitempty"`
 	SampleID     string       `json:"sampleId"`
 	Direction    Direction    `json:"direction"`
 	Passed       bool         `json:"passed"`

@@ -148,7 +148,7 @@ func TestPackageEventCoreVersion(t *testing.T) {
 	if !compiled.Capabilities(EncodeEvent)[TextCapability] {
 		t.Fatal("public target can mutate the compiled revision")
 	}
-	event := Event{SchemaVersion: SemanticSchemaVersion, Type: ResponseStarted}
+	event := Event{SchemaVersion: 1, Type: ResponseStarted}
 	_, err := compiled.EncodeEvent(t.Context(), event, EvaluationContext{})
 	assertPackageRuntimeIssue(t, err, InvalidInput, "/schemaVersion")
 	ctx, cancel := context.WithCancel(t.Context())

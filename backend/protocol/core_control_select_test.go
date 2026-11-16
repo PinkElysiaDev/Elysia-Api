@@ -208,6 +208,50 @@ func TestDeclaredNodeControlWriteBoundary(t *testing.T) {
 	}
 }
 
+func TestDeclaredNodePayloadNormalization(t *testing.T) {
+	document := textProtocolPackage(t)
+	step := ProtocolControlStep{
+		When: expressionPointer(Expression{Op: "not", Source: expressionPointer(Expression{Op: "exists", Source: expressionPointer(readExpression("input", "/payload"))})}),
+		Set:  map[string]Expression{"/payload": literalExpression("")},
+		Diagnostic: &ProtocolControlDiagnostic{Kind: "normalize", Source: expressionPointer(Expression{Op: "pointer_join",
+			Source: expressionPointer(Expression{Op: "read", From: "binding", Name: "node-path"}), Items: []Expression{literalExpression("payload")}}),
+			Reason: literalExpression("target represents absent visible text with an empty string")},
+	}
+	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "empty-payload", Order: 10, Enabled: true, Phase: ConversionResponse,
+		Steps: []ProtocolControlStep{{Each: &ProtocolControlEach{Select: "node", PathBinding: "node-path", Steps: []ProtocolControlStep{step}}}}}}
+	compiled := compilePackageForTest(t, document)
+	policy := DefaultConversionPolicy(compiled, compiled)
+	policy.Mode = "strict"
+	conversion, err := ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := &Response{SchemaVersion: ProtocolCoreVersion, Content: []Node{
+		{Kind: TextNode}, {Kind: TextNode, Payload: literalExpression(nil).Value}, {Kind: TextNode, Payload: StringValue("observed")},
+	}}
+	original := fixtureValue(t, response)
+	sink := &DiagnosticSink{}
+	result, err := conversion.Response(t.Context(), response, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, sink)
+	if err != nil || !result.Content[0].Payload.IsString("") || !result.Content[1].Payload.IsNull() || !result.Content[2].Payload.IsString("observed") {
+		t.Fatal("declared normalization changed a present payload", result, err)
+	}
+	if issues := sink.Issues(); len(issues) != 1 || issues[0].Path != "/content/0/payload" || issues[0].Code != ConversionNormalized || issues[0].PolicyHash != conversion.Hash {
+		t.Fatal("payload normalization lost its diagnostic", issues)
+	}
+	if !equalValues(original, fixtureValue(t, response)) {
+		t.Fatal("normalization changed the source document")
+	}
+	policy.Rules[0].Enabled = false
+	conversion, err = ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = conversion.Response(t.Context(), response, ConversionContext{Source: compiled.Identity(), Target: compiled.Identity()}, nil)
+	if err != nil || !result.Content[0].Payload.IsZero() {
+		t.Fatal("disabled normalization changed an absent payload", result, err)
+	}
+}
+
 func TestDeclaredResponseAttributeUpdate(t *testing.T) {
 	document := eventProtocolPackage(t)
 	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "response-attributes", Order: 230, Enabled: true, Phase: ConversionResponse,

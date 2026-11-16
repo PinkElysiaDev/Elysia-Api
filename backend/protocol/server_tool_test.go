@@ -7,7 +7,6 @@ import (
 
 func serverReplayTarget() Target {
 	target := replayTarget()
-	target.coreVersion = ProtocolCoreVersion
 	target.Scope = Scope{Provider: "fixture", Account: "account", Model: "model"}
 	return target
 }
@@ -45,7 +44,7 @@ func TestServerExecutionContractAndCapabilityEvidence(t *testing.T) {
 	}
 	response.Content = []Node{node}
 	legacy := target
-	legacy.coreVersion, response.SchemaVersion = SemanticSchemaVersion, SemanticSchemaVersion
+	response.SchemaVersion = 1
 	if err := IssuesError(CheckResponse(response, legacy, DefaultLimits())); err == nil {
 		t.Fatal("legacy core silently accepted upstream execution")
 	}

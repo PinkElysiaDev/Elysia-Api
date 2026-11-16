@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -142,6 +143,17 @@ func TestPackageControlDisposition(t *testing.T) {
 	}
 	if len(sink.Issues()) != 1 || sink.Issues()[0].Code != ConversionDegraded {
 		t.Fatal("missing explicit state loss diagnostic", sink.Issues())
+	}
+	if frames, err := target.EncodeFrames(t.Context(), result, EvaluationContext{}); err != nil || len(frames) != 0 {
+		t.Fatal("direct encoding emitted generation data for omitted state", frames, err)
+	}
+	if _, err := source.EncodeFrames(t.Context(), result, EvaluationContext{}); err == nil {
+		t.Fatal("state omission authorized a different target")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := target.EncodeFrames(ctx, result, EvaluationContext{}); err == nil {
+		t.Fatal("state omission ignored cancellation")
 	}
 	defaults.Mode = "strict"
 	strict, err := ResolveConversion(defaults)

@@ -12,6 +12,8 @@ func TestNativeReplayPreservesOriginalCoreReads(t *testing.T) {
 	identityMap := Expression{Op: "map", Source: &tools, Body: expressionPointer(readExpression("item", ""))}
 	filtered := Expression{Op: "filter", Source: &identityMap, When: expressionPointer(literalExpression(true))}
 	optional := Expression{Op: "if", When: &Expression{Op: "present", Source: &tools}, Then: &filtered, Otherwise: &Expression{Op: "array", Items: []Expression{}}}
+	optionalLiteral := optional
+	optionalLiteral.Otherwise = expressionPointer(literalExpression([]any{}))
 	for _, tc := range []struct {
 		name    string
 		program Expression
@@ -21,6 +23,7 @@ func TestNativeReplayPreservesOriginalCoreReads(t *testing.T) {
 		{"root", replay(readExpression("root", "/tools/0/native")), false},
 		{"binding", Expression{Op: "let", Name: "original", Source: expressionPointer(readExpression("input", "/tools/0/native")), Body: expressionPointer(replay(bindingTestRead("original", "")))}, false},
 		{"iteration", Expression{Op: "map", Source: &optional, Body: expressionPointer(Expression{Op: "let", Name: "tool", Source: expressionPointer(readExpression("item", "")), Body: expressionPointer(replay(bindingTestRead("tool", "/native")))})}, true},
+		{"empty-literal-alternative", Expression{Op: "map", Source: &optionalLiteral, Body: expressionPointer(replay(readExpression("item", "/native")))}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			document := textProtocolPackage(t)
@@ -109,5 +112,12 @@ func TestNativeReplayRejectsConstructedAndOpaqueSources(t *testing.T) {
 	}, Body: &Expression{Op: "replay_native", Source: expressionPointer(readExpression("item", "/native"))}}
 	if _, err := compiler.compilePlan(program, "/program", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Request]()}, 1); err == nil || !strings.Contains(err.Error(), "unchanged core Native") {
 		t.Fatal("a constructed alternative acquired an original array's member type", err)
+	}
+	for _, fallback := range []any{nil, map[string]any{}, []any{map[string]any{"native": map[string]any{}}}} {
+		compiler = expressionCompiler{limits: DefaultLimits()}
+		program.Source.Otherwise = expressionPointer(literalExpression(fallback))
+		if _, err := compiler.compilePlan(program, "/program", expressionScope{canReadNative: true, coreInput: reflect.TypeFor[Request]()}, 1); err == nil || !strings.Contains(err.Error(), "unchanged core Native") {
+			t.Fatal("a nonempty or nonarray literal acquired an original array's member type", fallback, err)
+		}
 	}
 }

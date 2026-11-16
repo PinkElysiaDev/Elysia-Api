@@ -11,7 +11,7 @@ import (
 // These JSON packages cover the history-control slice. They are not the shipped
 // codecs and do not establish complete request/response protocol coverage.
 func TestHistoryDeclarationsMatchExistingRequestMatrix(t *testing.T) {
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
+	compiler, err := p.NewCompiler(p.DefaultLimits(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestHistoryDeclarationsMatchExistingRequestMatrix(t *testing.T) {
 				t.Run(tc.name+"/"+codec+"/"+mode, func(t *testing.T) {
 					raw := `{"model":"m","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"context_management":` + tc.control + tc.extra + `}`
 					convert := func(source, target *p.Compiled) ([]byte, error) {
-						request, err := source.DecodeRequest(t.Context(), []byte(raw), p.EvaluationContext{})
+						request, err := source.DecodeRequest(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 						if err != nil {
 							return nil, err
 						}
@@ -59,7 +59,7 @@ func TestHistoryDeclarationsMatchExistingRequestMatrix(t *testing.T) {
 						if err != nil {
 							return nil, err
 						}
-						return target.EncodeRequest(t.Context(), projected, p.EvaluationContext{})
+						return target.EncodeRequest(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
 					}
 					before, beforeErr := convert(shippedProjectionProtocol(t, Anthropic), shippedProjectionProtocol(t, codec))
 					after, afterErr := convert(prototypes[Anthropic], prototypes[codec])

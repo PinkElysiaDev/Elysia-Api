@@ -7,8 +7,8 @@ func TestDeclaredTextLayoutKeepsOrderAndOffsets(t *testing.T) {
 	document.Mapping.ConversionDefaults = []ProtocolConversionDefault{{ID: "text-layout", Order: 250, Enabled: true, Phase: ConversionResponse, Steps: []ProtocolControlStep{{Layout: &ProtocolContentLayout{
 		Operation: "merge_text", Path: "/content/*/children", PathBinding: "position",
 		When: Expression{Op: "equal", Items: []Expression{readExpression("input", "/kind"), literalExpression("text")}},
-		Text: &ProtocolTextLayout{ShouldCross: true, Measure: Expression{Op: "utf16_length", Source: expressionPointer(readExpression("input", "/payload"))}, OffsetBinding: "offset", LengthBinding: "length", Metadata: map[string]Expression{
-			"range": {Op: "object", Fields: map[string]Expression{"model": readExpression("context", "/model"), "offset": {Op: "read", From: "binding", Name: "offset"}, "length": {Op: "read", From: "binding", Name: "length"}, "value": readExpression("input", "/value")}},
+		Text: &ProtocolTextLayout{ShouldCross: true, Measure: Expression{Op: "utf16_length", Source: expressionPointer(readExpression("input", "/payload"))}, OffsetBinding: "offset", LengthBinding: "length", Metadata: map[string]ProtocolTextMetadata{
+			"range": {Value: Expression{Op: "object", Fields: map[string]Expression{"model": readExpression("context", "/model"), "offset": {Op: "read", From: "binding", Name: "offset"}, "length": {Op: "read", From: "binding", Name: "length"}, "value": readExpression("input", "/value")}}},
 		}},
 		Steps: []ProtocolControlStep{{Diagnostic: &ProtocolControlDiagnostic{Kind: "degrade", Source: expressionPointer(Expression{Op: "read", From: "binding", Name: "position"}), Reason: literalExpression("target merges text boundaries")}}},
 	}}}}}
@@ -46,6 +46,13 @@ func TestDeclaredTextLayoutKeepsOrderAndOffsets(t *testing.T) {
 		t.Fatal("text layout consumed protected state")
 	}
 	response.Content[0].Children[2].Resources = nil
+	response.Content[0].Children[2].Metadata[0].Meaning = "url-references"
+	response.Content[0].Children[2].Metadata[0].References = fixtureValue(t, []Object{{"url": StringValue("https://example.test"), "title": StringValue("source"), "start": coreInteger(0), "end": coreInteger(2)}})
+	if _, err := conversion.Response(t.Context(), response, route, nil); err == nil {
+		t.Fatal("text layout preserved stale references without a declared projection")
+	}
+	response.Content[0].Children[2].Metadata[0].Meaning = ""
+	response.Content[0].Children[2].Metadata[0].References = Value{}
 	response.Content[0].Children[2].Metadata[0].Name = "unknown"
 	if _, err := conversion.Response(t.Context(), response, route, nil); err == nil {
 		t.Fatal("text layout dropped undeclared metadata")

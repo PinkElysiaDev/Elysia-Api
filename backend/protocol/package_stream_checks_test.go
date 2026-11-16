@@ -65,7 +65,7 @@ func TestPackageStreamWireSlotsCommitAndIsolation(t *testing.T) {
 	if state.slots[0].raw != "2" || state.slots[1].raw != "5" {
 		t.Fatal("wire updates did not read one preceding snapshot", state.slots)
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}]
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}]
 	if retained.slots[0].raw != "103" {
 		t.Fatal("wire slots shared mutable mapping state", retained.slots)
 	}

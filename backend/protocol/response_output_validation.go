@@ -6,9 +6,7 @@ import "context"
 // The caller supplies the immutable pre-edit output; configuration values cannot
 // replace that host-owned comparison. Successful checks do not commit delivery.
 func (compiled *Compiled) ValidateResponseOutput(ctx context.Context, before, after Value, options EvaluationContext) error {
-	if compiled.packagePlan == nil {
-		return compiled.ValidateWireOutputContext(ctx, EncodeResponse, after)
-	}
+
 	options = options.withInputView(after)
 	view := options.inputView
 	if err := compiled.validateWireInputView(ctx, EncodeResponse, view, compiled.limits, compiled.selectFinalWireContract(EncodeResponse)); err != nil {

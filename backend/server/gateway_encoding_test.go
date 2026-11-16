@@ -10,8 +10,8 @@ import (
 
 func TestGatewayPreparedEncodingBoundaries(t *testing.T) {
 	t.Parallel()
-	compiler, _ := protocol.NewCompiler(protocol.DefaultLimits(), builtin.Modules(), nil)
-	definitions, _ := builtin.Definitions()
+	compiler, _ := protocol.NewCompiler(protocol.DefaultLimits(), nil)
+	definitions, _ := builtin.Packages()
 	var compiled *protocol.Compiled
 	for _, raw := range definitions {
 		entry, _ := compiler.Compile(raw.Bytes())

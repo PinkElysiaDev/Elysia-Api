@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,18 +11,20 @@ import (
 	"github.com/elysia-api/backend/protocol"
 )
 
-func cacheAliasExampleDefinition(t *testing.T) protocol.Definition {
+func cacheAliasExamplePackage(t *testing.T) protocol.ProtocolPackage {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "cache-usage-alias.mapping.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var mappings map[protocol.Direction]protocol.Mapping
-	if err := sonic.ConfigStd.Unmarshal(raw, &mappings); err != nil {
+	var patch struct {
+		Expressions map[string]protocol.Expression `json:"expressions"`
+	}
+	if err := sonic.ConfigStd.Unmarshal(raw, &patch); err != nil {
 		t.Fatal(err)
 	}
-	definition := presetDefinition(t, "openai-chat-completions")
-	definition.ID = "independent-usage-alias-example"
+	definition := presetPackage(t, "openai-chat-completions")
+	definition.Spec.ID = "independent-usage-alias-example"
 	sampleBytes, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "cache-usage-alias.sample.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -30,33 +33,31 @@ func cacheAliasExampleDefinition(t *testing.T) protocol.Definition {
 	if err := sonic.ConfigStd.Unmarshal(sampleBytes, &sample); err != nil {
 		t.Fatal(err)
 	}
-	definition.Samples = append(definition.Samples, sample)
-	for direction, patch := range mappings {
-		mapping := definition.Directions[direction]
-		mapping.After = patch.After
-		definition.Directions[direction] = mapping
+	definition.Mapping.Samples = append(definition.Mapping.Samples, sample)
+	for _, name := range []string{"decode-usage", "stream-decode-usage"} {
+		definition.Mapping.Expressions["standard-"+name] = definition.Mapping.Expressions[name]
+	}
+	for name, expression := range patch.Expressions {
+		definition.Mapping.Expressions[name] = expression
 	}
 	return definition
 }
 
 func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing.T) {
-	definition := cacheAliasExampleDefinition(t)
+	definition := cacheAliasExamplePackage(t)
+	compiled := compileFixturePackage(t, definition)
+	standard := compileFixturePackage(t, presetPackage(t, "openai-chat-completions"))
+	different := compiledPackage(compiled)
+	different.Spec.ID = "different-usage-decoder-same-ref"
 	// Identical ref names with different bodies must not authorize replay.
-	if definition.Expressions == nil {
-		definition.Expressions = map[string]protocol.Expression{}
-	}
-	eventMapping := definition.Directions[protocol.DecodeEvent]
-	definition.Expressions["cache_usage"] = *eventMapping.After
-	eventMapping.After = &protocol.Expression{Op: "ref", Ref: "cache_usage"}
-	definition.Directions[protocol.DecodeEvent] = eventMapping
-	compiled := compileFixtureDefinition(t, definition)
-	standard := compileFixtureDefinition(t, presetDefinition(t, "openai-chat-completions"))
-	different := compiled.Definition()
-	different.ID = "different-usage-decoder-same-ref"
-	different.Expressions["cache_usage"] = protocol.Expression{Op: "read"}
-	differentCompiled := compileFixtureDefinition(t, different)
+	different.Mapping.Expressions["cache-usage"] = protocol.Expression{Op: "read", From: "binding", Name: "decoded-usage"}
+	differentCompiled := compileFixturePackage(t, different)
 	if report := protocol.Verify(t.Context(), compiled); !report.Passed {
 		t.Fatal(report.Issues)
+	}
+	options, err := (protocol.EvaluationContext{}).WithOperation("cache-alias-fixture", 1)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, fixture := range []struct {
 		usage string
@@ -66,8 +67,8 @@ func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing
 		{`{"prompt_tokens":100,"prompt_tokens_details":{"cache_write_tokens":0},"provider_metrics":{"write_tokens":30,"keep":"extension"}}`, 0},
 		{`{"prompt_tokens":100}`, -1},
 	} {
-		body := []byte(`{"id":"r","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":` + fixture.usage + `}`)
-		response, err := compiled.DecodeResponse(t.Context(), body, protocol.EvaluationContext{})
+		body := []byte(`{"id":"r","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":` + fixture.usage + `}`)
+		response, err := compiled.DecodeResponse(t.Context(), body, options)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +85,7 @@ func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing
 			}
 		}
 		check(response.Usage.CacheCreation)
-		wire, err := compiled.EncodeResponse(t.Context(), response, protocol.EvaluationContext{})
+		wire, err := compiled.EncodeResponse(t.Context(), response, options)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,8 +101,11 @@ func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing
 		if !reflect.DeepEqual(before, after) {
 			t.Fatal("native extension or explicit zero changed")
 		}
-		frame := mustProtocolValue(t, `{"choices":[],"usage":`+fixture.usage+`}`)
-		events, err := compiled.DecodeFrame(t.Context(), frame, protocol.EvaluationContext{State: protocol.NewEvaluationState()})
+		frame := mustProtocolValue(t, `{"id":"r","object":"chat.completion.chunk","created":1,"model":"m","choices":[],"usage":`+fixture.usage+`}`)
+		streamOptions := options
+		streamOptions.State = protocol.NewEvaluationState()
+		defer streamOptions.State.Release()
+		events, err := compiled.DecodeFrame(t.Context(), frame, streamOptions)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,11 +119,20 @@ func TestCacheAliasExamplePreservesStandardZeroAndUnrelatedExtensions(t *testing
 		if !hasUsage {
 			t.Fatal("usage frame omitted")
 		}
-		if _, err := standard.EncodeFrame(t.Context(), events, protocol.EvaluationContext{State: protocol.NewEvaluationState()}); err == nil {
-			t.Fatal("native replay bypassed the source's declared usage decoder")
-		}
-		if _, err := differentCompiled.EncodeFrame(t.Context(), events, protocol.EvaluationContext{State: protocol.NewEvaluationState()}); err == nil {
-			t.Fatal("native replay compared ref names instead of their implementations")
+		for _, target := range []*protocol.Compiled{standard, differentCompiled} {
+			validation, err := target.NewWireStreamValidation(options.Scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer validation.Release()
+			targetOptions := options.WithOutputStream(validation)
+			targetOptions.State = protocol.NewEvaluationState()
+			defer targetOptions.State.Release()
+			_, err = target.EncodeFrame(t.Context(), events, targetOptions)
+			var failure *protocol.ConversionError
+			if !errors.As(err, &failure) || len(failure.Issues) != 1 || failure.Issues[0].Code != protocol.UnsupportedNative || failure.Issues[0].Path != "/frame" {
+				t.Fatal("native replay did not enforce declared decoder equivalence", target.Identity().DefinitionID, err)
+			}
 		}
 	}
 }

@@ -17,11 +17,11 @@ func BenchmarkCacheConversion(b *testing.B) {
 	body := []byte(benchmarkCacheRequest)
 	b.ReportAllocs()
 	for b.Loop() {
-		request, err := source.DecodeRequest(b.Context(), body, p.EvaluationContext{})
+		request, err := source.DecodeRequest(b.Context(), body, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := target.EncodeRequest(b.Context(), request, p.EvaluationContext{}); err != nil {
+		if _, err := target.EncodeRequest(b.Context(), request, fixtureOptions(p.EvaluationContext{})); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -34,7 +34,7 @@ func BenchmarkStreamTextDecode(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(256 * 256)
 	for b.Loop() {
-		options := p.EvaluationContext{State: p.NewEvaluationState()}
+		options := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 		for range 256 {
 			if _, err := compiled.DecodeFrame(b.Context(), frame, options); err != nil {
 				b.Fatal(err)

@@ -11,7 +11,7 @@ func BenchmarkAlgorithmConversion(b *testing.B) {
 	for _, nodes := range []int{64, 256, 1024} {
 		for _, passes := range []int{1, 4, 16} {
 			b.Run(fmt.Sprintf("nodes%d/rules%d", nodes, passes), func(b *testing.B) {
-				request := &Request{SchemaVersion: 1, Parameters: Object{"stream": {raw: "true"}}}
+				request := &Request{SchemaVersion: SemanticSchemaVersion, Parameters: Object{"stream": {raw: "true"}}}
 				for range nodes {
 					request.Content = append(request.Content, Node{Kind: TextNode, Payload: StringValue("history")})
 				}

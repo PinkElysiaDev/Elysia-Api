@@ -120,7 +120,7 @@ func FuzzCompileDefinition(f *testing.F) {
 	// compile path where a wrong key or kind is a definition error, not a runtime
 	// surprise: the reserved-name and duplicate-intent rules live here.
 	f.Add([]byte(`{"schemaVersion":2,"id":"usage-seed","name":"usage-seed","version":"1","family":"usage-seed","wireVersion":"1","capabilities":{"text":true,"usage":true,"cache.breakpoints":true},"directions":{"encode_request":{"transform":{"op":"object","fields":{"prompt_cache_key":{"op":"read","from":"input","path":"/cache/0/value"}}},"capabilities":{"cache.breakpoints":true}}}}`))
-	compiler, err := NewCompiler(DefaultLimits(), nil, nil)
+	compiler, err := NewCompiler(DefaultLimits(), nil)
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func FuzzEventReplay(f *testing.F) {
 			t.Fatal(err)
 		}
 		for _, action := range actions {
-			event := Event{SchemaVersion: 1, ItemID: StringValue("text")}
+			event := Event{SchemaVersion: SemanticSchemaVersion, ItemID: StringValue("text")}
 			switch action % 7 {
 			case 0:
 				event.Type, event.Item = ItemStarted, &Node{Kind: TextNode}

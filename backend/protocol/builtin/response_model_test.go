@@ -26,11 +26,11 @@ func TestResponseModelFailureAttribution(t *testing.T) {
 				fields["model"] = p.StringValue("provider-model")
 			}
 			raw, _ = p.EncodeValue(fields)
-			response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), p.EvaluationContext{})
+			response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity()}).WithResponseModelOrigin(compiled, compiled, []byte(`{"model":"sent"}`), raw.Bytes())
+			route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity(), Target: compiled.Identity()}).WithResponseObservations(compiled, compiled, []byte(`{"model":"sent"}`), raw.Bytes())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -38,9 +38,9 @@ func TestResponseModelFailureAttribution(t *testing.T) {
 				response.Model = p.Value{}
 			}
 			if scenario == "handwritten" {
-				route.ResponseModel = nil
+				route = p.ConversionContext{Source: route.Source, Target: route.Target, Transport: route.Transport, Model: route.Model}
 			}
-			wire, err := compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+			wire, err := compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +51,7 @@ func TestResponseModelFailureAttribution(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			err = route.AttributeResponseModelFailure(compiled.ValidateWireOutput(p.EncodeResponse, value), response, value)
+			err = route.AttributeResponseFailure(compiled.ValidateWireOutput(p.EncodeResponse, value), response, value)
 			var conversion *p.ConversionError
 			if !errors.As(err, &conversion) {
 				t.Fatal("missing final validation", err)
@@ -99,7 +99,7 @@ func TestChatResponseModelPolicyAndPrecision(t *testing.T) {
 					policy.Mode = mode
 				}
 				for index := range policy.Rules {
-					if mode == "disabled" && policy.Rules[index].Action == "chat_response_model" {
+					if mode == "disabled" && policy.Rules[index].ID == "chat-response-model" {
 						policy.Rules[index].Enabled = false
 					}
 				}
@@ -108,18 +108,18 @@ func TestChatResponseModelPolicyAndPrecision(t *testing.T) {
 					t.Fatal(err)
 				}
 				route := p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Transport: p.HTTPJSON, Model: "routing-model"}
-				route, err = route.WithResponseModelOrigin(compiled, compiled, []byte(`{"model":"sent-model"}`), raw.Bytes())
+				route, err = route.WithResponseObservations(compiled, compiled, []byte(`{"model":"sent-model"}`), raw.Bytes())
 				if err != nil {
 					t.Fatal(err)
 				}
-				response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), p.EvaluationContext{})
+				response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), fixtureOptions(p.EvaluationContext{}))
 				sink := &p.DiagnosticSink{}
 				var wire []byte
 				if err == nil {
 					response, err = conversion.Response(t.Context(), response, route, sink)
 				}
 				if err == nil {
-					wire, err = compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+					wire, err = compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 				}
 				if err == nil {
 					err = compiled.ValidateWireOutput(p.EncodeResponse, testValue(t, string(wire)))
@@ -164,11 +164,11 @@ func TestChatResponseModelOriginAndCollector(t *testing.T) {
 			if scenario == "removed" {
 				raw, _ = p.ApplyMutations(raw, []p.Mutation{{Op: p.SetValue, Path: "/model", Value: p.StringValue("provider-model")}}, p.DefaultLimits())
 			}
-			response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), p.EvaluationContext{})
+			response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), fixtureOptions(p.EvaluationContext{}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity(), Target: compiled.Identity()}).WithResponseModelOrigin(compiled, compiled, []byte(`{"model":"sent-model"}`), raw.Bytes())
+			route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity(), Target: compiled.Identity()}).WithResponseObservations(compiled, compiled, []byte(`{"model":"sent-model"}`), raw.Bytes())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -178,9 +178,9 @@ func TestChatResponseModelOriginAndCollector(t *testing.T) {
 			case "mapped":
 				response.Model = p.StringValue("authored-model")
 			case "unknown_request":
-				route.ResponseModel.RequestModel = p.Value{}
+				route = p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Transport: p.HTTPJSON}
 			case "no_origin":
-				route.ResponseModel = nil
+				route = p.ConversionContext{Source: route.Source, Target: route.Target, Transport: route.Transport, Model: route.Model}
 			case "stream":
 				route.Transport = p.SSE
 			case "failed":
@@ -189,7 +189,7 @@ func TestChatResponseModelOriginAndCollector(t *testing.T) {
 			sink := &p.DiagnosticSink{}
 			var projected *p.Response
 			if scenario == "collector" {
-				projected, err = conversion.RepairCollectedResponseModel(t.Context(), response, route, sink)
+				projected, err = conversion.ProjectCollectedResponse(t.Context(), response, route, sink)
 			} else {
 				projected, err = conversion.Response(t.Context(), response, route, sink)
 			}
@@ -220,97 +220,57 @@ func TestChatResponseModelOriginAndCollector(t *testing.T) {
 	}
 }
 
-func TestChatResponseModelModuleSelectionAndCombination(t *testing.T) {
-	compiled := shippedProjectionProtocol(t, Chat)
-	definition := compiled.Definition()
-	definition.ID = "old-chat-model-copy"
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), Modules(), nil)
-	compile := func(def p.Definition) *p.Compiled {
-		t.Helper()
-		raw, _ := p.EncodeValue(def)
-		result, issues := compiler.Compile(raw.Bytes())
-		if result == nil {
-			t.Fatal(issues)
-		}
-		return result
-	}
-	custom := compile(definition)
-	policy := p.DefaultConversionPolicy(custom, custom)
-	hasRule := func(policy p.ConversionPolicy) bool {
-		for _, rule := range policy.Rules {
-			if rule.Action == "chat_response_model" {
-				return true
+func TestChatResponseShapeUsesOnlyExplicitCrossWireModel(t *testing.T) {
+	compiled := compileBuiltinPackage(t, "openai-chat")
+	for _, model := range []string{"", "selected-model"} {
+		for _, enabled := range []bool{false, true} {
+			policy := p.DefaultConversionPolicy(compiled, compiled)
+			for index := range policy.Rules {
+				if policy.Rules[index].ID == "response-shape" {
+					policy.Rules[index].Enabled = enabled
+				}
+			}
+			conversion, err := p.ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Status: p.StringValue("completed"), Attributes: p.Object{"created_at": testValue(t, "1")}, Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}}}
+			route := p.ConversionContext{Source: p.Identity{Family: "custom", WireVersion: "v1"}, Target: compiled.Identity(), Model: model, Transport: p.HTTPJSON}
+			projected, err := conversion.Response(t.Context(), response, route, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire, err := compiled.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{}))
+			if err == nil {
+				err = compiled.ValidateWireOutput(p.EncodeResponse, testValue(t, string(wire)))
+			}
+			if (err == nil) != (enabled && model != "") || !response.Model.IsZero() {
+				t.Fatal("model context was guessed, bypassed or mutated", model, enabled, err)
+			}
+			if enabled && model != "" && !projected.Model.IsString(model) {
+				t.Fatal("explicit target model lost", projected.Model)
 			}
 		}
-		return false
-	}
-	if !hasRule(policy) {
-		t.Fatal("custom module lost default")
-	}
-	for _, direction := range []p.Direction{p.EncodeResponse, p.DecodeRequest} {
-		modified := custom.Definition()
-		modified.Directions[direction] = p.Mapping{Transform: &p.Expression{Op: "read"}}
-		if hasRule(p.DefaultConversionPolicy(compile(modified), custom)) {
-			t.Fatal("guessed handwritten mapping", direction)
-		}
-	}
-	for _, codec := range []string{Responses, Anthropic, Gemini} {
-		if hasRule(p.DefaultConversionPolicy(shippedProjectionProtocol(t, codec), custom)) {
-			t.Fatal("cross-protocol default changed", codec)
-		}
-	}
-	raw := october14Fixture(t, "chat_missing_model")
-	semantic, err := custom.DecodeResponse(t.Context(), raw.Bytes(), p.EvaluationContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected, _ := p.EncodeValue(semantic)
-	definition.Samples = append(definition.Samples, p.Sample{ID: "missing-model-audit", Direction: p.DecodeResponse, Input: raw, Expected: expected, Context: p.Object{"upstreamRequest": testValue(t, `{"model":"sent-model"}`)}})
-	fixture := compile(definition)
-	report := p.VerifyCombination(t.Context(), custom, fixture)
-	var found bool
-	for _, check := range report.Checks {
-		if check.SampleID == "missing-model-audit" {
-			found = true
-			if !check.Passed {
-				t.Fatal(check, report.Issues)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("fixture not verified")
-	}
-	var repair bool
-	for _, issue := range report.Issues {
-		repair = repair || issue.RuleID == "chat-response-model"
-	}
-	if !repair {
-		t.Fatal("combination lost normalization evidence", report.Issues)
 	}
 }
 
 func TestAuditPlaceholderStartupRemainsRejected(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Chat)
-	conversion, _ := p.ResolveConversion(p.DefaultConversionPolicy(compiled, compiled))
-	sink := &p.DiagnosticSink{}
-	route := p.ConversionContext{Source: compiled.Identity(), Target: compiled.Identity(), Transport: p.SSE}
-	state := p.NewSourceEventState(conversion, route, compiled, compiled, sink)
-	sequence, err := state.Sequence(t.Context(), october14Fixture(t, "chat_placeholder_start"))
+	validator, err := compiled.NewWireInputStreamValidation(p.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var frames []p.Value
-	if err := sequence.Decode(&frames); err != nil {
+	if err := october14Fixture(t, "chat_placeholder_start").Decode(&frames); err != nil {
 		t.Fatal(err)
 	}
-	options := p.EvaluationContext{State: p.NewEvaluationState()}
 	for _, frame := range frames {
-		if _, err = compiled.DecodeFrame(t.Context(), frame, options); err != nil {
+		if err = validator.Consume(t.Context(), frame); err != nil {
 			break
 		}
 	}
-	if err == nil || !strings.Contains(err.Error(), "identity changed") || len(sink.Issues()) != 0 {
-		t.Fatal(err, sink.Issues())
+	if err == nil {
+		t.Fatal("placeholder identity changed without a contract rejection")
 	}
 }
 
@@ -322,11 +282,11 @@ func TestChatResponseModelKeepsToolArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity(), Target: compiled.Identity()}).WithResponseModelOrigin(compiled, compiled, []byte(`{"model":"sent-model"}`), raw.Bytes())
+	route, err := (p.ConversionContext{Transport: p.HTTPJSON, Source: compiled.Identity(), Target: compiled.Identity()}).WithResponseObservations(compiled, compiled, []byte(`{"model":"sent-model"}`), raw.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), p.EvaluationContext{})
+	response, err := compiled.DecodeResponse(t.Context(), raw.Bytes(), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +295,7 @@ func TestChatResponseModelKeepsToolArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := compiled.EncodeResponse(t.Context(), response, p.EvaluationContext{})
+	wire, err := compiled.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -42,7 +42,7 @@ func comparableWireUsage(usage *Usage) *Usage {
 	if usage == nil {
 		return nil
 	}
-	copy := &Usage{}
+	copy := &Usage{ExecutionSpeed: usage.ExecutionSpeed, Executions: usage.Executions}
 	normalize := func(value *Counter) *Counter {
 		if value == nil {
 			return nil
@@ -113,17 +113,9 @@ func comparableToolOptions(tools []Tool) []Tool {
 	return result
 }
 
-func equivalentResponse(response *Response, family string) *Response {
+func equivalentResponse(response *Response) *Response {
 	copy := *response
 	copy.Content = comparableConversation(response.Content)
 	copy.Usage = comparableWireUsage(response.Usage)
-	if response.Attributes["anthropic_stop_sequence"].IsNull() {
-		copy.Attributes = Object{}
-		for key, value := range response.Attributes {
-			if key != "anthropic_stop_sequence" {
-				copy.Attributes[key] = value
-			}
-		}
-	}
 	return &copy
 }

@@ -26,17 +26,19 @@ func TestAuditActualPresetJSONMatrix(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				r, err := from.DecodeResponse(t.Context(), []byte(raw), p.EvaluationContext{})
+				r, err := from.DecodeResponse(t.Context(), []byte(raw), fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
 				original, _ := p.EncodeValue(r)
 				sink := &p.DiagnosticSink{}
-				r, err = c.Response(t.Context(), r, p.ConversionContext{Source: from.Identity(), Target: to.Identity(), Model: "m"}, sink)
+				route := fixtureConversionContext(t, c, p.ConversionResponse, from.Identity())
+				route.Transport = p.HTTPJSON
+				r, err = c.Response(t.Context(), r, route, sink)
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire, err := to.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+				wire, err := to.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -77,31 +79,32 @@ func TestAuditActualPresetJSONMatrix(t *testing.T) {
 }
 
 func TestAuditMetadataScopeAndStrict(t *testing.T) {
-	t.Parallel()
-	adapter := module{name: Chat, family: "openai_chat"}
-	response, err := adapter.decodeResponse(testValue(t, auditResponses[Chat]), p.EvaluationContext{})
+	source, target := testCompiled(t, Chat), testCompiled(t, Anthropic)
+	response, err := source.DecodeResponse(t.Context(), []byte(auditResponses[Chat]), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := adapter.encodeResponse(response, p.EvaluationContext{})
+	response.Native = nil
+	wire, err := source.EncodeResponse(t.Context(), response, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields, _ := wire.ReadObject()
-	choices, _ := readArray(fields["choices"])
-	choice, _ := choices[0].ReadObject()
-	if !choice["logprobs"].IsNull() || !fields["choiceExtensions"].IsZero() || fields["service_tier"].IsZero() {
-		t.Fatal(string(wire.Bytes()))
+	fields, _ := testValue(t, string(wire)).ReadObject()
+	var choices []p.Object
+	if err := fields["choices"].Decode(&choices); err != nil || len(choices) != 1 || !choices[0]["logprobs"].IsNull() || !fields["choiceExtensions"].IsZero() || !fields["service_tier"].IsString("default") {
+		t.Fatal("metadata changed owner or presence", string(wire), err)
 	}
-	from, to := shippedProjectionProtocol(t, Chat), shippedProjectionProtocol(t, Anthropic)
-	policy := p.DefaultConversionPolicy(to, from)
+	policy := p.DefaultConversionPolicy(target, source)
 	policy.Mode = "strict"
-	c, _ := p.ResolveConversion(policy)
-	if _, err = c.Response(t.Context(), response, p.ConversionContext{}, nil); err == nil {
+	conversion, err := p.ResolveConversion(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conversion.Response(t.Context(), response, p.ConversionContext{Source: source.Identity(), Target: target.Identity()}, nil); err == nil {
 		t.Fatal("strict metadata loss accepted")
 	}
 	bad := strings.Replace(auditResponses[Chat], `"service_tier":"default"`, `"service_tier":42`, 1)
-	if _, err = adapter.decodeResponse(testValue(t, bad), p.EvaluationContext{}); err == nil {
+	if _, err := source.DecodeResponse(t.Context(), []byte(bad), fixtureOptions(p.EvaluationContext{})); err == nil {
 		t.Fatal("invalid metadata type accepted")
 	}
 }
@@ -114,8 +117,9 @@ func TestAuditToolProjectionAndHoist(t *testing.T) {
 			to := shippedProjectionProtocol(t, name)
 			policy := p.DefaultConversionPolicy(from, to)
 			c, _ := p.ResolveConversion(policy)
-			input := &p.Request{SchemaVersion: 1, Content: []p.Node{{Kind: p.ToolResultNode, CallID: p.StringValue("parallel_2"), Payload: testValue(t, `{"n":900719925474099312345,"ok":true}`)}}}
-			out, err := c.Request(t.Context(), input, p.ConversionContext{}, nil)
+			input := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Content: []p.Node{{Kind: p.ToolResultNode, CallID: p.StringValue("parallel_2"), Payload: testValue(t, `{"n":900719925474099312345,"ok":true}`)}}}
+			input.Source = from.Identity()
+			out, err := c.Request(t.Context(), input, fixtureConversionContext(t, c, p.ConversionRequest, input.Source), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,22 +129,22 @@ func TestAuditToolProjectionAndHoist(t *testing.T) {
 			}
 			policy.Mode = "strict"
 			c, _ = p.ResolveConversion(policy)
-			if _, err = c.Request(t.Context(), input, p.ConversionContext{}, nil); err == nil {
+			if _, err = c.Request(t.Context(), input, fixtureConversionContext(t, c, p.ConversionRequest, input.Source), nil); err == nil {
 				t.Fatal("strict payload type loss accepted")
 			}
 		})
 	}
 	chat, anthropic := shippedProjectionProtocol(t, Chat), shippedProjectionProtocol(t, Anthropic)
-	input, err := chat.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":32,"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"},{"role":"system","content":"be concise"},{"role":"developer","content":"use English"},{"role":"user","content":"go"}]}`), p.EvaluationContext{})
+	input, err := chat.DecodeRequest(t.Context(), []byte(`{"model":"m","max_tokens":32,"messages":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"},{"role":"system","content":"be concise"},{"role":"developer","content":"use English"},{"role":"user","content":"go"}]}`), fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	c, _ := p.ResolveConversion(p.DefaultConversionPolicy(chat, anthropic))
-	out, err := c.Request(t.Context(), input, p.ConversionContext{}, nil)
+	out, err := c.Request(t.Context(), input, fixtureConversionContext(t, c, p.ConversionRequest, input.Source), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := anthropic.EncodeRequest(t.Context(), out, p.EvaluationContext{})
+	wire, err := anthropic.EncodeRequest(t.Context(), out, fixtureOptions(p.EvaluationContext{}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -60,7 +60,7 @@ func TestPackageBufferTextTransactionsAndSnapshots(t *testing.T) {
 	if got, err := apply("read", "", false); err != nil || got != "a\n猫!" || first != "a\n猫" {
 		t.Fatal("snapshot mutated or rollback lost content", got, err)
 	}
-	retained := options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}]
+	retained := options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}]
 	buffer := retained.primitives.buffers[streamTrackKey{channel: "buffer_text:payload", item: "i"}]
 	if len(buffer.fragments) != 1 {
 		t.Fatal("materialized text retained its old fragments")
@@ -74,7 +74,7 @@ func TestPackageBufferTextTransactionsAndSnapshots(t *testing.T) {
 	if _, err := apply("release", "", false); err != nil {
 		t.Fatal(err)
 	}
-	retained = options.State.packageStates[moduleStateKey{compiled: compiled, direction: DecodeEvent}]
+	retained = options.State.packageStates[executionStateKey{compiled: compiled, direction: DecodeEvent}]
 	if len(retained.primitives.buffers) != 0 || len(retained.primitives.trackedItems) != 0 || options.State.packageStateBytes != 0 {
 		t.Fatal("release retained payload or identity budget")
 	}

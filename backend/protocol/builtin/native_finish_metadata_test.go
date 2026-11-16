@@ -11,7 +11,7 @@ func TestChatProviderFinishMetadataProjection(t *testing.T) {
 	from, to := shippedProjectionProtocol(t, Chat), shippedProjectionProtocol(t, Responses)
 	for _, value := range []string{`null`, `"stop"`, `42`} {
 		wire := strings.Replace(auditResponses[Chat], `"finish_reason":`, `"native_finish_reason":`+value+`,"finish_reason":`, 1)
-		r, err := from.DecodeResponse(t.Context(), []byte(wire), p.EvaluationContext{})
+		r, err := from.DecodeResponse(t.Context(), []byte(wire), fixtureOptions(p.EvaluationContext{}))
 		if value == `42` {
 			if err == nil {
 				t.Fatal("invalid metadata accepted")
@@ -29,7 +29,7 @@ func TestChatProviderFinishMetadataProjection(t *testing.T) {
 				t.Fatal(err)
 			}
 			sink := &p.DiagnosticSink{}
-			projected, err := c.Response(t.Context(), r, p.ConversionContext{}, sink)
+			projected, err := c.Response(t.Context(), r, fixtureConversionContext(t, c, p.ConversionResponse, r.Source), sink)
 			if mode == "strict" && value != `null` {
 				if err == nil {
 					t.Fatal("loss accepted in strict mode")
@@ -42,11 +42,11 @@ func TestChatProviderFinishMetadataProjection(t *testing.T) {
 			if !sinkHas(sink, "native_finish_reason") {
 				t.Fatal("missing diagnostic")
 			}
-			if _, err := to.EncodeResponse(t.Context(), projected, p.EvaluationContext{}); err != nil {
+			if _, err := to.EncodeResponse(t.Context(), projected, fixtureOptions(p.EvaluationContext{})); err != nil {
 				t.Fatal(err)
 			}
 		}
-		encoded, err := from.EncodeResponse(t.Context(), r, p.EvaluationContext{})
+		encoded, err := from.EncodeResponse(t.Context(), r, fixtureOptions(p.EvaluationContext{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestChatProviderFinishMetadataProjection(t *testing.T) {
 
 func TestChatProviderFinishMetadataOnToolOnlyStream(t *testing.T) {
 	compiled := shippedProjectionProtocol(t, Chat)
-	decode, encode := p.EvaluationContext{State: p.NewEvaluationState()}, p.EvaluationContext{State: p.NewEvaluationState()}
+	decode, encode := fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()}), fixtureOptions(p.EvaluationContext{State: p.NewEvaluationState()})
 	wires := []string{
 		`{"id":"r","model":"m","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call","type":"function","function":{"name":"echo","arguments":"{}"}}]},"finish_reason":null,"native_finish_reason":null}]}`,
 		`{"id":"r","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls","native_finish_reason":"tool_calls"}]}`,

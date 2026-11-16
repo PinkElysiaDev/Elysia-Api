@@ -44,7 +44,7 @@ func nativeReadLocation(expression *compiledExpression, capture *nativeCaptureSt
 	case "item":
 		location = capture.item
 	case "binding":
-		location = capture.bindings[expression.bindingSlot]
+		location = capture.bindings[expression.storageSlot]
 	default:
 		return nativeLocation{}
 	}
@@ -100,7 +100,7 @@ func (plan *compiledOutputPlan) captureSource(state evaluation) (plannedOutput, 
 }
 
 func (plan *compiledOutputPlan) captureWireValue(state evaluation) (plannedOutput, JSONOutput, error) {
-	selected, err := plan.source.buildNode(state)
+	selected, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, JSONOutput{}, err
 	}

@@ -60,7 +60,7 @@ func TestPackageMetadataContractNeedsNoProviderRegistry(t *testing.T) {
 	response.Metadata[0].Value = StringValue("changed")
 	response.Metadata[0].Name = "custom_field"
 	event := Event{SchemaVersion: ProtocolCoreVersion, Type: MetadataUpdated, Metadata: response.Metadata}
-	if err := IssuesError(CheckEvent(event, Target{Protocol: compiled.Identity(), coreVersion: ProtocolCoreVersion}, DefaultLimits())); err != nil {
+	if err := IssuesError(CheckEvent(event, Target{Protocol: compiled.Identity()}, DefaultLimits())); err != nil {
 		t.Fatal("core event validation consulted an external metadata registry", err)
 	}
 }

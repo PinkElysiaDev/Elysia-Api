@@ -202,16 +202,16 @@ func (service *Service) Rollback(ctx context.Context, id, hash, expectedActive s
 // Reload publishes all persisted active revisions in one atomic snapshot.
 // Failure leaves the previous snapshot intact and returns repair diagnostics.
 func (service *Service) Reload(ctx context.Context) error {
-	return service.reload(ctx, false)
+	return service.reload(ctx, false, nil)
 }
 
 // ReloadAvailable keeps healthy protocols executable when an old custom
 // revision fails current-engine verification. Preset failures remain blocking.
 func (service *Service) ReloadAvailable(ctx context.Context, requiredIDs ...string) error {
-	return service.reload(ctx, true, requiredIDs...)
+	return service.reload(ctx, true, nil, requiredIDs...)
 }
 
-func (service *Service) reload(ctx context.Context, isolate bool, requiredIDs ...string) error {
+func (service *Service) reload(ctx context.Context, shouldIsolate bool, compilations map[string]sessionCompilation, requiredIDs ...string) error {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	activations, err := service.repository.ListProtocolActivations(ctx)
@@ -221,9 +221,9 @@ func (service *Service) reload(ctx context.Context, isolate bool, requiredIDs ..
 	entries := make(map[string]*Compiled, len(activations))
 	failures := map[string]string{}
 	for _, active := range activations {
-		compiled, err := service.loadVerifiedRevision(ctx, active.ProtocolID, active.RevisionHash)
+		compiled, err := service.loadVerifiedCompilation(ctx, active.ProtocolID, active.RevisionHash, compilations)
 		if err != nil {
-			if isolate && !IsPresetProtocolID(active.ProtocolID) {
+			if shouldIsolate && !IsPresetProtocolID(active.ProtocolID) {
 				failures[active.ProtocolID] = err.Error()
 				continue
 			}
@@ -288,13 +288,22 @@ func (service *Service) DeleteRetained(id, hash string, commit func() error) err
 }
 
 func (service *Service) loadVerifiedRevision(ctx context.Context, id, hash string) (*Compiled, error) {
+	return service.loadVerifiedCompilation(ctx, id, hash, nil)
+}
+
+func (service *Service) loadVerifiedCompilation(ctx context.Context, id, hash string, compilations map[string]sessionCompilation) (*Compiled, error) {
 	revision, err := service.repository.ReadProtocolRevision(ctx, id, hash)
 	if err != nil {
 		return nil, err
 	}
-	compiled, issues := service.compiler.Compile(revision.Definition.Bytes())
-	if err := IssuesError(issues); err != nil {
-		return nil, err
+	admitted, hasAdmission := compilations[id]
+	compiled := admitted.compiled
+	if !hasAdmission || admitted.source != revision.Definition {
+		var issues []ConversionIssue
+		compiled, issues = service.compiler.Compile(revision.Definition.Bytes())
+		if err := IssuesError(issues); err != nil {
+			return nil, err
+		}
 	}
 	if compiled.identity.DefinitionID != id || compiled.hash != hash {
 		return nil, fmt.Errorf("stored revision identity/hash mismatch")

@@ -11,8 +11,8 @@ import (
 
 func TestProtocolBindingAPIGeneratesCurrentReportsAndRejectsInvalidClaims(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
-	ingress := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-alpha"))
-	upstream := activateGatewayDefinition(t, server, loadGatewayDefinition(t, "text-beta"))
+	ingress := activateGatewayFixture(t, server, loadGatewayFixture(t, "text-alpha"))
+	upstream := activateGatewayFixture(t, server, loadGatewayFixture(t, "text-beta"))
 	setupGatewayModel(t, server, upstream, "https://example.test")
 	for _, invalid := range []storage.ProtocolBinding{
 		{Kind: "source", SourceID: "unrelated", Binding: protocol.Binding{ProtocolID: "inactive-custom"}},

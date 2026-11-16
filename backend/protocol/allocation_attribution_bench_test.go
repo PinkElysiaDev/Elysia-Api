@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// Diagnostic shapes isolate existing allocation boundaries. The borrowed case
-// consumes all fields immediately; it is not a replacement for retained reads.
+// Diagnostic shapes exercise private field tables through their real reader.
+// Borrowed fields remain scoped to this input invocation.
 func BenchmarkAllocationFieldViews(b *testing.B) {
 	for _, count := range []int{4, 16} {
 		fields := Object{}
@@ -26,8 +26,12 @@ func BenchmarkAllocationFieldViews(b *testing.B) {
 				}
 				b.ReportAllocs()
 				for b.Loop() {
-					got, err := input.readObjectFieldsWithin(reader, true)
-					if err != nil || len(got) != count || got["f0"].raw != fields["f0"].raw {
+					objects := newPlanObjectReader(input, objectReuseReads)
+					if _, err := objects.readFields(input, reader); err != nil {
+						b.Fatal("field view failed", err)
+					}
+					got, err := objects.readOwnedMember(input, "f0")
+					if err != nil || got.raw != fields["f0"].raw {
 						b.Fatal("field view changed content", err)
 					}
 				}

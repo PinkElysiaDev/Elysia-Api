@@ -1,23 +1,5 @@
 package protocol
 
-import (
-	"fmt"
-	"slices"
-)
-
-// Codec identifies the installed implementation of one direction, never a
-// user-authored family label. An after mapping does not change its wire codec.
-func (c *Compiled) Codec(direction Direction) string {
-	if c == nil || c.mappings[direction].module == nil {
-		return ""
-	}
-	return c.mappings[direction].module.Name()
-}
-
-func knownConversionCodec(codec string) bool {
-	return slices.Contains([]string{"openai-chat", "responses", "anthropic", "gemini"}, codec)
-}
-
 // ResolvePreviewConversion pins actual endpoints from one runtime view.
 func (s *Service) ResolvePreviewConversion(route ConversionContext, phase ConversionPhase, policy *ConversionPolicy) (*CompiledConversion, ConversionContext, error) {
 	view := s.View()
@@ -33,9 +15,6 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 	if phase == ConversionResponse || phase == ConversionEvent || phase == ConversionSourceEvent {
 		ingress, upstream = target, source
 	}
-	if phase != ConversionResponse || !chatResponseModelPair(ingress, upstream) {
-		route.ResponseModel = nil
-	}
 	layers := []ConversionPolicy{DefaultConversionPolicy(ingress, upstream)}
 	if policy != nil {
 		layers = append(layers, *policy)
@@ -44,178 +23,19 @@ func (s *Service) ResolvePreviewConversion(route ConversionContext, phase Conver
 	return c, route, err
 }
 
-// DefaultConversionPolicy combines declared package rules and installed codec defaults.
+// DefaultConversionPolicy combines source input rules and target output rules.
 // Usage collection is gateway intent; each target mapping chooses its wire form.
 func DefaultConversionPolicy(ingress, upstream *Compiled) ConversionPolicy {
 	p := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "engine-default", Name: "引擎默认", Mode: "compatible", Rules: []ConversionRule{},
 		Continuation: &ContinuationSettings{ClientCarrier: true, Persist: true, RetentionSeconds: 7 * 24 * 3600, TurnsPerSession: 64, MaxBytes: 512 << 20, RecordBytes: 8 << 20}}
 	p.Rules = append(p.Rules, upstream.defaultRequestConversionRules(ingress)...)
+	p.Rules = append(p.Rules, upstream.defaultConversionRules(ConversionSourceEvent)...)
 	p.Rules = append(p.Rules, ingress.defaultConversionRules(ConversionResponse)...)
 	p.Rules = append(p.Rules, ingress.defaultConversionRules(ConversionEvent)...)
-	if chatResponseModelPair(ingress, upstream) {
-		p.Rules = append(p.Rules, ConversionRule{ID: "chat-response-model", Order: 205, Enabled: true, Phase: ConversionResponse, Action: "chat_response_model"})
-	}
-	if upstream.Codec(DecodeEvent) == "openai-chat" && knownConversionCodec(ingress.Codec(EncodeEvent)) {
-		p.Rules = append(p.Rules, ConversionRule{ID: "chat-stream-identity", Order: 100, Enabled: true, Phase: ConversionSourceEvent, Action: "chat_stream_identity"})
-	}
-	if codec := ingress.Codec(EncodeEvent); upstream.Codec(DecodeEvent) == "responses" && knownConversionCodec(codec) {
-		p.Rules = append(p.Rules, ConversionRule{ID: "responses-turn-state", Order: 210, Enabled: true, Phase: ConversionEvent, Action: "responses_turn_state", Value: StringValue(codec)})
-	}
-	if upstream != nil && (upstream.packagePlan != nil || knownConversionCodec(upstream.Codec(EncodeRequest))) {
+	if upstream != nil {
 		p.Usage = &ConversionUsageSettings{CollectUpstreamUsage: true}
 	}
-	if codec := upstream.Codec(EncodeRequest); knownConversionCodec(codec) {
-		sourceCodec := ingress.Codec(DecodeRequest)
-		if !knownConversionCodec(sourceCodec) {
-			sourceCodec = ""
-		}
-		projection, _ := EncodeValue(requestProjectionOptions{SourceCodec: sourceCodec, TargetCodec: codec})
-		p.Rules = append(p.Rules,
-			ConversionRule{ID: "history-response-metadata", Order: 160, Enabled: true, Phase: ConversionRequest, Action: "response_metadata", Value: StringValue(codec)},
-			ConversionRule{ID: "request-projection", Order: 130, Enabled: true, Phase: ConversionRequest, Action: "request_projection", Value: projection},
-			ConversionRule{ID: "client-stream-options", Order: 100, Enabled: true, Phase: ConversionRequest, Action: "stream_options", Value: StringValue(codec)},
-			ConversionRule{ID: "gemini-safety-settings", Order: 170, Enabled: true, Phase: ConversionRequest, Action: "gemini_safety_settings", Value: StringValue(codec)},
-			ConversionRule{ID: "responses-include", Order: 180, Enabled: true, Phase: ConversionRequest, Action: "responses_include", Value: StringValue(codec)},
-			ConversionRule{ID: "responses-context", Order: 185, Enabled: true, Phase: ConversionRequest, Action: "responses_context", Value: StringValue(codec)},
-			ConversionRule{ID: "request-signatures", Order: 200, Enabled: true, Phase: ConversionRequest, Action: "signatures"})
-		if source := ingress.Codec(DecodeRequest); knownConversionCodec(source) {
-			reasoning, _ := EncodeValue(reasoningOptions{SourceCodec: source, TargetCodec: codec})
-			p.Rules = append(p.Rules, ConversionRule{ID: "reasoning-controls", Order: 175, Enabled: true, Phase: ConversionRequest, Action: "reasoning_controls", Value: reasoning})
-			settings, _ := EncodeValue(responsesStorageOptions{SourceCodec: source, TargetCodec: codec, OnUnsupported: "degrade"})
-			p.Rules = append(p.Rules, ConversionRule{ID: "responses-storage", Order: 190, Enabled: true, Phase: ConversionRequest, Action: "responses_storage", Value: settings})
-		}
-		if codec == "gemini" || (codec == "anthropic" && sourceCodec != "anthropic") {
-			p.Rules = append(p.Rules, ConversionRule{ID: "system-instruction-hoist", Order: 140, Enabled: true, Phase: ConversionRequest, Action: "system_instruction_hoist"})
-		}
-		if codec == "openai-chat" {
-			p.Rules = append(p.Rules, ConversionRule{ID: "chat-assistant-history", Order: 210, Enabled: true, Phase: ConversionRequest, Action: "chat_history"})
-		}
-		if codec == "anthropic" || codec == "gemini" {
-			p.Rules = append(p.Rules, ConversionRule{ID: "block-assistant-history", Order: 210, Enabled: true, Phase: ConversionRequest, Action: "assistant_history"})
-		}
-		if codec != "gemini" {
-			p.Rules = append(p.Rules, ConversionRule{ID: "text-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_text", Value: StringValue(codec)})
-		}
-		if codec == "gemini" {
-			p.Rules = append(p.Rules, ConversionRule{ID: "gemini-tool-results", Order: 150, Enabled: true, Phase: ConversionRequest, Match: ConversionMatch{NodeKind: ToolResultNode}, Action: "tool_result_object", Value: StringValue("result")})
-		}
-	}
-	for _, entry := range []struct {
-		direction Direction
-		phase     ConversionPhase
-		prefix    string
-	}{{EncodeResponse, ConversionResponse, "response"}, {EncodeEvent, ConversionEvent, "event"}} {
-		if codec := ingress.Codec(entry.direction); knownConversionCodec(codec) {
-			decode := DecodeResponse
-			if entry.direction == EncodeEvent {
-				decode = DecodeEvent
-			}
-			if sourceCodec := upstream.Codec(decode); knownConversionCodec(sourceCodec) {
-				value, _ := EncodeValue(errorProjectionOptions{SourceCodec: sourceCodec, TargetCodec: codec})
-				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-error-metadata", Order: 215, Enabled: true, Phase: entry.phase, Action: "error_metadata", Value: value})
-			}
-			if !nativeConversionPair(ingress, upstream, entry.direction) {
-				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-shape", Order: 230, Enabled: true, Phase: entry.phase, Action: "response_shape", Value: StringValue(codec)})
-				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-envelope", Order: 320, Enabled: true, Phase: entry.phase, Action: "response_envelope", Value: StringValue(codec)})
-			}
-			p.Rules = append(p.Rules,
-				ConversionRule{ID: entry.prefix + "-metadata", Order: 220, Enabled: true, Phase: entry.phase, Action: "response_metadata", Value: StringValue(codec)},
-				ConversionRule{ID: entry.prefix + "-signatures", Order: 200, Enabled: true, Phase: entry.phase, Action: "signatures"},
-				ConversionRule{ID: entry.prefix + "-usage-projection", Order: 300, Enabled: true, Phase: entry.phase, Action: "usage_projection", Value: StringValue(codec)})
-			if codec == "anthropic" && !nativeConversionPair(ingress, upstream, entry.direction) {
-				p.Rules = append(p.Rules, ConversionRule{ID: entry.prefix + "-anthropic-usage-envelope", Order: 310, Enabled: true, Phase: entry.phase, Action: "anthropic_usage_envelope"})
-			}
-		}
-	}
 	return p
-}
-
-// Native replay already has its own complete envelope. Only identical installed
-// mappings qualify; family labels alone say nothing about custom mixed codecs.
-// Final wire validation still rejects malformed native frames.
-func nativeConversionPair(ingress, upstream *Compiled, encode Direction) bool {
-	decode := DecodeResponse
-	if encode == EncodeEvent {
-		decode = DecodeEvent
-	}
-	return ingress != nil && upstream != nil && ingress.native.Preserve && upstream.native.Preserve &&
-		ingress.identity.Family == upstream.identity.Family && ingress.identity.WireVersion == upstream.identity.WireVersion &&
-		ingress.mappings[encode].definitionHash == upstream.mappings[encode].definitionHash &&
-		ingress.mappings[decode].definitionHash == upstream.mappings[decode].definitionHash
-}
-
-// ParseResponsesInclude preserves null/empty at the caller while checking every
-// element, including values minted by a custom semantic mapping.
-func ParseResponsesInclude(raw Value) ([]string, error) {
-	if raw.IsZero() || raw.IsNull() {
-		return nil, nil
-	}
-	invalid := func(at string) error {
-		return streamIssue(InvalidInput, at, "include must be an array of strings or null")
-	}
-	values, err := raw.readArray()
-	if err != nil {
-		return nil, invalid("/include")
-	}
-	selectors := make([]string, len(values))
-	for i, value := range values {
-		if value.IsNull() || value.Decode(&selectors[i]) != nil {
-			return nil, invalid(fmt.Sprintf("/include/%d", i))
-		}
-	}
-	return selectors, nil
-}
-
-func (o *ClientOutput) RequestsEncryptedReasoning() bool {
-	if o == nil {
-		return false
-	}
-	selectors, _ := ParseResponsesInclude(o.RawResponsesInclude)
-	return slices.Contains(selectors, "reasoning.encrypted_content")
-}
-
-// CheckIncludeCarrier runs only when signed state actually exists.
-func (c *CompiledConversion) CheckIncludeCarrier(route ConversionContext, sink *DiagnosticSink) error {
-	for _, rule := range c.Policy.Rules {
-		if rule.Enabled && rule.Action == "responses_include" {
-			return c.issue(rule, ConversionResponse, route, "/include", "requested encrypted reasoning carrier is unavailable; server persistence does not deliver the requested client payload", sink, true)
-		}
-	}
-	return nil
-}
-
-func (c *CompiledConversion) responsesInclude(req *Request, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) error {
-	raw := req.Parameters["responses_include"]
-	if req.ClientOutput != nil && !req.ClientOutput.RawResponsesInclude.IsZero() {
-		if !raw.IsZero() && !equalValues(raw, req.ClientOutput.RawResponsesInclude) {
-			return streamIssue(InvalidInput, "/include", "conflicting legacy and typed include preferences")
-		}
-		raw = req.ClientOutput.RawResponsesInclude
-	}
-	selectors, err := ParseResponsesInclude(raw)
-	if err != nil || raw.IsZero() {
-		return err
-	}
-	codec, _ := readConversionOption[string](c, rule)
-	if codec != "responses" {
-		for i, selector := range selectors {
-			if selector != "reasoning.encrypted_content" {
-				return candidateFailure(c.issue(ConversionRule{ID: rule.ID, Action: "reject"}, ConversionRequest, route, fmt.Sprintf("/include/%d", i), "target has no equivalent include selector", sink, false))
-			}
-		}
-		delete(req.Parameters, "responses_include")
-		c.normalized(rule, route, "/include", "Responses output selection retained as client output preferences; not forwarded as an upstream generation parameter", sink)
-	} else {
-		if req.Parameters == nil {
-			req.Parameters = Object{}
-		}
-		req.Parameters["responses_include"] = raw
-	}
-	if req.ClientOutput == nil {
-		req.ClientOutput = &ClientOutput{}
-	}
-	req.ClientOutput.RawResponsesInclude = raw
-	return nil
 }
 
 // ValidateUsageArithmetic runs before projection, so a removed subtotal cannot
@@ -224,7 +44,13 @@ func ValidateUsageArithmetic(usage *Usage) error {
 	if usage == nil {
 		return nil
 	}
+	if err := validateExecutionUsage(usage); err != nil {
+		return err
+	}
 	if err := validateModalityUsage(usage); err != nil {
+		return err
+	}
+	if err := validateCacheWriteRetention(usage); err != nil {
 		return err
 	}
 	if !usage.Attribution.IsZero() {
@@ -262,92 +88,5 @@ func ValidateUsageArithmetic(usage *Usage) error {
 	if reasoning, ok := usage.Details["output.reasoning_tokens"]; ok && usage.Output != nil && reasoning.Count > usage.Output.Count {
 		return streamIssue(InvalidInput, "/usage/details/output.reasoning_tokens", "reasoning output exceeds total output")
 	}
-	return validateResponsesToolUsageArithmetic(usage)
-}
-
-func (c *CompiledConversion) projectUsage(usage *Usage, phase ConversionPhase, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, base string) error {
-	// Validate every original counter, including fields about to be omitted.
-	// This also protects previews and values produced by earlier authored rules.
-	if err := IssuesError(CheckResponse(&Response{SchemaVersion: SemanticSchemaVersion, Usage: usage}, Target{Protocol: route.Source, Capabilities: CapabilitySet{UsageCapability: true}}, c.limits)); err != nil {
-		return err
-	}
-	if usage == nil {
-		return nil
-	}
-	codec, _ := readConversionOption[string](c, rule)
-	if codec != "responses" && !usage.Attribution.IsZero() {
-		if emptyUsageAttribution(usage.Attribution) {
-			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: base + "/attribution", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty usage attribution normalized for target", Evidence: c.Origins[rule.ID]})
-		} else if err := c.issue(rule, phase, route, base+"/attribution", "target cannot express per-item usage attribution; original accounting is retained", sink, true); err != nil {
-			return err
-		}
-		usage.Attribution = Value{}
-	}
-	if codec != "responses" && !usage.CacheBilling.IsZero() {
-		if emptyMetadata(usage.CacheBilling) {
-			sink.Add(ConversionIssue{Code: ConversionNormalized, Severity: SeverityInfo, Fidelity: "preserved", Protocol: route.Target, Stage: "conversion." + string(phase), Path: base + "/cacheBilling", RuleID: rule.ID, PolicyHash: c.Hash, PolicyRevision: c.RuleRevisions[rule.ID], Reason: "empty cache billing disclosure normalized for target", Evidence: c.Origins[rule.ID]})
-		} else if err := c.issue(rule, phase, route, base+"/cacheBilling", "target cannot express the provider's disclosed cache allocation; original accounting is retained", sink, true); err != nil {
-			return err
-		}
-		usage.CacheBilling = Value{}
-	}
-	for _, name := range sortedKeys(usage.Details) {
-		bucket, modality := ModalityUsageDetail(name)
-		drop := name == "toolUsePromptTokenCount" && codec != "gemini" ||
-			(name == "ephemeral_5m_input_tokens" || name == "ephemeral_1h_input_tokens") && codec != "anthropic" ||
-			IsResponsesToolUsageDetail(name) && codec != "responses" ||
-			bucket != "" && !SupportsModalityUsage(codec, bucket, modality)
-		if !drop {
-			continue
-		}
-		if err := c.issue(rule, phase, route, base+"/details/"+name, "target cannot express this usage detail; original accounting is retained", sink, true); err != nil {
-			return err
-		}
-		delete(usage.Details, name)
-	}
-	if codec == "gemini" && usage.CacheCreation != nil {
-		if err := c.issue(rule, phase, route, base+"/cacheCreation", "target cannot express cache creation; original accounting is retained", sink, true); err != nil {
-			return err
-		}
-		usage.CacheCreation = nil
-		if _, ok := usage.Details["uncached_input_tokens"]; ok {
-			if err := c.issue(rule, phase, route, base+"/details/uncached_input_tokens", "subtotal depends on omitted cache creation; original accounting is retained", sink, true); err != nil {
-				return err
-			}
-			delete(usage.Details, "uncached_input_tokens")
-		}
-	}
-	return nil
-}
-
-func (c *CompiledConversion) projectUsageValue(phase ConversionPhase, input Value, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, limits Limits) (Value, error) {
-	var document any = &Event{}
-	if phase == ConversionResponse {
-		document = &Response{}
-	}
-	if err := input.Decode(document); err != nil {
-		return Value{}, err
-	}
-	shouldEncode, err := c.projectUsageObject(phase, document, route, rule, sink)
-	if err != nil {
-		return Value{}, err
-	}
-	if !shouldEncode {
-		return input, nil
-	}
-	return encodeSemanticWithin(document, limits)
-}
-
-func (c *CompiledConversion) projectUsageObject(phase ConversionPhase, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink) (bool, error) {
-	if response, ok := document.(*Response); ok {
-		return true, c.projectUsage(response.Usage, phase, route, rule, sink, "/usage")
-	}
-	event := document.(*Event)
-	if err := c.projectUsage(event.Usage, phase, route, rule, sink, "/usage"); err != nil {
-		return false, err
-	}
-	if event.Response != nil {
-		return true, c.projectUsage(event.Response.Usage, phase, route, rule, sink, "/response/usage")
-	}
-	return true, nil
+	return validateToolUsageArithmetic(usage)
 }

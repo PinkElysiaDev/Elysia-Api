@@ -2,47 +2,58 @@ package protocol
 
 import (
 	"context"
-	"fmt"
-	"slices"
+	"errors"
+	"maps"
+	"strings"
 )
 
-// SourceFrame retains the transport metadata and ordinal of a provider frame.
-// Value may contain an explicitly diagnosed startup identity correction.
+// SourceFrame retains transport metadata and the original provider ordinal.
+// Any corrected Value has passed the declared source normalization policy.
 type SourceFrame struct {
 	Value    Value
 	Metadata Object
 	Ordinal  int
 }
 
-// SourceEventState delays at most one empty Chat startup frame, before either
-// the decoder or native replay commits its response identity. It is request owned.
+// SourceEventState holds at most one opening frame before source validation.
+// Its matching and corrections come entirely from the pinned source Mapping.
 type SourceEventState struct {
-	conversion *CompiledConversion
-	route      ConversionContext
-	sink       *DiagnosticSink
-	limits     Limits
-	rule       *ConversionRule
-	pending    *SourceFrame
-	ordinal    int
-	isClosed   bool
+	retention      streamReservation
+	conversion     *CompiledConversion
+	route          ConversionContext
+	source         *Compiled
+	sink           *DiagnosticSink
+	limits         Limits
+	rule           ConversionRule
+	options        sourcePreludeOptions
+	pending        *SourceFrame
+	bytes, ordinal int
+	isClosed       bool
+	isReleased     bool
 }
 
-// NewSourceEventState enables compatibility only for actual installed codecs.
-func NewSourceEventState(conversion *CompiledConversion, route ConversionContext, source, target *Compiled, sink *DiagnosticSink) *SourceEventState {
-	state := &SourceEventState{conversion: conversion, route: route, sink: sink, limits: DefaultLimits()}
-	state.isClosed = conversion == nil || source.Codec(DecodeEvent) != "openai-chat" || !knownConversionCodec(target.Codec(EncodeEvent))
-	if !state.isClosed {
-		state.limits = conversion.limits
-		state.limits.BufferBytes = min(state.limits.BufferBytes, source.ResourceLimits().BufferBytes)
+// NewSourceEventState binds source rules to one immutable source and route.
+func NewSourceEventState(conversion *CompiledConversion, route ConversionContext, source *Compiled, sink *DiagnosticSink) *SourceEventState {
+	limits := source.limits
+	if conversion != nil {
+		limits = intersectControlLimits(limits, conversion.limits)
 	}
-	return state
+	return &SourceEventState{conversion: conversion, route: route, source: source, sink: sink, limits: limits, isClosed: conversion == nil || len(conversion.sourcePreludes) == 0}
 }
 
-// Push returns zero, one or two frames in provider order. Nonmatching streams
-// pass unchanged to the ordinary source contract; this is not a general repair.
-func (state *SourceEventState) Push(ctx context.Context, value Value, metadata Object) ([]SourceFrame, error) {
+// Push returns frames in provider order; a first match may wait for one frame.
+// Rewriting occurs before the independent source lifecycle accepts either frame.
+func (state *SourceEventState) Push(ctx context.Context, value Value, metadata Object) (frames []SourceFrame, err error) {
+	defer func() {
+		if err != nil {
+			state.Finish(err)
+			err = resourceIssue(err, state.source.identity, DecodeEvent, "conversion.source_event")
+		}
+	}()
+	if state.isReleased {
+		return nil, operationMetadataError("/state", "released source normalization cannot resume")
+	}
 	if err := ctx.Err(); err != nil {
-		state.Finish(err)
 		return nil, err
 	}
 	state.ordinal++
@@ -50,49 +61,40 @@ func (state *SourceEventState) Push(ctx context.Context, value Value, metadata O
 	if state.isClosed {
 		return []SourceFrame{frame}, nil
 	}
-	if err := checkValueLimits(value, state.limits); err != nil {
-		state.Finish(err)
-		return nil, streamIssue(LimitExceeded, "/frame", err.Error())
-	}
 	if state.pending == nil {
-		for _, rule := range state.conversion.Policy.Rules {
-			if rule.Enabled && rule.Phase == ConversionSourceEvent && rule.Action == "chat_stream_identity" && rule.Match.matches(state.route, value) {
-				state.rule = &rule
-				break
-			}
-		}
-		if _, ok := chatStartupIdentity(value, true); state.rule == nil || !ok {
-			state.isClosed = true
-			return []SourceFrame{frame}, nil
-		}
-		// Metadata can outlive the ReadFrames callback while the prelude waits.
-		encodedMetadata, err := EncodeValue(metadata)
-		if err != nil || len(value.raw)+len(encodedMetadata.raw) > state.limits.BufferBytes {
-			state.isClosed = true
-			return nil, streamIssue(LimitExceeded, "/frame", "startup frame and transport metadata exceed buffer limit")
-		}
-		frame.Metadata = copyObject(metadata)
-		state.pending = &frame
-		return nil, nil
+		return state.holdFirst(ctx, frame)
 	}
 	first := *state.pending
-	state.pending, state.isClosed = nil, true
-	initial, _ := chatStartupIdentity(first.Value, true)
-	next, isStartup := chatStartupIdentity(value, false)
-	if !isStartup || initial.model != next.model || initial.id == next.id {
-		return []SourceFrame{first, frame}, nil
+	state.clearPending()
+	state.isClosed = true
+	matched, err := state.matches(ctx, state.options.next, value)
+	if err != nil || !matched {
+		return []SourceFrame{first, frame}, err
 	}
-	mutations := []Mutation{{Op: ReplaceValue, Path: "/id", Value: next.fields["id"]}}
-	if initial.created != next.created {
-		mutations = append(mutations, Mutation{Op: ReplaceValue, Path: "/created", Value: next.fields["created"]})
+	evaluation := state.evaluation(ctx, value, first.Value)
+	matched, err = evaluateSourcePreludePredicate(state.options.when, evaluation)
+	if err != nil || !matched {
+		return []SourceFrame{first, frame}, err
+	}
+	if err := state.validateFrame(ctx, value); err != nil {
+		return nil, err
+	}
+	mutations, err := state.replacements(evaluation, first.Value)
+	if err != nil {
+		return nil, err
+	}
+	if len(mutations) == 0 {
+		return []SourceFrame{first, frame}, nil
 	}
 	corrected, err := ApplyMutations(first.Value, mutations, state.limits)
 	if err != nil {
-		return nil, streamIssue(LimitExceeded, "/frame", err.Error())
+		return nil, err
+	}
+	if err := state.validateFrame(ctx, corrected); err != nil {
+		return nil, err
 	}
 	for _, mutation := range mutations {
-		if err := state.conversion.issue(*state.rule, ConversionSourceEvent, state.route, mutation.Path,
-			fmt.Sprintf("provider frame %d: empty startup identity aligned with frame %d before delivery", first.Ordinal, frame.Ordinal), state.sink, true); err != nil {
+		if err := state.conversion.controlDiagnostic(state.rule, state.route, controlDiagnosticInfo{Kind: "degrade", Path: mutation.Path, Attribution: "source"}, state.options.Prelude.Reason, state.sink); err != nil {
 			return nil, err
 		}
 	}
@@ -100,31 +102,152 @@ func (state *SourceEventState) Push(ctx context.Context, value Value, metadata O
 	return []SourceFrame{first, frame}, nil
 }
 
-// Finish releases a pending prelude only on clean EOF. Failures and cancellation
-// discard it so flushing cannot replace the actual transport failure.
+func (state *SourceEventState) holdFirst(ctx context.Context, frame SourceFrame) ([]SourceFrame, error) {
+	limits := state.limits
+	for _, rule := range state.conversion.sourcePreludes {
+		if !rule.Match.matchesRoute(state.route) {
+			continue
+		}
+		options := state.conversion.options[rule.ID].value.(sourcePreludeOptions)
+		if options.Source != state.source.identity || state.route.Source != state.source.identity || options.DecoderHash != state.source.mappings[DecodeEvent].definitionHash {
+			return nil, operationMetadataError("/sourcePrelude", "source normalization does not match the pinned decoder and route")
+		}
+		state.options = options
+		state.limits = intersectControlLimits(limits, options.Limits)
+		matched, err := state.matches(ctx, options.first, frame.Value)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			continue
+		}
+		if err := state.validateFrame(ctx, frame.Value); err != nil {
+			return nil, err
+		}
+		metadata, err := EncodeValue(frame.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		bytes := frame.Value.Len() + metadata.Len()
+		if bytes > state.limits.BufferBytes {
+			return nil, resourceFailure("source_prelude", "bytes", state.limits.BufferBytes, bytes)
+		}
+		if err := state.retention.check(1, bytes); err != nil {
+			return nil, err
+		}
+		frame.Metadata = maps.Clone(frame.Metadata)
+		for key, value := range frame.Metadata {
+			frame.Metadata[key] = Value{raw: strings.Clone(value.raw)}
+		}
+		state.pending, state.rule, state.bytes = &frame, rule, bytes
+		state.retention.commit(1, bytes)
+		return nil, nil
+	}
+	state.limits = limits
+	state.isClosed = true
+	return []SourceFrame{frame}, nil
+}
+
+func (state *SourceEventState) matches(ctx context.Context, match compiledSourceFrameMatch, value Value) (bool, error) {
+	if err := match.schema.validate(ctx, value, "/frame", state.limits); err != nil {
+		var limit *ResourceLimitError
+		if errors.As(err, &limit) || ctx.Err() != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	return evaluateSourcePreludePredicate(match.when, state.evaluation(ctx, value, value))
+}
+
+func evaluateSourcePreludePredicate(plan *compiledOutputPlan, state evaluation) (bool, error) {
+	if plan == nil {
+		return true, nil
+	}
+	value, err := plan.evaluate(state)
+	if err != nil {
+		return false, err
+	}
+	return readBoolean(value)
+}
+
+func (state *SourceEventState) evaluation(ctx context.Context, input, root Value) evaluation {
+	return evaluation{ctx: ctx, input: input, root: root, valueReader: &valueReader{}, bindings: make([]JSONOutput, state.options.bindingSlots), budget: &evaluationBudget{limits: state.limits, stepLimit: state.limits.Nodes}}
+}
+
+func (state *SourceEventState) replacements(evaluation evaluation, first Value) ([]Mutation, error) {
+	var updates []Mutation
+	for _, update := range state.options.updates {
+		value, err := update.value.evaluate(evaluation)
+		if err != nil {
+			return nil, err
+		}
+		previous, err := readValuePointer(first, update.pointer)
+		if err != nil {
+			return nil, err
+		}
+		if value.IsZero() || previous.IsZero() {
+			return nil, operationMetadataError(update.path, "source prelude may only replace present fields with present values")
+		}
+		if !equalValues(previous, value) {
+			updates = append(updates, Mutation{Op: ReplaceValue, Path: update.path, Value: value})
+		}
+	}
+	return updates, nil
+}
+
+func (state *SourceEventState) validateFrame(ctx context.Context, frame Value) error {
+	return state.source.validateSelectedWireContract(ctx, DecodeEvent, frame, nil, state.limits, state.source.selectFinalWireContract(DecodeEvent))
+}
+
+// Finish releases a pending original frame only on clean EOF.
+// Transport errors and cancellation discard it without replacing their cause.
 func (state *SourceEventState) Finish(readErr error) []SourceFrame {
 	pending := state.pending
-	state.pending, state.isClosed = nil, true
+	state.clearPending()
+	state.isClosed = true
 	if pending != nil && readErr == nil {
 		return []SourceFrame{*pending}
 	}
 	return nil
 }
 
-// Sequence uses the same bounded processor for previews and combination proofs.
-// The returned array contains wire frames, not decoded semantic events.
+func (state *SourceEventState) clearPending() {
+	state.pending, state.bytes = nil, 0
+	state.retention.commit(0, 0)
+}
+
+// Release drops the bounded pending frame and ends this owner permanently.
+func (state *SourceEventState) Release() {
+	state.Finish(context.Canceled)
+	state.isReleased = true
+	state.retention.release()
+}
+
+func (state *SourceEventState) bindStreamBudget(budget *StreamBudget) error {
+	if state.isReleased {
+		return operationMetadataError("/state", "released source normalization cannot join a stream budget")
+	}
+	budget.constrain(state.limits)
+	items := 0
+	if state.pending != nil {
+		items = 1
+	}
+	return state.retention.bind(budget, items, state.bytes)
+}
+
+// Sequence applies the same source normalization to a bounded preview array.
 func (state *SourceEventState) Sequence(ctx context.Context, input Value) (Value, error) {
-	frames, err := input.readArray()
+	frames, err := readArray(input)
 	if err != nil || input.IsNull() {
 		return Value{}, streamIssue(InvalidInput, "/input", "source_event requires an array of wire frames")
 	}
-	var output []Value
-	buffered := 0
+	output := []Value{}
+	bytes := 0
 	appendFrames := func(batch []SourceFrame) error {
 		for _, frame := range batch {
-			buffered += len(frame.Value.raw)
-			if buffered > state.limits.BufferBytes {
-				return streamIssue(LimitExceeded, "/input", "source event sequence exceeds preview buffer limit")
+			bytes += frame.Value.Len()
+			if bytes > state.limits.BufferBytes {
+				return resourceFailure("source_prelude", "bytes", state.limits.BufferBytes, bytes)
 			}
 			output = append(output, frame.Value)
 		}
@@ -143,68 +266,5 @@ func (state *SourceEventState) Sequence(ctx context.Context, input Value) (Value
 	if err := appendFrames(state.Finish(nil)); err != nil {
 		return Value{}, err
 	}
-	if output == nil {
-		output = []Value{}
-	}
 	return EncodeValue(output)
 }
-
-type chatStartup struct {
-	id, model string
-	created   int64
-	fields    Object
-}
-
-func chatStartupIdentity(value Value, isFirst bool) (chatStartup, bool) {
-	fields, err := value.ReadObject()
-	if err != nil {
-		return chatStartup{}, false
-	}
-	allowed := []string{"id", "model", "created", "object", "choices", "usage", "system_fingerprint"}
-	if !isFirst {
-		allowed = append(allowed, "service_tier")
-	}
-	identity := chatStartup{fields: fields}
-	var object string
-	if !hasOnlyFields(fields, allowed...) || fields["object"].Decode(&object) != nil || object != "chat.completion.chunk" ||
-		fields["id"].Decode(&identity.id) != nil || identity.id == "" ||
-		fields["model"].Decode(&identity.model) != nil || identity.model == "" ||
-		fields["created"].IsZero() || fields["created"].IsNull() || fields["created"].Decode(&identity.created) != nil || identity.created < 0 ||
-		!isAbsentOrNull(fields["usage"]) || !isAbsentOrNull(fields["system_fingerprint"]) {
-		return chatStartup{}, false
-	}
-	if tier := fields["service_tier"]; !tier.IsZero() {
-		if err := ValidateMetadataValue("openai-chat", "response", "service_tier", tier, "/service_tier"); err != nil {
-			return chatStartup{}, false
-		}
-	}
-	choices, err := fields["choices"].readArray()
-	if err != nil || len(choices) != 1 {
-		return chatStartup{}, false
-	}
-	choice, err := choices[0].ReadObject()
-	var index int
-	if err != nil || !hasOnlyFields(choice, "index", "delta", "finish_reason", "logprobs") ||
-		choice["index"].IsZero() || choice["index"].IsNull() || choice["index"].Decode(&index) != nil || index != 0 ||
-		!isAbsentOrNull(choice["finish_reason"]) || !isAbsentOrNull(choice["logprobs"]) {
-		return chatStartup{}, false
-	}
-	delta, err := choice["delta"].ReadObject()
-	var role string
-	if err != nil || !hasOnlyFields(delta, "role", "content") || delta["role"].Decode(&role) != nil || role != "assistant" ||
-		(!delta["content"].IsString("") && (isFirst || !delta["content"].IsZero())) {
-		return chatStartup{}, false
-	}
-	return identity, true
-}
-
-func hasOnlyFields(fields Object, allowed ...string) bool {
-	for name := range fields {
-		if !slices.Contains(allowed, name) {
-			return false
-		}
-	}
-	return true
-}
-
-func isAbsentOrNull(value Value) bool { return value.IsZero() || value.IsNull() }

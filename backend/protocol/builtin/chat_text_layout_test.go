@@ -9,10 +9,10 @@ import (
 func TestChatPackageTextLayoutAndCitations(t *testing.T) {
 	source, target := compileBuiltinPackage(t, "openai-responses"), compileBuiltinPackage(t, "openai-chat")
 	response := &p.Response{SchemaVersion: p.ProtocolCoreVersion, ID: p.StringValue("r"), Model: p.StringValue("m"), Status: p.StringValue("completed"), Attributes: p.Object{"created_at": testValue(t, "1")}, Content: []p.Node{
-		{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("😀"), Metadata: []p.ResponseMetadata{{Name: "logprobs", Codec: "openai-chat", Location: "content", Value: testValue(t, `[{"token":"😀","logprob":-1}]`)}}}}},
+		{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("😀"), Metadata: []p.ResponseMetadata{{Meaning: "token-probabilities", Name: "probability", Codec: "custom", Location: "content", Value: testValue(t, `[{"token":"😀","logprob":-1}]`)}}}}},
 		{Kind: p.MessageNode, Role: p.StringValue("assistant"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hi"), Metadata: []p.ResponseMetadata{
-			{Name: "annotations", Codec: "responses", Location: "content", Path: "/output/1/content/0/annotations", Value: testValue(t, `[{"type":"url_citation","url":"https://example.test","title":"reference","start_index":0,"end_index":2}]`)},
-			{Name: "logprobs", Codec: "openai-chat", Location: "content", Value: testValue(t, `[{"token":"hi","logprob":-2}]`)},
+			{Meaning: "url-references", Name: "sources", Codec: "custom", Location: "content", Path: "/citations", Value: testValue(t, `{"vendor":"opaque"}`), References: testValue(t, `[{"url":"https://example.test","title":"reference","start":0,"end":2}]`)},
+			{Meaning: "token-probabilities", Name: "probability", Codec: "custom", Location: "content", Value: testValue(t, `[{"token":"hi","logprob":-2}]`)},
 		}}}},
 	}}
 	before, _ := p.EncodeValue(response)

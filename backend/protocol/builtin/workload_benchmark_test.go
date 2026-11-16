@@ -5,13 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
 	p "github.com/elysia-api/backend/protocol"
 )
 
-// BenchmarkRequestWorkloads compares identical successful semantic requests.
-// Native cache policies with no target equivalent are covered by correctness
-// tests, not turned into faster error-path benchmark samples.
 func BenchmarkRequestWorkloads(b *testing.B) {
 	for _, path := range []string{"same", "anthropic", "responses", "declarative"} {
 		for _, workload := range []string{"short", "prefix32k", "history256k", "tools32"} {
@@ -26,7 +22,7 @@ func BenchmarkRequestWorkloads(b *testing.B) {
 				if path == "declarative" {
 					source = benchmarkEnvelope(b)
 				}
-				request := &p.Request{SchemaVersion: 1, Model: p.StringValue("m"), Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}}}
+				request := &p.Request{SchemaVersion: p.ProtocolCoreVersion, Model: p.StringValue("m"), Content: []p.Node{{Kind: p.MessageNode, Role: p.StringValue("user"), Children: []p.Node{{Kind: p.TextNode, Payload: p.StringValue("hello")}}}}}
 				switch workload {
 				case "prefix32k":
 					request.Content[0].Children[0].Payload = p.StringValue(strings.Repeat("p", 32<<10))
@@ -49,18 +45,27 @@ func BenchmarkRequestWorkloads(b *testing.B) {
 					}
 
 				}
-				body, err := source.EncodeRequest(b.Context(), request, p.EvaluationContext{})
+				conversion, err := p.ResolveConversion(p.DefaultConversionPolicy(source, target))
+				if err != nil {
+					b.Fatal(err)
+				}
+				route := p.ConversionContext{Source: source.Identity(), Target: target.Identity(), Model: "m"}
+				body, err := source.EncodeRequest(b.Context(), request, fixtureOptions(p.EvaluationContext{}))
 				if err != nil {
 					b.Fatal(err)
 				}
 				b.ReportAllocs()
 				b.SetBytes(int64(len(body)))
 				for b.Loop() {
-					semantic, err := source.DecodeRequest(b.Context(), body, p.EvaluationContext{})
+					semantic, err := source.DecodeRequest(b.Context(), body, fixtureOptions(p.EvaluationContext{}))
 					if err != nil {
 						b.Fatal(err)
 					}
-					if _, err := target.EncodeRequest(b.Context(), semantic, p.EvaluationContext{}); err != nil {
+					semantic, err = conversion.Request(b.Context(), semantic, route, nil)
+					if err != nil {
+						b.Fatal(err)
+					}
+					if _, err := target.EncodeRequest(b.Context(), semantic, fixtureOptions(p.EvaluationContext{})); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -68,27 +73,35 @@ func BenchmarkRequestWorkloads(b *testing.B) {
 		}
 	}
 }
-
 func benchmarkEnvelope(b *testing.B) *p.Compiled {
-	fields := map[string]p.Expression{}
+	b.Helper()
+	encodeFields, decodeFields := map[string]p.Expression{}, map[string]p.Expression{}
 	for _, name := range []string{"schemaVersion", "model", "content", "tools", "toolChoice", "parameters", "cache", "resources"} {
-		fields[name] = p.Expression{Op: "read", Path: "/" + name}
+		encodeFields[name] = p.Expression{Op: "read", Path: "/" + name}
+		decodeFields[name] = p.Expression{Op: "read", Path: "/packet/" + name}
 	}
-	definition := p.Definition{SchemaVersion: 2, ID: "benchmark-envelope", Name: "benchmark-envelope", Version: "1", Family: "benchmark-envelope", WireVersion: "1", Capabilities: p.CapabilitySet{p.TextCapability: true, p.FunctionToolsCapability: true}, Directions: map[p.Direction]p.Mapping{
-		p.DecodeRequest: {Transform: &p.Expression{Op: "read", Path: "/packet"}},
-		p.EncodeRequest: {Transform: &p.Expression{Op: "object", Fields: map[string]p.Expression{"packet": {Op: "object", Fields: fields}}}},
-	}, Operations: map[string]p.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: p.HTTPJSON, Auth: p.Credential{Location: "none"}}}}
-	raw, err := sonic.ConfigStd.Marshal(definition)
-	if err != nil {
+	schema := p.ValueSchema{Type: p.ObjectType, Required: []string{"packet"}, Properties: map[string]p.ValueSchema{
+		"packet": {Type: p.ObjectType, Required: []string{"schemaVersion", "model", "content"}, Properties: map[string]p.ValueSchema{
+			"schemaVersion": {Type: p.NumberType}, "model": {Type: p.StringType}, "content": {Type: p.ArrayType}, "tools": {Type: p.ArrayType},
+			"parameters": {Type: p.ObjectType}, "toolChoice": {Type: p.ObjectType}, "cache": {Type: p.ArrayType}, "resources": {Type: p.ArrayType},
+		}},
+	}}
+	effects := []p.ProtocolSemanticEffect{{ID: "model", Kind: "emit", Path: "/model", Target: "/packet/model"}, {ID: "content", Kind: "emit", Path: "/content", Target: "/packet/content"}}
+	document := p.ProtocolPackage{SchemaVersion: p.ProtocolPackageSchemaVersion,
+		Spec: p.ProtocolSpec{ID: "benchmark-envelope", Name: "Benchmark envelope", Version: "1", Family: "benchmark-envelope", WireVersion: "1",
+			Documents:  map[string]p.WireContractSpec{"packet": {Schema: &schema}},
+			Operations: map[string]p.ProtocolOperationSpec{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: p.HTTPJSON, Request: "packet", Auth: p.Credential{Location: "none"}}}},
+		Mapping: p.ProtocolMapping{CoreVersion: p.ProtocolCoreVersion, DSLVersion: p.ProtocolDSLVersion,
+			Capabilities: p.CapabilitySet{p.TextCapability: true, p.FunctionToolsCapability: true},
+			Operations:   map[string]p.ProtocolOperationMapping{"generate": {Request: p.EncodeRequest}},
+			Directions: map[p.Direction]p.ProtocolDirectionMapping{
+				p.DecodeRequest: {Document: "packet", Program: p.Expression{Op: "object", Fields: decodeFields}, Effects: effects},
+				p.EncodeRequest: {Document: "packet", Program: p.Expression{Op: "object", Fields: map[string]p.Expression{"packet": {Op: "object", Fields: encodeFields}}}, Effects: effects},
+			}},
+	}
+	compiled, issues := compilePackageDocument(b, document)
+	if err := p.IssuesError(issues); err != nil {
 		b.Fatal(err)
-	}
-	compiler, err := p.NewCompiler(p.DefaultLimits(), nil, nil)
-	if err != nil {
-		b.Fatal(err)
-	}
-	compiled, issues := compiler.Compile(raw)
-	if compiled == nil {
-		b.Fatal(issues)
 	}
 	return compiled
 }

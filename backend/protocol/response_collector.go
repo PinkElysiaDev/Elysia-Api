@@ -147,7 +147,7 @@ func NewResponseCollector(target Target, limits Limits) (*ResponseCollector, err
 	if err != nil {
 		return nil, err
 	}
-	response := Response{SchemaVersion: target.coreSchemaVersion(), Source: target.Protocol}
+	response := Response{SchemaVersion: ProtocolCoreVersion, Source: target.Protocol}
 	base, err := measureSemanticValue(&response, semanticLimits(limits))
 	if err != nil {
 		return nil, err
@@ -163,13 +163,6 @@ func (collector *ResponseCollector) Consume(event Event) (kind NodeKind, delta s
 	}
 	if collector.failure != nil {
 		return "", "", collector.failure
-	}
-	// Public callers can bypass frame decoding. Bound the auxiliary frame
-	// before sequence canonicalization or metadata validation copies its body.
-	if event.Type == NativeEvent && event.Native != nil && event.Native.Source.Path == responsesMetadataPath {
-		if err := checkResourceValue(event.Native.Value, collector.replay.limits, "wire_input"); err != nil {
-			return "", "", err
-		}
 	}
 	isAccepted, err := collector.replay.Consume(event)
 	if err != nil || !isAccepted {
@@ -204,12 +197,6 @@ func (collector *ResponseCollector) Consume(event Event) (kind NodeKind, delta s
 			return "", "", streamIssue(InvalidAssociation, "/responseId", "auxiliary event requires the identity of an earlier response start")
 		}
 		return "", "", nil
-	}
-	if isMetadata, err := isResponsesMetadataEvent(event); isMetadata || err != nil {
-		if err == nil && (collector.startedResponseID.IsZero() || !equalValues(collector.startedResponseID, event.ResponseID)) {
-			err = streamIssue(InvalidAssociation, "/response_id", "auxiliary metadata requires the identity of an earlier response start")
-		}
-		return "", "", err
 	}
 	header := collector.response
 	metadata, hasMetadata := mergeCollectedMetadata(header.Metadata, event.Metadata)
@@ -351,7 +338,7 @@ func collectedOutput(nodes []Node) []Node {
 			if len(node.Children) > 0 {
 				children := cloneNodes(node.Children)
 				for i := range children {
-					children[i].Metadata = MergeNodeMetadata(children[i].Metadata, node.Metadata, false)
+					children[i].Metadata = mergeNodeMetadata(children[i].Metadata, node.Metadata)
 				}
 				output = append(output, collectedOutput(children)...)
 				continue
@@ -399,7 +386,7 @@ func (collector *ResponseCollector) collectItem(event Event) (NodeKind, string, 
 		collector.materializeItemMetadata(key)
 	}
 	if event.Item != nil {
-		item.Metadata = MergeNodeMetadata(item.Metadata, event.Item.Metadata, false)
+		item.Metadata = mergeNodeMetadata(item.Metadata, event.Item.Metadata)
 		if !event.Item.Name.IsZero() {
 			item.Name = event.Item.Name
 		}
@@ -670,10 +657,10 @@ func mergeCollectedMetadata(left, right []ResponseMetadata) ([]ResponseMetadata,
 	return out, hasChanged
 }
 
-// Node metadata snapshots replace earlier values. Token probabilities arriving
-// as deltas append; response, usage and transport event metadata never migrates
-// to a content item. Event padding belongs to frame replay, not chat history.
-func MergeNodeMetadata(left, right []ResponseMetadata, delta bool) []ResponseMetadata {
+// Node metadata snapshots replace earlier values. Explicit append updates are
+// materialized before merging; response, usage and transport metadata retain
+// their own owners instead of migrating to content items.
+func mergeNodeMetadata(left, right []ResponseMetadata) []ResponseMetadata {
 	out := append([]ResponseMetadata(nil), left...)
 	for _, m := range right {
 		if m.Location == "response" || m.Location == "usage" || strings.HasPrefix(m.Location, "event:") {
@@ -682,9 +669,6 @@ func MergeNodeMetadata(left, right []ResponseMetadata, delta bool) []ResponseMet
 		found := false
 		for i := range out {
 			if out[i].Codec == m.Codec && out[i].Location == m.Location && out[i].Name == m.Name {
-				if delta && m.Name == "logprobs" {
-					m.Value = appendLogprobValues(out[i].Value, m.Value, m.Codec)
-				}
 				out[i], found = m, true
 				break
 			}
@@ -693,26 +677,5 @@ func MergeNodeMetadata(left, right []ResponseMetadata, delta bool) []ResponseMet
 			out = append(out, m)
 		}
 	}
-	return out
-}
-
-func appendLogprobValues(a, b Value, codec string) Value {
-	if codec == "openai-chat" {
-		left, _ := a.ReadObject()
-		right, _ := b.ReadObject()
-		if left == nil {
-			left = Object{}
-		}
-		for k, v := range right {
-			left[k] = appendLogprobValues(left[k], v, "responses")
-		}
-		out, _ := EncodeValue(left)
-		return out
-	}
-	var left, right []Value
-	if a.Decode(&left) != nil || b.Decode(&right) != nil {
-		return b
-	}
-	out, _ := EncodeValue(append(left, right...))
 	return out
 }

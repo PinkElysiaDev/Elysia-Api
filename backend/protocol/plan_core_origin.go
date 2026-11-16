@@ -104,9 +104,20 @@ func coreBranchType(first, second *compiledExpression) reflect.Type {
 	// An empty alternative cannot introduce a constructed array member.
 	for _, branch := range [][2]*compiledExpression{{first, second}, {second, first}} {
 		original, empty := branch[0], branch[1]
-		if coreArrayElement(original.coreType) != nil && empty.op == "array" && len(empty.items) == 0 {
+		if coreArrayElement(original.coreType) != nil && empty.isEmptyArray() {
 			return original.coreType
 		}
 	}
 	return nil
+}
+
+func (expression *compiledExpression) isEmptyArray() bool {
+	if expression.op == "array" {
+		return len(expression.items) == 0
+	}
+	if expression.op != "literal" || !expression.value.IsArray() {
+		return false
+	}
+	items, _ := expression.value.readArray()
+	return len(items) == 0
 }

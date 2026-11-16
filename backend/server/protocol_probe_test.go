@@ -13,17 +13,17 @@ import (
 func TestProbeProtocolPersistsPresetEvidenceOnlyForActiveRevision(t *testing.T) {
 	server, _ := newProtocolAdminTestServer(t)
 	ctx := t.Context()
-	definition := presetDefinition(t, "openai-chat-completions")
+	definition := presetPackage(t, "openai-chat-completions")
 	shipped := mustEncodedProtocolValue(t, definition)
-	compiled := compileFixtureDefinition(t, definition)
-	if err := server.store.SaveProtocolRevision(ctx, protocol.Revision{ProtocolID: definition.ID, Hash: compiled.Hash(), Definition: shipped, CreatedAt: time.Now().UTC()}); err != nil {
+	compiled := compileFixturePackage(t, definition)
+	if err := server.store.SaveProtocolRevision(ctx, protocol.Revision{ProtocolID: definition.Spec.ID, Hash: compiled.Hash(), Definition: shipped, CreatedAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
 	report := protocol.VerificationReport{DefinitionHash: compiled.Hash(), CompilerVersion: protocol.CompilerVersion, SamplesHash: compiled.SamplesHash(), Kind: protocol.OfflineVerification, Passed: true, VerifiedAt: time.Now().UTC()}
-	if err := server.store.SaveProtocolReport(ctx, definition.ID, compiled.Hash(), report); err != nil {
+	if err := server.store.SaveProtocolReport(ctx, definition.Spec.ID, compiled.Hash(), report); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := server.store.SetProtocolActivation(ctx, definition.ID, compiled.Hash(), ""); err != nil {
+	if _, err := server.store.SetProtocolActivation(ctx, definition.Spec.ID, compiled.Hash(), ""); err != nil {
 		t.Fatal(err)
 	}
 	// A dead endpoint still exercises persistence: the probe records the failed
@@ -35,21 +35,21 @@ func TestProbeProtocolPersistsPresetEvidenceOnlyForActiveRevision(t *testing.T) 
 		}
 	}
 	edited := definition
-	edited.Name = "abandoned preset draft"
+	edited.Spec.Name = "abandoned preset draft"
 	editedValue := mustEncodedProtocolValue(t, edited)
-	editedCompiled := compileFixtureDefinition(t, edited)
+	editedCompiled := compileFixturePackage(t, edited)
 	if editedCompiled.Hash() == compiled.Hash() {
 		t.Fatal("precondition: name edit must change the definition hash")
 	}
 	probe(editedValue)
-	if _, err := server.store.ReadProtocolRevision(ctx, definition.ID, editedCompiled.Hash()); !errors.Is(err, protocol.ErrNotFound) {
+	if _, err := server.store.ReadProtocolRevision(ctx, definition.Spec.ID, editedCompiled.Hash()); !errors.Is(err, protocol.ErrNotFound) {
 		t.Fatal("legacy preset draft revision persisted", err)
 	}
-	if reports, err := server.store.ListProtocolUpstreamReports(ctx, definition.ID, editedCompiled.Hash()); err != nil || len(reports) != 0 {
+	if reports, err := server.store.ListProtocolUpstreamReports(ctx, definition.Spec.ID, editedCompiled.Hash()); err != nil || len(reports) != 0 {
 		t.Fatal("legacy preset draft report persisted", err, reports)
 	}
 	probe(shipped)
-	if reports, err := server.store.ListProtocolUpstreamReports(ctx, definition.ID, compiled.Hash()); err != nil || len(reports) != 1 {
+	if reports, err := server.store.ListProtocolUpstreamReports(ctx, definition.Spec.ID, compiled.Hash()); err != nil || len(reports) != 1 {
 		t.Fatal("active preset probe evidence missing", err, reports)
 	}
 }

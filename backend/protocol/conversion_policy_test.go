@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -131,6 +132,61 @@ func TestConversionNodeRulesAndLimits(t *testing.T) {
 	policy.Limits = &limit
 	if _, err = CompileConversion(policy); err == nil {
 		t.Fatal("policy raised engine limit")
+	}
+}
+
+func TestProviderSignaturePreservesExistingState(t *testing.T) {
+	identity := Identity{Family: "target", WireVersion: "v1"}
+	scope := Scope{Provider: "provider", Account: "account", Model: "model"}
+	route := ConversionContext{Target: identity, Scope: scope}
+	rule := ConversionRule{ID: "signature", Order: 1, Enabled: true, Phase: ConversionRequest, Action: "provider_signature", Match: ConversionMatch{NodeKind: ToolCallNode, TargetFamily: identity.Family}, Value: StringValue("compatibility")}
+	original := &Request{SchemaVersion: ProtocolCoreVersion, Content: []Node{{Kind: MessageNode, Children: []Node{{Kind: ToolCallNode, ID: StringValue("call"), Name: StringValue("lookup"), Payload: parseTestValue(t, `{"value":9007199254740993}`), Resources: []Resource{{Kind: "signature", ID: StringValue("original"), Scope: scope}}, Source: &Provenance{Protocol: identity, Direction: DecodeResponse, Scope: scope}}}}}}
+	for _, mode := range []string{"compatible", "strict"} {
+		for _, isWire := range []bool{false, true} {
+			policy := ConversionPolicy{SchemaVersion: ConversionPolicySchemaVersion, ID: "signature-policy", Mode: mode, Rules: []ConversionRule{rule}}
+			compiled, err := ResolveConversion(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			apply := func(request *Request, sink *DiagnosticSink) (*Request, error) {
+				if !isWire {
+					return compiled.Request(t.Context(), request, route, sink)
+				}
+				input, err := EncodeValue(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				output, err := compiled.ApplyValue(t.Context(), ConversionRequest, input, route, sink)
+				if err != nil {
+					return nil, err
+				}
+				var result Request
+				if err := output.Decode(&result); err != nil {
+					t.Fatal(err)
+				}
+				return &result, nil
+			}
+			sink := &DiagnosticSink{}
+			result, err := apply(original, sink)
+			if err != nil || !reflect.DeepEqual(original, result) || len(sink.Issues()) != 0 {
+				t.Fatalf("%s wire=%t changed signed history: %+v, %v, %+v", mode, isWire, result, err, sink.Issues())
+			}
+			result.Content[0].Children = append(result.Content[0].Children, Node{Kind: ToolCallNode, ID: StringValue("unsigned"), Name: StringValue("lookup")})
+			if _, err := apply(result, nil); err == nil || !strings.Contains(err.Error(), "requires verification") {
+				t.Fatal("unsigned sibling bypassed verification", err)
+			}
+			compiled.VerifiedProviderRules = map[string]bool{rule.ID: true}
+			output, err := apply(result, sink)
+			if mode == "strict" {
+				if err == nil {
+					t.Fatal("strict mode accepted signature substitution")
+				}
+				continue
+			}
+			if err != nil || !reflect.DeepEqual(output.Content[0].Children[0], original.Content[0].Children[0]) || !output.Content[0].Children[1].Resources[0].ID.IsString("compatibility") || len(sink.Issues()) != 1 {
+				t.Fatal("verified substitution changed original signature or skipped sibling", output, err, sink.Issues())
+			}
+		}
 	}
 }
 

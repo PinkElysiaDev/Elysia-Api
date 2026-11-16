@@ -115,3 +115,38 @@ func TestPackageStreamNativeOnlyFinalizer(t *testing.T) {
 		t.Fatal("native-only finalization retained slots")
 	}
 }
+
+func TestPackageStreamFinalizerInputScope(t *testing.T) {
+	for _, source := range []string{"state", "input", "root"} {
+		for _, body := range []string{"input", "root"} {
+			t.Run(source+"/"+body, func(t *testing.T) {
+				document := deferredTerminalPackage(t)
+				mapping := document.Mapping.Directions[EncodeEvent]
+				mapping.Finalize.Items[0].Fields["response_id"] = Expression{Op: "with_input", Source: expressionPointer(readExpression(source, "/response")), Body: expressionPointer(readExpression(body, ""))}
+				document.Mapping.Directions[EncodeEvent] = mapping
+				if source != "state" || body == "root" {
+					if err := document.Validate(DefaultLimits()); err == nil {
+						t.Fatal("rebinding input authorized a nonexistent current event")
+					}
+					return
+				}
+				compiled := compilePackageForTest(t, document)
+				options := EvaluationContext{State: NewEvaluationState()}
+				defer options.State.Release()
+				for index, kind := range []EventType{ResponseStarted, ResponseFinished} {
+					if _, err := compiled.EncodeFrames(t.Context(), Event{SchemaVersion: ProtocolCoreVersion, Type: kind, ResponseID: StringValue("r"), Sequence: coreInteger(int64(index))}, options); err != nil {
+						t.Fatal(err)
+					}
+				}
+				frames, err := compiled.FinishEvents(t.Context(), options)
+				if err != nil || len(frames) != 1 {
+					t.Fatal("finalizer could not read its explicitly selected state", frames, err)
+				}
+				identity, err := readValuePointer(frames[0], []string{"response_id"})
+				if err != nil || !identity.IsString("r") {
+					t.Fatal("finalizer lost its selected state", identity, err)
+				}
+			})
+		}
+	}
+}

@@ -96,7 +96,7 @@ func isObservedCoreField(pointer []string) bool {
 }
 
 func (route ConversionContext) observeRequestFields(ingress, upstream *Compiled, outbound Value) (ConversionContext, error) {
-	if route.Transport != HTTPJSON || ingress == nil || upstream == nil || ingress.packagePlan == nil || upstream.packagePlan == nil {
+	if route.Transport != HTTPJSON || ingress == nil || upstream == nil {
 		return route, nil
 	}
 	reader := newNativeComparisonReader(outbound)
@@ -119,7 +119,7 @@ func (route ConversionContext) observeRequestFields(ingress, upstream *Compiled,
 }
 
 func hasFieldObservationPair(ingress, upstream *Compiled) bool {
-	if ingress == nil || upstream == nil || ingress.packagePlan == nil || upstream.packagePlan == nil {
+	if ingress == nil || upstream == nil {
 		return false
 	}
 	for name, source := range upstream.packagePlan.fieldObservations {

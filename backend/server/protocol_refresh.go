@@ -22,9 +22,24 @@ func (s *Server) refreshProtocolRuntime(ctx context.Context, service *protocol.S
 // One recovery path serves startup and reload. The first pass reads only current
 // records; a changing plan is rebuilt under a baseline before it can commit.
 // Healthy restarts never fingerprint historical definitions or create backups.
-func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *protocol.Service, presetsOnly bool) error {
+func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *protocol.Service, isPresetOnly bool) error {
+	compilation := service.NewCompilationSession()
+	defer compilation.Close()
+	return s.refreshProtocolCompilation(ctx, compilation, isPresetOnly)
+}
+
+func (s *Server) refreshAndPublishProtocols(ctx context.Context, service *protocol.Service, isPresetOnly bool) error {
+	compilation := service.NewCompilationSession()
+	if err := s.refreshProtocolCompilation(ctx, compilation, isPresetOnly); err != nil {
+		compilation.Close()
+		return err
+	}
+	return compilation.ReloadAvailable(ctx, requiredPresetIDs...)
+}
+
+func (s *Server) refreshProtocolCompilation(ctx context.Context, compilation *protocol.CompilationSession, isPresetOnly bool) error {
 	started := time.Now()
-	_, _, changed, err := s.prepareProtocolRefresh(ctx, service, presetsOnly)
+	_, _, changed, err := s.prepareProtocolRefresh(ctx, compilation, isPresetOnly)
 	if err != nil || !changed {
 		return err
 	}
@@ -36,7 +51,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 	if err != nil {
 		return err
 	}
-	plan, definitions, changed, err := s.prepareProtocolRefresh(ctx, service, presetsOnly)
+	plan, definitions, changed, err := s.prepareProtocolRefresh(ctx, compilation, isPresetOnly)
 	if err != nil || !changed {
 		return err
 	}
@@ -87,7 +102,7 @@ func (s *Server) refreshProtocolRuntimeScope(ctx context.Context, service *proto
 	if err := s.store.RefreshProtocolRuntime(ctx, plan); err != nil {
 		return fmt.Errorf("protocol recovery commit: %w", err)
 	}
-	s.logProtocolRefresh(plan, presetsOnly, started)
+	s.logProtocolRefresh(plan, isPresetOnly, started)
 	return nil
 }
 
@@ -131,7 +146,7 @@ func recoverableProtocolRead(err error) bool {
 type protocolRefreshPlan struct {
 	store       protocolRefreshRepository
 	context     context.Context
-	service     *protocol.Service
+	compilation *protocol.CompilationSession
 	upgrade     storage.ProtocolUpgrade
 	definitions map[string]*protocol.Compiled
 	activations map[string]protocol.Activation
@@ -145,7 +160,13 @@ type protocolRefreshRepository interface {
 }
 
 func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value, isPreset bool) error {
-	compiled, issues := plan.service.Validate(value.Bytes())
+	var compiled *protocol.Compiled
+	var issues []protocol.ConversionIssue
+	if isPreset {
+		compiled, issues = plan.compilation.CompilePreset(id, value)
+	} else {
+		compiled, issues = plan.compilation.Compile(value)
+	}
 	if err := protocol.IssuesError(issues); err != nil {
 		return fmt.Errorf("protocol %s compile: %w", id, err)
 	}
@@ -166,8 +187,8 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 	} else if errors.Is(err, storage.ErrCorruptProtocolRecord) {
 		writes.RepairPreset = isPreset
 	} else if isPreset {
-		stored, issues := plan.service.Validate(revision.Definition.Bytes())
-		writes.RepairPreset = protocol.IssuesError(issues) != nil || stored == nil || stored.Identity().DefinitionID != id || stored.Hash() != compiled.Hash()
+		stored, issues := plan.compilation.Compile(revision.Definition)
+		writes.RepairPreset = protocol.IssuesError(issues) != nil || stored.Identity().DefinitionID != id || stored.Hash() != compiled.Hash()
 	}
 	if writes.Revision || writes.RepairPreset {
 		revision = protocol.Revision{ProtocolID: id, Hash: compiled.Hash(), Definition: value, CreatedAt: time.Now().UTC()}
@@ -203,14 +224,14 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 	}
 	// Preserve unrelated operator drafts. A corrupt preset draft or a draft
 	// still following the replaced preset is archived before replacement.
-	damagedDraft := false
+	isDamagedDraft := false
 	if err == nil && isPreset && draft.Hash == compiled.Hash() && !storage.EquivalentProtocolDefinition(draft.Definition, value) {
 		// Omitted defaults and explicitly encoded defaults are both valid.
 		// Only identity/hash corruption warrants replacing a current draft.
-		draftCompiled, issues := plan.service.Validate(draft.Definition.Bytes())
-		damagedDraft = protocol.IssuesError(issues) != nil || draftCompiled == nil || draftCompiled.Hash() != draft.Hash || draftCompiled.Identity().DefinitionID != id
+		draftCompiled, issues := plan.compilation.Compile(draft.Definition)
+		isDamagedDraft = protocol.IssuesError(issues) != nil || draftCompiled.Hash() != draft.Hash || draftCompiled.Identity().DefinitionID != id
 	}
-	writes.Draft = err != nil || (isPreset && ((a.RevisionHash != compiled.Hash() && draft.Hash == a.RevisionHash) || damagedDraft))
+	writes.Draft = err != nil || (isPreset && ((a.RevisionHash != compiled.Hash() && draft.Hash == a.RevisionHash) || isDamagedDraft))
 	if writes.Draft {
 		draft = protocol.Draft{ProtocolID: id, Hash: compiled.Hash(), Definition: value, UpdatedAt: time.Now().UTC()}
 	}
@@ -220,8 +241,8 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 	return nil
 }
 
-func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.Service, presetsOnly bool) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
-	plan := &protocolRefreshPlan{store: s.store, context: ctx, service: service, definitions: map[string]*protocol.Compiled{}}
+func (s *Server) prepareProtocolRefresh(ctx context.Context, compilation *protocol.CompilationSession, isPresetOnly bool) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
+	plan := &protocolRefreshPlan{store: s.store, context: ctx, compilation: compilation, definitions: map[string]*protocol.Compiled{}}
 	fail := func(err error) (storage.ProtocolUpgrade, map[string]*protocol.Compiled, bool, error) {
 		return plan.upgrade, plan.definitions, false, err
 	}
@@ -233,27 +254,32 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 	for _, a := range active {
 		activations[a.ProtocolID] = a
 	}
-	shipped, err := builtin.Definitions()
+	shipped, err := builtin.Packages()
 	if err != nil {
 		return fail(err)
 	}
 	plan.activations = activations
 	// Presets always start from embedded content, never from damaged stored data.
 	for _, value := range shipped {
-		var d protocol.Definition
-		if err := value.Decode(&d); err != nil {
+		// ensureProtocol owns the full package compilation and validation.
+		var identity struct {
+			Spec struct {
+				ID string `json:"id"`
+			} `json:"spec"`
+		}
+		if err := value.Decode(&identity); err != nil {
 			return fail(err)
 		}
-		if err := plan.ensureProtocol(d.ID, value, true); err != nil {
-			return fail(fmt.Errorf("preset %s recovery: %w", d.ID, err))
+		if err := plan.ensureProtocol(identity.Spec.ID, value, true); err != nil {
+			return fail(fmt.Errorf("preset %s recovery: %w", identity.Spec.ID, err))
 		}
 	}
 	for _, id := range requiredPresetIDs {
 		if plan.definitions[id] == nil {
-			return fail(fmt.Errorf("preset %s is missing from embedded definitions", id))
+			return fail(fmt.Errorf("preset %s is missing from embedded packages", id))
 		}
 	}
-	if !presetsOnly {
+	if !isPresetOnly {
 		for _, a := range active {
 			if protocol.IsPresetProtocolID(a.ProtocolID) {
 				continue
@@ -278,7 +304,7 @@ func (s *Server) prepareProtocolRefresh(ctx context.Context, service *protocol.S
 		}
 	}
 	// Missing presets can be committed independently of custom protocol bindings.
-	if presetsOnly {
+	if isPresetOnly {
 		return plan.upgrade, plan.definitions, plan.hasChanges, nil
 	}
 	policies, bindings, _, err := s.store.ConversionSnapshot(ctx)

@@ -6,17 +6,19 @@ import (
 	"slices"
 )
 
-func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, error) {
-	var operands []plannedOutput
-	var err error
-	if len(plan.items) <= scalarOperandCapacity {
-		var storage [scalarOperandCapacity]plannedOutput
-		operands = storage[:len(plan.items)]
-		err = plan.buildOperandValuesInto(state, operands)
-	} else {
-		operands, err = plan.buildOperandValues(state)
+const operandWorkspaceCapacity = 4
+
+func selectOperandStorage[T any](storage []T, count int) []T {
+	if count > cap(storage) {
+		return make([]T, count)
 	}
-	if err != nil {
+	return storage[:count]
+}
+
+func (plan *compiledOutputPlan) buildOperands(state *evaluation) (plannedOutput, error) {
+	var storage [operandWorkspaceCapacity]plannedOutput
+	operands := selectOperandStorage(storage[:], len(plan.items))
+	if err := plan.buildOperandValuesInto(state, operands); err != nil {
 		return plannedOutput{}, err
 	}
 	if plan.expression.op == "merge" {
@@ -25,7 +27,7 @@ func (plan *compiledOutputPlan) buildOperands(state evaluation) (plannedOutput, 
 	return concatPlannedArrays(operands, state.budget.limits.Nodes, state.cache)
 }
 
-func (plan *compiledOutputPlan) buildOperandValues(state evaluation) (operands []plannedOutput, err error) {
+func (plan *compiledOutputPlan) buildOperandValues(state *evaluation) (operands []plannedOutput, err error) {
 	operands = make([]plannedOutput, len(plan.items))
 	err = plan.buildOperandValuesInto(state, operands)
 	if err != nil {
@@ -34,7 +36,7 @@ func (plan *compiledOutputPlan) buildOperandValues(state evaluation) (operands [
 	return
 }
 
-func (plan *compiledOutputPlan) buildOperandValuesInto(state evaluation, operands []plannedOutput) error {
+func (plan *compiledOutputPlan) buildOperandValuesInto(state *evaluation, operands []plannedOutput) error {
 	logicalBytes := 0
 	// Evaluate all operands before checking their container types or collisions,
 	// preserving the expression evaluator's first-error order.
@@ -97,17 +99,7 @@ func plannedObjectFields(output JSONOutput) ([]jsonOutputField, error) {
 		}
 		return JSONObject(fields).node.fields, nil
 	}
-	fields, err := output.value.readObjectWithin(&valueReader{})
-	if err != nil {
-		return nil, err
-	}
-	selected := make([]jsonOutputField, 0, len(fields))
-	for _, key := range sortedKeys(fields) {
-		value := fields[key]
-		value.raw = compactValueString(value.raw)
-		selected = append(selected, jsonOutputField{key, JSONLeaf(value)})
-	}
-	return selected, nil
+	return output.value.readOutputFields(nil, false)
 }
 
 func plannedArrayItems(output JSONOutput) ([]JSONOutput, error) {
@@ -176,7 +168,7 @@ func normalizedOutputBytes(output JSONOutput) int {
 
 func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, error) {
 	expression := plan.expression
-	source, err := plan.source.buildNode(state)
+	source, err := plan.source.buildNode(&state)
 	if err != nil {
 		return plannedOutput{}, err
 	}
@@ -199,7 +191,7 @@ func (plan *compiledOutputPlan) buildFilter(state evaluation) (plannedOutput, er
 		if item.node != nil {
 			child.itemOutput = &item
 		}
-		value, err := plan.when.buildNode(child)
+		value, err := plan.when.buildNode(&child)
 		if err != nil {
 			return plannedOutput{}, err
 		}

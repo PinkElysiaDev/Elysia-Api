@@ -11,7 +11,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/elysia-api/backend/config"
 	p "github.com/elysia-api/backend/protocol"
-	"github.com/elysia-api/backend/protocol/builtin"
 	"github.com/elysia-api/backend/storage"
 )
 
@@ -53,48 +52,46 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.invalidateRouteCache()
-	for _, sample := range upstream.Definition().Samples {
-		if sample.ID != "stream-text-decode" && sample.ID != "stream-tool-decode" && sample.ID != "signed-stream-reasoning-decode" {
-			continue
-		}
+	for _, sample := range selectProtocolSamples(t, upstream, "declared-stream-text-decode", "declared-stream-tool-decode", "declared-encrypted-stream-reasoning-decode") {
 		active.Store(turnStateFrames(t, sample))
 		for _, ingress := range []struct{ id, path, body, tools string }{
-			{p.PresetChatCompletionsID, "/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`, `[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]`},
-			{p.PresetResponsesID, "/responses", `{"model":"group","input":"hi","store":false,"stream":true}`, `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
+			{p.PresetChatCompletionsID, "/v1/chat/completions", `{"model":"group","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`, `[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]`},
+			{p.PresetResponsesID, "/v1/responses", `{"model":"group","input":"hi","store":false,"stream":true}`, `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
 			{p.PresetAnthropicID, "/v1/messages", `{"model":"group","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":true}`, `[{"name":"lookup","input_schema":{"type":"object"}}]`},
 			{p.PresetGeminiID, "/v1beta/models/group:streamGenerateContent", `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`, `[{"functionDeclarations":[{"name":"lookup","parameters":{"type":"object"}}]}]`},
 		} {
 			t.Run(sample.ID+"/"+ingress.id, func(t *testing.T) {
 				body := ingress.body
-				if sample.ID == "stream-tool-decode" {
+				if sample.ID == "declared-stream-tool-decode" {
 					body = strings.TrimSuffix(body, "}") + `,"tools":` + ingress.tools + "}"
 				}
 				request := httptest.NewRequest("POST", "/gateway/"+ingress.id+ingress.path, strings.NewReader(body))
 				request.Header.Set("Authorization", "Bearer gateway-test-token")
 				out, before := httptest.NewRecorder(), calls.Load()
 				serveTestHTTP(s.engine, out, request)
-				if out.Code != 200 || out.Result().Trailer.Get(gatewayStreamErrorTrailer) != "" || calls.Load() != before+1 {
-					t.Fatal(out.Code, out.Body.String(), out.Result().Trailer)
+				isRejectedSummary := sample.ID == "declared-encrypted-stream-reasoning-decode" && ingress.id != p.PresetResponsesID
+				expectedHTTPStatus, expectedStatus := http.StatusOK, http.StatusOK
+				expectedTrailer := ""
+				if isRejectedSummary {
+					expectedStatus = http.StatusBadGateway
+					if ingress.id == p.PresetGeminiID {
+						expectedHTTPStatus = http.StatusBadGateway
+					} else {
+						expectedTrailer = "protocol_stream_error"
+					}
+					if strings.Contains(out.Body.String(), "consider") || strings.Contains(out.Body.String(), "sealed") {
+						t.Fatal("unsupported reasoning summary or encrypted state reached a foreign client")
+					}
+				}
+				if out.Code != expectedHTTPStatus || out.Result().Trailer.Get(gatewayStreamErrorTrailer) != expectedTrailer || calls.Load() != before+1 {
+					t.Fatal(out.Code, out.Body.String(), out.Result().Trailer, latestUsageRecords(t, s))
 				}
 				if strings.Contains(out.Body.String(), "synthetic-private-state") != (ingress.id == p.PresetResponsesID) {
 					t.Fatal("incorrect control delivery")
 				}
 				target, _ := service.Pin(ingress.id)
-				validator, _ := target.NewWireStreamValidation(p.Scope{})
-				for _, line := range strings.Split(out.Body.String(), "\n") {
-					if !strings.HasPrefix(line, "data: {") {
-						continue
-					}
-					value, err := p.ParseValue([]byte(strings.TrimPrefix(line, "data: ")))
-					if err == nil {
-						err = validator.Consume(t.Context(), value)
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-				}
-				if err := validator.Finish(); err != nil {
-					t.Fatal(err)
+				if !isRejectedSummary {
+					checkGatewayWireStream(t, target, out.Body.String())
 				}
 				records := latestUsageRecords(t, s)
 				raw, _, err := s.store.GetUsageRecordJSON(t.Context(), records[0].RequestID)
@@ -108,20 +105,27 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 				if err := sonic.ConfigStd.Unmarshal(raw, &saved); err != nil {
 					t.Fatal(err)
 				}
-				if saved.StatusCode != 200 || saved.RetryCount != 0 {
+				if saved.StatusCode != expectedStatus || saved.UpstreamHTTPStatus != http.StatusOK || saved.RetryCount != 0 {
 					t.Fatal(saved.StatusCode, saved.RetryCount)
 				}
 				stateIssues := 0
+				hasSummaryRejection := false
 				for _, issue := range saved.ConversionIssues {
+					if issue.Code == p.UnsupportedCapability && issue.Path == "/collection" && issue.Severity == p.SeverityError {
+						hasSummaryRejection = true
+					}
 					if strings.Contains(issue.Reason, "continuation stream collection unavailable") {
 						t.Fatal("control disabled continuation collector", issue)
 					}
-					if issue.RuleID == "responses-turn-state" {
+					if issue.RuleID == "event-control" {
 						stateIssues++
-						if issue.PolicyHash != saved.ConversionPolicyHash || issue.Path != p.ResponsesTurnStatePath {
+						if issue.PolicyHash != saved.ConversionPolicyHash || issue.Path != "/headers" {
 							t.Fatal(issue)
 						}
 					}
+				}
+				if hasSummaryRejection != isRejectedSummary {
+					t.Fatal("unexpected reasoning collection disposition", saved.ConversionIssues)
 				}
 				if (ingress.id == p.PresetResponsesID && stateIssues != 0) || (ingress.id != p.PresetResponsesID && stateIssues != 2) {
 					t.Fatal("missing frame diagnostics", saved.ConversionIssues)
@@ -135,9 +139,7 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 				if err := p.IssuesError(preview.Issues); err != nil || preview.Output.IsZero() {
 					t.Fatal(preview, err)
 				}
-				if ingress.id != p.PresetResponsesID && (len(preview.Issues) != 1 || preview.Issues[0].RuleID != "responses-turn-state") {
-					t.Fatal(preview.Issues)
-				}
+				checkProtectedEventPreview(t, target, frame.Events[0], preview)
 			})
 		}
 		var operation p.Operation
@@ -147,7 +149,7 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 				operation, operationName = op, name
 			}
 		}
-		candidate := gatewayCandidate{compiled: upstream, operation: operation, operationName: operationName, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.Definition().Capabilities, Transports: []p.Transport{p.SSE}}}
+		candidate := gatewayCandidate{compiled: upstream, operation: operation, operationName: operationName, scope: p.Scope{Provider: provider.URL, Account: "fixture", Model: "m"}, model: config.ModelRef{ID: "m", Name: "m", BaseURL: provider.URL}, binding: p.Binding{ProtocolID: upstream.Identity().DefinitionID, RevisionHash: upstream.Hash(), Capabilities: upstream.DeclaredCapabilities(), Transports: []p.Transport{p.SSE}}}
 		request, err := upstream.DecodeRequest(t.Context(), []byte(`{"model":"m","input":"hi","store":false,"stream":true}`), p.EvaluationContext{})
 		if err != nil {
 			t.Fatal(err)
@@ -161,13 +163,13 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 			t.Fatal("state entered Agent result")
 		}
 	}
-	definition := upstream.Definition()
-	for i := range definition.Samples {
-		if definition.Samples[i].ID == "stream-text-decode" {
-			definition.Samples[i].Input, _ = p.EncodeValue(turnStateFrames(t, definition.Samples[i]))
+	definition := compiledPackage(upstream)
+	for i := range definition.Mapping.Samples {
+		if definition.Mapping.Samples[i].ID == "declared-stream-text-decode" {
+			definition.Mapping.Samples[i].Input, _ = p.EncodeValue(turnStateFrames(t, definition.Mapping.Samples[i]))
 		}
 	}
-	compiler, _ := p.NewCompiler(p.DefaultLimits(), builtin.Modules(), nil)
+	compiler, _ := p.NewCompiler(p.DefaultLimits(), nil)
 	raw, _ := p.EncodeValue(definition)
 	fixture, issues := compiler.Compile(raw.Bytes())
 	if fixture == nil {
@@ -178,10 +180,10 @@ func TestGatewayResponsesTurnStateFullStreamsAndCollector(t *testing.T) {
 		report := p.VerifyCombination(t.Context(), target, fixture)
 		found := false
 		for _, check := range report.Checks {
-			if check.SampleID == "stream-text-decode" {
+			if check.SampleID == "declared-stream-text-decode" {
 				found = true
 				if !check.Passed {
-					t.Fatal(id, report.Issues)
+					t.Fatal(id, check.SampleID, check.Reason)
 				}
 			}
 		}

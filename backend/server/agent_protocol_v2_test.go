@@ -346,38 +346,6 @@ func agentEnvelopePackage(t *testing.T) protocol.ProtocolPackage {
 	return document
 }
 
-// Legacy cache and conversion comparisons retain their original core fixture.
-func agentEnvelopeDefinition(t *testing.T) protocol.Definition {
-	t.Helper()
-	request := mustProtocolValue(t, `{"schemaVersion":1,"model":"m","content":[{"kind":"message","role":"user","children":[{"kind":"text","payload":"hello"}]},{"kind":"tool_call","name":"lookup","callId":"c","input":{"kind":"json","value":{"x":1}}},{"kind":"tool_result","callId":"c","payload":"ok"}],"tools":[{"kind":"function","name":"lookup","inputSchema":{"type":"object"}}]}`)
-	response := mustProtocolValue(t, `{"schemaVersion":1,"id":"r","content":[{"kind":"text","payload":"hi"},{"kind":"tool_call","name":"lookup","callId":"c2","input":{"kind":"json","value":{"x":2}}}]}`)
-	definition := protocol.Definition{SchemaVersion: 2, ID: "agent-envelope", Name: "agent-envelope", Version: "1", Family: "agent-envelope", WireVersion: "1", Capabilities: protocol.CapabilitySet{protocol.TextCapability: true, protocol.FunctionToolsCapability: true}, Directions: map[protocol.Direction]protocol.Mapping{}, Operations: map[string]protocol.Operation{"generate": {Kind: "generate", Method: "POST", Path: "/generate", Transport: protocol.HTTPJSON, Auth: protocol.Credential{Location: "none"}}}}
-	for _, pair := range []struct {
-		decode, encode protocol.Direction
-		value          protocol.Value
-		fields         []string
-	}{
-		{protocol.DecodeRequest, protocol.EncodeRequest, request, []string{"model", "content", "tools", "parameters", "toolChoice"}},
-		{protocol.DecodeResponse, protocol.EncodeResponse, response, []string{"id", "content", "status", "usage"}},
-	} {
-		fields := map[string]protocol.Expression{"schemaVersion": {Op: "literal", Value: mustProtocolValue(t, "1")}}
-		object, _ := pair.value.ReadObject()
-		for _, field := range pair.fields {
-			fields[field] = protocol.Expression{Op: "read", From: "input", Path: "/" + field}
-		}
-		wire := mustEncodedProtocolValue(t, map[string]any{"payload": object})
-		definition.Directions[pair.decode] = protocol.Mapping{Transform: &protocol.Expression{Op: "read", From: "input", Path: "/payload"}}
-		definition.Directions[pair.encode] = protocol.Mapping{Transform: &protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"payload": {Op: "object", Fields: fields}}}}
-		definition.Samples = append(definition.Samples, protocol.Sample{ID: string(pair.decode), Direction: pair.decode, Input: wire, Expected: pair.value}, protocol.Sample{ID: string(pair.encode), Direction: pair.encode, Input: pair.value, Expected: wire})
-	}
-	definition.Agent = &protocol.AgentConfig{
-		ToolResults: protocol.JSONInput,
-		Parameters:  protocol.Mapping{Transform: &protocol.Expression{Op: "object", Fields: map[string]protocol.Expression{"max_output_tokens": {Op: "read", From: "input", Path: "/maxOutputTokens"}}}},
-		Samples:     []protocol.AgentSample{{ID: "agent-disabled", Preferences: protocol.AgentPreferences{MaxOutputTokens: 8192}, Expected: mustProtocolValue(t, `{"max_output_tokens":8192}`)}},
-	}
-	return definition
-}
-
 func TestAgentUsesBoundCustomProtocolAndRejectsToolMismatch(t *testing.T) {
 	t.Parallel()
 	s := newAgentIntegrationServer(t)
