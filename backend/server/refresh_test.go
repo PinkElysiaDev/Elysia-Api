@@ -204,16 +204,28 @@ func activateDiscoveryPresets(t *testing.T, s *Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range definitions {
-		var definition protocol.ProtocolPackage
-		if err := value.Decode(&definition); err != nil {
-			t.Fatal(err)
-		}
-		seedGatewayFixture(t, s, definition, false)
-	}
 	service, err := s.protocolService()
 	if err != nil {
 		t.Fatal(err)
+	}
+	compilation := service.NewCompilationSession()
+	defer compilation.Close()
+	for _, value := range definitions {
+		var identity struct {
+			Spec struct {
+				ID string `json:"id"`
+			} `json:"spec"`
+		}
+		if err := value.Decode(&identity); err != nil {
+			t.Fatal(err)
+		}
+		// Preserve the real embedded source spelling. Re-encoding a typed
+		// package creates a different cache key and tests an artificial second
+		// revision graph instead of the production preset admission path.
+		if _, issues := compilation.CompilePreset(identity.Spec.ID, value); protocol.IssuesError(issues) != nil {
+			t.Fatal(issues)
+		}
+		seedGatewayProtocol(t, s, identity.Spec.ID, value.Bytes(), false)
 	}
 	if err := service.Reload(t.Context()); err != nil {
 		t.Fatal(err)

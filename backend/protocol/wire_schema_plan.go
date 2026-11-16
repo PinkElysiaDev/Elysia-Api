@@ -32,6 +32,30 @@ func compileWireSchemaPlan(schema *ValueSchema, limits Limits) (*wireSchemaPlan,
 	return plan, nil
 }
 
+// Plans contain no expression scope or site diagnostics. Their only inputs are
+// the complete schema and this expression compiler's fixed limits; failures are
+// deliberately not memoized so each caller adds its own authored location.
+func (compiler *expressionCompiler) compileWireSchemaPlan(schema *ValueSchema) (*wireSchemaPlan, error) {
+	if schema == nil {
+		return nil, nil
+	}
+	canonical, err := EncodeValue(schema)
+	if err != nil {
+		return nil, err
+	}
+	if plan := compiler.schemaPlans[canonical.raw]; plan != nil {
+		return plan, nil
+	}
+	plan, err := compileWireSchemaPlan(schema, compiler.limits)
+	if err == nil {
+		if compiler.schemaPlans == nil {
+			compiler.schemaPlans = make(map[string]*wireSchemaPlan)
+		}
+		compiler.schemaPlans[canonical.raw] = plan
+	}
+	return plan, err
+}
+
 func buildWireSchemaPlan(schema *ValueSchema) *wireSchemaPlan {
 	if schema == nil {
 		return nil

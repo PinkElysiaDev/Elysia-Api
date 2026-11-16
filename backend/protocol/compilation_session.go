@@ -26,8 +26,8 @@ func (service *Service) NewCompilationSession() *CompilationSession {
 	return &CompilationSession{service: service, presets: make(map[string]sessionCompilation)}
 }
 
-// Compile validates exact source bytes. Only prior admitted preset sources can
-// hit the session; other successful compilations are not retained.
+// Compile validates exact source bytes through the process-wide weak cache.
+// Only admitted preset sources are strongly retained by the session.
 func (session *CompilationSession) Compile(value Value) (*Compiled, []ConversionIssue) {
 	return session.compile(value, "")
 }
@@ -44,11 +44,6 @@ func (session *CompilationSession) compile(value Value, presetID string) (*Compi
 	if session.isClosed {
 		return nil, []ConversionIssue{{Code: InvalidInput, Severity: SeverityError, Path: "/compilation", Reason: "compilation session is closed"}}
 	}
-	for _, admitted := range session.presets {
-		if admitted.source == value {
-			return admitted.compiled, nil
-		}
-	}
 	compiled, issues := session.service.Validate(value.Bytes())
 	if compiled == nil {
 		return nil, issues
@@ -56,6 +51,7 @@ func (session *CompilationSession) compile(value Value, presetID string) (*Compi
 	_, hasAdmission := session.presets[presetID]
 	if !hasAdmission && IsPresetProtocolID(presetID) && compiled.Identity().DefinitionID == presetID {
 		session.presets[presetID] = sessionCompilation{source: value, compiled: compiled}
+		processCompilations.admitPreset(presetID, compiled)
 	}
 	return compiled, nil
 }

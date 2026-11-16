@@ -324,28 +324,9 @@ func (service *Service) LoadRevision(ctx context.Context, id, hash string) (*Com
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	key := id + "/" + hash
-	if cached := service.retained[key]; cached != nil {
-		return cached, nil
-	}
-	compiled, err := service.loadVerifiedRevision(ctx, id, hash)
-	if err != nil {
-		return nil, err
-	}
-	if service.retained == nil {
-		service.retained = map[string]*Compiled{}
-	}
-	size := len(compiled.definition.raw)
-	for len(service.retainedOrder) > 0 && (service.retainedBytes+size > service.compiler.limits.BufferBytes || len(service.retained) >= service.compiler.limits.StateItems) {
-		oldest := service.retainedOrder[0]
-		service.retainedOrder = service.retainedOrder[1:]
-		service.retainedBytes -= len(service.retained[oldest].definition.raw)
-		delete(service.retained, oldest)
-	}
-	service.retained[key] = compiled
-	service.retainedOrder = append(service.retainedOrder, key)
-	service.retainedBytes += size
-	return compiled, nil
+	// The process cache reuses graphs, not database authorization. Historical
+	// loads still require the durable revision and current-engine evidence.
+	return service.loadVerifiedRevision(ctx, id, hash)
 }
 
 // ReadReport returns current-engine offline evidence for the selected revision.

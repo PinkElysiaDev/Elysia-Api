@@ -17,13 +17,10 @@ type registrySnapshot struct {
 // Service is shared by the editor, Agent and gateway. Administrative mutations
 // are serialized; request reads pin a compiled pointer without locking or SQL.
 type Service struct {
-	compiler      *Compiler
-	repository    Repository
-	mu            sync.Mutex
-	snapshot      atomic.Pointer[registrySnapshot]
-	retained      map[string]*Compiled
-	retainedOrder []string
-	retainedBytes int
+	compiler   *Compiler
+	repository Repository
+	mu         sync.Mutex
+	snapshot   atomic.Pointer[registrySnapshot]
 }
 
 // NewService creates an empty registry. Reload validates persisted activations
@@ -260,7 +257,8 @@ func (service *Service) RemoveActive(id string, commit func() error) error {
 	return nil
 }
 
-// DeleteRetained evicts the historical compiled cache only after durable deletion.
+// DeleteRetained serializes durable history deletion with activation. Compiled
+// graphs already pinned by requests stay valid; graph reuse grants no authority.
 func (service *Service) DeleteRetained(id, hash string, commit func() error) error {
 	if IsPresetProtocolID(id) {
 		return draftInputError("/id", fmt.Errorf("preset protocol %q is read-only; its history refreshes with the engine", id))
@@ -272,17 +270,6 @@ func (service *Service) DeleteRetained(id, hash string, commit func() error) err
 	}
 	if err := commit(); err != nil {
 		return err
-	}
-	key := id + "/" + hash
-	if compiled := service.retained[key]; compiled != nil {
-		service.retainedBytes -= len(compiled.definition.raw)
-		delete(service.retained, key)
-		for index, entry := range service.retainedOrder {
-			if entry == key {
-				service.retainedOrder = append(service.retainedOrder[:index], service.retainedOrder[index+1:]...)
-				break
-			}
-		}
 	}
 	return nil
 }

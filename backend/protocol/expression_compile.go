@@ -94,6 +94,7 @@ type expressionCompiler struct {
 	used                   map[string]bool
 	mappingReferences      map[string]Expression
 	constraints            *wireConstraintCompiler
+	schemaPlans            map[string]*wireSchemaPlan
 }
 
 const compileFactsBatch = 64

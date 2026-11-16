@@ -113,7 +113,7 @@ func compilePackageStateSlots(declarations map[string]ProtocolWireStateSlot, ind
 		scope.stateSlots[name] = expressionBinding{slot: index, result: schema.Type, schema: &schema}
 		plan.slots[index].path = path + "/" + escapePointer(name)
 		var err error
-		plan.slots[index].schema, err = compileWireSchemaPlan(&schema, compiler.limits)
+		plan.slots[index].schema, err = compiler.compileWireSchemaPlan(&schema)
 		if err != nil {
 			return nil, locateMappingError(plan.slots[index].path+"/schema", err)
 		}

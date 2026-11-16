@@ -36,8 +36,8 @@ func TestProtocolRefreshCompilationUsesExactDefinitions(t *testing.T) {
 		t.Fatal("different source bytes bypassed compilation or changed normalized identity", issues)
 	}
 	second, issues := compilation.Compile(spelled)
-	if protocol.IssuesError(issues) != nil || second == first {
-		t.Fatal("an auxiliary compilation was retained", issues)
+	if protocol.IssuesError(issues) != nil || second != first {
+		t.Fatal("an identical auxiliary source missed the process cache", issues)
 	}
 	document.Mapping.DSLVersion = 0
 	invalid := mustEncodedProtocolValue(t, document)
@@ -56,14 +56,14 @@ func TestProtocolRefreshCompilationUsesExactDefinitions(t *testing.T) {
 	}
 	firstCustom, issues := compilation.Compile(custom)
 	secondCustom, otherIssues := compilation.Compile(custom)
-	if protocol.IssuesError(issues) != nil || protocol.IssuesError(otherIssues) != nil || firstCustom == secondCustom {
-		t.Fatal("custom results were retained by the session")
+	if protocol.IssuesError(issues) != nil || protocol.IssuesError(otherIssues) != nil || firstCustom != secondCustom {
+		t.Fatal("identical custom sources missed the process cache")
 	}
 	fresh := service.NewCompilationSession()
 	defer fresh.Close()
 	compiled, issues := fresh.Compile(value)
-	if protocol.IssuesError(issues) != nil || compiled == selected {
-		t.Fatal("independent refresh inherited another operation's memo", issues)
+	if protocol.IssuesError(issues) != nil || compiled != selected {
+		t.Fatal("independent refresh missed the process cache", issues)
 	}
 	limits := protocol.DefaultLimits()
 	limits.BufferBytes = value.Len() - 1
@@ -183,7 +183,7 @@ func TestProtocolRefreshCompilationPublishesPreparedPointers(t *testing.T) {
 	for _, id := range requiredPresetIDs {
 		published, hasPublished := service.Pin(id)
 		prior, hasPrior := previous.Pin(id)
-		if !hasPublished || !hasPrior || published != definitions[id] || published == prior {
+		if !hasPublished || !hasPrior || published != definitions[id] || published != prior {
 			t.Fatalf("preset %s was not handed from real preparation to publication", id)
 		}
 	}

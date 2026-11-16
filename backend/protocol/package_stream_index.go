@@ -29,7 +29,8 @@ func (transaction *packageStreamTransaction) indexSize(slot int) int {
 	return count
 }
 
-func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction Direction, path string, limits Limits, scope *expressionScope) ([]compiledPackageIndex, error) {
+func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction Direction, path string, compiler *expressionCompiler, scope *expressionScope) ([]compiledPackageIndex, error) {
+	limits := compiler.limits
 	if len(declarations) == 0 {
 		return nil, nil
 	}
@@ -47,7 +48,7 @@ func compilePackageIndexes(declarations map[string]ProtocolStateIndex, direction
 		if !definitionIdentifier.MatchString(name) || !slices.Contains([]string{"string", "integer", "raw_json"}, declaration.KeyMode) || !slices.Contains([]string{"first", "last", "reject"}, declaration.Policy) {
 			return nil, fmt.Errorf("%s: requires an identifier, explicit keyMode and duplicate policy", at)
 		}
-		schema, err := compileWireSchemaPlan(&declaration.Schema, limits)
+		schema, err := compiler.compileWireSchemaPlan(&declaration.Schema)
 		if err != nil {
 			return nil, locateMappingError(at+"/schema", err)
 		}

@@ -83,7 +83,7 @@ func (spec ProtocolSpec) Identity() Identity {
 	return Identity{DefinitionID: spec.ID, Revision: spec.Version, Family: spec.Family, WireVersion: spec.WireVersion}
 }
 
-func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
+func (spec ProtocolSpec) compile(limits Limits, schemas map[string]*wireSchemaPlan) (compiledProtocolSpec, error) {
 	if !definitionIdentifier.MatchString(spec.ID) || strings.TrimSpace(spec.Version) == "" || strings.TrimSpace(spec.Family) == "" || strings.TrimSpace(spec.WireVersion) == "" {
 		return compiledProtocolSpec{}, fmt.Errorf("/spec: id, version, family and wireVersion are required")
 	}
@@ -98,6 +98,7 @@ func (spec ProtocolSpec) compile(limits Limits) (compiledProtocolSpec, error) {
 		operationSchemas:  make(map[string]*runtimeValueSchema, len(spec.Operations)),
 	}
 	expressions := newExpressionCompiler(limits, spec.Expressions)
+	expressions.schemaPlans = schemas
 	expressions.constraints = newWireConstraintCompiler(spec.Constraints)
 	documentCompiler := protocolDocumentCompiler{spec: spec, compiled: &compiled, expressions: expressions, visiting: map[string]bool{}, depths: map[string]int{}}
 	for _, name := range sortedKeys(spec.Documents) {

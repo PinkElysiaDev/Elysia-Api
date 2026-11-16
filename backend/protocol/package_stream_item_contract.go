@@ -88,12 +88,12 @@ func (compiler *packageStreamCompiler) compileEntities(spec *ProtocolStreamSpec,
 		}
 		entity := compiledWireEntity{name: name, namespace: namespace, payload: declaration.Payload, parentNamespace: -1, closeWithParent: declaration.CloseWithParent, isArray: declaration.PayloadSchema != nil && declaration.PayloadSchema.Type == ArrayType}
 		var err error
-		entity.schema, err = compileWireSchemaPlan(declaration.PayloadSchema, compiler.limits)
+		entity.schema, err = compiler.expressions.compileWireSchemaPlan(declaration.PayloadSchema)
 		if err != nil {
 			return locateMappingError(at+"/payloadSchema", err)
 		}
 		if entity.isArray {
-			entity.arrayItems, err = compileWireSchemaPlan(declaration.PayloadSchema.Items, compiler.limits)
+			entity.arrayItems, err = compiler.expressions.compileWireSchemaPlan(declaration.PayloadSchema.Items)
 			if err != nil {
 				return locateMappingError(at+"/payloadSchema/items", err)
 			}

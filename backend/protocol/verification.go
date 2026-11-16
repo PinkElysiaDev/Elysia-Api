@@ -18,7 +18,35 @@ type verificationResult struct {
 // verifies reversible mappings, and requires evidence for declared features.
 // It performs no network I/O and can never produce upstream verification.
 func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
-	report := VerificationReport{DefinitionHash: compiled.hash, CompilerVersion: CompilerVersion, SamplesHash: compiled.samplesHash, Kind: OfflineVerification, VerifiedAt: time.Now().UTC(), Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
+	verifiedAt := time.Now().UTC()
+	// RequestBodyLimit is the only caller context value affecting offline
+	// execution. Non-default budgets bypass memoization rather than creating an
+	// unbounded per-revision map. Cancellation is never cached or hidden.
+	if compiled.verification == nil || RequestBodyLimit(ctx) != DefaultRequestBodyBytes || ctx.Err() != nil {
+		return verifyUncached(ctx, compiled, verifiedAt)
+	}
+	memo := compiled.verification
+	memo.mu.Lock()
+	defer memo.mu.Unlock()
+	if ctx.Err() != nil {
+		return verifyUncached(ctx, compiled, verifiedAt)
+	}
+	if memo.report != nil {
+		report := cloneVerificationReport(*memo.report)
+		report.VerifiedAt = verifiedAt
+		return report
+	}
+	report := verifyUncached(ctx, compiled, verifiedAt)
+	if report.Passed && ctx.Err() == nil {
+		evidence := cloneVerificationReport(report)
+		evidence.VerifiedAt = time.Time{}
+		memo.report = &evidence
+	}
+	return report
+}
+
+func verifyUncached(ctx context.Context, compiled *Compiled, verifiedAt time.Time) VerificationReport {
+	report := VerificationReport{DefinitionHash: compiled.hash, CompilerVersion: CompilerVersion, SamplesHash: compiled.samplesHash, Kind: OfflineVerification, VerifiedAt: verifiedAt, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
 	coverage := map[Direction]CapabilitySet{}
 	hasSample, hasSequence := map[Direction]bool{}, map[Direction]bool{}
 	hasLifecycle := map[Direction]map[Capability]bool{}
