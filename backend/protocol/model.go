@@ -201,6 +201,7 @@ type Tool struct {
 // Request has one ordered content history. Parameters are named semantic
 // fields, not an automatic pass-through container for unknown wire extensions.
 type Request struct {
+	verdict               *requestVerdict
 	continuationInput     *continuationInput
 	continuationsAccepted bool
 	SchemaVersion         int              `json:"schemaVersion"`

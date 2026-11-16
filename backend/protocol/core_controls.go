@@ -136,6 +136,7 @@ func applyControlSteps(state evaluation, conversion *CompiledConversion, documen
 			return result, nil
 		}
 		if step.each != nil {
+			state.ensureControlBindings()
 			changed, err := step.each.apply(state, conversion, document, route, rule, sink, owner)
 			if err != nil {
 				return result, err
@@ -143,6 +144,7 @@ func applyControlSteps(state evaluation, conversion *CompiledConversion, documen
 			result.hasChanges = result.hasChanges || changed
 		}
 		if step.layout != nil {
+			state.ensureControlBindings()
 			changed, err := step.layout.apply(state, conversion, document, route, rule, sink, owner)
 			if err != nil {
 				return result, err
@@ -241,35 +243,19 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 	if options.Phase != rule.Phase || options.Target != route.Target && !(isCollection && options.Collection && route.Target == route.Source) {
 		return false, streamIssue(InvalidInput, "/conversionDefaults", "core controls do not match the pinned target and phase")
 	}
-	var contextValue Value
-	if options.hasContext {
-		contextValue, err = EncodeValue(struct {
-			Transport    Transport                   `json:"transport"`
-			Model        string                      `json:"model"`
-			IsSameWire   bool                        `json:"isSameWire"`
-			Observations map[string]fieldObservation `json:"observations,omitempty"`
-		}{route.Transport, route.Model, route.Source.Family == route.Target.Family && route.Source.WireVersion == route.Target.WireVersion, route.fieldObservations})
-		if err != nil {
-			return false, err
-		}
-	}
-	var read func([]string) (JSONOutput, error)
 	switch current := document.(type) {
 	case *Request:
 		if current.SchemaVersion != options.CoreVersion {
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
-		read = func(pointer []string) (JSONOutput, error) { return readCoreRequestOutput(current, pointer, nil) }
 	case *Response:
 		if current.SchemaVersion != options.CoreVersion {
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
-		read = func(pointer []string) (JSONOutput, error) { return readCoreResponseOutput(current, pointer, nil) }
 	case *Event:
 		if current.SchemaVersion != options.CoreVersion {
 			return false, streamIssue(InvalidInput, "/schemaVersion", "core controls require their declared core version")
 		}
-		read = func(pointer []string) (JSONOutput, error) { return readCoreEventOutput(current, pointer, nil) }
 	default:
 		return false, fmt.Errorf("core controls require their compiled core document")
 	}
@@ -279,8 +265,9 @@ func (conversion *CompiledConversion) applySelectedCoreControls(ctx context.Cont
 		ownerLimits = requestLimits(ctx, ownerLimits, options.ExplicitLimits)
 	}
 	limits = intersectControlLimits(limits, semanticLimits(ownerLimits))
-	state := evaluation{ctx: ctx, inputReader: read, rootReader: read, context: contextValue, valueReader: &valueReader{},
-		objectReader: newPlanObjectReader(contextValue, objectReuseReads), bindings: make([]JSONOutput, options.bindingSlots), budget: &evaluationBudget{limits: limits, stepLimit: min(conversion.limits.Nodes, options.Limits.Nodes)},
+	resources := &controlEvaluationResources{budget: evaluationBudget{limits: limits, stepLimit: min(conversion.limits.Nodes, options.Limits.Nodes)}, bindingSlots: options.bindingSlots,
+		transport: route.Transport, model: route.Model, isSameWire: route.Source.Family == route.Target.Family && route.Source.WireVersion == route.Target.WireVersion, observations: route.fieldObservations}
+	state := evaluation{ctx: ctx, coreDocument: document, control: resources,
 		runtime: evaluationRuntime{isBound: true, operation: route.operation}}
 	state.coreRequest, _ = document.(*Request)
 	if options.FrameUsage {

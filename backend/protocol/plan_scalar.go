@@ -53,6 +53,16 @@ func (plan *compiledOutputPlan) buildReadValue(state *evaluation) (plannedOutput
 	case "item":
 		root = state.item
 	case "context":
+		if state.control != nil {
+			value, err := state.control.readContext(expression.pointer)
+			if err != nil {
+				return plannedOutput{}, fmt.Errorf("%s: %w", expression.path, err)
+			}
+			if expression.isRequired && value.IsZero() {
+				return plannedOutput{}, fmt.Errorf("%s: required field is absent", expression.path)
+			}
+			return plannedLeaf(value), nil
+		}
 		root = state.context
 	case "runtime":
 		if !state.runtime.isBound {

@@ -68,6 +68,8 @@ func (compiled *Compiled) preparePackageState(direction Direction, state evaluat
 func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluation, limits Limits, sink *DiagnosticSink, provenance *provenanceReadMemo) error {
 	isDecode := isPackageDecodeDirection(direction)
 	var conditions *evaluation
+	var owners []ownerEffectVerdict
+	ownerIndex := 0
 	for _, effect := range compiled.packagePlan.effects[direction] {
 		if isRequestProjectionScope(effect.scope) {
 			continue // Projection belongs to the overridable conversion rule.
@@ -89,8 +91,15 @@ func (compiled *Compiled) checkPackageEffects(direction Direction, state evaluat
 						return err
 					}
 				}
-				if err := compiled.checkOwnerEffect(direction, *conditions, effect, provenance); err != nil {
-					return err
+				if owners == nil {
+					owners = compiled.evaluateOwnerEffects(direction, *conditions, provenance)
+				}
+				verdict := owners[ownerIndex]
+				ownerIndex++
+				if !verdict.commit(conditions) {
+					if err := compiled.checkOwnerEffect(direction, *conditions, effect, provenance); err != nil {
+						return err
+					}
 				}
 				continue
 			}

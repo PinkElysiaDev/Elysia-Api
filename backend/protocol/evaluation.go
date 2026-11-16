@@ -3,6 +3,7 @@ package protocol
 import "context"
 
 type evaluation struct {
+	control                    *controlEvaluationResources
 	cache                      *semanticCache
 	coreRequest                *Request
 	coreDocument               any
@@ -61,6 +62,14 @@ type evaluationBudget struct {
 }
 
 func (state *evaluation) advance() error {
+	if state.control != nil {
+		if state.budget == nil {
+			state.budget = &state.control.budget
+		}
+		if state.valueReader == nil {
+			state.valueReader = &state.control.reader
+		}
+	}
 	state.budget.steps++
 	stepLimit := state.budget.stepLimit
 	if stepLimit == 0 {

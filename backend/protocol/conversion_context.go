@@ -4,6 +4,9 @@ func validateRequestContext(request *Request) error {
 	if request == nil {
 		return nil // CheckRequest reports the missing semantic document.
 	}
+	if requestContextUnchanged(request) {
+		return nil
+	}
 	if err := validateRequestHints(request); err != nil {
 		return err
 	}

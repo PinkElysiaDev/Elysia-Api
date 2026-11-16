@@ -8,9 +8,9 @@ import (
 func (state *evaluation) hasOutputReader(from string) bool {
 	switch from {
 	case "input":
-		return state.inputReader != nil
+		return state.inputReader != nil || state.control != nil && state.coreDocument != nil
 	case "root":
-		return state.rootReader != nil
+		return state.rootReader != nil || state.control != nil && state.coreDocument != nil
 	case "item":
 		return state.itemOutput != nil
 	case "binding", "state":
@@ -32,6 +32,8 @@ func (expression *compiledExpression) readOutput(state *evaluation) (JSONOutput,
 		output, err = state.inputReader(expression.pointer)
 	case expression.from == "root" && state.rootReader != nil:
 		output, err = state.rootReader(expression.pointer)
+	case state.control != nil && state.coreDocument != nil && (expression.from == "input" || expression.from == "root"):
+		output, err = readControlDocument(state.coreDocument, expression.pointer, state.cache)
 	case expression.from == "item" && state.itemOutput != nil:
 		output, err = readOutputPointerWithObjectReader(*state.itemOutput, expression.pointer, state.valueReader, state.objectReader)
 	case expression.from == "binding":

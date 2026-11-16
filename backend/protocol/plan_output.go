@@ -227,7 +227,10 @@ func (value plannedOutput) materializeWithin(ctx context.Context, cache *semanti
 
 func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, err error) {
 	if plan.bindingSlots != 0 && state.bindings == nil {
-		state.bindings = make([]JSONOutput, plan.bindingSlots)
+		state.ensureControlBindings()
+		if state.bindings == nil {
+			state.bindings = make([]JSONOutput, plan.bindingSlots)
+		}
 		if state.capture != nil {
 			state.capture.bindings = make([]nativeLocation, plan.bindingSlots)
 		}

@@ -2,14 +2,13 @@ package protocol
 
 import (
 	"context"
-	"fmt"
 )
 
 func (c *CompiledConversion) projectCacheIntentGroup(ctx context.Context, request *Request, route ConversionContext, rule ConversionRule, plan *compiledRequestProjection, sink *DiagnosticSink, budget *evaluationBudget) error {
 	if !hasRequestCacheIntents(request) {
 		return nil
 	}
-	return requestCaches(request, func(intents *[]CacheIntent, at string) error {
+	return requestCaches(request, func(intents *[]CacheIntent, at diagnosticPath) error {
 		kept := 0
 		for index, intent := range *intents {
 			shouldDrop := false
@@ -21,7 +20,7 @@ func (c *CompiledConversion) projectCacheIntentGroup(ctx context.Context, reques
 				if !isMatch {
 					continue
 				}
-				path := fmt.Sprintf("%s/%d", at, index)
+				path := at.index(index).String()
 				if intent.Kind == "resource" || intent.Resource != nil {
 					return c.requestProjectionError(rule, route, path, UnsupportedCapability, "cache resources require an explicit target representation and cannot be omitted by cache disposition")
 				}

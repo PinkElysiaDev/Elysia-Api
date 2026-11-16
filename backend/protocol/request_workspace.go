@@ -17,6 +17,7 @@ type requestEncodingWorkspace struct {
 	limits       Limits
 	original     Value
 	baseline     *Request
+	finished     *Request // Immutable successful decode; absent when authorization could edit it.
 	continuation *continuationInput
 }
 
@@ -25,6 +26,7 @@ type requestEncodingWorkspace struct {
 type requestReplay struct {
 	compiled *Compiled
 	options  EvaluationContext
+	current  *Request
 	prepared preparedRequestReplay
 }
 
@@ -38,6 +40,34 @@ type preparedRequestReplay struct {
 func newRequestReplay(compiled *Compiled, options EvaluationContext) *requestReplay {
 	options.requestReplay = nil
 	return &requestReplay{compiled: compiled, options: options}
+}
+
+func (replay *requestReplay) canReuseOutput(ctx context.Context) bool {
+	prepared := replay.prepared
+	plan := replay.compiled.mappings[EncodeRequest].outputPlan
+	// Equal semantic input is insufficient for stateful or delivery-observing
+	// programs. They retain their independent baseline execution even when the
+	// ordinary request document happens to match byte for byte.
+	if plan == nil || plan.hasStreamWrites || plan.hasOutputStreamRead || plan.hasEncodingStateRead ||
+		replay.options.State != nil || replay.options.packageTransaction != nil || replay.options.outputStream != nil {
+		return false
+	}
+	for _, effect := range replay.compiled.packagePlan.effects[EncodeRequest] {
+		if effect.kind == "warn" {
+			return false
+		} // Preserve baseline warning multiplicity and order.
+	}
+	if prepared.baseline == nil || replay.current == nil || replay.current.continuationInput != nil || prepared.baseline.continuationInput != nil ||
+		replay.current.continuationsAccepted != prepared.baseline.continuationsAccepted ||
+		prepared.options.Scope != replay.options.Scope || prepared.options.InterleavedThinking != replay.options.InterleavedThinking ||
+		!maps.Equal(prepared.options.Values, replay.options.Values) {
+		return false
+	}
+	leftInput, leftOutput, leftWork := replay.compiled.mappingLimits(ctx, EncodeRequest)
+	rightInput, rightOutput, rightWork := prepared.compiled.mappingLimits(ctx, EncodeRequest)
+	return leftInput == rightInput && leftOutput == rightOutput && leftWork == rightWork &&
+		replay.compiled.wireLimits(ctx, EncodeRequest) == prepared.compiled.wireLimits(ctx, EncodeRequest) &&
+		equalRequestSnapshot(replay.current, prepared.baseline)
 }
 
 func (replay *requestReplay) load(ctx context.Context, native *Native) (preparedRequestReplay, error) {
@@ -67,7 +97,15 @@ func (compiled *Compiled) prepareRequestReplay(ctx context.Context, native *Nati
 	if source := native.RequestContext; source != nil {
 		options.Scope, options.Values, options.InterleavedThinking = source.Scope, maps.Clone(source.Values), source.InterleavedThinking
 	}
-	if request == nil {
+	if request != nil && native.requestWorkspace.finished != nil &&
+		native.requestWorkspace.finished.Native.Source == native.Source &&
+		compiled.nativeLimits(ctx, EncodeRequest) == replay.nativeLimits(ctx, EncodeRequest) {
+		// The workspace owns this exact successful decode, under identical
+		// immutable wire/source/context/limits. No callback or candidate has ever
+		// owned it. Reuse it read-only rather than finishing a fresh clone.
+		request = native.requestWorkspace.finished
+		err = replay.runtimeError(DecodeRequest, ctx.Err())
+	} else if request == nil {
 		request, err = replay.decodeRequestValue(ctx, original, options, &native.Source.Scope)
 	} else {
 		decoded := request
