@@ -27,15 +27,6 @@ func (plan *compiledOutputPlan) buildOperands(state *evaluation) (plannedOutput,
 	return concatPlannedArrays(operands, state.budget.limits.Nodes, state.cache)
 }
 
-func (plan *compiledOutputPlan) buildOperandValues(state *evaluation) (operands []plannedOutput, err error) {
-	operands = make([]plannedOutput, len(plan.items))
-	err = plan.buildOperandValuesInto(state, operands)
-	if err != nil {
-		operands = nil
-	}
-	return
-}
-
 func (plan *compiledOutputPlan) buildOperandValuesInto(state *evaluation, operands []plannedOutput) error {
 	logicalBytes := 0
 	// Evaluate all operands before checking their container types or collisions,

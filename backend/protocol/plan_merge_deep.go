@@ -19,8 +19,9 @@ type deepObjectMerge struct {
 }
 
 func (plan *compiledOutputPlan) buildDeepMerge(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(&state)
-	if err != nil {
+	var storage [operandWorkspaceCapacity]plannedOutput
+	operands := selectOperandStorage(storage[:], len(plan.items))
+	if err := plan.buildOperandValuesInto(&state, operands); err != nil {
 		return plannedOutput{}, err
 	}
 	merge := deepObjectMerge{state: state}
