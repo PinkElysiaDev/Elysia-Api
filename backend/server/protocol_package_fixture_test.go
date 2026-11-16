@@ -31,7 +31,7 @@ func loadGatewayPackage(t *testing.T, directory string) protocol.ProtocolPackage
 
 func activateGatewayPackage(t *testing.T, server *Server, document protocol.ProtocolPackage) *protocol.Compiled {
 	t.Helper()
-	raw := mustEncodedProtocolValue(t, document)
+	raw := fixturePackageValue(t, document)
 	compiled := seedGatewayProtocol(t, server, document.Spec.ID, raw.Bytes(), true)
 	if compiled.CoreVersion() != protocol.ProtocolCoreVersion {
 		t.Fatal("package fixture selected a legacy core")

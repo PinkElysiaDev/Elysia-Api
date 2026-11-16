@@ -12,10 +12,12 @@ import (
 // httpRequests owns admission, forced socket interruption and handler draining.
 // Stop must precede Wait so no WaitGroup.Add can race with an empty Wait.
 type httpRequests struct {
-	mu      sync.Mutex
-	workers sync.WaitGroup
-	active  map[*app.RequestContext]net.Conn
-	stopped bool
+	mu         sync.Mutex
+	workers    sync.WaitGroup
+	active     map[*app.RequestContext]net.Conn
+	stopped    bool
+	epoch      uint64 // Admissions, sampled by the idle scavenger under mu.
+	background int
 }
 
 func (r *httpRequests) enter(c *app.RequestContext, conn net.Conn) bool {
@@ -28,6 +30,7 @@ func (r *httpRequests) enter(c *app.RequestContext, conn net.Conn) bool {
 		r.active = make(map[*app.RequestContext]net.Conn)
 	}
 	r.active[c] = conn
+	r.epoch++
 	r.workers.Add(1)
 	return true
 }

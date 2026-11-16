@@ -45,11 +45,8 @@ func activateGatewayFixture(t *testing.T, server *Server, document protocol.Prot
 // Preset batches publish once after all revisions have been persisted.
 func seedGatewayFixture(t *testing.T, server *Server, document protocol.ProtocolPackage, reload bool) *protocol.Compiled {
 	t.Helper()
-	raw, err := sonic.ConfigStd.Marshal(document)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return seedGatewayProtocol(t, server, document.Spec.ID, raw, reload)
+	raw := fixturePackageValue(t, document)
+	return seedGatewayProtocol(t, server, document.Spec.ID, raw.Bytes(), reload)
 }
 
 func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, reload bool, compilation ...*protocol.CompilationSession) *protocol.Compiled {

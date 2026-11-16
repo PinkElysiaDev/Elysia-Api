@@ -6,50 +6,56 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/elysia-api/backend/config"
 	"github.com/elysia-api/backend/protocol"
+	"github.com/elysia-api/backend/storage"
 )
 
 func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 	t.Parallel()
 	const raw = `{"model":"grp","max_tokens":100,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"f","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT9sAAAAASUVORK5CYII="}}]}]}]}`
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"type":"image"`) {
+			t.Error("media lost", string(body))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"r","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	t.Cleanup(provider.Close)
+	groups := presetGroup(t, "custom:anthropic-messages", provider.URL)
+	native := groups[0].Models[0]
+	native.ID, native.Name, native.SourceID = "claude-sonnet-4-6", "claude-sonnet-4-6", "native"
+	gemini := native
+	gemini.ID, gemini.Name, gemini.SourceID = "gemini-2.5-flash", "gemini-2.5-flash", "gemini"
+	gemini.Platform = "custom:google-generate-content"
+	groups[0].Models = []config.ModelRef{gemini, native}
+	s := newTestServer(t, groups)
+	service, _ := s.protocolService()
+	ingress, _ := service.Pin(protocol.PresetAnthropicID)
+	// All cases share the immutable presets/store/provider. Candidate membership,
+	// order, conversion evidence and call counters are reset for every request.
 	for _, mode := range []string{"compatible", "strict"} {
 		for _, order := range []string{"native", "gemini-first", "anthropic-first", "unsupported", "invalid", "reject"} {
 			t.Run(mode+"/"+order, func(t *testing.T) {
-				calls := 0
-				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					calls++
-					body, _ := io.ReadAll(r.Body)
-					if !strings.Contains(string(body), `"type":"image"`) {
-						t.Error("media lost", string(body))
-					}
-					w.Header().Set("Content-Type", "application/json")
-					fmt.Fprint(w, `{"id":"r","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
-				}))
-				defer provider.Close()
-				groups := presetGroup(t, "custom:anthropic-messages", provider.URL)
-				native := groups[0].Models[0]
-				native.ID = "claude-sonnet-4-6"
-				native.Name = native.ID
-				gemini := native
-				gemini.ID = "gemini-2.5-flash"
-				gemini.Name = gemini.ID
-				gemini.Platform = "custom:google-generate-content"
+				calls.Store(0)
+				members := []string{"gemini:" + gemini.ID, "native:" + native.ID}
 				switch order {
 				case "native":
-					groups[0].Models = []config.ModelRef{native}
+					members = []string{"native:" + native.ID}
 				case "anthropic-first":
-					groups[0].Models = []config.ModelRef{native, gemini}
+					members = []string{"native:" + native.ID, "gemini:" + gemini.ID}
 				case "unsupported":
-					groups[0].Models = []config.ModelRef{gemini}
-				default:
-					groups[0].Models = []config.ModelRef{gemini, native}
+					members = []string{"gemini:" + gemini.ID}
 				}
-				s := newTestServer(t, groups)
-				service, _ := s.protocolService()
-				ingress, _ := service.Pin(protocol.PresetAnthropicID)
+				if err := s.store.UpsertGroup(t.Context(), storage.ModelGroup{ID: "g1", Name: "grp", Enabled: true, ToolsCapable: true, VisionCapable: true, Models: members}); err != nil {
+					t.Fatal(err)
+				}
 				policy := protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "media-policy", Mode: mode, Rules: []protocol.ConversionRule{}}
 				if order == "reject" {
 					present := true
@@ -62,15 +68,19 @@ func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 				for i := range bindings {
 					bindings[i].Conversion = &protocol.ConversionSelection{Overrides: &policy}
 				}
-				bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
-				if err != nil {
-					t.Fatal(err)
-				}
+				// Persist all selections before resolving any model/provider context.
 				for _, binding := range bindings {
 					if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
 						t.Fatal(err)
 					}
 				}
+				for _, binding := range bindings {
+					binding.Combinations = verifyFixtureBinding(t, s, binding)
+					if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+						t.Fatal(err)
+					}
+				}
+				s.scheduler.ForgetGroup("g1") // Each case starts at its declared first candidate, as a fresh fixture did.
 				s.invalidateRouteCache()
 				input := raw
 				if order == "reject" {
@@ -84,11 +94,11 @@ func TestGatewayMediaToolResultCandidateIsolation(t *testing.T) {
 				flushTestResponse(ctx)
 				rejected := order == "unsupported" || order == "invalid" || order == "reject"
 				if rejected {
-					if rec.Code != 400 || calls != 0 {
-						t.Fatal(rec.Code, calls, rec.Body)
+					if rec.Code != 400 || calls.Load() != 0 {
+						t.Fatal(rec.Code, calls.Load(), rec.Body)
 					}
-				} else if rec.Code != 200 || calls != 1 {
-					t.Fatal(rec.Code, calls, rec.Body)
+				} else if rec.Code != 200 || calls.Load() != 1 {
+					t.Fatal(rec.Code, calls.Load(), rec.Body)
 				}
 				if order == "unsupported" && !strings.Contains(rec.Body.String(), "conversion_rejected at /content/1/children/0/children:") {
 					t.Fatal("missing target diagnostic", rec.Body)

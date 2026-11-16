@@ -2,7 +2,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { arch, platform, cpus } from 'node:os'
+import { arch, platform } from 'node:os'
 import { createHash } from 'node:crypto'
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -61,7 +61,7 @@ export class VerificationRun {
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim(),
       compilerVersion: compiler.match(/CompilerVersion\s*=\s*"([^"]+)"/)[1],
       goVersion: execFileSync('go', ['version'], { encoding: 'utf8', windowsHide: true }).trim(),
-      platform: platform(), architecture: arch(), cpu: cpus()[0]?.model, steps: [],
+      platform: platform(), architecture: arch(), cpu: platform() === 'darwin' ? 'Apple device' : 'not recorded', steps: [],
       source: await sourceIdentity(root),
     }
     await run.save()

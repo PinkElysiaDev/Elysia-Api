@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
-import { buildBackendTestPlan, serverRaceShards, serverShardMatches } from './backend.mjs'
+import { buildBackendTestPlan, serverRaceShards, serverTestShards, serverShardMatches } from './backend.mjs'
 
 const packages = ['.', './agent', './config', './internal/architecture', './protocol', './protocol/builtin', './relay', './server', './storage', './webui']
 
@@ -35,16 +35,31 @@ test('fast tier excludes server and full tier covers each package including fuzz
   assert.equal(fast.tasks.length, 1)
   assert(!fast.tasks[0].args.includes('./server'))
   const plan = buildBackendTestPlan(['--suite=all', '--jobs=3'], { GOFLAGS: '-run=^TestOne$ -skip=Fuzz' }, packages)
-  assert.equal(plan.tasks.length, 2)
-  assert.equal(plan.tasks[0].slots, 3)
-  assert.deepEqual(plan.tasks.flatMap(task => task.args.filter(arg => packages.includes(arg))).sort(), [...packages].sort())
+  assert.equal(plan.tasks.length, packages.length - 1 + serverTestShards.length)
+  const nonServer = plan.tasks.filter(task => !task.args.includes('./server'))
+  assert.deepEqual(nonServer.map(task => task.args.at(-1)).sort(), packages.filter(pkg => pkg !== './server').sort())
+  assert(nonServer.every(task => !task.args.includes('-run') && !task.args.includes('-skip') && !task.exclusive && !task.slots && task.allowNoTests))
+  assert.equal(buildBackendTestPlan(['--suite=all'], {}, packages).jobs, 4)
+  const server = plan.tasks.filter(task => task.args.includes('./server'))
+  assert(server.every(task => task.args.at(-1) === './server' && !task.group && !task.exclusive))
   for (const task of plan.tasks) {
-    assert.equal(task.args[task.args.indexOf('-p') + 1], '2')
-    assert(!task.args.includes('-run'))
-    assert(!task.args.includes('-skip'))
+    assert.equal(task.args[task.args.indexOf('-p') + 1], '1')
     assert(!task.args.includes('-race'))
     assert.equal(task.options.env.CGO_ENABLED, '0')
-    assert.equal(task.options.env.GOFLAGS, '-p=2')
+    assert.equal(task.options.env.GOFLAGS, '-p=1')
+    assert.equal(task.options.env.GOMEMLIMIT, '1GiB')
+  }
+  const directory = new URL('../../backend/server/', import.meta.url)
+  const names = readdirSync(directory).filter(name => name.endsWith('_test.go')).flatMap(file =>
+    [...readFileSync(new URL(file, directory), 'utf8').matchAll(/^func ((?:Test|Fuzz)\w+|Example\w*)\((?:\w+ \*testing\.[TF])?\)/gm)].map(match => match[1]))
+  names.push('TestFutureFeature', 'FuzzFutureFeature', 'ExampleFutureFeature')
+  assert(names.length > 600)
+  for (const name of names) {
+    assert.equal(serverTestShards.filter(shard => serverShardMatches(shard, name)).length, 1, name)
+    assert.equal(server.filter(task => serverShardMatches({
+      run: task.args.includes('-run') ? task.args[task.args.indexOf('-run') + 1] : undefined,
+      skip: task.args.includes('-skip') ? task.args[task.args.indexOf('-skip') + 1] : undefined,
+    }, name)).length, 1, name)
   }
 })
 
@@ -62,8 +77,8 @@ test('race full tier shards every non-server package and partitions all server t
   // the complement automatically. Fuzz seeds must be selected exactly once.
   const directory = new URL('../../backend/server/', import.meta.url)
   const names = readdirSync(directory).filter(name => name.endsWith('_test.go')).flatMap(file =>
-    [...readFileSync(new URL(file, directory), 'utf8').matchAll(/^func ((?:Test|Fuzz)\w+)\(\w+ \*testing\.[TF]\)/gm)].map(match => match[1]))
-  names.push('TestFutureFeature', 'FuzzFutureFeature')
+    [...readFileSync(new URL(file, directory), 'utf8').matchAll(/^func ((?:Test|Fuzz)\w+|Example\w*)\((?:\w+ \*testing\.[TF])?\)/gm)].map(match => match[1]))
+  names.push('TestFutureFeature', 'FuzzFutureFeature', 'ExampleFutureFeature')
   assert(names.length > 600)
   for (const name of names) {
     assert.equal(serverRaceShards.filter(shard => serverShardMatches(shard, name)).length, 1, name)

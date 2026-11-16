@@ -68,6 +68,7 @@ type Server struct {
 	shutdownRequestOnce sync.Once
 	shutdownDone        chan struct{} // Closed only after the full shutdown sequence.
 	httpRequests        httpRequests
+	memoryDone          chan struct{}
 
 	restartMu       sync.Mutex
 	restartRequired bool

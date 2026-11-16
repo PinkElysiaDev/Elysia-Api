@@ -9,7 +9,7 @@ const maximumJobs = 4
 const testParallelism = 2
 const testTimeout = '15m'
 const commandTimeoutMillis = 16 * 60 * 1000
-const testEnvironment = { GOMAXPROCS: '2', GOGC: '100', GOMEMLIMIT: '2GiB', GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '-p=2' }
+const testEnvironment = { GOMAXPROCS: '2', GOGC: '100', GOMEMLIMIT: '1GiB', GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '-p=1' }
 
 // Prefix groups are disjoint; the final complement also includes fuzz seeds and
 // newly added tests. Keep one server process at a time to bound aggregate RSS.
@@ -18,6 +18,25 @@ export const serverRaceShards = [
   { name: 'server-agent', run: '^TestAgent' },
   { name: 'server-protocol', run: '^Test(Protocol|Preset|RecoveredPresets)' },
   { name: 'server-other', skip: '^Test(Gateway|PackageGateway|Agent|Protocol|Preset|RecoveredPresets)' },
+]
+
+// Ordinary checks can overlap these independent processes. Split expensive
+// gateway matrices and CLI/operations out of the race tier's broad complement.
+// The last shard is deliberately a complement: future tests and fuzz seeds run.
+const gatewayMatrices = '^TestGateway(Media|Include|Thinking|Output)'
+const managementTests = '^Test(Health|Live|Shutdown|Source|Delete|Runtime|Discovery|Slow|Production|Recovery)'
+const wireTests = '^Test(Chat|Stream|Standard|Cache|Responses|Anthropic|Count|Conversion|Claude|Cross|Same|Declared|Provider|Custom|Default)'
+export const serverTestShards = [
+  // Longest observed groups launch first; task slots, not package parallelism,
+  // bound concurrent processes. The final complement remains automatic.
+  { name: 'server-gateway', run: '^Test(Gateway|PackageGateway)', skip: gatewayMatrices },
+  { name: 'server-management', run: managementTests },
+  { name: 'server-wire', run: wireTests },
+  { name: 'server-gateway-matrices', run: gatewayMatrices },
+  { name: 'server-agent', run: '^TestAgent' },
+  { name: 'server-cli', run: '^Test(CLI|Ops)' },
+  { name: 'server-protocol', run: '^Test(Protocol|Preset|RecoveredPresets)' },
+  { name: 'server-other', skip: [serverRaceShards.at(-1).skip, '^Test(CLI|Ops)', managementTests, wireTests].join('|') },
 ]
 
 export function serverShardMatches(shard, name) {
@@ -52,7 +71,7 @@ const suites = {
  */
 export function buildBackendTestPlan(args, environment = process.env, packages = []) {
   let suite = 'conversion'
-  let jobs = defaultJobs
+  let jobs
   let isRace = false
   for (const arg of args) {
     if (arg === '--race') isRace = true
@@ -60,13 +79,14 @@ export function buildBackendTestPlan(args, environment = process.env, packages =
     else if (arg.startsWith('--jobs=')) jobs = Number(arg.slice('--jobs='.length))
     else throw new Error(`Unknown backend check option: ${arg}`)
   }
+  jobs ??= suite === 'all' && !isRace ? maximumJobs : defaultJobs
   if (!Object.hasOwn(suites, suite)) throw new Error(`Check suite must be one of: ${Object.keys(suites).join(', ')}`)
   if (!Number.isInteger(jobs) || jobs < 1 || jobs > maximumJobs) throw new Error(`Jobs must be between 1 and ${maximumJobs}`)
-  const env = { ...environment, ...testEnvironment, CGO_ENABLED: isRace ? '1' : '0' }
+  const env = { ...environment, ...testEnvironment, ...(isRace ? { GOMEMLIMIT: '2GiB', GOFLAGS: '-p=2' } : {}), CGO_ENABLED: isRace ? '1' : '0' }
   if (isRace) env.GORACE = 'halt_on_error=1'
   const task = (name, pkgs, { run, skip, ...scheduling } = {}) => ({
     name, command: 'go', ...scheduling,
-    args: ['test', ...(isRace ? ['-race'] : []), '-buildvcs=false', '-pgo=off', '-p', '2',
+    args: ['test', ...(isRace ? ['-race'] : []), '-buildvcs=false', '-pgo=off', '-p', isRace ? '2' : '1',
       `-parallel=${testParallelism}`, '-count=1', `-timeout=${testTimeout}`, '-json',
       ...(run ? ['-run', run] : []), ...(skip ? ['-skip', skip] : []), ...pkgs],
     options: { env, timeoutMillis: commandTimeoutMillis },
@@ -75,13 +95,13 @@ export function buildBackendTestPlan(args, environment = process.env, packages =
   if (suite === 'fast' || suite === 'all') {
     const nonServer = packages.filter(pkg => pkg !== './server')
     if (!nonServer.length) throw new Error('Full and fast suites require the discovered Go package list')
-    tasks = isRace
-      ? nonServer.map(pkg => task(pkg === '.' ? 'root' : pkg.slice(2).replaceAll('/', '-'), [pkg], { allowNoTests: true, ...(['./protocol', './protocol/builtin'].includes(pkg) ? { exclusive: true } : {}) }))
+    tasks = isRace || suite === 'all'
+      ? nonServer.map(pkg => task(pkg === '.' ? 'root' : pkg.slice(2).replaceAll('/', '-'), [pkg], { allowNoTests: true, ...(isRace && ['./protocol', './protocol/builtin'].includes(pkg) ? { exclusive: true } : {}) }))
       : [task('non-server', nonServer, { slots: jobs, allowNoTests: true })]
     if (suite === 'all') {
       tasks.push(...(isRace
         ? serverRaceShards.map(({ name, ...selection }) => task(name, ['./server'], { ...selection, exclusive: true, group: 'server' }))
-        : [task('server', ['./server'], { group: 'server' })]))
+        : serverTestShards.map(({ name, ...selection }) => task(name, ['./server'], selection))))
     }
   } else {
     tasks = suites[suite].map(([name, pkg, pattern]) => task(name, [pkg], { run: pattern }))

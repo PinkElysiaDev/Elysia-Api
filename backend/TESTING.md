@@ -19,11 +19,14 @@ npm run test:protocol -- --suite=gemini-stream
 npm run test:protocol -- --suite=output
 ```
 
-Runner 固定 `GOMAXPROCS=2`、`GOMEMLIMIT=2GiB`、`GOFLAGS=-p=2`、
-`-parallel=2 -count=1 -timeout=15m`；每个任务的外部超时为 16 分钟。
+Runner 固定 `GOMAXPROCS=2`、`-parallel=2 -count=1 -timeout=15m`；每个任务的外部超时为 16 分钟。
+普通层使用每进程 `GOMEMLIMIT=1GiB`、`GOFLAGS=-p=1` 和 `-p=1`；race 层保留 `2GiB`、`-p=2`。
 `--jobs=1..4` 仅控制 runner 的任务槽位，不随之提高 Go 的包并发。
-普通完整层先运行非 server 包，再运行 server，避免重型进程叠加；race 的
-`protocol`、`protocol/builtin` 和每个 server 分片占满槽位。其他 race 包任务在槽位内并行。
+普通完整层默认 4 个槽位，非 server 包和八个独立 server 分片均单独调度，每任务占一个槽位，空闲槽位可直接启动下一个分片，不再等待整个非 server 层；
+Gateway 重矩阵、其余 Gateway/PackageGateway、管理生命周期、线协议／转换、Agent、CLI/Ops、Protocol/Preset/RecoveredPresets 和补集恰好分区。
+`--jobs=1` 可在受限机器上串行运行；裸 `go test ./server` 仍运行完整包，不依赖分片环境变量。
+race 默认 2 个槽位，`protocol`、`protocol/builtin` 和每个 server 分片占满槽位。其他 race 包任务在槽位内并行。
+证据默认位置不变；`ELYSIA_VERIFICATION_DIR=.tmp-dev/check` 可把日志和报告保存到指定目录。
 超时或中断会终止整个测试进程组（Windows 使用进程树），不遗留测试子进程。
 GOMEMLIMIT 是 Go 软限制，并非整个进程树的 RSS 硬上限；受限机器可使用外部 RSS watchdog。
 
@@ -87,7 +90,7 @@ go test -race -shuffle=on -count=1 -timeout=5m ./server \
 ## 并行与隔离
 
 `-parallel` 限制每个测试进程内的并行用例数，默认使用 `GOMAXPROCS`。
-Runner 固定 `-parallel=2 -p=2`；`-p` 控制包级并发，任务槽位控制进程之间的并发。
+Runner 固定 `-parallel=2`，普通层 `-p=1`、race 层 `-p=2`；`-p` 控制包级并发，任务槽位控制进程之间的并发。
 测量耗时时不要同时运行其他测试或构建，也不要把 `(cached)` 结果当作执行耗时。
 
 ## 刷新任务与异步任务等待

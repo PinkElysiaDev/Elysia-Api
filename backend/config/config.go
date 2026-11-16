@@ -33,6 +33,7 @@ type Config struct {
 	WebUIDir         string              `json:"webuiDir,omitempty"`
 	EnablePprof      bool                `json:"enablePprof,omitempty"`
 	MaxBodyBytes     int64               `json:"maxBodyBytes,omitempty"`
+	MemoryLimitBytes int64               `json:"memoryLimitBytes,omitempty"` // Startup-only Go runtime soft limit; 0 uses GOMEMLIMIT or the process default.
 	Preparation      PreparationConfig   `json:"preparation,omitempty"`
 	Responses        ResponsesConfig     `json:"responses,omitempty"` // Responses API 开关
 	Usage            UsageConfig         `json:"usage,omitempty"`     // 用量估算配置
@@ -266,6 +267,9 @@ func Load(path string) (*Config, error) {
 	if err := cfg.validateProxySettings(); err != nil {
 		return nil, err
 	}
+	if cfg.MemoryLimitBytes < 0 {
+		return nil, fmt.Errorf("memoryLimitBytes must not be negative")
+	}
 	if err := protocol.ValidateRequestBodyLimit(cfg.MaxBodyBytes); err != nil {
 		return nil, err
 	}
@@ -355,7 +359,7 @@ func (c *Config) saveLocked() error {
 		"host": c.Host, "port": c.Port, "panelAccessToken": c.PanelAccessToken,
 		"databasePath": c.DatabasePath, "logDatabasePath": c.LogDatabasePath,
 		"logLevel": c.LogLevel, "logFormat": c.LogFormat, "logPersistLevel": c.LogPersistLevel,
-		"enablePprof": c.EnablePprof, "httpTimeout": c.HTTPTimeout,
+		"enablePprof": c.EnablePprof, "httpTimeout": c.HTTPTimeout, "memoryLimitBytes": c.MemoryLimitBytes,
 	}
 	for key, value := range fields {
 		encoded, err := sonic.ConfigStd.Marshal(value)
@@ -547,6 +551,9 @@ func (c *Config) Reload() error {
 	newCfg.applyEnvironmentOverrides()
 	if err := newCfg.validateProxySettings(); err != nil {
 		return err
+	}
+	if newCfg.MemoryLimitBytes < 0 {
+		return fmt.Errorf("memoryLimitBytes must not be negative")
 	}
 	if err := protocol.ValidateRequestBodyLimit(newCfg.MaxBodyBytes); err != nil {
 		return err
@@ -925,6 +932,7 @@ func (c *Config) publishSettingsLocked(newCfg *Config) {
 	c.WebUIDir = newCfg.WebUIDir
 	c.EnablePprof = newCfg.EnablePprof
 	c.MaxBodyBytes = newCfg.MaxBodyBytes
+	c.MemoryLimitBytes = newCfg.MemoryLimitBytes
 	c.Preparation = newCfg.Preparation
 	c.Responses = newCfg.Responses
 	c.Usage = newCfg.Usage

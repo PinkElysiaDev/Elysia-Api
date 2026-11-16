@@ -34,6 +34,11 @@ jobs:
       - run: node --test scripts/verification/backend.test.mjs scripts/verification/runner.test.mjs
       - run: go vet ./...
         working-directory: backend
+        env:
+          GOFLAGS: -p=1
+          GOMEMLIMIT: 1GiB
+      - name: Full non-race suite (bounded independent server shards)
+        run: node scripts/verify-protocol.mjs check --suite=all --jobs=4
       - id: protocol-race
         run: |
           echo "evidence-dir=$(realpath -m ../.cache)" >> "$GITHUB_OUTPUT"
@@ -52,6 +57,11 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.deep_checks
         working-directory: backend
       - run: git diff --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: protocol-non-race-evidence
+          path: ../.cache/protocol-check-*/
       - uses: actions/upload-artifact@v4
         if: always() && steps.protocol-race.outputs.evidence-dir != ''
         with:

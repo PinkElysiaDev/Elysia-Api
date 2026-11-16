@@ -1,16 +1,62 @@
 package server
 
 import (
+	"bytes"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/elysia-api/backend/protocol"
 	"github.com/elysia-api/backend/protocol/builtin"
 )
 
+var fixtureBuiltinPackages = sync.OnceValues(builtin.Packages)
+
+type fixturePresetSource struct {
+	value   protocol.Value
+	encoded []byte
+}
+
+var fixturePresetSources = sync.OnceValues(func() (map[string]fixturePresetSource, error) {
+	values, err := fixtureBuiltinPackages()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]fixturePresetSource, len(values))
+	for _, value := range values {
+		var document protocol.ProtocolPackage
+		if err := value.Decode(&document); err != nil {
+			return nil, err
+		}
+		encoded, err := sonic.ConfigStd.Marshal(document)
+		if err != nil {
+			return nil, err
+		}
+		result[document.Spec.ID] = fixturePresetSource{value, encoded}
+	}
+	return result, nil
+})
+
+// Only a byte-identical typed fixture gets its original authored source back.
+// Modified/custom packages keep their full encoding and distinct compile key.
+func fixturePackageValue(t testing.TB, document protocol.ProtocolPackage) protocol.Value {
+	t.Helper()
+	raw := mustEncodedProtocolValue(t, document)
+	presets, err := fixturePresetSources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preset, ok := presets[document.Spec.ID]; ok && bytes.Equal(raw.Bytes(), preset.encoded) {
+		return preset.value
+	}
+	return raw
+}
+
 func presetPackage(t testing.TB, id string) protocol.ProtocolPackage {
 	t.Helper()
-	packages, err := builtin.Packages()
+	packages, err := fixtureBuiltinPackages()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,12 +79,34 @@ func compileFixturePackage(t testing.TB, document protocol.ProtocolPackage) *pro
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := mustEncodedProtocolValue(t, document)
+	raw := fixturePackageValue(t, document)
 	compiled, issues := compiler.Compile(raw.Bytes())
 	if err := protocol.IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
 	return compiled
+}
+
+func TestFixturePackagePreservesExactPresetAndModifiedSources(t *testing.T) {
+	values, err := fixtureBuiltinPackages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range values {
+		var document protocol.ProtocolPackage
+		if err := value.Decode(&document); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(fixturePackageValue(t, document).Bytes(), value.Bytes()) {
+			t.Fatal("fixture changed embedded bytes", document.Spec.ID)
+		}
+		document.Spec.Name += " modified fixture"
+		encoded := mustEncodedProtocolValue(t, document)
+		modified := fixturePackageValue(t, document)
+		if !bytes.Equal(modified.Bytes(), encoded.Bytes()) || bytes.Equal(modified.Bytes(), value.Bytes()) {
+			t.Fatal("modified fixture reused default", document.Spec.ID)
+		}
+	}
 }
 
 func compiledPackage(compiled *protocol.Compiled) protocol.ProtocolPackage {

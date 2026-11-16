@@ -9,7 +9,7 @@ Status: implemented
 ## Decision
 
 - `scripts/verification/backend.mjs` 保留现有 JSON/证据 runner。`fast` 选择所有非 server 包；`all` 增加所有 server 测试。现有 `conversion`、`gemini-stream`、`output` 名称及默认 `conversion` 选择不变。通过 Go 发现包，不维护包白名单。
-- 默认使用 `GOFLAGS=-p=2`、`GOMAXPROCS=2`、`GOMEMLIMIT=2GiB` 及 `-parallel=2 -count=1 -timeout=15m`；每项任务的外部超时为 16 分钟。`--jobs=1..4` 控制任务槽位，而非 Go 包并发。普通完整检查先运行非 server 包，再运行 server。
+- 普通层默认使用 `GOFLAGS=-p=1`、`GOMAXPROCS=2`、`GOMEMLIMIT=1GiB` 及 `-parallel=2 -count=1 -timeout=15m`；每项任务的外部超时为 16 分钟。`--jobs=1..4` 控制任务槽位，而非 Go 包并发。普通完整检查将非 server 包与八个不相交的 server 分片独立调度，默认共享四个槽位。race 保留 `GOFLAGS=-p=2`、`GOMEMLIMIT=2GiB` 及默认两个槽位。当前集成策略和测量见[内存上限与测试分片](../performance/2026-11-16-memory-limit-and-test-shards.zh.md)。
 - 完整 race 检查采用独立包任务和四个不相交的 server 任务：Gateway/PackageGateway、Agent、Protocol/Preset/RecoveredPresets，以及 `-skip` 补集。protocol、builtin 和 server race 任务占满槽位，其他包任务在有界槽位内并行。每项任务保留独立日志和证据；超时或中断终止整个进程组/树，POSIX 下进一步升级为 KILL。
 - 预置夹具保留内嵌包的精确原始字节，只读取 `spec.id`。完整包反序列化后重编码会实体化省略的默认字段，导致启动为证明等价性再次编译存储中的修订/草稿。播种并发布使用现有生产 `CompilationSession`，发布后关闭；紧接初始化的播种跳过多余 reload。这不是测试自建的编译缓存或 registry。
 - Agent 执行夹具复用现有 `fixtureBindingReports` 证明，同时使用真实 SQLite 源、模型、绑定并失效路由。源作者路径仍由 `TestSourceSaveIsolatesUnrelatedInvalidBindings`、`TestSourceSaveKeepsIndependentModelProtocolOverride`、`TestSourceBindingUpdatePersistsInheritedEvidence` 运行生产验证；部分 Agent 用例也保留 `saveSource`。
@@ -33,7 +33,7 @@ Status: implemented
 
 共享夹具测试在正常用例表顺序和临时反转的用例表顺序下均通过 `-shuffle=on -count=3`。路由失效和存储转换代际刷新替换后的契约；调用同步完成、预留被释放、不复用会话/continuation，策略用例间排空用量队列。专门的源验证测试、两个新增边界回归、runner 测试及 `go vet ./server` 均通过。
 
-GOMEMLIMIT 是 Go 运行时软限制，不保证整个进程树的 RSS。完整普通层五分钟目标及完整 race 层需要协调者在合入生产缓存后集成验证；这里没有运行整个 server 包或 `go test ./...`。没有增加测试清理阶段的主动内存回收。
+GOMEMLIMIT 是 Go 运行时软限制，不保证整个进程树的 RSS。下方独立测量早于生产缓存的集成；当时没有运行整个 server 包或 `go test ./...`。当前完整普通层结果和剩余 race 验证限制记在上述集成说明中。没有增加测试清理阶段的主动内存回收。
 
 ## Measurements
 
