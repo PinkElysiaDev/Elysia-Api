@@ -22,6 +22,16 @@ func compileSharedCacheFixture(t *testing.T, document ProtocolPackage) *Compiled
 	return compiled
 }
 
+// EmbeddedPresetHashesForTest exposes a copy to external protocol tests, where
+// builtin can be imported without creating a protocol -> builtin import cycle.
+func EmbeddedPresetHashesForTest() map[string][32]byte {
+	hashes := make(map[string][32]byte)
+	for id, source := range embeddedPresets() {
+		hashes[id] = source.hash
+	}
+	return hashes
+}
+
 func newTestCompilationCache() *compilationCache {
 	return &compilationCache{entries: map[compilationKey]weak.Pointer[Compiled]{}, flights: map[compilationKey]*compilationFlight{}, presets: map[string]presetCompilation{}}
 }

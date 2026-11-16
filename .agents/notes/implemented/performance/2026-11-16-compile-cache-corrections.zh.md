@@ -70,6 +70,8 @@ Memo 仍是**每个执行图一份报告**，而非按 context 组合索引的 m
 
 测试覆盖变体优先和空白变体准入、同会话内嵌准入、独立于弱条目的热固定读取、未知 ID 及完整键/ID 隔离。Context 测试把其他 context 下的冷/热报告与不缓存执行比较，覆盖取消、超时及部分执行，并确保克隆后的取消不会被隐藏。保留测试在加载之间强制 GC，核对权威重读，针对十二个修订测试两种容量边界，证明 FIFO 命中不刷新年龄，并检查删除、commit 失败、无效证据及恢复。
 
+新增外部 `protocol_test` 回归通过返回副本的仅测试 accessor，把每个真实 `builtin.Packages()` 输出的 SHA-256 与私有内嵌 hash 清单比较。它双向核对 ID 集合，拒绝空或重复的发布 ID，并要求每个加空格前缀的包均不匹配任何内嵌 hash。因此任一包拼接器或内嵌 ID 集合漂移都会使 CI 失败，无需引入生产导入循环或公开 API。固定条目读取保持不变：完整键比较已经在键不匹配时短路内嵌清单查找及编译身份检查；最多四槽的扫描不值得增加额外索引。
+
 没有放宽或删除任何既有语义断言或夹具。预置不可变性哨兵仍将完整执行图指纹与一次新的不缓存编译结果比较。参考编译改用**精确准入的内嵌字节**，而非会压缩所保留字面量拼写的规范化 `compiled.definition`。非字符串 map 键改按完整键指纹排序，而非 `reflect.Value.String()` 占位字符串；后者导致 `map[Value]` 的顺序不确定。所有键和值仍参与指纹，回归测试核对顺序稳定并能检测键/值变化。新增源码/键身份检查进一步加强哨兵。条目边界夹具使用既有四样例夹具所需的最小 `StateItems`，而非删除样例以迁就无效的更小测试配置。
 
 ## Measurements
@@ -96,5 +98,7 @@ go -C backend vet ./protocol/... ./server ./storage
 Go 报告的包执行时间为：`./protocol` 7.968 → 7.927 s；聚焦 server 20.947 → 26.029 s。外层 wall 时间包含编译、工具启动和 watchdog 收尾；构建缓存状态及系统活动不同，不能把这些单次差异归因为吞吐量变化。Server 观察值更慢，不声称加速。所有运行均在 watchdog 阈值以下完成。
 
 其他检查均通过：`./protocol/...` 用时 49.675 s，进程组峰值 RSS 为 583.1 MiB（`./protocol` 5.348 s，`./protocol/builtin` 38.018 s）；architecture 用时 0.968 s、84.2 MiB；vet 用时 4.520 s、322.4 MiB。聚焦修正/指纹回归使用 `-run 'TestCompilationCache|TestCompilationSessionVariant|TestVerificationMemo|TestLoadRevision|TestCompiledFingerprint'`，7.615 s 通过，进程组峰值 1000.3 MiB。Watchdog 未触发终止。`git diff --check` 干净。
+
+跨包字节身份补充测试对全部四个发布包通过，命令为 `go -C backend test ./protocol -run '^TestCompilationCacheEmbeddedHashesMatchBuiltinPackages$' -parallel=2 -count=1 -v`：外层 wall 14.174 s，包执行 0.632 s，进程组峰值 RSS 991.0 MiB。聚焦 `-run 'TestCompilationCache|TestCompilationSessionVariant|TestCompiledFingerprint'` 以外层 wall 3.731 s、248.6 MiB 通过；architecture 以 0.977 s、111.5 MiB 通过。这些运行使用相同环境及 watchdog，未触发终止。本次补充仅修改测试及此双语 note。
 
 受本任务运行边界限制，完整后端 suite、完整 server 包、race 测试及真实上游/provider 验证有意保持未验证。不基于 watchdog 终止的运行提出任何性能结论。
