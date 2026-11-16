@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-- `main` 在构造 server 前应用 `debug.SetMemoryLimit`。现有配置中的正数 `memoryLimitBytes` 精确生效，不做钳制。缺省／零保留运行时对显式 `GOMEMLIMIT` 的解释，包括 `off`；两者都未设置时默认 256 MiB。配置加载／重载拒绝负数。修改需重启。嵌入使用 `server.New` 不改变宿主全局上限。
+- `main` 在构造 server 前应用 `debug.SetMemoryLimit`。现有配置中的正数 `memoryLimitBytes` 精确生效，不做钳制。缺省／零不改动运行时上限：显式 `GOMEMLIMIT`（包括 `off`）生效，两者都未设置时不施加任何上限。配置加载／重载拒绝负数。修改需重启。嵌入使用 `server.New` 不改变宿主全局上限。不设生产默认值。下方测量是在仍发布 256 MiB 默认值时取得的；该默认值在已测负载上从未真正生效（GC 次数与峰值 RSS 与不设上限的运行相同），因此没有回收任何内存，却会在更大负载上给回收器加压。回收是空闲 worker 的职责，其效果与软上限无关。测试内存有界的目标来自运行器显式设置的 `GOMEMLIMIT`，而非生产默认值。
 - 保留 `server/protocol_runtime.go` 中启动时的 `debug.FreeOSMemory()`。生命周期拥有的后台 worker 每秒采样，要求连续空闲五秒、距上次回收至少 30 秒，且自初始基线／上次回收以来累计分配至少 32 MiB，或者未归还空闲跨度至少 32 MiB 且不少于在用堆的一半。分配触发条件也覆盖突发后仍位于在用跨度中的垃圾。
 - 请求准入只在现有准入互斥锁下增加 epoch：不逐请求增加计时器、时钟读取、内存统计读取、goroutine 或 GC。worker 还检查脱离浏览器的 Agent 轮次、网关会话、源／目录刷新、用量保留清理、健康探测与任务传输；回收前立即复查空闲状态和准入 epoch，生命周期取消后退出，并在关闭依赖前等待退出。回收期间不阻止新请求准入。
 - 复用 `scripts/verification/backend.mjs` 及现有有界调度器／进程组清理。普通 `all` 将每个非 server 包和八个不相交的 server 分片独立调度，默认共享四个槽位。每进程使用 `GOMEMLIMIT=1GiB GOMAXPROCS=2 GOFLAGS=-p=1`、`-parallel=2 -count=1 -timeout=15m`，外部超时仍为 16 分钟。`--jobs=1..4` 调整进程数量。最后的 server 补集自动包含新测试、fuzz 目标与 example。裸 `go test ./server` 仍不分片且完整。

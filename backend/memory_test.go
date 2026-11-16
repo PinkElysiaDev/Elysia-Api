@@ -12,7 +12,7 @@ func TestConfigureMemoryLimit(t *testing.T) {
 		name, environment         string
 		configured, current, want int64
 	}{
-		{"default", "", 0, 1 << 30, defaultMemoryLimit},
+		{"unconfigured", "", 0, 1 << 30, 1 << 30},
 		{"environment", "768MiB", 0, 768 << 20, 768 << 20},
 		{"environment-off", "off", 0, 1<<63 - 1, 1<<63 - 1},
 		{"explicit-wins", "1GiB", 192 << 20, 1 << 30, 192 << 20},

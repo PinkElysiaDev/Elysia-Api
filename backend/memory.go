@@ -1,24 +1,18 @@
 package main
 
 import (
-	"os"
 	"runtime/debug"
 )
 
-const defaultMemoryLimit = 256 << 20
-
 // The process entry point owns the global runtime policy, not server.New (which
 // is also used by embedded hosts and tests). An explicit config value wins;
-// otherwise preserve the runtime's interpretation of GOMEMLIMIT, including off.
+// otherwise the runtime's own interpretation of GOMEMLIMIT stands, including
+// off. With neither configured, no limit is imposed: a guessed cap paces the
+// collector without reclaiming memory, and reclaiming is the idle worker's job.
 func configureMemoryLimit(configured int64) int64 {
-	limit := configured
-	if limit == 0 {
-		if os.Getenv("GOMEMLIMIT") != "" {
-			limit = debug.SetMemoryLimit(-1)
-		} else {
-			limit = defaultMemoryLimit
-		}
+	if configured == 0 {
+		return debug.SetMemoryLimit(-1)
 	}
-	debug.SetMemoryLimit(limit)
-	return limit
+	debug.SetMemoryLimit(configured)
+	return configured
 }
