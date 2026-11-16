@@ -28,6 +28,20 @@ test('reports preserve command failures, timeout and unexecuted environment sepa
   for (const step of report.steps) assert.equal(step.source.baseCommit, report.commit)
 })
 
+test('timeouts terminate descendants even when a child ignores TERM', { skip: process.platform === 'win32' }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'elysia-verification-process-group-'))
+  const run = await VerificationRun.create(root, directory, 'process-group-test')
+  // The descendant inherits stdout, so close cannot resolve until the entire
+  // group exits. Its own finite timer keeps a broken implementation bounded.
+  const descendant = 'process.on("SIGTERM", () => {}); console.log("descendant-ready"); setTimeout(() => {}, 4000)'
+  const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], { stdio: ['ignore', 'inherit', 'inherit'] }); setInterval(() => {}, 1000)`
+  assert.equal(await run.execute('descendants', process.execPath, ['-e', parent], { timeoutMillis: 300 }), false)
+  const [step] = run.report.steps
+  assert.equal(step.timedOut, true)
+  assert.match(await readFile(step.log, 'utf8'), /descendant-ready/)
+  assert(step.elapsedMillis < 3000, `descendant survived timeout: ${step.elapsedMillis} ms`)
+})
+
 test('parallel tasks respect slots, group exclusion, barriers and failed dependencies', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'elysia-verification-batch-'))
   const run = await VerificationRun.create(root, directory, 'batch-test')

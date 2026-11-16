@@ -127,17 +127,27 @@ func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 	t.Helper()
 	platform = fixturePlatform(platform)
 	source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: baseURL, APIKey: "sk-caller-key", Platform: platform, Enabled: true}
-	if err := s.saveSource(t.Context(), source); err != nil {
-		t.Fatalf("UpsertSource: %v", err)
-	}
 	models := []storage.Model{{
 		ID: "fake-model", SourceID: "cs1", Name: "fake-model", BaseURL: baseURL,
 		Platform: platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
-	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
-		t.Fatalf("ReplaceSourceModels: %v", err)
-	}
+	seedAgentSource(t, s, source, models)
 	seedAgentAliasReasoning(t, s, source.ID)
+}
+
+// Agent execution fixtures do not test source authoring. Persist real models
+// and source contracts with the same memoized offline proofs as routing tests,
+// instead of verifying every protocol pair again for each caller/subtest.
+func seedAgentSource(t *testing.T, s *Server, source storage.ModelSource, models []storage.Model) {
+	t.Helper()
+	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
+		t.Fatal(err)
+	}
+	seedFixtureBindings(t, s, map[string]storage.ModelSource{source.ID: source})
+	s.invalidateRouteCache()
 }
 
 // Synthetic aliases need explicit capabilities just like private provider aliases.

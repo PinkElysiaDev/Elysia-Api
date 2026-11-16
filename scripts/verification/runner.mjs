@@ -31,7 +31,15 @@ async function sourceIdentity(root) {
 
 function stopProcess(child) {
   if (!child.pid) return
-  if (process.platform !== 'win32') { child.kill('SIGTERM'); return }
+  if (process.platform !== 'win32') {
+    const killGroup = signal => {
+      try { process.kill(-child.pid, signal) } catch (error) { if (error.code !== 'ESRCH') throw error }
+    }
+    killGroup('SIGTERM')
+    // A test or its subprocess can ignore TERM; do not leave it behind after a timeout.
+    setTimeout(() => killGroup('SIGKILL'), 1000).unref()
+    return
+  }
   // Only terminate the process tree created by this step. Killing go.exe alone
   // leaves its test binary running and can contaminate subsequent measurements.
   const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
@@ -72,7 +80,7 @@ export class VerificationRun {
     await this.save()
     const log = createWriteStream(logPath)
     const started = performance.now()
-    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' })
     child.stdout.pipe(log, { end: false })
     child.stderr.pipe(log, { end: false })
     let timedOut = false

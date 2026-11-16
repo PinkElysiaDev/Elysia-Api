@@ -48,7 +48,7 @@ func recoveryCounts(t *testing.T, db *sql.DB) map[string]int {
 	return counts
 }
 
-func assertRecoveredPresets(t *testing.T, s *Server) {
+func assertRecoveredPresets(t *testing.T, s *Server, baseline ...protocol.RegistryView) {
 	t.Helper()
 	service, err := s.protocolService()
 	if err != nil {
@@ -59,7 +59,15 @@ func assertRecoveredPresets(t *testing.T, s *Server) {
 		if !ok {
 			t.Fatalf("missing runtime preset %s", id)
 		}
-		expected := compileFixturePackage(t, presetPackage(t, id))
+		var expected *protocol.Compiled
+		if len(baseline) != 0 {
+			expected, ok = baseline[0].Pin(id)
+			if !ok {
+				t.Fatal("healthy baseline is missing preset", id)
+			}
+		} else {
+			expected = compileFixturePackage(t, presetPackage(t, id))
+		}
 		if compiled.Hash() != expected.Hash() || compiled.Identity().DefinitionID != id {
 			t.Fatalf("invalid preset identity: %s", id)
 		}
@@ -75,14 +83,16 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 	for _, defect := range []string{"all-inactive", "one-inactive", "report-missing", "report-malformed", "report-stale", "report-rejected", "revision-missing", "revision-malformed", "revision-wrong-id", "revision-unknown-member", "draft-malformed", "activation-invalid"} {
 		t.Run(defect, func(t *testing.T) {
 			s, path := newProtocolAdminTestServer(t)
-			if err := s.reloadProtocolRuntime(t.Context()); err != nil {
-				t.Fatal(err)
-			}
+			// Initial healthy setup is not the recovery under test. Reuse only
+			// offline fixture proofs; both repair and idempotence still run the
+			// real startup path against this subtest's independent database.
+			activateDiscoveryPresets(t, s)
 			db := recoveryDB(t, path)
 			beforeCounts := recoveryCounts(t, db)
 			beforeActive, _ := s.store.ListProtocolActivations(t.Context())
 			id := protocol.PresetAnthropicID
 			service, _ := s.protocolService()
+			healthy := service.View()
 			previous, _ := service.Pin(id)
 			raw := "{damaged raw definition"
 			switch defect {
@@ -124,7 +134,7 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 			if err := s.initializeProtocolRuntime(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			assertRecoveredPresets(t, s)
+			assertRecoveredPresets(t, s, healthy)
 			if s.protocolRuntimeError() != nil {
 				t.Fatal(s.protocolRuntimeError())
 			}
@@ -162,6 +172,57 @@ func TestPresetRecoveryDefectsAndIdempotence(t *testing.T) {
 				t.Fatal("healthy restart wrote protocol state")
 			}
 		})
+	}
+}
+
+func TestPresetRecoveryPublishesPresetsAfterCustomRefreshFailure(t *testing.T) {
+	t.Parallel()
+	s, _ := newProtocolAdminTestServer(t)
+	// A syntactically valid custom binding pins a missing conversion revision.
+	// Reading the conversion snapshot fails with sql.ErrNoRows, not an isolated
+	// protocol.ConversionError; preset-only recovery can still commit safely.
+	binding := storage.ProtocolBinding{Kind: "source", SourceID: "broken-custom", Conversion: &protocol.ConversionSelection{PolicyID: "missing-policy", RevisionHash: "missing-revision"}}
+	if err := s.store.SaveProtocolBinding(t.Context(), binding); err != nil {
+		t.Fatal(err)
+	}
+	err := s.initializeProtocolRuntime(t.Context())
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("custom refresh failure was not exercised", err)
+	}
+	var startup *protocolStartupError
+	if !errors.As(err, &startup) || startup.Stage != "preset_recovery" {
+		t.Fatal("wrong startup failure stage", err)
+	}
+	if s.protocolRuntimeReady.Load() || s.protocolRuntimeError() == nil {
+		t.Fatal("failed custom refresh enabled generation")
+	}
+	failure := s.protocolStartupFailure.Load()
+	if failure == nil || failure.Stage != "preset_recovery" {
+		t.Fatal("management lost the startup failure", failure)
+	}
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := service.View()
+	active, err := s.store.ListProtocolActivations(t.Context())
+	if err != nil || len(active) != len(requiredPresetIDs) || len(view.IDs()) != len(requiredPresetIDs) {
+		t.Fatal("preset-only recovery did not commit and publish every preset", active, view.IDs(), err)
+	}
+	for _, id := range requiredPresetIDs {
+		compiled, ok := view.Pin(id)
+		if !ok {
+			t.Fatal("committed preset was not published", id)
+		}
+		report, err := s.store.ReadProtocolReport(t.Context(), id, compiled.Hash())
+		if err != nil || protocol.IssuesError(protocol.CanActivate(compiled, report)) != nil {
+			t.Fatal("published preset lacks current verification", id, err)
+		}
+	}
+	s.setupProtocolRevisionRoutes(s.engine.Group("/api/admin"))
+	response := revisionAdminRequest(t, s.engine, http.MethodGet, "/api/admin/protocols", nil, "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"runtimeReady":false`) || !strings.Contains(response.Body.String(), `"stage":"preset_recovery"`) {
+		t.Fatal("management is not available for repair", response.Code, response.Body)
 	}
 }
 

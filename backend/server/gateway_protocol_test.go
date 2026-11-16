@@ -52,7 +52,7 @@ func seedGatewayFixture(t *testing.T, server *Server, document protocol.Protocol
 	return seedGatewayProtocol(t, server, document.Spec.ID, raw, reload)
 }
 
-func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, reload bool) *protocol.Compiled {
+func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, reload bool, compilation ...*protocol.CompilationSession) *protocol.Compiled {
 	t.Helper()
 	service, err := server.protocolService()
 	if err != nil {
@@ -62,13 +62,40 @@ func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, re
 	if draft, err := service.ReadDraft(t.Context(), id); err == nil {
 		expectedDraft = draft.Hash
 	}
-	if active, ok := service.Pin(id); ok {
-		expectedActive = active.Hash()
+	activations, err := server.store.ListProtocolActivations(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, active := range activations {
+		if active.ProtocolID == id {
+			expectedActive = active.RevisionHash
+		}
 	}
 	// Presets are installed by the runtime, never through user authoring APIs.
 	// Tests seed them through the same verified repository boundary.
 	if protocol.IsPresetProtocolID(id) {
-		compiled, issues := service.Validate(raw)
+		// An Agent fixture often asks for a preset already published by its
+		// constructor. Reuse that store's verified revision, not a test registry.
+		if active, ok := service.Pin(id); ok && active.Hash() == expectedActive {
+			draft, draftErr := service.ReadDraft(t.Context(), id)
+			value, valueErr := protocol.ParseValue(raw)
+			report, reportErr := server.store.ReadProtocolReport(t.Context(), id, active.Hash())
+			if draftErr == nil && valueErr == nil && reportErr == nil && draft.Hash == active.Hash() &&
+				storage.EquivalentProtocolDefinition(draft.Definition, value) && protocol.IssuesError(protocol.CanActivate(active, report)) == nil {
+				return active
+			}
+		}
+		value, err := protocol.ParseValue(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var compiled *protocol.Compiled
+		var issues []protocol.ConversionIssue
+		if len(compilation) != 0 {
+			compiled, issues = compilation[0].CompilePreset(id, value)
+		} else {
+			compiled, issues = service.Validate(raw)
+		}
 		if err := protocol.IssuesError(issues); err != nil {
 			t.Fatal(err)
 		}
@@ -78,10 +105,6 @@ func seedGatewayProtocol(t *testing.T, server *Server, id string, raw []byte, re
 		report := entry.(func() protocol.VerificationReport)()
 		if !report.Passed {
 			t.Fatal(report.Issues)
-		}
-		value, err := protocol.ParseValue(raw)
-		if err != nil {
-			t.Fatal(err)
 		}
 		if _, err := server.store.SaveProtocolDraft(t.Context(), protocol.Draft{ProtocolID: id, Hash: compiled.Hash(), Definition: value, UpdatedAt: time.Now().UTC()}, expectedDraft); err != nil {
 			t.Fatal(err)

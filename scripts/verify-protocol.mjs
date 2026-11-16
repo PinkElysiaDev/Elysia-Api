@@ -7,7 +7,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const mode = process.argv[2]
-if (!['check', 'race', 'live', 'performance'].includes(mode)) throw new Error('Usage: node scripts/verify-protocol.mjs check [--suite=gemini-stream|output|conversion|all] [--race] [--jobs=1..4] | race [--stress-only] | live | performance')
+if (!['check', 'race', 'live', 'performance'].includes(mode)) throw new Error('Usage: node scripts/verify-protocol.mjs check [--suite=gemini-stream|output|conversion|fast|all] [--race] [--jobs=1..4] | race [--stress-only] | live | performance')
 const resume = process.argv.find(arg => arg.startsWith('--resume='))?.slice(9)
 if (resume && (mode !== 'live' || !process.argv.includes('--suite=cache-gaps'))) throw new Error('Resume is only supported for cache-gaps')
 const directory = resume ? resolve(resume) : join(dirname(root), '.cache', `protocol-${mode}-${Date.now()}`)

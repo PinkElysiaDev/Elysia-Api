@@ -18,6 +18,10 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      GOFLAGS: -p=2
+      GOMAXPROCS: '2'
+      GOMEMLIMIT: 2GiB
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

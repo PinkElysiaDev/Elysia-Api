@@ -1,19 +1,44 @@
 # Go 后端测试
 
-在 `backend/` 下使用 Go 1.27.2 或更新版本运行：
+使用 Go 1.27.2 或更新版本。日常命令在**仓库根目录**运行，避免裸 `go test ./...` 按机器默认并发同时构建和运行重型夹具：
 
 ```sh
-# 日常回归：Go 默认并行运行各包，包内隔离用例通过 t.Parallel 并行。
-go test ./...
+# 快速层：除 server 外的全部 Go 包，包含现有 fuzz 种子。
+npm run test:protocol -- --suite=fast
 
-# 实际耗时（禁用测试结果缓存，但保留编译缓存）。
-go test -count=1 -timeout=30m ./...
+# 完整普通层：全部包和全部 server 测试，包含现有 fuzz 种子。
+npm run test:protocol -- --suite=all
 
-# 检查共享状态、执行顺序依赖和数据竞争。
-go test -race -shuffle=on -count=1 -timeout=30m ./...
+# 完整 race 层：按包及 server 互斥分片分别保留证据；不再使用单个 65 分钟进程。
+npm run test:protocol -- --suite=all --race
+# CI 的等价入口：node scripts/verify-protocol.mjs race
 
-# 对照包内串行执行；与默认并行命令使用相同机器、环境和编译缓存。
-go test -parallel=1 -count=1 -timeout=30m ./...
+# 原有定向层保持不变；不传 suite 时仍默认 conversion，而非完整层。
+npm run test:protocol -- --suite=conversion
+npm run test:protocol -- --suite=gemini-stream
+npm run test:protocol -- --suite=output
+```
+
+Runner 固定 `GOMAXPROCS=2`、`GOMEMLIMIT=2GiB`、`GOFLAGS=-p=2`、
+`-parallel=2 -count=1 -timeout=15m`；每个任务的外部超时为 16 分钟。
+`--jobs=1..4` 仅控制 runner 的任务槽位，不随之提高 Go 的包并发。
+普通完整层先运行非 server 包，再运行 server，避免重型进程叠加；race 的
+`protocol`、`protocol/builtin` 和每个 server 分片占满槽位。其他 race 包任务在槽位内并行。
+超时或中断会终止整个测试进程组（Windows 使用进程树），不遗留测试子进程。
+GOMEMLIMIT 是 Go 软限制，并非整个进程树的 RSS 硬上限；受限机器可使用外部 RSS watchdog。
+
+server race 分片为 Gateway/PackageGateway、Agent、Protocol/Preset/RecoveredPresets，
+以及使用 `-skip` 的补集。所有顶层 Test/Fuzz 恰好落入一个分片，包括未来新增的名称；
+`scripts/verification/backend.test.mjs` 直接扫描当前声明验证这个分区，不维护易过期的测试名单。
+不会删除样本、子测试或断言，也不会扩大超时或协议资源预算。
+
+其余示例在 `backend/` 下执行；定向命令也应显式约束资源：
+
+```sh
+export GOMEMLIMIT=1GiB GOMAXPROCS=2 GOFLAGS=-p=1
+go test ./server \
+  -run '^TestGatewayUsageBodyPolicy$' -parallel=2 -count=1 -timeout=15m
+# 顺序依赖检查使用同样的限制，增加 -shuffle=on；不要并行启动多个重型测量。
 ```
 
 Hertz 在支持的平台上默认使用 Sonic，测试、构建脚本、Docker 和 CI 均无需额外 JSON build tag。
@@ -62,7 +87,7 @@ go test -race -shuffle=on -count=1 -timeout=5m ./server \
 ## 并行与隔离
 
 `-parallel` 限制每个测试进程内的并行用例数，默认使用 `GOMAXPROCS`。
-资源受限的 CI 可以设置 `-parallel=4 -p=2`；`-p` 控制包级并发。
+Runner 固定 `-parallel=2 -p=2`；`-p` 控制包级并发，任务槽位控制进程之间的并发。
 测量耗时时不要同时运行其他测试或构建，也不要把 `(cached)` 结果当作执行耗时。
 
 ## 刷新任务与异步任务等待
