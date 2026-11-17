@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"fmt"
-	"strconv"
 )
 
 func compileNodeControlSetter(path string) (func(any, JSONOutput, *valueReader) error, JSONType, error) {
@@ -76,11 +75,15 @@ func setControlObjectField(target *Object, name string, output JSONOutput, reade
 
 func (each *compiledControlEach) applyNodes(state evaluation, conversion *CompiledConversion, document any, route ConversionContext, rule ConversionRule, sink *DiagnosticSink, owner *coreControlOptions) (bool, error) {
 	hasChanges := false
-	err := visitControlNodes(state, document, func(node *Node, path string) error {
+	err := visitControlNodesPath(state, document, func(node *Node, path diagnosticPath) error {
 		if each.selection == "tool_result" && node.Kind != ToolResultNode {
 			return nil
 		}
-		local := each.local(state, path, func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer, nil) })
+		location := ""
+		if each.pathSlot >= 0 {
+			location = path.String()
+		}
+		local := each.local(state, location, func(pointer []string) (JSONOutput, error) { return readCoreNode(*node, pointer, nil) })
 		result, err := applyControlSteps(local, conversion, node, route, rule, sink, each.steps, owner)
 		hasChanges = hasChanges || result.hasChanges
 		return err
@@ -119,24 +122,30 @@ func compileToolResultControlSetter(path string) (func(any, JSONOutput, *valueRe
 }
 
 func visitControlNodes(state evaluation, document any, visit func(*Node, string) error) error {
+	return visitControlNodesPath(state, document, func(node *Node, path diagnosticPath) error { return visit(node, path.String()) })
+}
+
+func visitControlNodesPath(state evaluation, document any, visit func(*Node, diagnosticPath) error) error {
+	var buffer [256]byte
+	root := diagnosticPath(buffer[:0])
 	switch current := document.(type) {
 	case *Request:
-		return visitControlNodeSlice(state, current.Content, "/content", visit)
+		return visitControlNodeSlicePath(&state, current.Content, root.suffix("/content"), visit)
 	case *Response:
-		return visitControlNodeSlice(state, current.Content, "/content", visit)
+		return visitControlNodeSlicePath(&state, current.Content, root.suffix("/content"), visit)
 	case *Event:
 		if current.Item != nil {
-			if err := visitControlNode(state, current.Item, "/item", visit); err != nil {
+			if err := visitControlNodePath(&state, current.Item, root.suffix("/item"), visit); err != nil {
 				return err
 			}
 		}
 		if current.Response != nil {
-			if err := visitControlNodeSlice(state, current.Response.Content, "/response/content", visit); err != nil {
+			if err := visitControlNodeSlicePath(&state, current.Response.Content, root.suffix("/response/content"), visit); err != nil {
 				return err
 			}
 		}
 		if current.Request != nil {
-			return visitControlNodeSlice(state, current.Request.Content, "/request/content", visit)
+			return visitControlNodeSlicePath(&state, current.Request.Content, root.suffix("/request/content"), visit)
 		}
 		return nil
 	default:
@@ -145,23 +154,33 @@ func visitControlNodes(state evaluation, document any, visit func(*Node, string)
 }
 
 func visitControlNodeSlice(state evaluation, nodes []Node, path string, visit func(*Node, string) error) error {
+	var buffer [256]byte
+	return visitControlNodeSlicePath(&state, nodes, append(diagnosticPath(buffer[:0]), path...), func(node *Node, path diagnosticPath) error { return visit(node, path.String()) })
+}
+
+func visitControlNode(state evaluation, node *Node, path string, visit func(*Node, string) error) error {
+	var buffer [256]byte
+	return visitControlNodePath(&state, node, append(diagnosticPath(buffer[:0]), path...), func(node *Node, path diagnosticPath) error { return visit(node, path.String()) })
+}
+
+func visitControlNodeSlicePath(state *evaluation, nodes []Node, path diagnosticPath, visit func(*Node, diagnosticPath) error) error {
 	for index := range nodes {
-		if err := visitControlNode(state, &nodes[index], path+"/"+strconv.Itoa(index), visit); err != nil {
+		if err := visitControlNodePath(state, &nodes[index], path.index(index), visit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func visitControlNode(state evaluation, node *Node, path string, visit func(*Node, string) error) error {
+func visitControlNodePath(state *evaluation, node *Node, path diagnosticPath, visit func(*Node, diagnosticPath) error) error {
 	if err := state.advance(); err != nil {
 		return err
 	}
 	if err := visit(node, path); err != nil {
 		return err
 	}
-	if err := visitControlNodeSlice(state, node.Children, path+"/children", visit); err != nil {
+	if err := visitControlNodeSlicePath(state, node.Children, path.suffix("/children"), visit); err != nil {
 		return err
 	}
-	return visitControlNodeSlice(state, node.ReasoningContent, path+"/reasoningContent", visit)
+	return visitControlNodeSlicePath(state, node.ReasoningContent, path.suffix("/reasoningContent"), visit)
 }

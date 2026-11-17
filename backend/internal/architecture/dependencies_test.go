@@ -29,7 +29,7 @@ func TestPackageBoundaries(t *testing.T) {
 		"internal/coreplan":      {"protocol"},
 		"internal/outbound":      {"logging"},
 		"internal/dbpath":        {}, "internal/atomicfile": {}, "internal/clishell": {},
-		"internal/eventstream": {}, "internal/jsonutil": {}, "internal/storagequery": {},
+		"internal/eventstream": {}, "internal/jsonutil": {}, "internal/storagequery": {}, "internal/expressionencode": {},
 		"logging": {}, "webui": {},
 	}
 	// Background components have narrower boundaries than the application

@@ -571,16 +571,11 @@ func TestAgentThinkingEffortWhitelist(t *testing.T) {
 func seedAgentModel(t *testing.T, s *Server, baseURL string) {
 	t.Helper()
 	source := storage.ModelSource{ID: "s1", Name: "src", BaseURL: baseURL, Platform: "custom:openai-chat-completions", Enabled: true}
-	if err := s.saveSource(t.Context(), source); err != nil {
-		t.Fatalf("UpsertSource: %v", err)
-	}
 	models := []storage.Model{{
 		ID: "fake-model", SourceID: "s1", Name: "fake-model", BaseURL: baseURL,
 		APIKey: "", Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
-	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
-		t.Fatalf("ReplaceSourceModels: %v", err)
-	}
+	seedAgentSource(t, s, source, models)
 	seedAgentAliasReasoning(t, s, source.ID)
 }
 

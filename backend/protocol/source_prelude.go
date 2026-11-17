@@ -169,7 +169,7 @@ func compileSourceFrameMatch(declaration ProtocolSourceFrameMatch, compiler *exp
 	if declaration.Schema.Type != ObjectType {
 		return compiledSourceFrameMatch{}, fmt.Errorf("%s/schema: a source prelude matches object frames", path)
 	}
-	schema, err := compileWireSchemaPlan(&declaration.Schema, compiler.limits)
+	schema, err := compiler.compileWireSchemaPlan(&declaration.Schema)
 	if err != nil {
 		return compiledSourceFrameMatch{}, err
 	}

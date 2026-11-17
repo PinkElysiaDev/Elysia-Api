@@ -19,7 +19,7 @@ func compilePackageForTest(t *testing.T, document ProtocolPackage) *Compiled {
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	return compiled
+	return detachedCompiledFixture(compiled)
 }
 
 func TestPackageEmitProofThroughLocalBinding(t *testing.T) {

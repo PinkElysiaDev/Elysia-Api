@@ -41,10 +41,12 @@ func (tracker *SequenceTracker) dropOldest() {
 	tracker.count--
 }
 
-// Accept returns false for a known identical event. Payload must be canonical
-// JSON from the adapter, so insignificant wire whitespace does not conflict.
+// Accept returns false for a known byte-identical payload.
 func (tracker *SequenceTracker) Accept(sequence int64, payload []byte) (bool, error) {
-	digest := sha256.Sum256(payload)
+	return tracker.acceptDigest(sequence, sha256.Sum256(payload))
+}
+
+func (tracker *SequenceTracker) acceptDigest(sequence int64, digest [sha256.Size]byte) (bool, error) {
 	if previous, exists := tracker.seen[sequence]; exists {
 		if previous == digest {
 			return false, nil
@@ -70,12 +72,19 @@ func (tracker *SequenceTracker) Accept(sequence int64, payload []byte) (bool, er
 }
 
 func acceptEventSequence(tracker *SequenceTracker, event Event) (bool, error) {
+	return acceptEventDigest(tracker, event, nil)
+}
+
+func acceptEventDigest(tracker *SequenceTracker, event Event, digest *[sha256.Size]byte) (bool, error) {
 	if event.Sequence.IsZero() {
 		return true, nil
 	}
 	var sequence int64
 	if err := event.Sequence.Decode(&sequence); err != nil || event.Sequence.IsNull() {
 		return false, streamIssue(InvalidInput, "/sequence", "event sequence must be an integer")
+	}
+	if digest != nil {
+		return tracker.acceptDigest(sequence, *digest)
 	}
 	value, err := EncodeValue(event)
 	if err != nil {
@@ -89,5 +98,5 @@ func acceptEventSequence(tracker *SequenceTracker, event Event) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return tracker.Accept(sequence, value.Bytes())
+	return tracker.acceptDigest(sequence, sha256.Sum256([]byte(value.JSONString())))
 }

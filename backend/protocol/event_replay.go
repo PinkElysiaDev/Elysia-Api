@@ -1,6 +1,9 @@
 package protocol
 
-import "fmt"
+import (
+	"crypto/sha256"
+	"fmt"
+)
 
 type replayItem struct {
 	openChildren       int
@@ -50,7 +53,11 @@ func NewEventReplay(target Target, limits Limits) (*EventReplay, error) {
 
 // Consume validates one semantic event. False means an identical, explicitly
 // sequenced event was already observed; callers must not forward it twice.
-func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
+func (replay *EventReplay) Consume(event Event) (bool, error) {
+	return replay.consume(event, nil)
+}
+
+func (replay *EventReplay) consume(event Event, digest *[sha256.Size]byte) (accepted bool, err error) {
 	if replay.isReleased {
 		return false, streamIssue(InvalidAssociation, "/state", "released event replay cannot resume")
 	}
@@ -68,7 +75,7 @@ func (replay *EventReplay) Consume(event Event) (accepted bool, err error) {
 			return false, resourceIssue(err, event.Source, DecodeEvent, "replay.event")
 		}
 	}
-	if accepted, err := acceptEventSequence(replay.sequence, event); err != nil || !accepted {
+	if accepted, err := acceptEventDigest(replay.sequence, event, digest); err != nil || !accepted {
 		return accepted, err
 	}
 	if replay.isTerminal && event.Type != UsageUpdated {

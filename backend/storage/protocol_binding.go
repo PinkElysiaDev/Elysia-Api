@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/bytedance/sonic"
@@ -60,7 +61,9 @@ func (binding ProtocolBinding) key() (string, error) {
 
 // SaveProtocolBinding persists a contract checked by the shared protocol service.
 func (store *Store) SaveProtocolBinding(ctx context.Context, binding ProtocolBinding) error {
-	return saveProtocolBinding(ctx, store.db, binding)
+	return store.withConversion(ctx, func(tx *sql.Tx) error {
+		return saveProtocolBinding(ctx, tx, binding)
+	})
 }
 
 // SaveManagedProtocolBindings commits a changed contract, all affected evidence,
@@ -90,7 +93,7 @@ func (store *Store) SaveManagedProtocolBindings(ctx context.Context, changed Bin
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	return store.commitConversion(ctx, tx)
 }
 
 func saveBindingUpdates(ctx context.Context, executor protocolSQLExecutor, changed BindingKey, bindings []ProtocolBinding) (ProtocolBinding, error) {

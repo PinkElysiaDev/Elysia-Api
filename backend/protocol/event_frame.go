@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/bytedance/sonic"
@@ -11,11 +12,14 @@ import (
 // EventFrame groups the semantic events produced by one wire frame. Native
 // bytes are retained once, so a multi-item chunk never replays several times.
 type EventFrame struct {
-	Events      []Event
-	native      *Native
-	digest      [sha256.Size]byte
-	encoderHash string
-	decoderHash string
+	Events       []Event
+	native       *Native
+	digest       [sha256.Size]byte
+	encoderHash  string
+	decoderHash  string
+	wireDigest   [sha256.Size]byte
+	hasWire      bool
+	eventDigests [][sha256.Size]byte
 }
 
 // DecodeFrame uses request-owned DSL state and preserves an unchanged native
@@ -45,6 +49,7 @@ func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, 
 		return nil, err
 	}
 	result = &EventFrame{Events: events, encoderHash: compiled.mappings[eventEncoder(direction)].definitionHash, decoderHash: compiled.mappings[direction].definitionHash}
+	result.hashWire(frame)
 	if compiled.native.Preserve && !isTransportControl {
 		result.native = &Native{Source: Provenance{Protocol: compiled.identity, Direction: direction, Scope: options.Scope}, Value: frame}
 		digest, err := digestSemanticEvents(events)
@@ -54,6 +59,48 @@ func (compiled *Compiled) decodeFrame(ctx context.Context, direction Direction, 
 		result.digest = digest
 	}
 	return result, nil
+}
+
+func (frame *EventFrame) hashWire(value Value) {
+	if value.IsZero() {
+		return
+	}
+	for _, event := range frame.Events {
+		if event.Sequence.IsZero() {
+			continue
+		}
+		frame.wireDigest = sha256.Sum256([]byte(value.JSONString()))
+		frame.hasWire = true
+		if len(frame.Events) == 1 {
+			return
+		}
+		// Bind compound members to their ordinal so a reused sequence cannot hide
+		// another event from the same wire frame.
+		frame.eventDigests = make([][sha256.Size]byte, len(frame.Events))
+		var member [sha256.Size + 8]byte
+		copy(member[:], frame.wireDigest[:])
+		for index := range frame.Events {
+			binary.LittleEndian.PutUint64(member[sha256.Size:], uint64(index))
+			frame.eventDigests[index] = sha256.Sum256(member[:])
+		}
+		return
+	}
+}
+
+// ConsumeEvent validates a projected event using its original wire-frame identity.
+// Buffered or synthetic events without a frame retain semantic deduplication.
+func (frame *EventFrame) ConsumeEvent(replay *EventReplay, index int, event Event) (bool, error) {
+	if frame == nil || !frame.hasWire {
+		return replay.Consume(event)
+	}
+	if index < 0 || index >= max(1, len(frame.eventDigests)) {
+		return false, streamIssue(InvalidInput, "/frame", "event index is outside its wire frame")
+	}
+	digest := &frame.wireDigest
+	if frame.eventDigests != nil {
+		digest = &frame.eventDigests[index]
+	}
+	return replay.consume(event, digest)
 }
 
 // EncodeFrames expands the explicitly declared frame batch. An empty batch is

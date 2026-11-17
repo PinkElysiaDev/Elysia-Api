@@ -260,7 +260,8 @@ func (service *Service) RemoveActive(id string, commit func() error) error {
 	return nil
 }
 
-// DeleteRetained evicts the historical compiled cache only after durable deletion.
+// DeleteRetained serializes durable history deletion and graph eviction with
+// activation. Graphs already pinned by requests stay valid; reuse grants no authority.
 func (service *Service) DeleteRetained(id, hash string, commit func() error) error {
 	if IsPresetProtocolID(id) {
 		return draftInputError("/id", fmt.Errorf("preset protocol %q is read-only; its history refreshes with the engine", id))
@@ -273,17 +274,7 @@ func (service *Service) DeleteRetained(id, hash string, commit func() error) err
 	if err := commit(); err != nil {
 		return err
 	}
-	key := id + "/" + hash
-	if compiled := service.retained[key]; compiled != nil {
-		service.retainedBytes -= len(compiled.definition.raw)
-		delete(service.retained, key)
-		for index, entry := range service.retainedOrder {
-			if entry == key {
-				service.retainedOrder = append(service.retainedOrder[:index], service.retainedOrder[index+1:]...)
-				break
-			}
-		}
-	}
+	service.dropRetained(id + "/" + hash)
 	return nil
 }
 

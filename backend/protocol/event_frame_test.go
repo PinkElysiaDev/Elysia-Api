@@ -30,6 +30,62 @@ func TestSemanticDigestMatchesValueEncoding(t *testing.T) {
 	}
 }
 
+func TestEventFrameReplayUsesSharedWireDigest(t *testing.T) {
+	definition := compoundFrameDefinition(t)
+	definition.Mapping.Native.Preserve = false
+	compiled := compileTestDefinition(t, definition)
+	wire := parseTestValue(t, `{"events":[{"schemaVersion":2,"type":"metadata.updated","sequence":1}],"extension":9007199254740993}`)
+	frame, err := compiled.DecodeFrame(t.Context(), wire, EvaluationContext{State: NewEvaluationState()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame.native != nil || !frame.hasWire || frame.wireDigest != sha256.Sum256(wire.Bytes()) {
+		t.Fatal("wire identity depends on native replay or semantic serialization")
+	}
+	for range 2 {
+		replay, err := NewEventReplay(replayTarget(), DefaultLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer replay.Release()
+		if accepted, err := frame.ConsumeEvent(replay, 0, frame.Events[0]); err != nil || !accepted {
+			t.Fatal("first wire frame rejected", accepted, err)
+		}
+		projected := frame.Events[0]
+		projected.ResponseID = StringValue("projection")
+		if accepted, err := frame.ConsumeEvent(replay, 0, projected); err != nil || accepted {
+			t.Fatal("wire replay depends on projected semantics", accepted, err)
+		}
+		for _, changed := range []string{
+			` { "events":[{"schemaVersion":2,"type":"metadata.updated","sequence":1}],"extension":9007199254740993}`,
+			`{"events":[{"schemaVersion":2,"type":"metadata.updated","sequence":1}],"extension":9007199254740994}`,
+		} {
+			other := &EventFrame{Events: frame.Events}
+			other.hashWire(parseTestValue(t, changed))
+			if _, err := other.ConsumeEvent(replay, 0, projected); !hasIssueCode(err, UpstreamContractViolation) {
+				t.Fatal("differently spelled wire retransmission was deduplicated", err)
+			}
+		}
+	}
+}
+
+func TestEventFrameReplayDistinguishesCompoundMembers(t *testing.T) {
+	event := Event{SchemaVersion: ProtocolCoreVersion, Type: MetadataUpdated, Sequence: coreInteger(1)}
+	frame := &EventFrame{Events: []Event{event, event}}
+	frame.hashWire(parseTestValue(t, `{"events":[1,1]}`))
+	replay, _ := NewEventReplay(replayTarget(), DefaultLimits())
+	defer replay.Release()
+	if accepted, err := frame.ConsumeEvent(replay, 0, event); err != nil || !accepted {
+		t.Fatal(accepted, err)
+	}
+	if _, err := frame.ConsumeEvent(replay, 1, event); !hasIssueCode(err, UpstreamContractViolation) {
+		t.Fatal("same sequence hid another compound member", err)
+	}
+	if accepted, err := frame.ConsumeEvent(replay, 0, event); err != nil || accepted {
+		t.Fatal("identical compound member was not deduplicated", accepted, err)
+	}
+}
+
 func TestConvertedFrameChecksNativeAtEncodingBoundary(t *testing.T) {
 	compiled := compileTestDefinition(t, compoundFrameDefinition(t))
 	value, _ := ParseValue([]byte(`{"events":[{"schemaVersion":2,"type":"item.delta","itemId":"a","delta":"hello"},{"schemaVersion":2,"type":"item.delta","itemId":"a","delta":"world"}],"vendor":9007199254740993}`))

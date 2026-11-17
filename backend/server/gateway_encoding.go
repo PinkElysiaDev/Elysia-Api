@@ -1,52 +1,34 @@
 package server
 
-import (
-	"context"
-	"reflect"
+import "github.com/elysia-api/backend/protocol"
 
-	"github.com/elysia-api/backend/protocol"
-)
-
-// gatewayRequestEncoding is single-consumer, shared only by copies of the same
-// private candidate. A plan keeps at most its first eligible candidate's body.
+// The first eligible candidate owns its actual outbound inputs and encoding.
+// Alternative candidates retain only semantic preparation until dispatch.
 type gatewayRequestEncoding struct {
-	value    protocol.Value
-	request  *protocol.Request
-	compiled *protocol.Compiled
-	limits   protocol.Limits
-	options  protocol.EvaluationContext
-	issues   []protocol.ConversionIssue
+	value   protocol.Value
+	request *protocol.Request
+	options protocol.EvaluationContext
 }
 
-func newGatewayRequestEncoding(ctx context.Context, compiled *protocol.Compiled, request *protocol.Request, value protocol.Value, options protocol.EvaluationContext) *gatewayRequestEncoding {
-	issues := options.Diagnostics.Issues()
-	options.Diagnostics = nil
-	return &gatewayRequestEncoding{value: value, request: request, compiled: compiled, limits: compiled.RequestLimits(ctx), options: options, issues: issues}
-}
-
-func (candidate gatewayCandidate) takeRequestValue(ctx context.Context, request *protocol.Request, options protocol.EvaluationContext) (protocol.Value, bool) {
-	encoding := candidate.encoding
-	if encoding == nil || encoding.value.IsZero() {
-		return protocol.Value{}, false
+func (candidate gatewayCandidate) prepareRequestEncoding(fallback *protocol.Request, record *usageRecord) (*gatewayRequestEncoding, error) {
+	if candidate.encoding != nil && candidate.encoding.request != nil {
+		return candidate.encoding, nil
 	}
-	value := encoding.value
-	defer candidate.releaseRequestEncoding()
-	sink := options.Diagnostics
-	options.Diagnostics = nil
-	if ctx.Err() != nil || candidate.model.CacheSynthesis || candidate.compiled != encoding.compiled || candidate.compiled.RequestLimits(ctx) != encoding.limits || !reflect.DeepEqual(options, encoding.options) || !reflect.DeepEqual(request, encoding.request) {
-		return protocol.Value{}, false
+	prepared := candidate.prepared
+	if prepared == nil {
+		prepared = fallback
 	}
-	for _, issue := range encoding.issues {
-		sink.Add(issue)
+	request := prepared.Clone()
+	request.Model = protocol.StringValue(candidate.model.Identifier())
+	options, err := (protocol.EvaluationContext{InterleavedThinking: candidate.operation.IsInterleavedThinking, Scope: candidate.scope, Diagnostics: &protocol.DiagnosticSink{}, ClientOutput: request.ClientOutput}).WithOperation(record.RequestID, record.StartedAt.Unix())
+	if err != nil {
+		return nil, err
 	}
-	return value, true
+	return &gatewayRequestEncoding{request: request, options: options}, nil
 }
 
 func (candidate gatewayCandidate) releaseRequestEncoding() {
 	if candidate.encoding != nil {
-		candidate.encoding.value = protocol.Value{}
-		candidate.encoding.request = nil
-		candidate.encoding.options = protocol.EvaluationContext{}
-		candidate.encoding.issues = nil
+		*candidate.encoding = gatewayRequestEncoding{}
 	}
 }

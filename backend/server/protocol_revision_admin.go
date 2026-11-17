@@ -20,6 +20,10 @@ import (
 )
 
 func (s *Server) protocolService() (*protocol.Service, error) {
+	return s.loadProtocolService(true)
+}
+
+func (s *Server) loadProtocolService(shouldReload bool) (*protocol.Service, error) {
 	s.protocolServiceOnce.Do(func() {
 		compiler, err := relay.NewProtocolCompiler(protocol.DefaultLimits())
 		if err != nil {
@@ -36,6 +40,9 @@ func (s *Server) protocolService() (*protocol.Service, error) {
 			return
 		}
 		s.protocolServiceInst = service
+		if !shouldReload {
+			return
+		}
 		if err := service.Reload(context.Background()); err != nil {
 			// The management service remains available to repair invalid/stale
 			// revisions; no invalid definition is published to the registry.

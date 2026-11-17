@@ -14,6 +14,7 @@ type conversionState struct {
 	limits                Limits
 	isStrict              bool
 	needsEncoding         bool
+	contextValid          bool // Private owned document only; invalidated on every possible edit.
 	cache                 *semanticCache
 	resolvedModelControls *modelControlExecution
 	auxiliary             *sourceFrameReceipt
@@ -30,7 +31,14 @@ func (state *conversionState) validateContext(phase ConversionPhase) error {
 	if err := state.load(phase, false); err != nil {
 		return err
 	}
-	return validateRequestContext(state.document.(*Request))
+	if state.contextValid {
+		return nil
+	}
+	if err := validateRequestContext(state.document.(*Request)); err != nil {
+		return err
+	}
+	state.contextValid = true
+	return nil
 }
 
 func (state *conversionState) accepts(phase ConversionPhase, rule ConversionRule) bool {
@@ -84,7 +92,7 @@ func (state *conversionState) load(phase ConversionPhase, strict bool) error {
 			return err
 		}
 	}
-	state.document, state.isStrict = document, strict
+	state.document, state.isStrict, state.contextValid = document, strict, false
 	return nil
 }
 
@@ -130,6 +138,15 @@ func (state *conversionState) apply(ctx context.Context, c *CompiledConversion, 
 	}
 	if !shouldEncode {
 		return nil
+	}
+	state.contextValid = false
+	if request, ok := state.document.(*Request); ok {
+		// A possible edit invalidates the owned-state pass. A decode witness
+		// survives only if exact comparison proves the entire input unchanged.
+		// Unknown edits drop it rather than trusting a rule's action label.
+		if !requestContextUnchanged(request) {
+			request.verdict = nil
+		}
 	}
 	if err := state.cache.check(state.document, state.limits); err != nil {
 		return err

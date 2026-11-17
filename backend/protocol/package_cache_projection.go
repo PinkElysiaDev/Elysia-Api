@@ -109,7 +109,7 @@ func (compiled *Compiled) checkCacheDispositionMatches(ctx context.Context, requ
 		return nil
 	}
 	budget := &evaluationBudget{limits: limits, stepLimit: limits.Nodes}
-	return requestCaches(request, func(intents *[]CacheIntent, at string) error {
+	return requestCaches(request, func(intents *[]CacheIntent, at diagnosticPath) error {
 		for index, intent := range *intents {
 			for _, effect := range compiled.packagePlan.effects[EncodeRequest] {
 				if effect.scope != cacheIntentScope {
@@ -120,7 +120,7 @@ func (compiled *Compiled) checkCacheDispositionMatches(ctx context.Context, requ
 					return err
 				}
 				if isMatch {
-					return reject(fmt.Sprintf("%s/%d", at, index))
+					return reject(at.index(index).String())
 				}
 			}
 		}

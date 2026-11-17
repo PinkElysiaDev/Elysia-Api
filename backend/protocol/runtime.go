@@ -56,6 +56,11 @@ func (compiled *Compiled) decodeRequestValue(ctx context.Context, input Value, o
 	request, err = compiled.finishDecodedRequest(ctx, input, request, options, boundScope)
 	if err == nil && baseline != nil {
 		compiled.attachRequestWorkspace(ctx, request, baseline)
+		// A resolver may edit the request while authorizing it. Its result is
+		// not the original decoder's baseline, even if the scope is unchanged.
+		if options.ResolveRequestScope == nil {
+			request.Native.requestWorkspace.finished = request.verdict.snapshot
+		}
 	}
 	return request, err
 }
@@ -91,8 +96,16 @@ func (compiled *Compiled) finishDecodedRequest(ctx context.Context, input Value,
 	}
 	target := compiled.target(DecodeRequest, options)
 	target.Direction = EncodeRequest
-	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
+	limits := semanticLimits(compiled.nativeLimits(ctx, EncodeRequest))
+	if err := IssuesError(CheckRequest(request, target, limits)); err != nil {
 		return nil, err
+	}
+	// A scope resolver runs after context validation and may edit arbitrary
+	// content. Do not certify its output with the earlier context pass: the
+	// next boundary must revalidate it, preserving existing error precedence.
+	// Without a callback only gateway-owned provenance was stamped meanwhile.
+	if options.ResolveRequestScope == nil {
+		retainRequestVerdict(request, target, limits)
 	}
 	return request, nil
 }
@@ -138,8 +151,9 @@ func (compiled *Compiled) EncodeRequestValue(ctx context.Context, request *Reque
 	if err := IssuesError(CheckRequest(request, target, semanticLimits(compiled.nativeLimits(ctx, EncodeRequest)))); err != nil {
 		return Value{}, err
 	}
-	if (compiled.packagePlan.hasFieldProjection || compiled.packagePlan.hasCacheProjection) && compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
+	if compiled.native.Preserve && request.Native != nil && CanPreserveNative(request.Native.Source, target) {
 		options.requestReplay = newRequestReplay(compiled, options)
+		options.requestReplay.current = request
 	}
 	output, err := encodeCore(ctx, compiled, EncodeRequest, request, options)
 	if err != nil {
@@ -569,9 +583,17 @@ func (compiled *Compiled) preserveMappedNative(ctx context.Context, direction Di
 		}
 	}
 
-	before, err := encodePlannedCore(ctx, replay, direction, baseline, options)
-	if err != nil {
-		return Value{}, err
+	var before Value
+	if direction == EncodeRequest && options.requestReplay != nil && options.requestReplay.canReuseOutput(ctx) {
+		// The synchronous mapping cannot edit its semantic input. An exact
+		// witness comparison proves this is also the baseline's output; native
+		// provenance, reconciliation and final wire validation still run below.
+		before = output
+	} else {
+		before, err = encodePlannedCore(ctx, replay, direction, baseline, options)
+		if err != nil {
+			return Value{}, err
+		}
 	}
 
 	result, err := reconcileNative(ctx, original, before, output, compiled.native, compiled.wireLimits(ctx, direction))

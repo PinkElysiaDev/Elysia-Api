@@ -137,6 +137,10 @@ UPDATE_AGENT_CLI_DOCS=1 go test ./server -run '^TestCLIReferenceUpToDate$' -coun
 
 文档开头、导航和章节格式由 `agent_cli_contract_test.go` 中的生成模板控制。英文手册是完整人工译本；命令变更时同步检查参数、示例和权限说明，运行不带更新变量的同一测试确认中文未过期。
 
+## 后端验证
+
+`npm run test:protocol -- --suite=all` 对全部包及 fuzz 种子各执行一次。普通层使用 `GOMEMLIMIT=1GiB GOMAXPROCS=2 GOFLAGS=-p=1`，将每个非 server 包与八个互斥分区的 server 分片独立调度，共享默认四个任务槽位；空闲槽位不再等待整个非 server 层结束。`--jobs=1..4` 调整进程并发；裸 `go test ./server` 仍完整运行该包。`--race` 保留独立的重分片串行策略及每进程 2 GiB 预算。不传 suite 仍为定向 conversion 层而非完整层。设置 `ELYSIA_VERIFICATION_DIR=.tmp-dev/check` 可把报告和日志留在工作树内；定向分组见 `backend/TESTING.md`。
+
 ## 提交检查
 
 每个提交完成一项明确职责，并包含所需调用方、测试及说明。未发布分支中的补漏、修正和反复调整应合回对应提交；提交信息描述最终问题与行为，不记录内部工作轮次。已共享的历史不随意重写。

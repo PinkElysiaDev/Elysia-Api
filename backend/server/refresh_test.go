@@ -198,6 +198,26 @@ func TestRefreshEmptyModelListKeepsExistingModels(t *testing.T) {
 
 func activateDiscoveryPresets(t *testing.T, s *Server) {
 	t.Helper()
+	service, err := s.protocolService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reuse the production one-publication session, not a test-owned compiled
+	// cache. Publication still rereads this store's activations and evidence.
+	compilation := service.NewCompilationSession()
+	defer compilation.Close()
+	seedDiscoveryPresets(t, s, compilation)
+	if err := compilation.ReloadAvailable(t.Context(), requiredPresetIDs...); err != nil {
+		t.Fatal(err)
+	}
+	if failures := service.View().Failures(); len(failures) != 0 {
+		t.Fatal("fixture publication left unavailable custom protocols", failures)
+	}
+}
+
+// Persist proofs without publishing when runtime initialization will publish next.
+func seedDiscoveryPresets(t *testing.T, s *Server, compilation ...*protocol.CompilationSession) {
+	t.Helper()
 	// 预置只读：测试种子绕过作者路径（SaveDraft/Activate 已拒绝预置 ID），
 	// 直接持久化修订+激活+草稿，并用当前编译器重写离线证据后整体装载。
 	definitions, err := builtin.Packages()
@@ -205,17 +225,19 @@ func activateDiscoveryPresets(t *testing.T, s *Server) {
 		t.Fatal(err)
 	}
 	for _, value := range definitions {
-		var definition protocol.ProtocolPackage
-		if err := value.Decode(&definition); err != nil {
+		// Keep the exact embedded package bytes. Decoding/re-encoding the
+		// whole package materializes omitted zero/default fields; startup then
+		// has to recompile stored drafts/revisions to prove their equivalence.
+		var identity struct {
+			Spec struct {
+				ID string `json:"id"`
+			} `json:"spec"`
+		}
+		if err := value.Decode(&identity); err != nil {
 			t.Fatal(err)
 		}
-		seedGatewayFixture(t, s, definition, false)
-	}
-	service, err := s.protocolService()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := service.Reload(t.Context()); err != nil {
-		t.Fatal(err)
+		// Compile through the caller's production session when it supplies one,
+		// so the admitted graph and this store's persisted proof share a key.
+		seedGatewayProtocol(t, s, identity.Spec.ID, value.Bytes(), false, compilation...)
 	}
 }

@@ -36,8 +36,8 @@ func TestProtocolRefreshCompilationUsesExactDefinitions(t *testing.T) {
 		t.Fatal("different source bytes bypassed compilation or changed normalized identity", issues)
 	}
 	second, issues := compilation.Compile(spelled)
-	if protocol.IssuesError(issues) != nil || second == first {
-		t.Fatal("an auxiliary compilation was retained", issues)
+	if protocol.IssuesError(issues) != nil || second != first {
+		t.Fatal("an identical auxiliary source missed the process cache", issues)
 	}
 	document.Mapping.DSLVersion = 0
 	invalid := mustEncodedProtocolValue(t, document)
@@ -56,14 +56,14 @@ func TestProtocolRefreshCompilationUsesExactDefinitions(t *testing.T) {
 	}
 	firstCustom, issues := compilation.Compile(custom)
 	secondCustom, otherIssues := compilation.Compile(custom)
-	if protocol.IssuesError(issues) != nil || protocol.IssuesError(otherIssues) != nil || firstCustom == secondCustom {
-		t.Fatal("custom results were retained by the session")
+	if protocol.IssuesError(issues) != nil || protocol.IssuesError(otherIssues) != nil || firstCustom != secondCustom {
+		t.Fatal("identical custom sources missed the process cache")
 	}
 	fresh := service.NewCompilationSession()
 	defer fresh.Close()
 	compiled, issues := fresh.Compile(value)
-	if protocol.IssuesError(issues) != nil || compiled == selected {
-		t.Fatal("independent refresh inherited another operation's memo", issues)
+	if protocol.IssuesError(issues) != nil || compiled != selected {
+		t.Fatal("independent refresh missed the process cache", issues)
 	}
 	limits := protocol.DefaultLimits()
 	limits.BufferBytes = value.Len() - 1
@@ -180,10 +180,15 @@ func TestProtocolRefreshCompilationPublishesPreparedPointers(t *testing.T) {
 	if err := compilation.ReloadAvailable(t.Context(), requiredPresetIDs...); err != nil {
 		t.Fatal(err)
 	}
+	// Compiled graphs may be shared across reloads, but publication must replace
+	// the registry snapshot even when preparation found no persistent changes.
+	if service.View() == previous {
+		t.Fatal("prepared definitions were not published in a new registry snapshot")
+	}
 	for _, id := range requiredPresetIDs {
 		published, hasPublished := service.Pin(id)
 		prior, hasPrior := previous.Pin(id)
-		if !hasPublished || !hasPrior || published != definitions[id] || published == prior {
+		if !hasPublished || !hasPrior || published != definitions[id] || published != prior {
 			t.Fatalf("preset %s was not handed from real preparation to publication", id)
 		}
 	}

@@ -1,0 +1,228 @@
+package protocol
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"hash"
+	"maps"
+	"os"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// White-box resource tests intentionally change limits and replace map entries;
+// these are not legal production mutations. Detach exactly their mutation
+// targets, including the Agent output slice modified by compilePackageAgent.
+// Runtime plans/validators remain immutable and shared, as in production.
+func detachedCompiledFixture(compiled *Compiled) *Compiled {
+	fixture := *compiled
+	fixture.verification = &verificationMemo{}
+	fixture.mappings = maps.Clone(compiled.mappings)
+	fixture.wireContracts = maps.Clone(compiled.wireContracts)
+	fixture.operations = maps.Clone(compiled.operations)
+	fixture.agentClientOutput = slices.Clone(compiled.agentClientOutput)
+	return &fixture
+}
+
+// Guard every still-live cache graph, not only pinned presets, against white-box
+// tests mutating a deeper pointer that the fixture detach does not clone. A dead
+// weak entry cannot be returned to another caller and needs no retained graph.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	for _, err := range compilationCacheIntegrityErrors(&processCompilations) {
+		fmt.Fprintln(os.Stderr, "compilation cache sentinel:", err)
+		code = 1
+	}
+	os.Exit(code)
+}
+
+func compilationCacheIntegrityErrors(cache *compilationCache) []error {
+	cache.mu.Lock()
+	presets := maps.Clone(cache.presets)
+	entries := make(map[compilationKey]*Compiled, len(cache.entries))
+	entryKeys := make(map[*Compiled]compilationKey, len(cache.entries))
+	for key, pointer := range cache.entries {
+		if compiled := pointer.Value(); compiled != nil {
+			entries[key] = compiled
+			entryKeys[compiled] = key
+		}
+	}
+	cache.mu.Unlock()
+	var failures []error
+	for id, preset := range presets {
+		if preset.compiled == nil || !isEmbeddedPreset(id, preset.key, preset.compiled) {
+			failures = append(failures, fmt.Errorf("preset source identity mismatch: %s", id))
+		}
+		if entryKey, live := entryKeys[preset.compiled]; !live || entryKey != preset.key {
+			failures = append(failures, fmt.Errorf("pinned preset missing from cache: %s", id))
+		}
+	}
+	for key, compiled := range entries {
+		id := compiled.Identity().DefinitionID
+		compiler, err := NewCompiler(key.limits, []string{featureWebSocketTransport, featureAsyncTasks})
+		var document ProtocolPackage
+		if err == nil {
+			// Recompile the exact admitted source. The canonical definition can
+			// compact literal Value spellings held by otherwise identical plans,
+			// so pinned presets rebuild from their embedded package bytes; a
+			// custom graph has no embedded source and rebuilds from its own.
+			source := compiled.definition.Bytes()
+			if embedded, ok := embeddedPresets()[id]; ok && isEmbeddedPreset(id, key, compiled) {
+				source = embedded.value.Bytes()
+			}
+			err = decodeContract(source, &document)
+		}
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%s source=%x: %w", id, key.source, err))
+			continue
+		}
+		// Features gate admission, not graph shape; both optional transports are
+		// enabled so every admitted configuration can be rebuilt independently.
+		reference, issues := compiler.compilePackage(document) // deliberately uncached
+		if IssuesError(issues) != nil || compiledGraphFingerprint(compiled) != compiledGraphFingerprint(reference) {
+			failures = append(failures, fmt.Errorf("shared graph mutated: %s source=%x: %v", id, key.source, issues))
+		}
+	}
+	return failures
+}
+
+func TestCompilationCacheSentinelRejectsMutatedGraphs(t *testing.T) {
+	for _, mutation := range []string{"limits", "nested-plan"} {
+		t.Run(mutation, func(t *testing.T) {
+			// Use a real admitted custom graph with non-default compiler limits and
+			// no pinned preset. Keep contamination isolated from the process cache.
+			limits := DefaultLimits()
+			limits.Nodes--
+			compiler, err := NewCompiler(limits, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			document := verifiedTextPackage(t, "sentinel-custom")
+			cache := newTestCompilationCache()
+			compiled, issues := cache.compile(compiler.compilationKey(fixtureValue(t, document).Bytes()), func() (*Compiled, []ConversionIssue) {
+				return compiler.compilePackage(document)
+			})
+			if err := IssuesError(issues); err != nil {
+				t.Fatal(err)
+			}
+			if failures := compilationCacheIntegrityErrors(cache); len(failures) != 0 {
+				t.Fatal("sentinel rejected an intact unpinned graph", failures)
+			}
+			switch mutation {
+			case "limits":
+				compiled.limits.StateItems--
+			case "nested-plan":
+				compiled.packagePlan.dslVersion++
+			}
+			failures := compilationCacheIntegrityErrors(cache)
+			if len(failures) != 1 || !strings.Contains(failures[0].Error(), "shared graph mutated: sentinel-custom") {
+				t.Fatal("sentinel missed mutation of an unpinned cached graph", failures)
+			}
+		})
+	}
+}
+
+func compiledGraphFingerprint(compiled *Compiled) [32]byte {
+	digest := sha256.New()
+	fingerprintValue(digest, reflect.ValueOf(compiled), make(map[uintptr]bool))
+	var result [32]byte
+	copy(result[:], digest.Sum(nil))
+	return result
+}
+
+func TestCompiledFingerprintNonStringMapKeys(t *testing.T) {
+	values := map[Value]int{StringValue("first"): 1, StringValue("second"): 2, StringValue("third"): 3}
+	fingerprint := func() string {
+		digest := sha256.New()
+		fingerprintValue(digest, reflect.ValueOf(values), make(map[uintptr]bool))
+		return string(digest.Sum(nil))
+	}
+	expected := fingerprint()
+	for range 100 {
+		if fingerprint() != expected {
+			t.Fatal("non-string map keys made the graph sentinel nondeterministic")
+		}
+	}
+	values[StringValue("first")] = 4
+	if fingerprint() == expected {
+		t.Fatal("the graph sentinel ignored a changed map value")
+	}
+	delete(values, StringValue("first"))
+	values[StringValue("replacement")] = 1
+	if fingerprint() == expected {
+		t.Fatal("the graph sentinel ignored a changed map key")
+	}
+}
+
+// Traverse pointer contents, not addresses, and detect cycles on the current
+// stack only so harmless DAG sharing does not affect the fingerprint. Function
+// code addresses distinguish replacements without inspecting closure internals.
+func fingerprintValue(digest hash.Hash, value reflect.Value, stack map[uintptr]bool) {
+	if !value.IsValid() {
+		fmt.Fprint(digest, "nil;")
+		return
+	}
+	fmt.Fprint(digest, value.Type(), ":")
+	switch value.Kind() {
+	case reflect.Pointer:
+		if value.IsNil() {
+			fmt.Fprint(digest, "nil;")
+			return
+		}
+		pointer := value.Pointer()
+		if stack[pointer] {
+			fmt.Fprint(digest, "cycle;")
+			return
+		}
+		stack[pointer] = true
+		fingerprintValue(digest, value.Elem(), stack)
+		delete(stack, pointer)
+	case reflect.Interface:
+		fingerprintValue(digest, value.Elem(), stack)
+	case reflect.Struct:
+		for index := range value.NumField() {
+			if value.Type() == reflect.TypeFor[Compiled]() && value.Type().Field(index).Name == "verification" {
+				continue // separately synchronized, intentionally mutable evidence
+			}
+			fmt.Fprint(digest, value.Type().Field(index).Name)
+			fingerprintValue(digest, value.Field(index), stack)
+		}
+	case reflect.Map:
+		keys := value.MapKeys()
+		slices.SortFunc(keys, func(a, b reflect.Value) int {
+			if a.Kind() == reflect.String {
+				return strings.Compare(a.String(), b.String())
+			}
+			// Value/other non-string keys all have the same reflect.String
+			// placeholder. Sort their complete contents, not map iteration order.
+			left, right := sha256.New(), sha256.New()
+			fingerprintValue(left, a, maps.Clone(stack))
+			fingerprintValue(right, b, maps.Clone(stack))
+			return bytes.Compare(left.Sum(nil), right.Sum(nil))
+		})
+		for _, key := range keys {
+			fingerprintValue(digest, key, stack)
+			fingerprintValue(digest, value.MapIndex(key), stack)
+		}
+	case reflect.Array, reflect.Slice:
+		fmt.Fprint(digest, value.Len(), ";")
+		for index := range value.Len() {
+			fingerprintValue(digest, value.Index(index), stack)
+		}
+	case reflect.String:
+		fmt.Fprintf(digest, "%q;", value.String())
+	case reflect.Bool:
+		fmt.Fprint(digest, value.Bool(), ";")
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		fmt.Fprint(digest, value.Int(), ";")
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		fmt.Fprint(digest, value.Uint(), ";")
+	case reflect.Float32, reflect.Float64:
+		fmt.Fprint(digest, value.Float(), ";")
+	case reflect.Func, reflect.UnsafePointer, reflect.Chan:
+		fmt.Fprint(digest, value.Pointer(), ";")
+	}
+}

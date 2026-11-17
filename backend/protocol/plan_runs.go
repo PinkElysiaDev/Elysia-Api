@@ -15,11 +15,12 @@ func (plan *compiledOutputPlan) buildRuns(state evaluation) (plannedOutput, erro
 	var run *jsonOutputNode
 	var previous bool
 	bytes := 2
-	for index, item := range items {
+	for index := range items {
+		item := &items[index]
 		child := state
 		child.itemIndex, child.item, child.itemOutput = index, item.value, nil
 		if item.node != nil {
-			child.itemOutput = &item
+			child.itemOutput = item
 		}
 		value, err := plan.when.buildNode(&child)
 		if err != nil {
@@ -36,7 +37,7 @@ func (plan *compiledOutputPlan) buildRuns(state evaluation) (plannedOutput, erro
 		}
 		// Groups own only the new array containers. Original members remain
 		// immutable views, so a large text or tool payload is not encoded here.
-		bytes += appendPlannedItem(run, plannedOutput{output: item, bytes: normalizedOutputBytes(item)}, state.cache)
+		bytes += appendPlannedItem(run, plannedOutput{output: *item, bytes: normalizedOutputBytes(*item)}, state.cache)
 		if bytes > state.budget.limits.BufferBytes {
 			return plannedOutput{}, resourceFailure("evaluation", "bytes", state.budget.limits.BufferBytes, bytes)
 		}

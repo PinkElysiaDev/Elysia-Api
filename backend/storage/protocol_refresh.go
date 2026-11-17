@@ -63,5 +63,5 @@ func (store *Store) RefreshProtocolRuntime(ctx context.Context, plan ProtocolUpg
 	if _, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, "protocol_runtime_refresh", string(receipt), nowString()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return store.commitConversion(ctx, tx)
 }

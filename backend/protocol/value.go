@@ -51,6 +51,9 @@ func EncodeValue(value any) (Value, error) {
 
 // StringValue constructs a JSON string; strings cannot fail JSON encoding.
 func StringValue(value string) Value {
+	if fixed, ok := fixedStringValue(value); ok {
+		return fixed
+	}
 	// Frame metadata, item IDs and short text are usually plain ASCII. Build
 	// their exact owned representation instead of acquiring a generic encoder
 	// workspace for each scalar in the streaming pipeline. Complex/large text
@@ -148,8 +151,14 @@ func (value Value) Decode(target any) error {
 			*typed = items
 		}
 		return err
-	case *string, *bool, *int, *int64, *uint64, *json.Number,
-		*Request, *Response, *Event, *[]Event:
+	case *string, *bool, *int, *int64, *uint64:
+		if decodeScalarValue(value.raw, target) {
+			return nil
+		}
+		// Uncertain spellings, type mismatches, overflow, malformed JSON and
+		// nil destinations retain the codec's exact errors AND partial writes.
+		return sonic.ConfigStd.UnmarshalFromString(value.raw, target)
+	case *json.Number, *Request, *Response, *Event, *[]Event:
 		return sonic.ConfigStd.UnmarshalFromString(value.raw, target)
 	}
 	return numberValueDecoder.UnmarshalFromString(value.raw, target)

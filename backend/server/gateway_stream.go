@@ -23,6 +23,7 @@ type gatewayStream struct {
 	context            *app.RequestContext
 	ctx                context.Context
 	writer             network.ExtWriter
+	writeFrame         func(protocol.Value) error
 	record             *usageRecord
 	plan               *gatewayResponsePlan
 	candidate          gatewayCandidate
@@ -114,6 +115,13 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 	if stream.deliveryFailure != nil {
 		return stream.deliveryFailure
 	}
+	if stream.writeFrame == nil {
+		var err error
+		stream.writeFrame, err = protocol.NewFrameWriter(stream.writer, stream.plan.operation)
+		if err != nil {
+			return err
+		}
+	}
 	if stream.record.FirstByteMs == 0 {
 		stream.record.FirstByteMs = time.Since(stream.record.StartedAt).Milliseconds()
 	}
@@ -151,7 +159,7 @@ func (stream *gatewayStream) emit(value protocol.Value) error {
 		if frame.Len() > stream.limits.BufferBytes {
 			return protocol.IssuesError([]protocol.ConversionIssue{{Code: protocol.LimitExceeded, Severity: protocol.SeverityError, Stage: "continuation", Path: "/frame", Reason: "frame including continuation carriers exceeds target buffer limit"}})
 		}
-		if err := protocol.WriteFrame(stream.writer, stream.plan.operation, frame); err != nil {
+		if err := stream.writeFrame(frame); err != nil {
 			return stream.abortDelivery(err, deliveryWrite)
 		}
 	}
@@ -231,7 +239,7 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 			stream.acceptedScratch = nil
 		}
 	}()
-	for _, event := range decoded.Events {
+	for index, event := range decoded.Events {
 		if err := stream.captureContinuation(event); err != nil {
 			return err
 		}
@@ -253,7 +261,12 @@ func (stream *gatewayStream) consumeSourceFrame(decoded *protocol.EventFrame, me
 					return err
 				}
 			}
-			accepted, e := stream.replay.Consume(next)
+			// One wire digest identifies one projected event; expansions keep semantic dedup.
+			replayFrame := decoded
+			if stream.eventState.Buffered || len(queued) != 1 {
+				replayFrame = nil
+			}
+			accepted, e := replayFrame.ConsumeEvent(stream.replay, index, next)
 			if e != nil {
 				return e
 			}

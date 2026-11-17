@@ -67,6 +67,8 @@ func (s *Server) startServices(context.Context) error {
 	s.healthChecker.start()
 	s.usageRetention = newUsageRetention(s)
 	s.usageRetention.start()
+	s.memoryDone = make(chan struct{})
+	go s.runMemoryReclaimer(s.lifecycleCtx)
 	return nil
 }
 
@@ -105,6 +107,9 @@ func (s *Server) doShutdown() {
 		s.httpRequests.stop()
 		s.preparationLimiter().Close()
 		s.lifecycleCancel()
+		if s.memoryDone != nil {
+			<-s.memoryDone
+		}
 		if s.healthChecker != nil {
 			s.healthChecker.cancel()
 		}

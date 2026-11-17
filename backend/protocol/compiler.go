@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
@@ -73,8 +74,9 @@ func (options EvaluationContext) forDefinition(compiled *Compiled) EvaluationCon
 // Compiler owns the declarative language and feature catalog. Compiled
 // revisions copy configuration and can be shared by concurrent requests.
 type Compiler struct {
-	limits   Limits
-	features map[string]bool
+	limits      Limits
+	features    map[string]bool
+	featureHash [32]byte
 }
 
 // 引擎 feature 键与默认已实现集合：feature 描述引擎自身能力，绝非用户承诺。
@@ -107,6 +109,11 @@ func NewCompiler(limits Limits, features []string) (*Compiler, error) {
 	for _, feature := range features {
 		compiler.features[feature] = true
 	}
+	featureSet, err := EncodeValue(sortedKeys(compiler.features))
+	if err != nil {
+		return nil, err
+	}
+	compiler.featureHash = sha256.Sum256(featureSet.Bytes())
 	return compiler, nil
 }
 
@@ -134,30 +141,32 @@ type compiledMapping struct {
 // Compiled is an immutable protocol revision; mutable event state belongs to a
 // request/session, never to this registry object.
 type Compiled struct {
-	compileExpressions     []*compiledExpression
-	canReusePackageRequest bool
-	identity               Identity
-	definition             Value
-	hash                   string
-	executionHash          string
-	samplesHash            string
-	limits                 Limits
-	explicitLimits         bool
-	capabilities           CapabilitySet
-	native                 NativePolicy
-	mappings               map[Direction]compiledMapping
-	wireContracts          map[Direction]compiledWireContract
-	operations             map[string]Operation
-	operationSchemas       map[string]*runtimeValueSchema
-	modelPageValidator     *runtimeValueSchema
-	taskMappings           map[string]map[string]compiledMapping
-	modelMappings          map[string]compiledMapping
-	modelEncoders          map[string]compiledMapping
-	agentMapping           *compiledMapping
-	agentClientOutput      []compiledAgentOutputField
-	agentEfforts           []string
-	agentToolResults       InputKind
-	packagePlan            *compiledPackagePlan
+	// The executable graph is immutable. This separately synchronized memo
+	// stores only reproducible offline evidence, never request/runtime state.
+	verification       *verificationMemo
+	compileExpressions []*compiledExpression
+	identity           Identity
+	definition         Value
+	hash               string
+	executionHash      string
+	samplesHash        string
+	limits             Limits
+	explicitLimits     bool
+	capabilities       CapabilitySet
+	native             NativePolicy
+	mappings           map[Direction]compiledMapping
+	wireContracts      map[Direction]compiledWireContract
+	operations         map[string]Operation
+	operationSchemas   map[string]*runtimeValueSchema
+	modelPageValidator *runtimeValueSchema
+	taskMappings       map[string]map[string]compiledMapping
+	modelMappings      map[string]compiledMapping
+	modelEncoders      map[string]compiledMapping
+	agentMapping       *compiledMapping
+	agentClientOutput  []compiledAgentOutputField
+	agentEfforts       []string
+	agentToolResults   InputKind
+	packagePlan        *compiledPackagePlan
 }
 
 // Compile strictly parses one authored document and compiles every direction.

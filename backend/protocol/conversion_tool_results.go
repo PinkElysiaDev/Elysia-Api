@@ -1,25 +1,26 @@
 package protocol
 
-import (
-	"fmt"
-)
-
 func validateToolResultErrors(nodes []Node, at string) error {
+	var buffer [256]byte
+	return validateToolResultErrorsPath(nodes, append(diagnosticPath(buffer[:0]), at...))
+}
+
+func validateToolResultErrorsPath(nodes []Node, at diagnosticPath) error {
 	for i, n := range nodes {
-		path := fmt.Sprintf("%s/%d", at, i)
+		path := at.index(i)
 		if n.Kind == ToolResultNode {
 			fields, _ := n.Status.ReadObject()
 			if value := fields["isError"]; !value.IsZero() {
 				var flag bool
 				if value.IsNull() || value.Decode(&flag) != nil {
-					return streamIssue(InvalidInput, path+"/status/isError", "tool error flag must be a boolean")
+					return streamIssue(InvalidInput, path.suffix("/status/isError").String(), "tool error flag must be a boolean")
 				}
 			}
 		}
-		if err := validateToolResultErrors(n.Children, path+"/children"); err != nil {
+		if err := validateToolResultErrorsPath(n.Children, path.suffix("/children")); err != nil {
 			return err
 		}
-		if err := validateToolResultErrors(n.ReasoningContent, path+"/reasoningContent"); err != nil {
+		if err := validateToolResultErrorsPath(n.ReasoningContent, path.suffix("/reasoningContent")); err != nil {
 			return err
 		}
 	}

@@ -32,7 +32,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	limit := configureMemoryLimit(cfg.MemoryLimitBytes)
 	logging.Default().Configure(cfg.GetLoggingOptions())
+	logging.Info().Int64("memoryLimitBytes", limit).Msg("configured Go runtime soft memory limit")
 	if created {
 		logging.Info().Str("path", *configPath).Msg("created default config with a generated panelAccessToken")
 		logging.Info().Msgf("Generated panelAccessToken: %s", cfg.GetPanelAccessToken())

@@ -165,85 +165,92 @@ func TestPackageGatewayIncludeRequiresClientCarrier(t *testing.T) {
 func testGatewayIncludeCarrierDeliveryModes(t *testing.T, isPackage bool) {
 	t.Parallel()
 	for _, strict := range []bool{false, true} {
-		for _, signed := range []bool{false, true} {
-			t.Run(fmt.Sprintf("strict=%v/signed=%v", strict, signed), func(t *testing.T) {
-				s, path := newProtocolAdminTestServer(t)
+		t.Run(fmt.Sprintf("strict=%v", strict), func(t *testing.T) {
+			s, path := newProtocolAdminTestServer(t)
+			s.store.Close()
+			var err error
+			s.store, err = storage.OpenWithKey(filepath.Join(filepath.Dir(path), "encrypted.db"), s.config.GetDBEncryptionKey())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
 				s.store.Close()
-				var err error
-				s.store, err = storage.OpenWithKey(filepath.Join(filepath.Dir(path), "encrypted.db"), s.config.GetDBEncryptionKey())
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() {
-					s.store.Close()
-				})
-				var upstream, ingress *protocol.Compiled
-				if isPackage {
-					packages := defaultGatewayPackages(t, s)
-					upstream, ingress = packages["google-generate-content"], packages["openai-responses"]
-				} else {
-					activateDiscoveryPresets(t, s)
-					service, _ := s.protocolService()
-					upstream, _ = service.Pin(protocol.PresetGeminiID)
-					ingress, _ = service.Pin(protocol.PresetResponsesID)
-				}
+			})
+			var upstream, ingress *protocol.Compiled
+			if isPackage {
+				packages := defaultGatewayPackages(t, s)
+				upstream, ingress = packages["google-generate-content"], packages["openai-responses"]
+			} else {
+				activateDiscoveryPresets(t, s)
 				service, _ := s.protocolService()
-				var providerCalls atomic.Int32
-				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					providerCalls.Add(1)
-					w.Header().Set("Content-Type", "application/json")
-					signature := ""
+				upstream, _ = service.Pin(protocol.PresetGeminiID)
+				ingress, _ = service.Pin(protocol.PresetResponsesID)
+			}
+			service, _ := s.protocolService()
+			var providerCalls atomic.Int32
+			var signedResponse atomic.Bool
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				providerCalls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				signature := ""
+				if signedResponse.Load() {
+					signature = `,"thoughtSignature":"signed-state"`
+				}
+				fmt.Fprint(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"`+signature+`}]},"finishReason":"STOP"}]}`)
+			}))
+			defer provider.Close()
+			setupGatewayModel(t, s, upstream, provider.URL)
+			settings := protocol.DefaultConversionPolicy(ingress, upstream).Continuation
+			settings.ClientCarrier = false
+			mode := "compatible"
+			if strict {
+				mode = "strict"
+			}
+			bindings, _ := s.store.ListProtocolBindings(t.Context())
+			bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "delivery-mode", Mode: mode, Rules: []protocol.ConversionRule{}, Continuation: settings}}
+			bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.store.SaveProtocolBinding(t.Context(), bindings[0]); err != nil {
+				t.Fatal(err)
+			}
+			s.invalidateRouteCache()
+			// Keep one encrypted store per mode. Unsigned runs first and creates no
+			// continuation, so the signed case still proves exactly one record.
+			for _, signed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("signed=%v", signed), func(t *testing.T) {
+					signedResponse.Store(signed)
+					providerCalls.Store(0)
+					req := httptest.NewRequest("POST", "/gateway/"+ingress.Identity().DefinitionID+ingress.Operations()["generate"].Path, strings.NewReader(`{"model":"group","input":"hello","store":false,"include":["reasoning.encrypted_content"]}`))
+					req.Header.Set("Authorization", "Bearer gateway-test-token")
+					req.Header.Set("x-elysia-session-id", "delivery-test")
+					rec := httptest.NewRecorder()
+					serveTestHTTP(s.engine, rec, req)
 					if signed {
-						signature = `,"thoughtSignature":"signed-state"`
+						if rec.Code != 502 || !strings.Contains(rec.Body.String(), "/continuation") {
+							t.Fatal(rec.Code, rec.Body.String())
+						}
+						stats, err := s.store.ContinuationStats(t.Context())
+						if err != nil || stats["records"] != 1 {
+							t.Fatal("test did not exercise successful persistence without client delivery", stats, err)
+						}
+						return
 					}
-					fmt.Fprint(w, `{"candidates":[{"content":{"role":"model","parts":[{"text":"hello"`+signature+`}]},"finishReason":"STOP"}]}`)
-				}))
-				defer provider.Close()
-				setupGatewayModel(t, s, upstream, provider.URL)
-				settings := protocol.DefaultConversionPolicy(ingress, upstream).Continuation
-				settings.ClientCarrier = false
-				mode := "compatible"
-				if strict {
-					mode = "strict"
-				}
-				bindings, _ := s.store.ListProtocolBindings(t.Context())
-				bindings[0].Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "delivery-mode", Mode: mode, Rules: []protocol.ConversionRule{}, Continuation: settings}}
-				bindings, err = s.verifyConversionBindings(t.Context(), service.View(), nil, bindings)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = s.store.SaveProtocolBinding(t.Context(), bindings[0]); err != nil {
-					t.Fatal(err)
-				}
-				s.invalidateRouteCache()
-				req := httptest.NewRequest("POST", "/gateway/"+ingress.Identity().DefinitionID+ingress.Operations()["generate"].Path, strings.NewReader(`{"model":"group","input":"hello","store":false,"include":["reasoning.encrypted_content"]}`))
-				req.Header.Set("Authorization", "Bearer gateway-test-token")
-				req.Header.Set("x-elysia-session-id", "delivery-test")
-				rec := httptest.NewRecorder()
-				serveTestHTTP(s.engine, rec, req)
-				if signed {
-					if rec.Code != 502 || !strings.Contains(rec.Body.String(), "/continuation") {
+					if rec.Code != 200 || strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) {
 						t.Fatal(rec.Code, rec.Body.String())
 					}
-					stats, err := s.store.ContinuationStats(t.Context())
-					if err != nil || stats["records"] != 1 {
-						t.Fatal("test did not exercise successful persistence without client delivery", stats, err)
+					if strict {
+						streamRequest := httptest.NewRequest("POST", req.URL.String(), strings.NewReader(`{"model":"group","input":"hello","stream":true,"store":false,"include":["reasoning.encrypted_content"]}`))
+						streamRequest.Header = req.Header.Clone()
+						streamResponse := httptest.NewRecorder()
+						serveTestHTTP(s.engine, streamResponse, streamRequest)
+						if streamResponse.Code != 400 || providerCalls.Load() != 1 {
+							t.Fatal("JSON-only proof authorized a strict stream", streamResponse.Code, providerCalls.Load(), streamResponse.Body.String())
+						}
 					}
-					return
-				}
-				if rec.Code != 200 || strings.Contains(rec.Body.String(), protocol.ContinuationPrefix) {
-					t.Fatal(rec.Code, rec.Body.String())
-				}
-				if strict {
-					streamRequest := httptest.NewRequest("POST", req.URL.String(), strings.NewReader(`{"model":"group","input":"hello","stream":true,"store":false,"include":["reasoning.encrypted_content"]}`))
-					streamRequest.Header = req.Header.Clone()
-					streamResponse := httptest.NewRecorder()
-					serveTestHTTP(s.engine, streamResponse, streamRequest)
-					if streamResponse.Code != 400 || providerCalls.Load() != 1 {
-						t.Fatal("JSON-only proof authorized a strict stream", streamResponse.Code, providerCalls.Load(), streamResponse.Body.String())
-					}
-				}
-			})
-		}
+				})
+			}
+		})
 	}
 }

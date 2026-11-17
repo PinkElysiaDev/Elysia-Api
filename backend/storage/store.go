@@ -66,6 +66,10 @@ func OpenWithLogPath(path, logPath string, key []byte) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := store.loadConversionGeneration(context.Background()); err != nil {
+		db.Close()
+		return nil, err
+	}
 	store.LogStore, err = OpenLogStore(logPath)
 	if err != nil {
 		db.Close()

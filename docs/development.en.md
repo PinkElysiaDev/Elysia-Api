@@ -142,6 +142,10 @@ UPDATE_AGENT_CLI_DOCS=1 go test ./server -run '^TestCLIReferenceUpToDate$' -coun
 
 The generation template in `agent_cli_contract_test.go` controls the introduction, navigation, and section formatting. The English reference is a complete maintained translation. When commands change, update arguments, examples, and permission descriptions in both languages; run the same test without the update variable to check freshness.
 
+## Backend verification
+
+`npm run test:protocol -- --suite=all` runs every package and fuzz seed once. The ordinary tier uses `GOMEMLIMIT=1GiB GOMAXPROCS=2 GOFLAGS=-p=1`, schedules each non-server package and eight disjoint server shards independently with four shared task slots by default; a free slot need not wait for the entire non-server tier. `--jobs=1..4` adjusts process concurrency; `go test ./server` still runs the full package unchanged. `--race` keeps its separate serialized heavy-shard policy and 2 GiB process budget. No suite flag still means the focused conversion tier, not the full suite. Set `ELYSIA_VERIFICATION_DIR=.tmp-dev/check` to retain reports and logs in the worktree. See `backend/TESTING.md` for targeted groups.
+
 ## Contribution checks
 
 Each commit should complete one responsibility with its callers, tests and documentation. Fold corrections and intermediate revisions on unpublished branches into the relevant commit. Describe the final problem and behavior, not internal work rounds. Do not casually rewrite shared history.

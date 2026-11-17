@@ -64,11 +64,13 @@ func (document ProtocolPackage) Validate(limits Limits) error {
 // CompilePackage compiles a spec/mapping package without installed codec modules.
 // Unsupported semantic effects are rejected instead of silently ignored.
 func (compiler *Compiler) CompilePackage(raw []byte) (*Compiled, []ConversionIssue) {
-	document, err := decodeProtocolPackage(raw, compiler.limits)
-	if err != nil {
-		return nil, definitionIssues(document.Spec.Identity(), "/", err)
-	}
-	return compiler.compilePackage(document)
+	return processCompilations.compile(compiler.compilationKey(raw), func() (*Compiled, []ConversionIssue) {
+		document, err := decodeProtocolPackage(raw, compiler.limits)
+		if err != nil {
+			return nil, definitionIssues(document.Spec.Identity(), "/", err)
+		}
+		return compiler.compilePackage(document)
+	})
 }
 
 func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, []ConversionIssue) {
@@ -92,11 +94,6 @@ func (compiler *Compiler) compilePackage(document ProtocolPackage) (*Compiled, [
 			return nil, issues
 		}
 	}
-	// Request programs have invocation-local bindings and indexes. The compiler
-	// excludes stream/delivery state from these scopes; neither call can observe
-	// a mutation between preflight and encoding with the same runtime inputs.
-	decode, encode := compiled.mappings[DecodeRequest], compiled.mappings[EncodeRequest]
-	compiled.canReusePackageRequest = decode.outputPlan != nil && encode.outputPlan != nil && decode.streamState == nil && encode.streamState == nil
 	releaseExpressionGraphs(compiled.compileExpressions)
 	compiled.compileExpressions = nil
 	return compiled, nil
@@ -277,7 +274,7 @@ func compileProtocolProgram(path string, mapping ProtocolDirectionMapping, direc
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}
-	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler.limits, &scope)
+	indexes, err := compilePackageIndexes(mapping.Indexes, direction, path+"/indexes", compiler, &scope)
 	if err != nil {
 		return compiledMapping{}, nil, err
 	}

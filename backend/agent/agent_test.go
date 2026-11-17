@@ -615,6 +615,9 @@ func TestRunTurn_ConcurrencyGuard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first: %v", err)
 	}
+	if !engine.HasActiveTurns() {
+		t.Fatal("detached turn must prevent idle maintenance")
+	}
 	if _, err := engine.RunTurn(context.Background(), "s1", &UserContent{Text: "second"}); !errors.Is(err, ErrSessionRunning) {
 		t.Fatalf("expected ErrSessionRunning, got %v", err)
 	}
@@ -622,6 +625,9 @@ func TestRunTurn_ConcurrencyGuard(t *testing.T) {
 	collectEvents(t, first)
 	if engine.IsRunning("s1") {
 		t.Fatalf("session should be idle after turn")
+	}
+	if engine.HasActiveTurns() {
+		t.Fatal("completed turn still prevents idle maintenance")
 	}
 }
 

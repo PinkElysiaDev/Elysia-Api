@@ -238,6 +238,8 @@ func (executor gatewayJobExecutor) control(ctx context.Context, job protocol.Gen
 }
 
 func (executor gatewayJobExecutor) send(ctx context.Context, model config.ModelRef, operation protocol.Operation, body []byte, parameters map[string]string) (protocol.Value, error) {
+	done := executor.server.httpRequests.beginBackground()
+	defer done()
 	response, err := executor.server.protocolTransport.SendProtocolRequest(ctx, model.BaseURL, model.APIKey, operation, body, parameters)
 	if err != nil {
 		return protocol.Value{}, err

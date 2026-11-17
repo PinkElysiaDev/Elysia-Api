@@ -14,6 +14,8 @@ import (
 // The application adapter uses verified generation bindings without retries.
 // Missing contracts and rate limits provide no evidence to change availability.
 func (s *Server) probeModelHealth(ctx context.Context, model storage.Model, timeoutSeconds int) healthProbeResult {
+	done := s.httpRequests.beginBackground()
+	defer done()
 	probeCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 	options, err := generationOperationContext(nil)

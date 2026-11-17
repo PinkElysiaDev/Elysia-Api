@@ -87,6 +87,14 @@ func NewEngine(caller StreamCaller, store Store, tools *Registry, render UserCon
 	}
 }
 
+// HasActiveTurns reports detached work so hosts can defer idle maintenance even
+// after the browser disconnects. It does not create an engine or query storage.
+func (e *Engine) HasActiveTurns() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.running) != 0
+}
+
 // IsRunning 报告会话是否有活动轮次。
 func (e *Engine) IsRunning(sessionID string) bool {
 	e.mu.Lock()

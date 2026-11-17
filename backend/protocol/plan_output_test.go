@@ -228,6 +228,129 @@ func TestOutputPlanLogicalNodeLimit(t *testing.T) {
 	compareOutputPlan(t, expression, plan, input, limits, 100, 0)
 }
 
+func TestOutputPlanIterationBorrowsDistinctSourceItems(t *testing.T) {
+	item := readExpression("item", "")
+	children := readExpression("item", "/children")
+	value := readExpression("item", "/value")
+	input := parseTestValue(t, `[{"value":"first","children":[{"value":"nested"}]},{"value":null},{"value":0},{}]`)
+	for _, kind := range []string{"raw", "constructed", "walked", "captured-walk"} {
+		source := readExpression("input", "")
+		if kind != "raw" {
+			body := objectExpression(map[string]Expression{"value": value, "children": children})
+			operation := "map"
+			if kind == "walked" || kind == "captured-walk" {
+				operation = "walk"
+				body.Fields["children"] = Expression{Op: "if", When: expressionPointer(Expression{Op: "exists", Source: &children}), Then: expressionPointer(Expression{Op: "recur", Source: &children})}
+			}
+			if kind == "captured-walk" {
+				body.Fields["native"] = Expression{Op: "capture_native", Source: &item}
+			}
+			read := source
+			source = Expression{Op: operation, Source: &read, Body: &body}
+		}
+		for _, operation := range []string{"map", "flatmap", "walk"} {
+			t.Run(kind+"/"+operation, func(t *testing.T) {
+				body := objectExpression(map[string]Expression{"index": {Op: "index"}, "item": item})
+				if operation == "flatmap" {
+					body = Expression{Op: "array", Items: []Expression{body}}
+				}
+				compiler := expressionCompiler{limits: DefaultLimits()}
+				plan, err := compiler.compilePlan(Expression{Op: operation, Source: &source, Body: &body}, "/mapping", expressionScope{wireCapture: true}, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state := numericTestState(t, input)
+				state.capture = &nativeCaptureState{}
+				selected, err := plan.source.build(state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				before, err := selected.materialize(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				items, err := plannedArrayItems(selected.output)
+				if err != nil || len(items) != 4 {
+					t.Fatal("source item count changed", len(items), err)
+				}
+				// Keep the first result unencoded while another execution reuses the plan.
+				first, err := plan.buildIterationOutput(state, selected, plan.body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := plan.build(numericTestState(t, parseTestValue(t, `[{"value":"other"}]`))); err != nil {
+					// Native capture is disabled without capture state in this execution.
+					t.Fatal(err)
+				}
+				var want []string
+				for index, original := range items {
+					got, err := readOutputPointer(first.output, []string{fmt.Sprint(index), "item"}, nil)
+					if err != nil || original.node != nil && got != original {
+						t.Fatal("iteration aliased or replaced a source item", index, got, original, err)
+					}
+					wire, err := original.Encode(t.Context())
+					if err != nil {
+						t.Fatal(err)
+					}
+					want = append(want, fmt.Sprintf(`{"index":%d,"item":%s}`, index, wire.raw))
+					if kind == "captured-walk" {
+						path, err := readOutputPointer(got, []string{"native", "source", "path"}, nil)
+						if err != nil || path.value != StringValue(fmt.Sprintf("/%d", index)) {
+							t.Fatal("planned iteration lost a captured item's location", index, path, err)
+						}
+					}
+				}
+				got, err := first.materialize(t.Context())
+				if err != nil || got.raw != "["+strings.Join(want, ",")+"]" {
+					t.Fatal("retained item values or output order changed", got, err)
+				}
+				after, err := selected.materialize(t.Context())
+				if err != nil || after != before {
+					t.Fatal("iteration mutated the borrowed source", after, before, err)
+				}
+			})
+		}
+	}
+}
+
+func TestOutputPlanIterationMaterializedErrorOrder(t *testing.T) {
+	source := Expression{Op: "map", Source: expressionPointer(readExpression("input", "")), Body: expressionPointer(objectExpression(map[string]Expression{
+		"first": readExpression("item", "/first"), "last": readExpression("item", "/last"),
+	}))}
+	for _, operation := range []string{"map", "flatmap"} {
+		t.Run(operation, func(t *testing.T) {
+			body := objectExpression(map[string]Expression{
+				"a": {Op: "read", From: "item", Path: "/first", Required: true},
+				"z": {Op: "read", From: "item", Path: "/last", Required: true},
+			})
+			path := "/mapping/body/fields/a"
+			if operation == "flatmap" {
+				body = Expression{Op: "array", Items: []Expression{body}}
+				path = "/mapping/body/items/0/fields/a"
+			}
+			compiled := compileTestOutputExpression(t, Expression{Op: operation, Source: &source, Body: &body})
+			plan, ok := compileOutputPlan(compiled)
+			if !ok {
+				t.Fatal("materialized iteration has no plan")
+			}
+			input := parseTestValue(t, `[{"first":0,"last":null},{},{"first":false}]`)
+			output, err := plan.build(numericTestState(t, input))
+			if err == nil || err.Error() != path+": required field is absent" || mappingErrorPath("", err) != path || !output.output.IsZero() {
+				t.Fatal("iteration returned partial output or changed the first diagnostic", output, err)
+			}
+			for limit := 1; limit <= 96; limit++ {
+				limits := DefaultLimits()
+				limits.BufferBytes = limit
+				compareOutputPlan(t, compiled, plan, input, limits, 0, 0)
+			}
+			for limit := 1; limit <= 24; limit++ {
+				compareOutputPlan(t, compiled, plan, input, DefaultLimits(), limit, 0)
+				compareOutputPlan(t, compiled, plan, input, DefaultLimits(), 0, limit)
+			}
+		})
+	}
+}
+
 func BenchmarkOutputPlanNestedPayload(b *testing.B) {
 	expression := readExpression("item", "/text")
 	for range 4 {

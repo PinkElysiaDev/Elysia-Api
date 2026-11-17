@@ -121,6 +121,21 @@ func TestGatewayConversionPlanGenerationAndIsolation(t *testing.T) {
 	wg.Wait()
 }
 
+func TestGatewayConversionPlanHotReadNeedsNoDatabase(t *testing.T) {
+	s, _ := newProtocolAdminTestServer(t)
+	before, err := s.pinGatewayConversions(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.pinGatewayConversions(t.Context())
+	if err != nil || after != before {
+		t.Fatal("unchanged snapshot required a database read", err)
+	}
+}
+
 func TestGatewayConversionPlanSeparatesCountingPrograms(t *testing.T) {
 	s, _ := newProtocolAdminTestServer(t)
 	compiled := conversionPackage(t, protocol.PresetAnthropicID)

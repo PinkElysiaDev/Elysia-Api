@@ -140,7 +140,10 @@ These are the main fields written on first launch. Replace the example token; do
 | `webuiDir` | Empty uses embedded assets; nonempty overrides the WebUI directory |
 | `enablePprof` | `false`; enables admin-authenticated `/debug/pprof` routes; restart after changes |
 | `maxBodyBytes` | `33554432` (32 MiB); request body limit |
+| `memoryLimitBytes` | Startup-only Go runtime soft memory limit in bytes; restart after changes. A positive value overrides `GOMEMLIMIT` exactly. Omitted or `0` leaves the runtime's limit untouched, so an explicit `GOMEMLIMIT` (including `off`) applies and, with neither set, no limit is imposed. Negative values are rejected. |
 | `debugMode` / `verboseLog` | Disabled by default; verbose logging requires both |
+
+The memory limit is Go's **soft managed-memory budget**, not a hard RSS or container limit. Large live graphs/requests and non-Go allocations can exceed it; setting it below the live set can increase GC CPU and latency. The process entry point applies it before protocol initialization; embedding `server.New` does not change a host's global limit. Startup still scavenges once after successful protocol initialization. A background sampler may scavenge excess unreleased heap spans after at least five quiet seconds (no active HTTP, Agent turn, gateway session, source/catalog refresh, health probe, usage-retention pass or job transport), with a 30-second cooldown, when at least 32 MiB has been allocated since its previous sample baseline/reclaim or at least 32 MiB of idle spans remain unreleased and are at least half the in-use heap. It does not force GC per request or block new admissions; a request arriving just after the idle check can still overlap a GC pause.
 
 Relative `databasePath`, `logDatabasePath`, `secretKeyPath`, and `webuiDir` values resolve against the configuration directory. The databases must be different files, including symlink and hard-link aliases. Model sources, groups, and API tokens are stored in SQLite through management APIs.
 

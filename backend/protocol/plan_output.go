@@ -227,7 +227,10 @@ func (value plannedOutput) materializeWithin(ctx context.Context, cache *semanti
 
 func (plan *compiledOutputPlan) build(state evaluation) (value plannedOutput, err error) {
 	if plan.bindingSlots != 0 && state.bindings == nil {
-		state.bindings = make([]JSONOutput, plan.bindingSlots)
+		state.ensureControlBindings()
+		if state.bindings == nil {
+			state.bindings = make([]JSONOutput, plan.bindingSlots)
+		}
 		if state.capture != nil {
 			state.capture.bindings = make([]nativeLocation, plan.bindingSlots)
 		}
@@ -484,7 +487,8 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 	isWalk := expression.op == "walk" || expression.op == "recur"
 	shouldCapture := body.needsItemCapture(state.capture, state.walkBody)
 	var itemReader *planObjectReader
-	for index, item := range items {
+	for index := range items {
+		item := &items[index]
 		if isWalk {
 			state.budget.walkNodes++
 			if state.budget.walkNodes > state.budget.limits.Nodes {
@@ -500,7 +504,7 @@ func (plan *compiledOutputPlan) buildIterationOutput(state evaluation, source pl
 		child.item = item.value
 		child.itemOutput = nil
 		if item.node != nil {
-			child.itemOutput = &item
+			child.itemOutput = item
 		} else if body.itemObjectReads >= objectReuseReads && item.value.IsObject() {
 			if itemReader == nil {
 				itemReader = new(planObjectReader)

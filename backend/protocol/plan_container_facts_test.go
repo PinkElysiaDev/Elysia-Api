@@ -146,6 +146,88 @@ func TestCanonicalContainerFieldSemantics(t *testing.T) {
 	}
 }
 
+func TestMergeOperandStorageNestedAndRetainedOutputs(t *testing.T) {
+	value := readExpression("input", "/value")
+	counter := objectExpression(map[string]Expression{"count": value, "origin": literalExpression("observed")})
+	for _, operation := range []string{"merge_deep", "merge_usage"} {
+		for _, count := range []int{2, operandWorkspaceCapacity, operandWorkspaceCapacity + 1} {
+			expression := Expression{Op: operation, Items: make([]Expression, count)}
+			for index := range expression.Items {
+				key := fmt.Sprintf("field%d", index)
+				operand := value
+				if operation == "merge_usage" {
+					key, operand = "input", counter
+				}
+				expression.Items[index] = objectExpression(map[string]Expression{key: operand})
+			}
+			if operation == "merge_deep" {
+				expression.Items[1] = Expression{Op: operation, Items: []Expression{
+					objectExpression(map[string]Expression{"nestedA": value}), objectExpression(map[string]Expression{"nestedB": value}),
+				}}
+			} else {
+				expression.Items[1] = Expression{Op: operation, Items: []Expression{
+					objectExpression(map[string]Expression{"output": counter}), literalExpression(map[string]any{"details": map[string]any{"zero": map[string]any{"count": 0, "origin": "observed"}}}),
+				}}
+			}
+			plan := numericTestPlan(t, expression)
+			for _, number := range []int{7, 9} {
+				t.Run(fmt.Sprintf("%s/%d/%d", operation, count, number), func(t *testing.T) {
+					t.Parallel() // The immutable plan is shared; each call owns its operands.
+					first, err := plan.build(numericTestState(t, fixtureValue(t, map[string]int{"value": number})))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := plan.build(numericTestState(t, fixtureValue(t, map[string]int{"value": number + 100}))); err != nil {
+						t.Fatal(err)
+					}
+					var want Value
+					if operation == "merge_deep" {
+						fields := map[string]int{"nestedA": number, "nestedB": number}
+						for index := range count {
+							if index != 1 {
+								fields[fmt.Sprintf("field%d", index)] = number
+							}
+						}
+						want = fixtureValue(t, fields)
+					} else {
+						want = fixtureValue(t, Usage{Input: &Counter{int64(number), ObservedCount}, Output: &Counter{int64(number), ObservedCount}, Total: &Counter{int64(number * 2), InferredCount}, Details: map[string]Counter{"zero": {0, ObservedCount}}})
+					}
+					got, err := first.materialize(t.Context())
+					if err != nil || got != want {
+						t.Fatal("operand storage outlived its owner or was overwritten by nested evaluation", got, want, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestMergeOperandStoragePreservesEvaluationFailure(t *testing.T) {
+	for _, operation := range []string{"merge_deep", "merge_usage"} {
+		for _, count := range []int{operandWorkspaceCapacity, operandWorkspaceCapacity + 1} {
+			expression := Expression{Op: operation, Items: make([]Expression, count)}
+			for index := range expression.Items {
+				expression.Items[index] = readExpression("input", fmt.Sprintf("/%d", index))
+			}
+			plan := numericTestPlan(t, expression)
+			sentinel := errors.New("last operand evaluation failed")
+			reads := 0
+			state := numericTestState(t, Value{})
+			state.inputReader = func([]string) (JSONOutput, error) {
+				reads++
+				if reads == count {
+					return JSONOutput{}, sentinel
+				}
+				return JSONLeaf(Value{raw: "false"}), nil
+			}
+			output, err := plan.build(state)
+			if !errors.Is(err, sentinel) || mappingErrorPath("", err) != fmt.Sprintf("/mapping/items/%d", count-1) || reads != count || state.budget.steps != count+1 || !output.output.IsZero() {
+				t.Fatal("operand type checking preempted evaluation or returned partial output", operation, count, reads, output, err)
+			}
+		}
+	}
+}
+
 func BenchmarkConstructedObjectFields(b *testing.B) {
 	fields := make(map[string]JSONOutput, 32)
 	for index := range 32 {

@@ -39,8 +39,9 @@ func (plan *compiledOutputPlan) checkUsage(state evaluation) (plannedOutput, err
 }
 
 func (plan *compiledOutputPlan) mergeUsage(state evaluation) (plannedOutput, error) {
-	operands, err := plan.buildOperandValues(&state)
-	if err != nil {
+	var storage [operandWorkspaceCapacity]plannedOutput
+	operands := selectOperandStorage(storage[:], len(plan.items))
+	if err := plan.buildOperandValuesInto(&state, operands); err != nil {
 		return plannedOutput{}, err
 	}
 	var merged *Usage

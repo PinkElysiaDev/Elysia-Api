@@ -110,6 +110,26 @@ func TestEventReplaySequenceAndIdentity(t *testing.T) {
 	}
 }
 
+func TestEventReplayWithoutWireRetainsCanonicalEquality(t *testing.T) {
+	replay, err := NewEventReplay(replayTarget(), DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replay.Release()
+	event := Event{SchemaVersion: ProtocolCoreVersion, Type: MetadataUpdated, Sequence: coreInteger(1), Error: parseTestValue(t, `{"n":9007199254740993,"zero":-0,"null":null}`)}
+	if accepted, err := replay.Consume(event); err != nil || !accepted {
+		t.Fatal("first semantic event rejected", accepted, err)
+	}
+	event.Error = parseTestValue(t, ` { "null":null, "zero":-0, "n":9007199254740993 } `)
+	if accepted, err := replay.Consume(event); err != nil || accepted {
+		t.Fatal("wire-free replay lost canonical equality", accepted, err)
+	}
+	event.Error = parseTestValue(t, `{"n":9007199254740994,"zero":-0,"null":null}`)
+	if _, err := replay.Consume(event); !hasIssueCode(err, UpstreamContractViolation) {
+		t.Fatal("canonical replay lost numeric precision", err)
+	}
+}
+
 func TestEventReplayCancellationAndUnexpectedEOF(t *testing.T) {
 	replay, _ := NewEventReplay(replayTarget(), DefaultLimits())
 	if _, err := replay.Consume(toolStart()); err != nil {

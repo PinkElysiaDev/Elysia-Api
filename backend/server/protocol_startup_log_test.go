@@ -111,7 +111,7 @@ func TestProtocolStartupEvidenceLogsAndRestartIdempotence(t *testing.T) {
 			}
 		}
 	}
-	if refreshed != 4 || stages != 2 {
+	if refreshed != 4 || stages != 1 {
 		t.Fatalf("evidence=%d stages=%d", refreshed, stages)
 	}
 	counts := recoveryCounts(t, db)

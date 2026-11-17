@@ -341,12 +341,14 @@ func (document ProtocolPackage) compileContract(engineLimits Limits) (*Compiled,
 			}
 		}
 	}
-	wireSpec, err := spec.compile(limits)
+	schemas := make(map[string]*wireSchemaPlan)
+	wireSpec, err := spec.compile(limits, schemas)
 	if err != nil {
 		return nil, err
 	}
-	compiled := &Compiled{identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: wireSpec.operations, operationSchemas: wireSpec.operationSchemas, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
+	compiled := &Compiled{verification: &verificationMemo{}, identity: spec.Identity(), limits: limits, explicitLimits: mapping.Limits != nil || limits.BufferBytes != DefaultLimits().BufferBytes, native: mapping.Native, capabilities: mapping.Capabilities, operations: wireSpec.operations, operationSchemas: wireSpec.operationSchemas, mappings: map[Direction]compiledMapping{}, wireContracts: map[Direction]compiledWireContract{}, packagePlan: &compiledPackagePlan{coreVersion: mapping.CoreVersion, dslVersion: mapping.DSLVersion, effects: map[Direction][]compiledSemanticEffect{}}}
 	expressions := newExpressionCompiler(limits, mapping.Expressions)
+	expressions.schemaPlans = schemas
 	expressions.streamDispositions = make(map[string]bool)
 	for _, rule := range mapping.ConversionDefaults {
 		if rule.StreamDisposition != nil {

@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -24,6 +25,51 @@ func TestHTTPEventNamesUseDeclaredPath(t *testing.T) {
 		value, _ := ParseValue([]byte(body))
 		if err := WriteFrame(&output, operation, value); err == nil || output.Len() != 0 {
 			t.Fatalf("invalid name partially emitted: %s", body)
+		}
+	}
+}
+
+func TestHTTPStreamRejectsAbsentFrames(t *testing.T) {
+	for _, transport := range []Transport{SSE, NDJSON} {
+		var output bytes.Buffer
+		if err := WriteFrame(&output, Operation{Transport: transport}, Value{}); err == nil || output.Len() != 0 {
+			t.Fatal("absent JSON frame was emitted", transport, err)
+		}
+	}
+}
+
+func TestFrameWriterRetainsResolvedEventName(t *testing.T) {
+	operation := Operation{Transport: SSE, Framing: &Framing{EventNamePath: "/a~1b/~0type"}}
+	var output bytes.Buffer
+	write, err := NewFrameWriter(&output, operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.Framing.EventNamePath = "/changed"
+	value := parseTestValue(t, `{"a/b":{"~type":"delta"}}`)
+	for range 2 {
+		if err := write(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Count(output.String(), "event: delta\n") != 2 {
+		t.Fatal("writer reparsed mutable operation metadata", output.String())
+	}
+}
+
+func TestHTTPEncodedFramesAreCompact(t *testing.T) {
+	definition := compoundFrameDefinition(t)
+	definition.Mapping.Native.Preserve = false
+	compiled := compileTestDefinition(t, definition)
+	event := Event{SchemaVersion: ProtocolCoreVersion, Type: MetadataUpdated, Error: parseTestValue(t, "{\n\"n\":9007199254740993, \"zero\":-0, \"html\":\"<>&\"}")}
+	frames, err := compiled.EncodeFrames(t.Context(), event, EvaluationContext{State: NewEvaluationState()})
+	if err != nil || len(frames) == 0 {
+		t.Fatal("no encoded frames", err)
+	}
+	for _, frame := range frames {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, frame.Bytes()); err != nil || compact.String() != frame.JSONString() {
+			t.Fatal("encoder emitted noncompact JSON", frame.JSONString(), err)
 		}
 	}
 }
@@ -93,6 +139,17 @@ func TestHTTPStreamCompactionPreservesRawJSON(t *testing.T) {
 			if !strings.Contains(output.String(), text) {
 				t.Fatalf("%s lost %s: %s", transport, text, output.String())
 			}
+		}
+		count := 0
+		err := ReadFrames(t.Context(), strings.NewReader(output.String()), Operation{Transport: transport}, 1024, func(got Value, _ Object) error {
+			count++
+			if !equalValues(got, value) {
+				t.Fatal("framing changed JSON", got.JSONString())
+			}
+			return nil
+		})
+		if err != nil || count != 1 {
+			t.Fatal("multiline native value broke frame boundaries", transport, count, err)
 		}
 	}
 }

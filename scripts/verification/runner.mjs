@@ -2,7 +2,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { arch, platform, cpus } from 'node:os'
+import { arch, platform } from 'node:os'
 import { createHash } from 'node:crypto'
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
@@ -31,7 +31,15 @@ async function sourceIdentity(root) {
 
 function stopProcess(child) {
   if (!child.pid) return
-  if (process.platform !== 'win32') { child.kill('SIGTERM'); return }
+  if (process.platform !== 'win32') {
+    const killGroup = signal => {
+      try { process.kill(-child.pid, signal) } catch (error) { if (error.code !== 'ESRCH') throw error }
+    }
+    killGroup('SIGTERM')
+    // A test or its subprocess can ignore TERM; do not leave it behind after a timeout.
+    setTimeout(() => killGroup('SIGKILL'), 1000).unref()
+    return
+  }
   // Only terminate the process tree created by this step. Killing go.exe alone
   // leaves its test binary running and can contaminate subsequent measurements.
   const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
@@ -53,7 +61,7 @@ export class VerificationRun {
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim(),
       compilerVersion: compiler.match(/CompilerVersion\s*=\s*"([^"]+)"/)[1],
       goVersion: execFileSync('go', ['version'], { encoding: 'utf8', windowsHide: true }).trim(),
-      platform: platform(), architecture: arch(), cpu: cpus()[0]?.model, steps: [],
+      platform: platform(), architecture: arch(), cpu: platform() === 'darwin' ? 'Apple device' : 'not recorded', steps: [],
       source: await sourceIdentity(root),
     }
     await run.save()
@@ -72,7 +80,7 @@ export class VerificationRun {
     await this.save()
     const log = createWriteStream(logPath)
     const started = performance.now()
-    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32' })
     child.stdout.pipe(log, { end: false })
     child.stderr.pipe(log, { end: false })
     let timedOut = false

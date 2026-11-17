@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -122,22 +123,135 @@ func TestAgentNonReasoningDefault(t *testing.T) {
 	}
 }
 
+func TestAgentCallerAuthoredAnthropicAndGeminiSources(t *testing.T) {
+	t.Parallel()
+	for _, fixture := range cacheWireFixtures() {
+		if fixture.platform != "anthropic" && fixture.platform != "gemini" {
+			continue
+		}
+		t.Run(fixture.platform, func(t *testing.T) {
+			s := newAgentIntegrationServer(t)
+			upstream := newCapturingUpstream(t, func(w http.ResponseWriter, _ string, _ int) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				io.WriteString(w, fixture.stream)
+			})
+			source := storage.ModelSource{ID: "cs1", Name: "authored", BaseURL: upstream.URL, APIKey: "sk-caller-key", Platform: "custom:" + fixture.id, Enabled: true}
+			// Unlike the execution matrices, both saves prepare and atomically
+			// admit real source contracts and evidence through production code.
+			if err := s.saveSource(t.Context(), source); err != nil {
+				t.Fatal(err)
+			}
+			model := storage.Model{ID: "fake-model", SourceID: source.ID, Name: "fake-model", BaseURL: upstream.URL, Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
+			if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{model}); err != nil {
+				t.Fatal(err)
+			}
+			bindings, err := s.store.ListProtocolBindings(t.Context())
+			if err != nil || len(bindings) != 1 || bindings[0].Unbound || !hasPassingGatewayCombination(bindings[0].Combinations) {
+				t.Fatal("source authoring did not persist a verified contract", bindings, err)
+			}
+			parent := bindings[0]
+			parent.Binding.Reasoning = &protocol.ReasoningCapabilities{Kind: "budget", Manual: true, Disable: true, MinBudget: 1024}
+			parent.Conversion = &protocol.ConversionSelection{Overrides: &protocol.ConversionPolicy{SchemaVersion: protocol.ConversionPolicySchemaVersion, ID: "authored-source", Rules: []protocol.ConversionRule{{ID: "notice", Order: 2000000, Enabled: true, Phase: protocol.ConversionRequest, Action: "warn", Reason: "authored source test"}}}}
+			if err := s.store.SaveProtocolBinding(t.Context(), parent); err != nil {
+				t.Fatal(err)
+			}
+			child := parent
+			child.Kind, child.ModelID = "model", model.ID
+			child.Conversion, child.Combinations = nil, nil
+			if err := s.store.SaveProtocolBinding(t.Context(), child); err != nil {
+				t.Fatal(err)
+			}
+			// Model an in-progress refresh without starting a background task.
+			// A successful non-auto-fetch save must still notify it with false.
+			jobs := s.sourceRefreshJobs()
+			jobs.mu.Lock()
+			jobs.running = map[string]bool{source.ID: true}
+			jobs.pending = map[string]bool{}
+			jobs.mu.Unlock()
+			t.Cleanup(func() {
+				jobs.mu.Lock()
+				delete(jobs.running, source.ID)
+				delete(jobs.pending, source.ID)
+				jobs.mu.Unlock()
+			})
+			source.Name = "authored metadata edit"
+			if err := s.saveSource(t.Context(), source); err != nil {
+				t.Fatal(err)
+			}
+			jobs.mu.Lock()
+			autoFetch, notified := jobs.pending[source.ID]
+			jobs.mu.Unlock()
+			if !notified || autoFetch {
+				t.Fatal("successful source save did not notify the refresh coordinator")
+			}
+			saved, found, err := s.findSourceByID(t.Context(), source.ID)
+			if err != nil || !found || saved.Name != source.Name || saved.Platform != source.Platform {
+				t.Fatal("source metadata was not admitted", saved, err)
+			}
+			policies, bindings, _, err := s.store.ConversionSnapshot(t.Context())
+			if err != nil || len(bindings) != 2 {
+				t.Fatal("source save lost bindings", bindings, err)
+			}
+			service, err := s.protocolService()
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled, ok := service.Pin(fixture.id)
+			if !ok {
+				t.Fatal("authored source protocol is unavailable")
+			}
+			effective, err := resolveGatewayConversion(policies, bindings, compiled, compiled, config.ModelRef{SourceID: source.ID, ID: model.ID}, "stream", protocol.SSE)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, binding := range bindings {
+				if !reflect.DeepEqual(binding.Binding, parent.Binding) || (binding.Kind == "source" && !reflect.DeepEqual(binding.Conversion, parent.Conversion)) {
+					t.Fatal("source save overwrote the operator contract", binding)
+				}
+				hasInheritedEvidence := false
+				for _, report := range binding.Combinations {
+					if report.Passed && report.SourceHash == compiled.Hash() && report.PolicyHash == effective.Hash {
+						hasInheritedEvidence = true
+					}
+				}
+				if !hasInheritedEvidence {
+					t.Fatal("source save did not prepare inherited evidence", binding.Kind)
+				}
+			}
+			result, err := newAgentStreamCaller(s).Call(t.Context(), callerRequest(), agent.StreamCallbacks{})
+			if err != nil || result.Text != "ok" || upstream.requestCount() != 1 {
+				t.Fatal("Agent could not execute the authored source", result, err, upstream.requestCount())
+			}
+		})
+	}
+}
+
 // seedCallerModel 建一个带密钥的源 + 单模型（平台可指定）。
 func seedCallerModel(t *testing.T, s *Server, baseURL, platform string) {
 	t.Helper()
 	platform = fixturePlatform(platform)
 	source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: baseURL, APIKey: "sk-caller-key", Platform: platform, Enabled: true}
-	if err := s.saveSource(t.Context(), source); err != nil {
-		t.Fatalf("UpsertSource: %v", err)
-	}
 	models := []storage.Model{{
 		ID: "fake-model", SourceID: "cs1", Name: "fake-model", BaseURL: baseURL,
 		Platform: platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true, VisionCapable: true,
 	}}
-	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
-		t.Fatalf("ReplaceSourceModels: %v", err)
-	}
+	seedAgentSource(t, s, source, models)
 	seedAgentAliasReasoning(t, s, source.ID)
+}
+
+// Agent execution fixtures do not test source authoring. Persist real models
+// and source contracts with the same memoized offline proofs as routing tests,
+// instead of verifying every protocol pair again for each caller/subtest.
+func seedAgentSource(t *testing.T, s *Server, source storage.ModelSource, models []storage.Model) {
+	t.Helper()
+	if err := s.store.UpsertSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.ReplaceSourceModels(t.Context(), source, models); err != nil {
+		t.Fatal(err)
+	}
+	seedFixtureBindings(t, s, map[string]storage.ModelSource{source.ID: source})
+	s.invalidateRouteCache()
 }
 
 // Synthetic aliases need explicit capabilities just like private provider aliases.

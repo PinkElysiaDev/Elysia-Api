@@ -186,7 +186,7 @@ func (plan *protocolRefreshPlan) ensureProtocol(id string, value protocol.Value,
 		writes.Revision = true
 	} else if errors.Is(err, storage.ErrCorruptProtocolRecord) {
 		writes.RepairPreset = isPreset
-	} else if isPreset {
+	} else if isPreset && revision.Definition != value && !storage.EquivalentProtocolDefinition(revision.Definition, value) {
 		stored, issues := plan.compilation.Compile(revision.Definition)
 		writes.RepairPreset = protocol.IssuesError(issues) != nil || stored.Identity().DefinitionID != id || stored.Hash() != compiled.Hash()
 	}

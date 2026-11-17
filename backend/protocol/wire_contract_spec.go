@@ -70,7 +70,7 @@ func (expressions *expressionCompiler) compileWireContractSpec(spec WireContract
 	if spec.Schema == nil {
 		return compiledWireContract{}, fmt.Errorf("%s/schema: wire schema is required", path)
 	}
-	schema, err := compileWireSchemaPlan(spec.Schema, limits)
+	schema, err := expressions.compileWireSchemaPlan(spec.Schema)
 	if err != nil {
 		return compiledWireContract{}, locateMappingError(path+"/schema", err)
 	}
@@ -153,7 +153,7 @@ func compileWireAssertionsInScope(assertions []WireAssertion, path string, scope
 			}
 			check.validateSchema = acceptWireCheckSelection
 		} else {
-			schema, schemaErr := compileWireSchemaPlan(assertion.Schema, expressions.limits)
+			schema, schemaErr := expressions.compileWireSchemaPlan(assertion.Schema)
 			if schemaErr != nil {
 				return nil, locateMappingError(at+"/schema", schemaErr)
 			}

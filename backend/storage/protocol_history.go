@@ -174,7 +174,7 @@ func (s *Store) ArchiveProtocol(ctx context.Context, id, baseline, replacement s
 			return err
 		}
 	}
-	return tx.Commit()
+	return s.commitConversion(ctx, tx)
 }
 
 type ProtocolReference struct {
@@ -328,5 +328,5 @@ func (s *Store) EnableModelFunctionTools(ctx context.Context, sourceID, modelID,
 	if err := saveProtocolBinding(ctx, tx, binding); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return s.commitConversion(ctx, tx)
 }

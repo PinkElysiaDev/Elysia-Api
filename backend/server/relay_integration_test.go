@@ -72,7 +72,7 @@ func newTestServerWithStore(t *testing.T, groups []config.ModelGroupConfig, defi
 	s.store = store
 	// Routing tests start with verified presets. Reuse their offline proofs;
 	// initializeProtocolRuntime still checks and publishes this store's state.
-	activateDiscoveryPresets(t, s)
+	seedDiscoveryPresets(t, s)
 	for _, definition := range definitions {
 		activateGatewayFixture(t, s, definition)
 	}

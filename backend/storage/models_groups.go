@@ -202,7 +202,7 @@ func (s *Store) saveGroup(ctx context.Context, item ModelGroup, isCreate bool) e
 			return err
 		}
 	}
-	return tx.Commit()
+	return s.commitConversion(ctx, tx)
 }
 
 // updateTokenGroupsTx 遍历全部 API token 的组授权，对每个 token 应用 transform
@@ -413,7 +413,7 @@ func (s *Store) DeleteGroup(ctx context.Context, id string) ([]string, error) {
 			return nil, err
 		}
 	}
-	return disabled, tx.Commit()
+	return disabled, s.commitConversion(ctx, tx)
 }
 
 // removeGroupFromTokens 在删除模型组后，把所有 token 的 allowed_groups_json 里的
@@ -462,7 +462,7 @@ func removeGroupName(groups []string, groupName string) ([]string, bool) {
 // SetModelAvailability 更新某个模型（按 id+source_id 唯一）的可用状态，
 // 供后台健康检测自动禁用/恢复使用。返回受影响行数。
 func (s *Store) SetModelAvailability(ctx context.Context, modelID, sourceID string, available bool) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE models SET available = ? WHERE id = ? AND source_id = ?`, sqlBoolToInt(available), modelID, sourceID)
+	res, err := s.execConversion(ctx, `UPDATE models SET available = ? WHERE id = ? AND source_id = ?`, sqlBoolToInt(available), modelID, sourceID)
 	if err != nil {
 		return 0, err
 	}
@@ -551,7 +551,7 @@ func (s *Store) UpdateModel(ctx context.Context, modelID, sourceID string, patch
 		sets = append(sets, "capability_source = 'manual'")
 	}
 	args = append(args, modelID, sourceID)
-	res, err := s.db.ExecContext(ctx, `UPDATE models SET `+strings.Join(sets, ", ")+` WHERE id = ? AND source_id = ?`, args...)
+	res, err := s.execConversion(ctx, `UPDATE models SET `+strings.Join(sets, ", ")+` WHERE id = ? AND source_id = ?`, args...)
 	if err != nil {
 		return false, err
 	}
@@ -583,7 +583,7 @@ func (s *Store) DeleteModel(ctx context.Context, modelID, sourceID string) (bool
 	if _, err := tx.ExecContext(ctx, `DELETE FROM model_group_models WHERE model_id = ? AND source_id = ?`, modelID, sourceID); err != nil {
 		return false, err
 	}
-	return true, tx.Commit()
+	return true, s.commitConversion(ctx, tx)
 }
 
 // ModelListFilter 提供管理面的模型列表过滤（方向4）：SourceID 为空查全部；

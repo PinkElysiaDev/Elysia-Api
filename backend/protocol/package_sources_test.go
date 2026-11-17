@@ -1,7 +1,9 @@
 package protocol
 
 import (
+	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -76,6 +78,35 @@ func TestCompileSourcesRejectsInvalidDocuments(t *testing.T) {
 				t.Fatal("invalid source escaped strict parsing", issues)
 			}
 		})
+	}
+}
+
+func TestCompileSourcesCacheCannotAuthorizeInvalidSourceSplit(t *testing.T) {
+	document := textProtocolPackage(t)
+	spec, mapping := fixtureValue(t, document.Spec).JSONString(), fixtureValue(t, document.Mapping).JSONString()
+	compiler, _ := NewCompiler(DefaultLimits(), nil)
+	injectedSpec := spec + `,"mapping":` + mapping
+	whole := `{"schemaVersion":4,"spec":` + injectedSpec + `,"mapping":` + mapping + `}`
+	cached, issues := compiler.CompilePackage([]byte(whole))
+	if IssuesError(issues) != nil || cached == nil {
+		t.Fatal("valid duplicate-key package did not compile", issues)
+	}
+	compiled, issues := compiler.CompileSources([]byte(injectedSpec), []byte(mapping))
+	if compiled != nil || len(issues) != 1 || issues[0].Path != "/spec" || issues[0].Reason != "invalid JSON value" {
+		t.Fatal("package cache accepted an invalid independent source boundary", issues)
+	}
+	runtime.KeepAlive(cached)
+}
+
+func TestSourceDiagnosticFallbackCannotAcceptRejectedPackage(t *testing.T) {
+	document := textProtocolPackage(t)
+	spec, mapping := fixtureValue(t, document.Spec).Bytes(), fixtureValue(t, document.Mapping).Bytes()
+	if issues := sourceDecodeIssues(spec, mapping); len(issues) != 0 {
+		t.Fatal("valid individual sources unexpectedly failed", issues)
+	}
+	rejected := definitionIssues(document.Spec.Identity(), "/mapping", fmt.Errorf("combined package decode failed"))
+	if got := sourceCompilationIssues(rejected, sourceDecodeIssues(spec, mapping)); !reflect.DeepEqual(got, rejected) || IssuesError(got) == nil {
+		t.Fatal("diagnostic-only fallback accepted a fast-path rejection", got)
 	}
 }
 

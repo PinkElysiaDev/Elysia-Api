@@ -2,19 +2,19 @@ package protocol
 
 import "strings"
 
-func (check *capabilityCheck) serverTool(node Node, path string) {
-	check.require(ServerToolsCapability, path)
-	check.requireName(node.Name, path+"/name")
+func (check *capabilityCheck) serverToolPath(node Node, path diagnosticPath) {
+	check.requirePath(ServerToolsCapability, path)
+	check.requireNamePath(node.Name, path.suffix("/name"))
 	for _, field := range []struct {
 		name  string
 		value Value
 	}{{"id", node.ID}, {"status", node.Status}} {
 		if !field.value.IsZero() {
-			check.requireName(field.value, path+"/"+field.name)
+			check.requireNamePath(field.value, path.suffix("/").suffix(field.name))
 		}
 	}
 	if !node.CallID.IsZero() {
-		check.add(InvalidInput, path+"/callId", ServerToolsCapability, "upstream execution does not request a client tool result")
+		check.addPath(InvalidInput, path.suffix("/callId"), ServerToolsCapability, "upstream execution does not request a client tool result")
 	}
 	if node.Input == nil {
 		return
@@ -23,11 +23,16 @@ func (check *capabilityCheck) serverTool(node Node, path string) {
 	case JSONInput:
 	case TextInput:
 		if !node.Input.Value.IsZero() && !node.Input.Value.IsStringValue() {
-			check.add(InvalidInput, path+"/input/value", ServerToolsCapability, "observed text input must be a string when present")
+			check.addPath(InvalidInput, path.suffix("/input/value"), ServerToolsCapability, "observed text input must be a string when present")
 		}
 	default:
-		check.add(InvalidInput, path+"/input/kind", ServerToolsCapability, "observed input requires a JSON or text kind")
+		check.addPath(InvalidInput, path.suffix("/input/kind"), ServerToolsCapability, "observed input requires a JSON or text kind")
 	}
+}
+
+func (check *capabilityCheck) serverTool(node Node, path string) {
+	var buffer [256]byte
+	check.serverToolPath(node, append(diagnosticPath(buffer[:0]), path...))
 }
 
 func (check *capabilityCheck) serverToolHeader(node Node, path string) {

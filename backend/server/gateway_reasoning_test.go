@@ -666,6 +666,10 @@ func thinkingToolWireMessage(t *testing.T, source string, stream bool, raw []byt
 
 func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
 	t.Parallel()
+	// Cases replace the complete source/model/binding fixture sequentially;
+	// only immutable preset runtime state is shared, never a caller session.
+	s := newAgentIntegrationServer(t)
+	t.Cleanup(s.stopUsageWriter)
 	for _, tc := range []struct{ platform, model, field, value string }{
 		{"openai", "gpt-6.1-sol", "reasoning_effort", `"high"`},
 		{"responses", "gpt-6.1-sol", "effort", `"high"`},
@@ -675,7 +679,6 @@ func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
 		{"anthropic", "claude-opus-4-6", "type", `"adaptive"`},
 	} {
 		t.Run(tc.model+"/"+tc.platform, func(t *testing.T) {
-			s := newAgentIntegrationServer(t)
 			var response string
 			for _, fixture := range cacheWireFixtures() {
 				if fixture.platform == tc.platform {
@@ -690,13 +693,8 @@ func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
 				io.WriteString(w, response)
 			})
 			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: upstream.URL, APIKey: "sk-caller-key", Platform: fixturePlatform(tc.platform), Enabled: true}
-			if err := s.saveSource(t.Context(), source); err != nil {
-				t.Fatal(err)
-			}
 			model := storage.Model{ID: tc.model, SourceID: "cs1", Name: tc.model, BaseURL: upstream.URL, Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
-			if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{model}); err != nil {
-				t.Fatal(err)
-			}
+			seedAgentSource(t, s, source, []storage.Model{model})
 			request := callerRequest()
 			request.Model = tc.model
 			request.Preferences = protocol.AgentPreferences{ThinkingEnabled: true, ThinkingEffort: "high"}
@@ -714,23 +712,19 @@ func TestAgentThinkingUsesBoundModelCapabilities(t *testing.T) {
 
 func TestAgentThinkingDisabledRejectsUnsupportedModel(t *testing.T) {
 	t.Parallel()
+	s := newAgentIntegrationServer(t)
+	t.Cleanup(s.stopUsageWriter)
 	for _, tc := range []struct{ platform, model string }{
 		{"gemini", "gemini-3.5-flash-lite"}, {"gemini", "private-alias"},
 		{"openai", "gpt-6.1-sol"}, {"anthropic", "claude-opus-5-5"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
-			s := newAgentIntegrationServer(t)
 			calls := 0
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
 			defer provider.Close()
 			source := storage.ModelSource{ID: "cs1", Name: "caller-src", BaseURL: provider.URL, Platform: fixturePlatform(tc.platform), Enabled: true}
-			if err := s.saveSource(t.Context(), source); err != nil {
-				t.Fatal(err)
-			}
 			model := storage.Model{ID: tc.model, SourceID: source.ID, Name: tc.model, BaseURL: provider.URL, Platform: source.Platform, Type: "llm", Enabled: true, Available: true, ToolsCapable: true}
-			if err := s.store.ReplaceSourceModels(t.Context(), source, []storage.Model{model}); err != nil {
-				t.Fatal(err)
-			}
+			seedAgentSource(t, s, source, []storage.Model{model})
 			request := callerRequest()
 			request.Model = tc.model
 			_, err := newAgentStreamCaller(s).Call(t.Context(), request, agent.StreamCallbacks{})

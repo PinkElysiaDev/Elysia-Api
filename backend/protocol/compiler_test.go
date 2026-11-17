@@ -68,7 +68,7 @@ func compileTestDefinition(t *testing.T, definition ProtocolPackage) *Compiled {
 	if err := IssuesError(issues); err != nil {
 		t.Fatal(err)
 	}
-	return compiled
+	return detachedCompiledFixture(compiled)
 }
 
 func TestCompilerHTTPStreamIdleRange(t *testing.T) {

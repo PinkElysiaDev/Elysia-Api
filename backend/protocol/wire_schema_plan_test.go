@@ -9,6 +9,35 @@ import (
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
+func TestInlineSchemaPlansDeduplicateContentAndKeepSiteErrors(t *testing.T) {
+	compiler := newExpressionCompiler(DefaultLimits(), nil)
+	one := &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"text": {Type: StringType}, "count": {Type: IntegerType}}}
+	two := &ValueSchema{Type: ObjectType, Properties: map[string]ValueSchema{"count": {Type: IntegerType}, "text": {Type: StringType}}}
+	first, err := compiler.compileWireSchemaPlan(one)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := compiler.compileWireSchemaPlan(two)
+	if err != nil || repeated != first || repeated.diagnostic != first.diagnostic {
+		t.Fatal("equal inline schema content compiled twice", err)
+	}
+	two.Nullable = true
+	changed, err := compiler.compileWireSchemaPlan(two)
+	if err != nil || changed == first {
+		t.Fatal("different schema options reused another plan", err)
+	}
+	limited := newExpressionCompiler(Limits{Depth: 1, Nodes: 100, BufferBytes: 100, Mutations: 1, StateItems: 1}, nil)
+	if _, err := limited.compileWireSchemaPlan(one); err == nil {
+		t.Fatal("schema cache crossed compiler limits")
+	}
+	for _, site := range []string{"first", "second"} {
+		_, err := compileWireAssertions([]WireAssertion{{Schema: &ValueSchema{Type: "invalid"}, Reason: "must match"}}, "/spec/"+site, one, one, compiler, 1)
+		if err == nil || mappingErrorPath("/", err) != "/spec/"+site+"/0/schema" {
+			t.Fatal("invalid inline schema lost its authored site", site, err)
+		}
+	}
+}
+
 func TestWireArrayValidationPreservesBorrowedInput(t *testing.T) {
 	plan, err := compileWireSchemaPlan(&ValueSchema{Type: ArrayType, Items: &ValueSchema{Type: AnyType}}, DefaultLimits())
 	if err != nil {

@@ -32,7 +32,12 @@ func TestResponsesPackageSourceCapacity(t *testing.T) {
 	}
 	// Authoring fixtures use the normal compile budget; this test isolates the
 	// existing stream-retention boundary without removing any package samples.
+	shared := compiled
+	compiled = detachedCompiledFixture(shared)
 	compiled.limits.StateItems = sourceCapacityItems
+	if shared.limits.StateItems != compiler.limits.StateItems {
+		t.Fatal("stream-retention fixture mutated the CompileSources cache graph")
+	}
 	for _, messageCount := range []int{sourceCapacityMessages, sourceCapacityItems + 1} {
 		t.Run(fmt.Sprint(messageCount), func(t *testing.T) {
 			checkResponsesSourceCapacity(t, compiled, messageCount)

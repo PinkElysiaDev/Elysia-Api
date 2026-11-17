@@ -106,6 +106,9 @@ func (s *Store) ConversionSnapshot(ctx context.Context) ([]ConversionPolicyRecor
 	if err = tx.Commit(); err != nil {
 		return nil, nil, 0, err
 	}
+	// The snapshot generation is committed; keep the cache at least this fresh
+	// so a caller pinning this snapshot can compare against the cached value.
+	s.publishConversionGeneration(generation)
 	return policies, bindings, generation, nil
 }
 
@@ -115,6 +118,17 @@ func (s *Store) ConversionGeneration(ctx context.Context) (int64, error) {
 	var generation int64
 	err := s.db.QueryRowContext(ctx, "SELECT generation FROM conversion_generation WHERE id=1").Scan(&generation)
 	return generation, err
+}
+
+// loadConversionGeneration seeds the cached generation from the committed row.
+// It runs after init, so the conversion_generation table always exists here.
+func (s *Store) loadConversionGeneration(ctx context.Context) error {
+	var generation int64
+	if err := s.db.QueryRowContext(ctx, "SELECT generation FROM conversion_generation WHERE id=1").Scan(&generation); err != nil {
+		return err
+	}
+	s.generation.Store(generation)
+	return nil
 }
 
 func checkConversionGeneration(ctx context.Context, tx *sql.Tx, expected []int64) error {

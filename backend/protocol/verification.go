@@ -18,7 +18,37 @@ type verificationResult struct {
 // verifies reversible mappings, and requires evidence for declared features.
 // It performs no network I/O and can never produce upstream verification.
 func Verify(ctx context.Context, compiled *Compiled) VerificationReport {
-	report := VerificationReport{DefinitionHash: compiled.hash, CompilerVersion: CompilerVersion, SamplesHash: compiled.samplesHash, Kind: OfflineVerification, VerifiedAt: time.Now().UTC(), Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
+	verifiedAt := time.Now().UTC()
+	// The context-input inventory lives with verificationMemoEligible. Alternate
+	// contexts execute normally instead of growing a per-revision memo map.
+	if compiled.verification == nil || !verificationMemoEligible(ctx) {
+		return verifyUncached(ctx, compiled, verifiedAt)
+	}
+	memo := compiled.verification
+	memo.mu.Lock()
+	defer memo.mu.Unlock()
+	if ctx.Err() != nil {
+		return verifyUncached(ctx, compiled, verifiedAt)
+	}
+	if memo.report != nil {
+		report := cloneVerificationReport(*memo.report)
+		report.VerifiedAt = verifiedAt
+		if ctx.Err() != nil {
+			return verifyUncached(ctx, compiled, verifiedAt)
+		}
+		return report
+	}
+	report := verifyUncached(ctx, compiled, verifiedAt)
+	if report.Passed && ctx.Err() == nil {
+		evidence := cloneVerificationReport(report)
+		evidence.VerifiedAt = time.Time{}
+		memo.report = &evidence
+	}
+	return report
+}
+
+func verifyUncached(ctx context.Context, compiled *Compiled, verifiedAt time.Time) VerificationReport {
+	report := VerificationReport{DefinitionHash: compiled.hash, CompilerVersion: CompilerVersion, SamplesHash: compiled.samplesHash, Kind: OfflineVerification, VerifiedAt: verifiedAt, Checks: []VerificationCheck{}, Issues: []ConversionIssue{}}
 	coverage := map[Direction]CapabilitySet{}
 	hasSample, hasSequence := map[Direction]bool{}, map[Direction]bool{}
 	hasLifecycle := map[Direction]map[Capability]bool{}

@@ -112,14 +112,14 @@ func TestCompilationSessionRequiresExactAdmittedSource(t *testing.T) {
 	}
 	second, issues := session.Compile(spelled)
 	third, otherIssues := session.Compile(spelled)
-	if IssuesError(issues) != nil || IssuesError(otherIssues) != nil || second == first || second == third || second.Hash() != first.Hash() {
-		t.Fatal("an unadmitted spelling bypassed compilation", issues, otherIssues)
+	if IssuesError(issues) != nil || IssuesError(otherIssues) != nil || second == first || second != third || second.Hash() != first.Hash() {
+		t.Fatal("source spelling isolation or exact-key reuse failed", issues, otherIssues)
 	}
 	wrongIdentity := service.NewCompilationSession()
 	defer wrongIdentity.Close()
 	unadmitted, issues := wrongIdentity.CompilePreset(PresetGeminiID, value)
 	recompiled, otherIssues := wrongIdentity.Compile(value)
-	if IssuesError(issues) != nil || IssuesError(otherIssues) != nil || unadmitted == recompiled {
+	if IssuesError(issues) != nil || IssuesError(otherIssues) != nil || unadmitted != recompiled || len(wrongIdentity.presets) != 0 {
 		t.Fatal("a mismatched preset identity entered reuse")
 	}
 	oversized, err := ParseValue([]byte(strings.Repeat(" ", DefaultLimits().BufferBytes) + value.JSONString()))
@@ -146,8 +146,8 @@ func TestCompilationSessionRetainsFirstSourcePerPreset(t *testing.T) {
 		}
 		second, issues := session.CompilePreset(PresetAnthropicID, spelled)
 		third, otherIssues := session.CompilePreset(PresetAnthropicID, spelled)
-		if IssuesError(issues) != nil || IssuesError(otherIssues) != nil || second == first || second == third || second.Hash() != first.Hash() {
-			t.Fatal("later preset spellings bypassed compilation", issues, otherIssues)
+		if IssuesError(issues) != nil || IssuesError(otherIssues) != nil || second == first || second != third || second.Hash() != first.Hash() {
+			t.Fatal("later preset spelling isolation or exact-key reuse failed", issues, otherIssues)
 		}
 		admitted := session.presets[PresetAnthropicID]
 		if len(session.presets) != 1 || admitted.source != value || admitted.compiled != first {
@@ -224,7 +224,7 @@ func TestCompilationSessionPublicationRereadsAuthority(t *testing.T) {
 			err := session.ReloadAvailable(ctx, requiredIDs...)
 			published, _ := service.Pin(PresetAnthropicID)
 			if change == "none" || change == "spelling" {
-				if err != nil || published == previous || repository.revisionReads != revisionReads+1 || repository.reportReads != reportReads+1 {
+				if err != nil || (published == previous) != (change == "none") || repository.revisionReads != revisionReads+1 || repository.reportReads != reportReads+1 {
 					t.Fatal("publication skipped fresh authority or failed", err)
 				}
 				if (published == prepared) != (change == "none") {
@@ -382,8 +382,8 @@ func observeCompilationPublication(ctx context.Context, service *Service, previo
 		if !hasFirst || !hasPinned || (pinned != previous && pinned != prepared) {
 			return fmt.Errorf("View or Pin exposed an absent or unknown preset")
 		}
-		if first == previous {
-			if hasSecond || len(view.IDs()) != 1 {
+		if !hasSecond {
+			if first != previous || len(view.IDs()) != 1 {
 				return fmt.Errorf("old view included part of the new publication")
 			}
 			if !hasReadOld {
