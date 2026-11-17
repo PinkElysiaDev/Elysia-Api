@@ -1,6 +1,6 @@
 # AGENTS.md — Implemented Agent Notes
 
-These Agent Notes describe shipped decisions. Follow the [root instructions](../../../CLAUDE.md) and [Agent Note format](../README.md#文件格式).
+These Agent Notes describe shipped decisions. Follow the [root instructions](../../../AGENTS.md) and [Agent Note format](../README.md#文件格式).
 
 Every Agent Note is **bilingual as a zh/en file pair**: `yyyy-mm-dd-topic-title.zh.md` (Chinese) and `yyyy-mm-dd-topic-title.en.md` (English) must both exist and mirror each other. Keep both files in sync when updating facts.
 
